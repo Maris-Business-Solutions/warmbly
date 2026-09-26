@@ -4,7 +4,7 @@ import Request from "../../Request";
 export default async function getOrganizationRisk(): Promise<OrgRisk> {
     return await Request<OrgRisk>({
         method: "GET",
-        url: "/organizations/current/risk",
+        url: "/organization/current/risk",
         authorization: true,
     });
 }
