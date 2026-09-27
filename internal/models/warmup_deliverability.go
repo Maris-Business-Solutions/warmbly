@@ -182,8 +182,8 @@ func (c *WarmupPlacementCounts) Add(o WarmupPlacementCounts) {
 const (
 	// WarmupPlacementScopeMajor is Google, Microsoft and Yahoo recipients only.
 	WarmupPlacementScopeMajor = "major"
-	// WarmupPlacementScopeAll is every host, for a mailbox none of the major
-	// providers has received warmup mail from in the window.
+	// WarmupPlacementScopeAll is every host, for a mailbox the major providers
+	// have not received enough warmup mail from in the window to rate.
 	WarmupPlacementScopeAll = "all"
 )
 
@@ -248,10 +248,12 @@ func (w *WarmupPlacementWindow) Add(o WarmupPlacementWindow) {
 	w.All.Spam += o.All.Spam
 }
 
-// Rate is the headline over the major providers, or over every host when none
-// of them received anything in the window.
+// Rate is the headline over the major providers, or over every host when they
+// have not reached the sample and every host has, so a mailbox mostly warming
+// with small hosts still shows a figure.
 func (w WarmupPlacementWindow) Rate() WarmupPlacementRate {
-	if m := w.Major; m.Inbox+m.Tabs+m.Spam > 0 {
+	major, all := w.Major.Inbox+w.Major.Tabs+w.Major.Spam, w.All.Inbox+w.All.Tabs+w.All.Spam
+	if m := w.Major; major > 0 && (major >= WarmupPlacementMinSample || all < WarmupPlacementMinSample) {
 		r := NewWarmupPlacementRate(m.Inbox, m.Tabs, m.Spam)
 		r.Scope = WarmupPlacementScopeMajor
 		ok := w.All.Inbox + w.All.Tabs - m.Inbox - m.Tabs

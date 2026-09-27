@@ -55,9 +55,10 @@ func placementWindowStart(now time.Time) time.Time {
 }
 
 // applyWarmupPlacement caps the health score at the headline inbox rate, so a
-// mailbox landing in spam at the major providers reads as degraded.
+// mailbox landing in spam at the major providers reads as degraded. An
+// all-host rate is shown, never held against the mailbox.
 func applyWarmupPlacement(health *models.AccountHealth, r *models.WarmupPlacementRate) {
-	if r == nil || r.InboxRate == nil {
+	if r == nil || r.InboxRate == nil || r.Scope != models.WarmupPlacementScopeMajor {
 		return
 	}
 	if capped := int(math.Floor(*r.InboxRate)); capped < health.Score {

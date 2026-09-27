@@ -160,8 +160,8 @@ func detectBounceRate(s *repository.AdvisorSnapshot) []Finding {
 func detectSpamPlacement(s *repository.AdvisorSnapshot) []Finding {
 	out := []Finding{}
 	for _, m := range s.Mailboxes {
-		// The pool's own reading, over verified deliveries at Google,
-		// Microsoft and Yahoo, so the advice and the band cannot disagree.
+		// The same reading the pool's band takes: verified deliveries at
+		// Google, Microsoft and Yahoo over the last seven days.
 		p := m.WarmupPlacement
 		r, delivered := p.Judged()
 		if delivered < minWarmupDeliveriesForPlacement || r < spamPlacementWarn {

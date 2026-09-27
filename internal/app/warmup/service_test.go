@@ -345,3 +345,22 @@ func TestPlacementReasonExplainsTheReading(t *testing.T) {
 		t.Fatalf("reason =\n%q\nwant\n%q", d.Reason, want)
 	}
 }
+
+// Only a watch or throttle the placement band set is held by its exit line; a
+// re-entry probation or a complaint watch is not stretched by placement.
+func TestPlacementPriorOnlyHoldsItsOwnBands(t *testing.T) {
+	placed := evaluateMetrics(&models.WarmupHealthMetrics{PlacementSample: 30, SpamPlacementRate: 25}, "", time.Now())
+	own := &models.WarmupParticipantHealth{HealthState: placed.State, LastHealthReason: &placed.Reason}
+	if got := placementPrior(own); got != models.WarmupHealthThrottled {
+		t.Fatalf("placement's own throttle read as prior %q", got)
+	}
+	probation := "re-entry probation after block expiry"
+	other := &models.WarmupParticipantHealth{HealthState: models.WarmupHealthThrottled, LastHealthReason: &probation}
+	if got := placementPrior(other); got != "" {
+		t.Fatalf("a probation throttle read as placement prior %q", got)
+	}
+	d := evaluateMetrics(&models.WarmupHealthMetrics{PlacementSample: 30, SpamPlacementRate: 16}, placementPrior(other), time.Now())
+	if d.State != models.WarmupHealthWatch {
+		t.Fatalf("16%% after a probation throttle set %s, want watch", d.State)
+	}
+}

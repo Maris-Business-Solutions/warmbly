@@ -172,7 +172,7 @@ function LifecycleNotice({
             onSuccess: (data) =>
                 toast.success(
                     data.state === "resting"
-                        ? "Still resting: its warmup health is throttled or worse, so it stays out until that recovers"
+                        ? "Still resting: it is quarantined or blocked from warmup, so it stays out until that lifts"
                         : "Mailbox back in campaign rotation",
                 ),
             onError: (e) => toast.error(buildError(e as unknown as AppError)),

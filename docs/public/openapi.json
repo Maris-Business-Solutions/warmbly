@@ -39667,7 +39667,7 @@
               "major",
               "all"
             ],
-            "description": "major: taken over Google, Microsoft and Yahoo recipients only. all: every host, when none of them received the mailbox's warmup mail in the window."
+            "description": "major: taken over Google, Microsoft and Yahoo recipients only. all: every host, when those three have not reached min_sample in the window and every host has."
           },
           "delivered": {
             "type": "integer"

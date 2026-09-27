@@ -158,7 +158,6 @@ export function totals(days: DayView[]) {
     };
 }
 
-/** One line explaining a headline rate, for tooltips and captions. */
 /** The other mail hosts left out of a major-provider rate, or null with none. */
 export function otherHostsNote(rate: PlacementRate, short = false): string | null {
     if (rate.scope !== "major" || !rate.other_delivered || rate.other_inbox_rate == null) return null;
@@ -166,6 +165,7 @@ export function otherHostsNote(rate: PlacementRate, short = false): string | nul
     return `Other mail hosts: ${fmtPct(rate.other_inbox_rate)} inbox of ${fmtNum(rate.other_delivered)}, shown but not counted toward standing`;
 }
 
+/** One line explaining a headline rate, for tooltips and captions. */
 export function rateSentence(rate: PlacementRate): string {
     const ok = rate.inbox + rate.tabs;
     if (rate.delivered === 0) return `No warmup deliveries in the last ${rate.window_days} days.`;

@@ -382,13 +382,13 @@ A mailbox now has a cold-rotation state, separate from its health:
 | `resting` | Out of cold rotation to recover. Warmup keeps running, so its reputation stays alive. Leads mid-sequence on it move to another mailbox at their next step |
 | `reserve` | Held back by you. Never entered or left automatically |
 
-A mailbox rests when its warmup health reaches `throttled` or worse, and returns on its own once it is healthy again **and** has held steady for three days. One good hour does not put it back at full cold volume.
+A mailbox rests when it is quarantined or blocked from warmup, and returns on its own three days after that lifts. One good hour does not put it back in rotation. Spam placement never rests a mailbox: a `watch` or `throttled` mailbox stays in rotation with its daily cold volume dampened (to 70% and 50%) until placement recovers.
 
-Resting only makes sense while the mailbox is in a warmup pool, because pool health is the signal it recovers on. If a resting mailbox leaves its pool (the workspace loses warmup when a trial ends or a plan changes), there is no health signal to wait for, so the mailbox returns on its own three days after its last rest stamp rather than staying out indefinitely. Pausing warmup on the mailbox does not remove it from the pool, so its health keeps being tracked and the normal three healthy days still apply.
+Resting only makes sense while the mailbox is in a warmup pool, because pool health is the signal it recovers on. If a resting mailbox leaves its pool (the workspace loses warmup when a trial ends or a plan changes), there is no health signal to wait for, so the mailbox returns on its own three days after its last rest stamp rather than staying out indefinitely. Pausing warmup on the mailbox does not remove it from the pool, so its health keeps being tracked and the normal three days after it lifts still apply.
 
 ### Putting a resting mailbox back yourself
 
-You do not have to wait. A resting mailbox's notice in the drawer has a **Put back into campaigns** button. It lands in `active` unless its warmup health is still `throttled` or worse, in which case it stays resting and the drawer says so: a mailbox that warmup can see is struggling should not send cold mail, and there is no override for that short of the health recovering.
+You do not have to wait. A resting mailbox's notice in the drawer has a **Put back into campaigns** button. It lands in `active` unless it is still quarantined or blocked from warmup, in which case it stays resting and the drawer says so: a mailbox the pool has taken out should not send cold mail, and there is no override for that short of the standing lifting.
 
 API keys get the same exit through `POST /emails/:id/release`, which works on a resting mailbox as well as a held one.
 

@@ -79,6 +79,7 @@ export default function MailboxPlacementTab({ mailboxId, poolHealth }: { mailbox
     const style = BAND[rate.band];
     const everDelivered = report.summary.delivered > 0 || rate.delivered > 0;
     const filtered = activeGroup !== "all";
+    const otherNote = otherHostsNote(rate);
 
     return (
         <div className="divide-y divide-slate-200/60">
@@ -112,7 +113,7 @@ export default function MailboxPlacementTab({ mailboxId, poolHealth }: { mailbox
                             {fmtNum(rate.spam)} in spam · {fmtNum(rate.tabs)} in other tabs · 90%+ is healthy
                         </p>
                     )}
-                    {otherHostsNote(rate) && <p className="mt-1 text-[11px] text-slate-400">{otherHostsNote(rate)}</p>}
+                    {otherNote && <p className="mt-1 text-[11px] text-slate-400">{otherNote}</p>}
                 </div>
             </div>
 

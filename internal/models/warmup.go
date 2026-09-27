@@ -189,7 +189,7 @@ type WarmupPartnerCandidate struct {
 	// sample is taken.
 	Sent7d     int
 	Received7d int
-	// Junked7d is how much of what it received its own filter put in spam.
+	// Junked7d is how many of those arrivals its own filter put in spam.
 	Junked7d int
 }
 

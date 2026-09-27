@@ -553,7 +553,7 @@ func (s *service) evaluateAndPersist(ctx context.Context, participant *models.Wa
 
 	// The floor that keeps a block from being overturned by a fresh reading is
 	// applied by UpdateParticipantHealth against the row as it is at write time.
-	decision := evaluateMetrics(metrics, priorState, s.now().UTC())
+	decision := evaluateMetrics(metrics, placementPrior(participant), s.now().UTC())
 	health, err := s.repo.UpdateParticipantHealth(ctx, accountID, decision.State, decision.BlockedUntil, decision.Reason, decision.Score)
 	if err != nil {
 		return nil, fail("persist", err)
@@ -642,8 +642,8 @@ type evaluationDecision struct {
 // evaluateMetrics is the rate bands and the tampering band judged apart, with
 // the more severe finding kept, so a seven-day rate quarantine can never hide
 // a thirty-day tampering block or the other way round.
-// prior is the standing the row carries, which the placement band needs to
-// hold a watch or throttle until the rate has clearly recovered.
+// prior is the standing the placement band gave the row last time, which it
+// needs to hold a watch or throttle until the rate has clearly recovered.
 func evaluateMetrics(metrics *models.WarmupHealthMetrics, prior models.WarmupHealthState, now time.Time) evaluationDecision {
 	rates := moreSevere(evaluateRateBands(metrics, now), evaluatePlacement(metrics, prior, now))
 	return moreSevere(rates, evaluateTampering(metrics, now))
@@ -835,10 +835,22 @@ func evaluatePlacement(m *models.WarmupHealthMetrics, prior models.WarmupHealthS
 	return healthy
 }
 
+// placementReasonMarker is in every reason the placement band writes, which is
+// how the next evaluation knows a watch or throttle is placement's to hold.
+const placementReasonMarker = "of warmup mail delivered at Google, Microsoft and Yahoo landed in spam"
+
+// placementPrior is the row's standing when the placement band set it, and
+// empty otherwise, so a probation or complaint watch is never held by it.
+func placementPrior(p *models.WarmupParticipantHealth) models.WarmupHealthState {
+	if p.LastHealthReason != nil && strings.Contains(*p.LastHealthReason, placementReasonMarker) {
+		return p.HealthState
+	}
+	return ""
+}
+
 // placementSummary says what the placement band read.
 func placementSummary(m *models.WarmupHealthMetrics) string {
-	out := fmt.Sprintf("%s of warmup mail delivered at Google, Microsoft and Yahoo landed in spam over 7 days (%d delivered).",
-		fmtPct(m.SpamPlacementRate), m.PlacementSample)
+	out := fmt.Sprintf("%s %s over 7 days (%d delivered).", fmtPct(m.SpamPlacementRate), placementReasonMarker, m.PlacementSample)
 	if m.OtherDelivered > 0 && m.OtherSpamRate > 0 {
 		out += fmt.Sprintf(" Other mail hosts (%s of %d) run their own filters and are not counted.", fmtPct(m.OtherSpamRate), m.OtherDelivered)
 	}

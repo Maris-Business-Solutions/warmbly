@@ -123,9 +123,8 @@ func (r *warmupPlacementRepository) RecordPlacement(ctx context.Context, recipie
 }
 
 func (r *warmupPlacementRepository) SweepUnplaced(ctx context.Context, cutoff time.Time, limit int) (int, error) {
-	// Category tabs and
-	// rescues are only known on the live path, so a swept receipt reads as
-	// inbox or spam.
+	// Category tabs and rescues are only known on the live path, so a swept
+	// receipt reads as inbox or spam.
 	query := `
 		WITH batch AS (
 			SELECT email_account_id, internal_id FROM warmup_received

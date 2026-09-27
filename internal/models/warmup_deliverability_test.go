@@ -81,4 +81,15 @@ func TestWarmupPlacementWindowRate(t *testing.T) {
 	if only.Scope != WarmupPlacementScopeAll || only.Delivered != 20 || only.OtherDelivered != 0 || only.OtherInboxRate != nil {
 		t.Fatalf("all-host rate = %+v, want every host and nothing beside it", only)
 	}
+
+	// Three Gmail deliveries do not hide a rate over 150 at small hosts.
+	thin := WarmupPlacementWindow{Major: WarmupPlacementTally{Inbox: 3}, All: WarmupPlacementTally{Inbox: 120, Spam: 33}}.Rate()
+	if thin.Scope != WarmupPlacementScopeAll || thin.InboxRate == nil || thin.Delivered != 153 {
+		t.Fatalf("thin major rate = %+v, want the all-host figure", thin)
+	}
+	// With neither at the sample, the major count is what is being collected.
+	early := WarmupPlacementWindow{Major: WarmupPlacementTally{Inbox: 3}, All: WarmupPlacementTally{Inbox: 8}}.Rate()
+	if early.Scope != WarmupPlacementScopeMajor || early.Band != WarmupPlacementBandCollecting || early.Delivered != 3 {
+		t.Fatalf("early rate = %+v, want 3 of the major sample collecting", early)
+	}
 }

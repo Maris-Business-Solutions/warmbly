@@ -48,12 +48,21 @@ func TestApplyWarmupPlacementCapsHealth(t *testing.T) {
 	if h.Score != 100 {
 		t.Fatalf("no reading leaves health alone: %+v", h)
 	}
-	r := models.NewWarmupPlacementRate(97, 0, 3)
+	// A rate over every host is shown, never held against the mailbox.
+	all := models.NewWarmupPlacementRate(50, 0, 50)
+	applyWarmupPlacement(&h, &all)
+	if h.Score != 100 || h.Status != "healthy" {
+		t.Fatalf("an all-host rate moved health: %+v", h)
+	}
+	major := func(inbox, spam int) models.WarmupPlacementRate {
+		return models.WarmupPlacementWindow{Major: models.WarmupPlacementTally{Inbox: inbox, Spam: spam}}.Rate()
+	}
+	r := major(97, 3)
 	applyWarmupPlacement(&h, &r)
 	if h.Score != 97 || h.Status != "healthy" || len(h.Issues) != 0 {
 		t.Fatalf("97%% caps the score and stays healthy: %+v", h)
 	}
-	r = models.NewWarmupPlacementRate(70, 0, 30)
+	r = major(70, 30)
 	applyWarmupPlacement(&h, &r)
 	if h.Score != 70 || h.Status != "warning" || len(h.Issues) != 1 {
 		t.Fatalf("70%% warns: %+v", h)

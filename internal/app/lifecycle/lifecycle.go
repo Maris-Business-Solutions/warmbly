@@ -25,19 +25,18 @@ type Decision struct {
 // Changed reports whether the mailbox should move.
 func (d Decision) Changed(current models.SendLifecycle) bool { return d.Next != current }
 
-// Decide maps warmup health onto the cold lifecycle. Rests at throttled and
-// worse, never at watch: watch is defined to change nothing a customer feels.
+// Decide maps warmup health onto the cold lifecycle. Rests only at quarantined
+// and blocked: watch and throttled are spam placement, which slows cold volume
+// through the send budget and never takes a mailbox out of rotation.
 func Decide(current models.SendLifecycle, since *time.Time, health models.WarmupHealthState, now time.Time) Decision {
 	if !current.AutoManaged() {
 		return Decision{Next: current}
 	}
 
 	switch health {
-	case models.WarmupHealthThrottled:
-		return Decision{Next: models.SendLifecycleResting,
-			Reason: "warmup health is throttled; resting on warmup traffic to recover"}
 	case models.WarmupHealthQuarantined, models.WarmupHealthBlocked:
-		return Decision{Next: models.SendLifecycleResting,
+		// Still out: the probation clock starts once it is back in.
+		return Decision{Next: models.SendLifecycleResting, RestartProbation: current == models.SendLifecycleResting,
 			Reason: "warmup health is " + string(health) + "; out of cold rotation until it recovers"}
 	}
 
@@ -53,13 +52,10 @@ func Decide(current models.SendLifecycle, since *time.Time, health models.Warmup
 		return Decision{Next: current}
 	}
 
-	// Healthy or watch. A resting mailbox returns only after a probation, so
-	// one good hour cannot bounce it straight back to full cold volume.
+	// Back in the pool. A resting mailbox returns only after a probation, so
+	// one good hour cannot bounce it straight back into cold rotation; a watch
+	// or throttle still dampens its volume once it is back.
 	if current == models.SendLifecycleResting {
-		if health != models.WarmupHealthHealthy {
-			// Still not healthy: the clean streak starts again from here.
-			return Decision{Next: current, RestartProbation: true}
-		}
 		state := models.SendLifecycleState{State: current, Since: since}
 		if state.ReadyToResume(now) {
 			return Decision{Next: models.SendLifecycleActive, Reason: "recovered and served its rest"}

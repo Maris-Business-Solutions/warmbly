@@ -1138,19 +1138,15 @@ func partnerCandidateSelectSuffix(sharePercent int) string {
 		recv AS (
 			SELECT wr.email_account_id,
 			       COUNT(*) AS week,
-			       COUNT(*) FILTER (WHERE wr.created_at >= date_trunc('day', NOW())) AS today
+			       COUNT(*) FILTER (WHERE wr.created_at >= date_trunc('day', NOW())) AS today,
+			       COUNT(sr.id) AS junk
 			FROM warmup_received wr
+			LEFT JOIN warmup_spam_reports sr
+			  ON sr.reporter_account_id = wr.email_account_id AND sr.message_id = wr.message_id
+			 AND sr.report_type = 'spam_placement' AND wr.message_id <> ''
 			WHERE wr.created_at >= NOW() - interval '7 days'
 			  AND wr.email_account_id IN (SELECT id FROM cand)
 			GROUP BY wr.email_account_id
-		),
-		junk AS (
-			SELECT sr.reporter_account_id, COUNT(*) AS week
-			FROM warmup_spam_reports sr
-			WHERE sr.created_at >= NOW() - interval '7 days'
-			  AND sr.report_type = 'spam_placement'
-			  AND sr.reporter_account_id IN (SELECT id FROM cand)
-			GROUP BY sr.reporter_account_id
 		),
 		sent AS (
 			SELECT wt.sender_account_id, COUNT(*) AS week
@@ -1168,10 +1164,9 @@ func partnerCandidateSelectSuffix(sharePercent int) string {
 			GROUP BY wt.recipient_account_id
 		)
 		SELECT cand.id, cand.email, cand.organization_id, cand.provider, cand.mail_host,
-		       COALESCE(sent.week, 0), COALESCE(recv.week, 0), COALESCE(junk.week, 0)
+		       COALESCE(sent.week, 0), COALESCE(recv.week, 0), COALESCE(recv.junk, 0)
 		FROM cand
 		LEFT JOIN recv ON recv.email_account_id = cand.id
-		LEFT JOIN junk ON junk.reporter_account_id = cand.id
 		LEFT JOIN sent ON sent.sender_account_id = cand.id
 		LEFT JOIN inflight ON inflight.recipient_account_id = cand.id
 		WHERE GREATEST(COALESCE(recv.today, 0), COALESCE(inflight.today, 0))
