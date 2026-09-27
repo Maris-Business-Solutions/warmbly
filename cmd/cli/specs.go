@@ -1602,14 +1602,24 @@ func analyticsSpec() resource {
 				Args: []argSpec{{Name: "id", Help: "The mailbox's id"}},
 			},
 			{
-				Name: "campaign", Short: "One campaign's analytics",
+				Name: "campaign", Short: "One campaign's analytics, all time or for the emails sent in a date range",
 				Method: http.MethodGet, Path: "/analytics/campaigns/{id}",
-				Args: []argSpec{{Name: "id", Help: "The campaign's id"}},
+				Example: "  $ warmbly analytics campaign ID --from 2026-09-01 --to 2026-09-07",
+				Args:    []argSpec{{Name: "id", Help: "The campaign's id"}},
+				Flag: []flagSpec{
+					{Name: "from", Help: "First day of the range, YYYY-MM-DD (with --to; omit both for all time)", Query: true},
+					{Name: "to", Help: "Last day of the range, YYYY-MM-DD, included (with --from)", Query: true},
+				},
 			},
 			{
 				Name: "campaign-daily", Short: "One campaign's daily series",
 				Method: http.MethodGet, Path: "/analytics/campaigns/{id}/daily",
-				Args: []argSpec{{Name: "id", Help: "The campaign's id"}},
+				Example: "  $ warmbly analytics campaign-daily ID --from 2026-09-01 --to 2026-09-30",
+				Args:    []argSpec{{Name: "id", Help: "The campaign's id"}},
+				Flag: []flagSpec{
+					{Name: "from", Help: "First day of the range, YYYY-MM-DD (required)", Query: true},
+					{Name: "to", Help: "Last day of the range, YYYY-MM-DD, included (required)", Query: true},
+				},
 			},
 			{
 				Name: "campaign-hourly", Short: "One campaign's hourly series",

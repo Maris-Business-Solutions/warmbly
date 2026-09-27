@@ -114,7 +114,7 @@ func TestLiveUsageOverviewCountsTheSelectedOrganization(t *testing.T) {
 	if len(top) != 1 || top[0].EmailsSent != 1 {
 		t.Fatalf("top campaigns = %+v, want one email sent", top)
 	}
-	summary, xerr := repo.GetCampaignSummary(ctx, orgID, campaignID)
+	summary, xerr := repo.GetCampaignSummary(ctx, orgID, campaignID, nil)
 	if xerr != nil {
 		t.Fatalf("GetCampaignSummary: %v", xerr)
 	}
@@ -142,7 +142,7 @@ func TestLiveUsageOverviewCountsTheSelectedOrganization(t *testing.T) {
 	if len(comparison.Campaigns) != 1 || comparison.Campaigns[0].EmailsSent != 1 {
 		t.Fatalf("campaign comparison = %+v, want one email sent", comparison.Campaigns)
 	}
-	steps, xerr := repo.GetSequenceStats(ctx, campaignID)
+	steps, xerr := repo.GetSequenceStats(ctx, campaignID, nil)
 	if xerr != nil {
 		t.Fatalf("GetSequenceStats: %v", xerr)
 	}

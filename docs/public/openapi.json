@@ -15157,7 +15157,7 @@
             "name": "from",
             "in": "query",
             "required": true,
-            "description": "Range start (YYYY-MM-DD).",
+            "description": "First day (YYYY-MM-DD, UTC).",
             "schema": {
               "type": "string",
               "format": "date"
@@ -15167,7 +15167,7 @@
             "name": "to",
             "in": "query",
             "required": true,
-            "description": "Range end (YYYY-MM-DD).",
+            "description": "Last day (YYYY-MM-DD, UTC), included.",
             "schema": {
               "type": "string",
               "format": "date"
@@ -15245,7 +15245,7 @@
           "analytics"
         ],
         "summary": "Get campaign analytics",
-        "description": "A single campaign's performance summary plus per-step stats. The campaign must belong to the caller.",
+        "description": "A single campaign's performance summary plus per-step stats, for its whole history or for the emails sent from `from` to `to`. A period is a send cohort: the emails sent on its UTC days, with every open, click, reply and bounce they earned whenever it arrived. total_contacts and emails_pending are the campaign's current state whatever the period. The campaign must belong to the caller.",
         "security": [
           {
             "bearerAuth": []
@@ -15261,6 +15261,26 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "First day of the period (YYYY-MM-DD, UTC). Requires to; omit both for all time.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last day of the period (YYYY-MM-DD, UTC), included. Requires from.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
           }
         ],
         "responses": {
@@ -15275,7 +15295,7 @@
             }
           },
           "400": {
-            "description": "Invalid request.",
+            "description": "Only one of from and to, a malformed date, or from after to.",
             "content": {
               "application/json": {
                 "schema": {
@@ -15355,7 +15375,7 @@
             "name": "from",
             "in": "query",
             "required": true,
-            "description": "Range start (YYYY-MM-DD).",
+            "description": "First day (YYYY-MM-DD, UTC).",
             "schema": {
               "type": "string",
               "format": "date"
@@ -15365,7 +15385,7 @@
             "name": "to",
             "in": "query",
             "required": true,
-            "description": "Range end (YYYY-MM-DD).",
+            "description": "Last day (YYYY-MM-DD, UTC), included.",
             "schema": {
               "type": "string",
               "format": "date"
@@ -34219,7 +34239,8 @@
             "type": "string"
           },
           "date_range": {
-            "$ref": "#/components/schemas/DateRange"
+            "$ref": "#/components/schemas/DateRange",
+            "description": "The UTC days the figures cover, as midnight on the first and last: the requested from and to, or for all time the first send's day (creation day before one) through today."
           },
           "summary": {
             "$ref": "#/components/schemas/CampaignAnalyticsSummary"

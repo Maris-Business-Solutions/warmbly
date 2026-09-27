@@ -2,5 +2,9 @@
     { "name": "campaign_id", "type": "text", "label": "Campaign ID" },
     { "name": "name", "type": "text", "label": "Name" },
     { "name": "status", "type": "text", "label": "Status" },
+    { "name": "date_range", "type": "collection", "label": "Period", "spec": [
+        { "name": "from", "type": "date", "label": "From" },
+        { "name": "to", "type": "date", "label": "To" }
+    ] },
     { "name": "summary", "type": "collection", "label": "Summary" }
 ]

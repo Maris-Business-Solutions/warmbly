@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,6 +10,29 @@ import (
 type DateRange struct {
 	From time.Time `json:"from"`
 	To   time.Time `json:"to"`
+}
+
+// ParseDayRange reads an optional pair of whole days (YYYY-MM-DD, UTC, to
+// included): both empty is nil, meaning all time.
+func ParseDayRange(from, to string) (*DateRange, error) {
+	if from == "" && to == "" {
+		return nil, nil
+	}
+	if from == "" || to == "" {
+		return nil, errors.New("from and to must be supplied together")
+	}
+	f, err := time.Parse(time.DateOnly, from)
+	if err != nil {
+		return nil, errors.New("invalid from date format (expected YYYY-MM-DD)")
+	}
+	t, err := time.Parse(time.DateOnly, to)
+	if err != nil {
+		return nil, errors.New("invalid to date format (expected YYYY-MM-DD)")
+	}
+	if t.Before(f) {
+		return nil, errors.New("from must not be after to")
+	}
+	return &DateRange{From: f, To: t}, nil
 }
 
 // Warmup Analytics
@@ -91,9 +115,12 @@ const (
 
 type CampaignSummary struct {
 	TotalContacts int `json:"total_contacts"`
-	EmailsSent    int `json:"emails_sent"`
-	EmailsPending int `json:"emails_pending"`
-	UniqueOpens   int `json:"unique_opens"`
+	// FirstSentAt is the campaign's earliest email send whatever the period,
+	// nil before one; it resolves an all-time date_range.
+	FirstSentAt   *time.Time `json:"-"`
+	EmailsSent    int        `json:"emails_sent"`
+	EmailsPending int        `json:"emails_pending"`
+	UniqueOpens   int        `json:"unique_opens"`
 	// MachineOpens is the subset of UniqueOpens from automated fetchers
 	// (Apple MPP prefetch, UA-less clients). Human opens = unique - machine.
 	MachineOpens int `json:"machine_opens"`

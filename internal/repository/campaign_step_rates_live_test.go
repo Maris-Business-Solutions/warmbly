@@ -70,7 +70,7 @@ func TestLiveCampaignStepRatesAreOfTheStepsOwnSends(t *testing.T) {
 	}
 
 	repo := &analyticsRepository{DB: handle}
-	stats, xerr := repo.GetSequenceStats(ctx, f.campaign)
+	stats, xerr := repo.GetSequenceStats(ctx, f.campaign, nil)
 	if xerr != nil {
 		t.Fatalf("GetSequenceStats: %v", xerr)
 	}
@@ -110,7 +110,7 @@ func TestLiveCampaignStepRatesAreOfTheStepsOwnSends(t *testing.T) {
 
 	// The steps add up to the summary, which shares the automated-click
 	// definition with them: one campaign, read two ways, one answer.
-	sum, xerr := repo.GetCampaignSummary(ctx, f.org, f.campaign)
+	sum, xerr := repo.GetCampaignSummary(ctx, f.org, f.campaign, nil)
 	if xerr != nil {
 		t.Fatalf("GetCampaignSummary: %v", xerr)
 	}

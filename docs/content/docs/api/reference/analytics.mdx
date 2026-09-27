@@ -303,11 +303,19 @@ Placement history is kept for the life of the mailbox, like warmup volume histor
 
 `GET /analytics/campaigns/:id`
 
-Returns a single campaign's performance summary plus per-sequence-step stats. `total_contacts` counts enrolled leads, and `emails_pending` is the remaining planned email-step sends across those leads. The campaign must belong to the selected workspace. Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`.
+Returns a single campaign's performance summary plus per-sequence-step stats, for the campaign's whole history or for the emails sent in a date range. `total_contacts` counts enrolled leads, and `emails_pending` is the remaining planned email-step sends across those leads. The campaign must belong to the selected workspace. Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`.
 
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
 | `id` | path | string (uuid) | Campaign id. |
+| `from` | query | string | Optional. First day of the period (`YYYY-MM-DD`, UTC). Requires `to`. |
+| `to` | query | string | Optional. Last day of the period (`YYYY-MM-DD`, UTC), included. Requires `from`. |
+
+Leave out both `from` and `to` for the campaign's whole history. Supplying only one of them, a date in another format, or a `from` after `to` returns `400` with code `bad_request`.
+
+A period is a send cohort: it selects the emails sent on its days, from the start of `from` to the end of `to` in UTC, and counts every open, click, reply and bounce those emails earned, whenever it arrived. An email sent on September 5 that is replied to on September 10 counts in a September 1 to 7 period; a reply that arrives on September 3 to an email sent in August does not. That keeps each rate's numerator and denominator the same emails. The period scopes `emails_sent`, the open, click, reply and bounce counts and rates, every row in `steps` and every bucket in `engagement` (an open or click counts when the email it answers was sent in the period). `total_contacts` and `emails_pending` describe the campaign as it stands now and are the same whatever the period.
+
+`date_range` is the period the figures cover, as midnight UTC on its first and last day: the `from` and `to` you sent, or for the whole history the day of the campaign's first send (its creation day before anything is sent) through today.
 
 ### Response
 
@@ -316,7 +324,7 @@ Returns a single campaign's performance summary plus per-sequence-step stats. `t
   "campaign_id": "b1f2c3d4-0000-0000-0000-000000000001",
   "name": "Q2 outbound",
   "status": "active",
-  "date_range": { "from": "0001-01-01T00:00:00Z", "to": "0001-01-01T00:00:00Z" },
+  "date_range": { "from": "2026-05-04T00:00:00Z", "to": "2026-06-12T00:00:00Z" },
   "summary": {
     "total_contacts": 500,
     "emails_sent": 820,
@@ -377,8 +385,10 @@ Returns per-day send, open, click, and reply counts for one campaign over a date
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
 | `id` | path | string (uuid) | Campaign id. |
-| `from` | query | string | Required. Range start (`YYYY-MM-DD`). |
-| `to` | query | string | Required. Range end (`YYYY-MM-DD`). |
+| `from` | query | string | Required. First day (`YYYY-MM-DD`, UTC). |
+| `to` | query | string | Required. Last day (`YYYY-MM-DD`, UTC), included. |
+
+Each row is one UTC day with at least one send, and its opens, clicks and replies are those earned by that day's sends, whenever they arrived. The rows for a period add up to the [campaign analytics](#get-campaign-analytics) for the same `from` and `to`.
 
 ### Response
 
@@ -402,11 +412,11 @@ Returns per-hour stats for one campaign on a single day. The campaign must belon
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
 | `id` | path | string (uuid) | Campaign id. |
-| `date` | query | string | Day to report (`YYYY-MM-DD`). Defaults to today. |
+| `date` | query | string | Day to report (`YYYY-MM-DD`, UTC). Defaults to today. |
 
 ### Response
 
-The series is returned under a `data` envelope, with the resolved `date` echoed back. Each item's `hour` is `0`-`23`.
+The series is returned under a `data` envelope, with the resolved `date` echoed back. Each item's `hour` is the UTC hour, `0`-`23`, so a day's rows add up to that day's row in the [daily stats](#get-campaign-daily-stats).
 
 ```json
 {
@@ -427,8 +437,10 @@ Returns side-by-side performance for up to 10 campaigns over a date range. Every
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
 | `ids` | query | string | Required. Comma-separated campaign UUIDs. Invalid entries are dropped; the list is capped at 10. At least one valid id is required. |
-| `from` | query | string | Required. Range start (`YYYY-MM-DD`). |
-| `to` | query | string | Required. Range end (`YYYY-MM-DD`). |
+| `from` | query | string | Required. First day (`YYYY-MM-DD`, UTC). |
+| `to` | query | string | Required. Last day (`YYYY-MM-DD`, UTC), included. |
+
+Each campaign's figures are the emails it sent from the start of `from` to the end of `to`, with every open, click, reply and bounce they earned, the same send cohort as [campaign analytics](#get-campaign-analytics) for that period.
 
 ### Response
 

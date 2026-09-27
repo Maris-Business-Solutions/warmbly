@@ -116,7 +116,7 @@ func TestLiveEngagementOriginReachesEverySurface(t *testing.T) {
 		t.Fatalf("recent activity missed the open or the click: %+v", recent)
 	}
 
-	breakdown, xerr := analytics.GetCampaignEngagementBreakdown(ctx, f.campaign, 8)
+	breakdown, xerr := analytics.GetCampaignEngagementBreakdown(ctx, f.campaign, nil, 8)
 	if xerr != nil {
 		t.Fatalf("breakdown: %v", xerr)
 	}
