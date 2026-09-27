@@ -15,6 +15,12 @@ defmodule Realtime.EventBroadcaster do
     user_id = event["user_id"]
     event_type = event["event_type"]
 
+    # A removed member loses every socket at once, whatever it joined; each
+    # channel's rejoin checks membership again, so only that org is lost.
+    if removed = removed_member(event) do
+      RealtimeWeb.Endpoint.broadcast("user_socket:#{removed}", "disconnect", %{})
+    end
+
     if present?(user_id) do
       Phoenix.PubSub.broadcast(Realtime.PubSub, "user:#{user_id}", {:pubsub_event, event})
     end
@@ -56,6 +62,18 @@ defmodule Realtime.EventBroadcaster do
 
     :ok
   end
+
+  @doc false
+  def removed_member(%{
+        "event_type" => "AUDIT_CREATED",
+        "entity_type" => "organization_member",
+        "action" => "remove",
+        "entity_id" => user_id
+      })
+      when is_binary(user_id) and user_id != "",
+      do: user_id
+
+  def removed_member(_event), do: nil
 
   defp present?(value), do: is_binary(value) and value != ""
 end

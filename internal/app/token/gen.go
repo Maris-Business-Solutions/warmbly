@@ -257,12 +257,13 @@ func (s *tokenService) LeaveOrganization(ctx context.Context, userID, orgID uuid
 	if xerr != nil {
 		return xerr
 	}
+	var failed *errx.Error
 	for _, id := range cleared {
 		if xerr := s.deleteSession(ctx, id); xerr != nil {
-			return xerr
+			failed = xerr
 		}
 	}
-	return nil
+	return failed
 }
 
 // GetCurrentOrganization retrieves the current organization for a session

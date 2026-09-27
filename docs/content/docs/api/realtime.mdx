@@ -51,7 +51,7 @@ Events arrive as channel messages whose event name is the event type, for exampl
 
 Permission filtering happens per event on the org channel: for example inbox events require `access_unibox`, campaign pulses require `view_campaigns`, placement tests require `view_analytics`, mailbox and mailbox import events require `manage_emails`, member changes require `manage_team`, and billing events require `manage_billing`. A member without the permission simply never receives the event.
 
-Membership is checked again while you are connected, not only at join. When a member is removed from a workspace, every socket they have open is disconnected. On reconnect each channel's join checks membership again, so channels for workspaces they still belong to come back and the removed workspace's are refused with `not_a_member` (code `4010`).
+Removal from a workspace also applies to open connections: every socket the removed member has open is disconnected. On reconnect each channel's join checks membership again, so channels for workspaces they still belong to come back and the removed workspace's are refused with `not_a_member` (code `4010`).
 
 ## Selecting events with intents
 
