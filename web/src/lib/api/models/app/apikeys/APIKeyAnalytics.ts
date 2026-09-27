@@ -5,11 +5,11 @@ export interface APIKeyUsageSummary {
     requests_24h: number;
     errors_24h: number;
     avg_latency_ms_24h: number;
-    last_call_at?: string | null;
+    last_call_at?: Date | null;
 }
 
 export interface APIKeyUsageBucket {
-    bucket: string;
+    bucket: Date;
     total: number;
     success: number;
     client_errors: number;
@@ -27,8 +27,8 @@ export interface APIKeyEndpointStat {
 
 export interface APIKeyAnalytics {
     api_key_id: string;
-    from: string;
-    to: string;
+    from: Date;
+    to: Date;
     interval: "minute" | "hour" | "day";
     buckets: APIKeyUsageBucket[];
     endpoints: APIKeyEndpointStat[];
@@ -45,7 +45,7 @@ export interface APIKeyUsageLog {
     user_agent: string;
     response_code: number;
     response_time_ms: number;
-    created_at: string;
+    created_at: Date;
 }
 
 export interface APIKeyUsageLogsResult {

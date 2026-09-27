@@ -33,8 +33,8 @@ export default interface SendingBehavior {
 
     timezone?: string;
 
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export type SendingBehaviorPatch = Partial<Omit<SendingBehavior, "email_account_id" | "timezone" | "created_at" | "updated_at">>;
@@ -52,7 +52,7 @@ export interface DailyPlan {
     lunch_end_minute: number | null;
     gap_min_seconds: number;
     gap_max_seconds: number;
-    created_at: string;
+    created_at: Date;
 }
 
 export interface DailyPlanView extends DailyPlan {

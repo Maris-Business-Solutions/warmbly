@@ -5,8 +5,8 @@ export interface AISkill {
     description: string;
     content: string;
     enabled: boolean;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export interface CreateAISkill {

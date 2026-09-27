@@ -3,8 +3,8 @@
 
 export default interface UniboxScheduledItem {
     task_id: string
-    scheduled_at: string
-    created_at: string
+    scheduled_at: Date
+    created_at: Date
 
     account_id: string
     account_email: string

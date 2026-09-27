@@ -24,8 +24,8 @@ export type LeadStatus =
 // when an auto-reply parked it and "manual" when a member did; `until` absent
 // means the hold has no end and only a resume lifts it.
 export interface LeadHold {
-    since: string;
-    until?: string | null;
+    since: Date;
+    until?: Date | null;
     reason?: string;
     source: "manual" | "out_of_office" | string;
 }
@@ -70,7 +70,7 @@ export interface ContactCampaignProgress {
     clicked: number;
     replied: number;
     bounced: number;
-    last_activity_at?: string | null;
+    last_activity_at?: Date | null;
     // Label of the step the lead is on now (latest step sent). Empty when the
     // lead hasn't been contacted yet.
     current_step?: string;
@@ -114,13 +114,13 @@ export default interface Contact {
     verification_sub_status?: string;
     verification_source?: VerificationSource;
     verification_provider?: string;
-    verification_checked_at?: string | null;
+    verification_checked_at?: Date | null;
     // How sure the platform is of the status, 0 to 100, scored from the last
     // check plus what real mail to the address showed.
     verification_confidence?: number;
     // Set while a re-check a member asked for waits to run; the verdict
     // above stands until it lands.
-    verification_requested_at?: string | null;
+    verification_requested_at?: Date | null;
     is_catch_all?: boolean;
 
     // Who hosts the contact's inbox, read from its domain's MX; "" until

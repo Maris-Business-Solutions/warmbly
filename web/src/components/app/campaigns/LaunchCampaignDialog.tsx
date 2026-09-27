@@ -133,7 +133,8 @@ export default function LaunchCampaignDialog({
             setRiskBlocked(false);
             setWaiting(false);
         }
-    }, [campaign]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the id: a launch changes the campaign itself
+    }, [campaign?.id]);
 
     React.useEffect(() => {
         return () => {

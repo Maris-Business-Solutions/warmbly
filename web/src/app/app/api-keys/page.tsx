@@ -332,7 +332,7 @@ function Legend({ color, label }: { color: string; label: string }) {
     );
 }
 
-function fmtRelative(iso: string): string {
+function fmtRelative(iso: string | Date): string {
     try {
         const d = new Date(iso);
         const diff = Date.now() - d.getTime();
@@ -350,7 +350,7 @@ function fmtRelative(iso: string): string {
     }
 }
 
-function fmtFull(iso: string): string {
+function fmtFull(iso: string | Date): string {
     try {
         return new Date(iso).toLocaleString("en-US", {
             month: "short",

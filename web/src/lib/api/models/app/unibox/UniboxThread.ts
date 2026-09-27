@@ -12,7 +12,7 @@ export interface UniboxThreadMessage {
     to_addr: string[]
     subject: string
     snippet: string
-    internal_date: string
+    internal_date: Date
     seen: boolean
 }
 

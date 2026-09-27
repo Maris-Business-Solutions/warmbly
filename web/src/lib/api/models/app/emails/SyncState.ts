@@ -13,10 +13,10 @@ export type SyncThrottleReason =
 export interface SyncState {
     backfill_status: SyncBackfillStatus;
     backfill_synced: number;
-    backfill_since?: string;
-    backfill_started_at?: string;
-    backfill_completed_at?: string;
-    throttled_until?: string;
+    backfill_since?: Date;
+    backfill_started_at?: Date;
+    backfill_completed_at?: Date;
+    throttled_until?: Date;
     throttle_reason?: SyncThrottleReason | "";
     // Live messages seen on the server but waiting on budget.
     deferred: number;
@@ -24,7 +24,7 @@ export interface SyncState {
     folders_skipped_cap?: number;
     /** Folders left out because the mail server listed their name more than once. */
     folders_skipped_conflict?: number;
-    last_synced_at?: string;
+    last_synced_at?: Date;
 }
 
 export interface SyncPolicy {

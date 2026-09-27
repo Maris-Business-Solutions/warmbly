@@ -59,7 +59,7 @@ export function Sparkline({
 }
 
 export interface BucketLike {
-    bucket: string;
+    bucket: Date;
     success: number;
     client_errors: number;
     server_errors: number;
@@ -90,7 +90,7 @@ export function StackedBars({
         <div className="relative w-full" style={{ height }}>
             <DitherColumns
                 data={buckets.map((b) => ({
-                    key: b.bucket,
+                    key: b.bucket.toISOString(),
                     parts: [b.success, b.client_errors, b.server_errors],
                 }))}
                 tones={["emerald", "amber", "rose"]}
@@ -107,7 +107,7 @@ export function StackedBars({
     );
 }
 
-function labelTick(iso: string | undefined): string {
+function labelTick(iso: Date | undefined): string {
     if (!iso) return "";
     try {
         const d = new Date(iso);

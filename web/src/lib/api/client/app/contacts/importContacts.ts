@@ -66,8 +66,9 @@ export interface ImportResult {
     updated: number;
     skipped: number;
     failed: number;
-    started_at: string;
-    ended_at: string;
+    // A Date when revived through Request (a lead-sync run); a string from the direct import upload.
+    started_at: Date | string;
+    ended_at: Date | string;
     errors?: ImportRowError[];
     // Set when more rows failed than the API reports back; `errors` then holds
     // the first slice of them and `failed` is the true count.

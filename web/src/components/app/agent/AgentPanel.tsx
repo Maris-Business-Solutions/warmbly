@@ -1166,7 +1166,7 @@ function DockBar({
 
 // ── History rail ────────────────────────────────────────────────────
 // historyBucket labels a session's recency group for the sidebar sections.
-function historyBucket(iso: string): string {
+function historyBucket(iso: string | Date): string {
     const t = new Date(iso).getTime();
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();

@@ -30,7 +30,7 @@ interface ComposeHistoryPanelProps {
     affinityLine?: string;
 }
 
-function formatWhen(iso: string): string {
+function formatWhen(iso: string | Date): string {
     const d = new Date(iso);
     const now = new Date();
     const sameYear = d.getFullYear() === now.getFullYear();

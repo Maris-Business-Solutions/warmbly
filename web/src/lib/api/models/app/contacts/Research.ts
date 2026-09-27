@@ -60,6 +60,6 @@ export interface ContactResearchRun {
     credits_charged: number;
     model_used: string;
     tokens_used: number;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }

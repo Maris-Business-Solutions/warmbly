@@ -73,7 +73,7 @@ function bucketFor(d: Date): Bucket {
 }
 
 // Compact relative timestamp: "now", "2m", "3h", "Yesterday", then a short date.
-function relTime(iso: string): string {
+function relTime(iso: string | Date): string {
     const d = new Date(iso);
     const s = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
     if (s < 60) return "now";

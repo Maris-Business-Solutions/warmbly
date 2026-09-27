@@ -41,7 +41,7 @@ export interface DirectMailTracking {
 }
 
 export interface DirectMailDailyStats {
-    date: string;
+    date: Date;
     sent: number;
     received: number;
 }
@@ -58,7 +58,7 @@ export interface DirectMailContact {
     email: string;
     sent: number;
     received: number;
-    last_at: string;
+    last_at: Date;
 }
 
 export default interface DirectMailAnalytics {

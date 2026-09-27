@@ -71,7 +71,7 @@ const STATUS_STYLE: Record<MeetingStatus, { label: string; cls: string }> = {
     no_show: { label: "No-show", cls: "bg-red-50 text-red-700 border-red-200" },
 };
 
-function formatWhen(iso?: string): { date: string; time: string; rel: string } {
+function formatWhen(iso?: string | Date): { date: string; time: string; rel: string } {
     if (!iso) return { date: "No time set", time: "", rel: "" };
     const d = new Date(iso);
     if (isNaN(d.getTime())) return { date: "No time set", time: "", rel: "" };
@@ -87,7 +87,7 @@ function formatWhen(iso?: string): { date: string; time: string; rel: string } {
 
 // --- Add to calendar (no API: a Google template link + a downloadable .ics) ---
 
-function gcalStamp(iso: string): string {
+function gcalStamp(iso: string | Date): string {
     return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 

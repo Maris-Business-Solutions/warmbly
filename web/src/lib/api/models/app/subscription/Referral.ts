@@ -24,8 +24,8 @@ export interface ReferralCode {
     owner_user_id: string;
     owner_org_id: string;
     discount_code_id: string;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export type ReferralAttributionStatus = "pending" | "qualified" | "rewarded" | "void";
@@ -36,9 +36,9 @@ export interface ReferralAttribution {
     reward_cents: number;
     reward_currency: string;
     invitee_org_id: string;
-    qualified_at?: string;
-    rewarded_at?: string;
-    created_at: string;
+    qualified_at?: Date;
+    rewarded_at?: Date;
+    created_at: Date;
 }
 
 // Positive amount = reward, negative = clawback.
@@ -48,7 +48,7 @@ export interface ReferralEarningsTransaction {
     currency: string;
     reason: string;
     balance_after_cents: number;
-    created_at: string;
+    created_at: Date;
 }
 
 export interface ReferralPagination {

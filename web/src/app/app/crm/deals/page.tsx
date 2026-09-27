@@ -56,6 +56,7 @@ import { useLivePatch } from "@/hooks/useLivePatch";
 import { cursorColor } from "@/hooks/useLiveCursors";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import type Deal from "@/lib/api/models/app/crm/Deal";
+import type { DealWrite } from "@/lib/api/models/app/crm/Deal";
 import type { Stage } from "@/lib/api/models/app/crm/Pipeline";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
@@ -159,7 +160,7 @@ export default function DealsPage() {
     async function moveDeal(dealId: string, newStageId: string) {
         try {
             await toast.promise(
-                updateDeal.mutateAsync({ id: dealId, data: { stage_id: newStageId } as Partial<Deal> }),
+                updateDeal.mutateAsync({ id: dealId, data: { stage_id: newStageId } as DealWrite }),
                 { loading: "Moving…", success: "Moved", error: (e: AppError) => buildError(e) },
             );
             // Nudge teammates on the same board to update now (the audit refetch is
@@ -694,7 +695,7 @@ function DealDialog({
             toast.error("Pick a stage");
             return;
         }
-        const data: Partial<Deal> = {
+        const data: DealWrite = {
             pipeline_id: pipelineId,
             stage_id: stageId,
             name: name.trim(),
@@ -949,7 +950,7 @@ function formatMoney(n: number | undefined, currency = "USD") {
     }
 }
 
-function fmtDate(d: string | undefined) {
+function fmtDate(d: string | Date | undefined) {
     if (!d) return "—";
     try {
         return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });

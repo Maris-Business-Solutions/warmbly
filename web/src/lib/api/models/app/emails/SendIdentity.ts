@@ -22,7 +22,7 @@ export default interface SendIdentity {
     /** Empty means the mailbox's own address. */
     send_as_email: string;
     identities: SendAsIdentity[];
-    synced_at?: string | null;
+    synced_at?: Date | null;
     signature_source: "manual" | "provider";
-    signature_imported_at?: string | null;
+    signature_imported_at?: Date | null;
 }

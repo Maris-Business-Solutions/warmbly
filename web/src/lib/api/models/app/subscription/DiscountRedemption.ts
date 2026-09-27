@@ -9,8 +9,8 @@ export interface DiscountRedemption {
     currency?: string | null;
     trial_extension_days?: number | null;
     status: string;
-    redeemed_at: string;
-    applied_at?: string | null;
+    redeemed_at: Date;
+    applied_at?: Date | null;
 }
 
 export interface DiscountRedemptionsResult {

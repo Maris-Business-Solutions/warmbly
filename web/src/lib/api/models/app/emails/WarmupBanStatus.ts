@@ -7,8 +7,8 @@ export default interface WarmupBanStatus {
     blocked: boolean;
     health_state: string;
     reason: string;
-    blocked_at: string | null;
-    blocked_until: string | null;
+    blocked_at: Date | null;
+    blocked_until: Date | null;
     can_appeal: boolean;
     pending_appeal: boolean;
 }

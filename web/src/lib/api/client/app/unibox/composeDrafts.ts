@@ -12,8 +12,8 @@ export interface ComposeDraft {
     bcc: string[];
     subject: string;
     body: string;
-    updated_at: string;
-    created_at: string;
+    updated_at: Date;
+    created_at: Date;
 }
 
 export interface ComposeDraftSaveInput {

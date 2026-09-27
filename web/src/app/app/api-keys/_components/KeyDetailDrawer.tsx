@@ -545,7 +545,7 @@ function Legend({ color, label }: { color: string; label: string }) {
     );
 }
 
-function fmtRelative(iso: string): string {
+function fmtRelative(iso: string | Date): string {
     try {
         const d = new Date(iso);
         const diff = Date.now() - d.getTime();
@@ -563,7 +563,7 @@ function fmtRelative(iso: string): string {
     }
 }
 
-function fmtFull(iso: string): string {
+function fmtFull(iso: string | Date): string {
     try {
         const d = new Date(iso);
         return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -574,7 +574,7 @@ function fmtFull(iso: string): string {
 
 // Compact HH:MM for the mobile activity log, where the full timestamp
 // would crowd out the endpoint path.
-function fmtTime(iso: string): string {
+function fmtTime(iso: string | Date): string {
     try {
         const d = new Date(iso);
         return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });

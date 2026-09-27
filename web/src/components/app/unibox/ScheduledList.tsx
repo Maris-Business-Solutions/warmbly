@@ -26,7 +26,7 @@ import type UniboxScheduledItem from "@/lib/api/models/app/unibox/UniboxSchedule
 import { cn } from "@/lib/utils";
 import ComposeButton from "@/components/app/unibox/compose/ComposeButton";
 
-function formatWhen(iso: string): { absolute: string; relative: string } {
+function formatWhen(iso: string | Date): { absolute: string; relative: string } {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return { absolute: "—", relative: "" };
 

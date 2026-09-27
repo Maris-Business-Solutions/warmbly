@@ -43,11 +43,11 @@ export interface SendLimit {
 export interface SendWindow {
     sending_day: boolean;
     open_now: boolean;
-    opens_at?: string;
-    closes_at?: string;
+    opens_at?: Date;
+    closes_at?: Date;
     minutes_left: number;
-    starts_at?: string;
-    ends_at?: string;
+    starts_at?: Date;
+    ends_at?: Date;
 }
 
 export interface LeadSupply {
@@ -60,7 +60,7 @@ export interface LeadSupply {
     waiting_on_sender: number;
     new_leads_started_today: number;
     max_new_leads_per_day: number;
-    next_due_at?: string;
+    next_due_at?: Date;
 }
 
 export interface ColdRampInfo {
@@ -81,7 +81,7 @@ export interface MailboxPlan {
     sent_by_other_campaigns: number;
     expected_remaining: number;
     state: MailboxPlanState;
-    reopens_at?: string;
+    reopens_at?: Date;
     health?: string;
     min_gap_seconds: number;
     graduation?: ColdRampInfo;
@@ -98,7 +98,7 @@ export default interface SendPlan {
     status: string;
     day: string;
     timezone: string;
-    computed_at: string;
+    computed_at: Date;
     configured_ceiling: number;
     projected_today: number;
     sent_today: number;
@@ -109,7 +109,7 @@ export default interface SendPlan {
     leads: LeadSupply;
     mailboxes: MailboxPlan[];
     organization?: OrgAllowance;
-    next_wake_at?: string;
+    next_wake_at?: Date;
 }
 
 // What the workspace's mailboxes can send today between them, on the

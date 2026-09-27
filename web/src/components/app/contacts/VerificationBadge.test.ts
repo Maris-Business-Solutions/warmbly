@@ -23,7 +23,7 @@ describe("verification provider attribution", () => {
             verification_status: "invalid",
             verification_source: "provider",
             verification_provider: "millionverifier",
-            verification_requested_at: "2026-09-22T10:00:00Z",
+            verification_requested_at: new Date("2026-09-22T10:00:00Z"),
         })).toBe("Undeliverable · verified with MillionVerifier · re-check queued");
     });
 

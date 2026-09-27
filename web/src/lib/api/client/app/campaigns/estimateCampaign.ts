@@ -22,7 +22,7 @@ export interface CampaignEstimateResult {
     remaining_today: number;
     // Null when the pool has no capacity or the audience is empty.
     sending_days: number | null;
-    estimated_finish_at: string | null;
+    estimated_finish_at: Date | null;
 }
 
 export default async function estimateCampaign(input: CampaignEstimateInput): Promise<CampaignEstimateResult> {

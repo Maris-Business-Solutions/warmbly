@@ -14,7 +14,7 @@ export interface UniboxListRow {
   to_addr: string[];
   subject: string;
   snippet: string;
-  internal_date: string;
+  internal_date: Date;
   seen: boolean;
   /** Messages in the conversation behind this row (1 = singleton). */
   message_count: number;

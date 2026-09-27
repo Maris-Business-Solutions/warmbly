@@ -321,7 +321,7 @@ function formatCredits(n: number): string {
 }
 
 // resetLabel turns next_reset_at into a short relative note for the panel.
-function resetLabel(iso: string | null): string | null {
+function resetLabel(iso: string | Date | null): string | null {
     if (!iso) return null;
     const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
     if (days <= 0) return "Resets soon";

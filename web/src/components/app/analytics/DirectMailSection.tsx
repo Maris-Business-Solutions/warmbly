@@ -16,6 +16,7 @@ import { EyeIcon, InboxIcon, MailIcon, ReplyIcon } from "lucide-react";
 
 import { EmptyBlock, SectionBar, Stat, StatStrip } from "@/components/layout/Page";
 import { MultiTrend, type TrendSeries } from "@/components/ui/charts";
+import { utcDay } from "@/lib/campaignPeriod";
 import useDirectMail from "@/lib/api/hooks/app/analytics/useDirectMail";
 import type DirectMailAnalytics from "@/lib/api/models/app/analytics/DirectMailAnalytics";
 
@@ -60,7 +61,7 @@ export default function DirectMailSection({ period }: { period: string }) {
         { key: "sent", label: "Sent", tone: "sky", values: (d?.daily_trend ?? []).map((x) => x.sent) },
         { key: "received", label: "Received", tone: "emerald", values: (d?.daily_trend ?? []).map((x) => x.received) },
     ];
-    const labels = (d?.daily_trend ?? []).map((x) => x.date);
+    const labels = (d?.daily_trend ?? []).map((x) => utcDay(x.date));
 
     if (q.isError) {
         return (

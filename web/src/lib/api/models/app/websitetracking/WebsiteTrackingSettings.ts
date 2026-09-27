@@ -9,7 +9,7 @@ export interface WebsiteTrackingSettings {
     location_precision: WebsiteLocationPrecision;
     allowed_hosts: string[];
     retention_days: number;
-    updated_at: string;
+    updated_at: Date;
     // The deployment's tracking host; empty when the install has none.
     tracking_host: string;
 }

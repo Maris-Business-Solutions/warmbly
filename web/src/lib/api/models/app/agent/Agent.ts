@@ -14,8 +14,8 @@ export interface AgentSession {
         model?: string;
         pending?: PendingAgentTool | null;
     };
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export interface PendingAgentTool {

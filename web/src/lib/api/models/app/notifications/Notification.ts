@@ -97,6 +97,6 @@ export interface AppNotification {
     body?: string;
     link?: string;
     metadata?: Record<string, unknown>;
-    read_at?: string | null;
-    created_at: string;
+    read_at?: Date | null;
+    created_at: Date;
 }

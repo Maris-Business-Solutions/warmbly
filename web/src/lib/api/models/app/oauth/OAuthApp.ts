@@ -24,8 +24,8 @@ export interface OAuthApplication {
     // Bitmask of the API permissions this app may request (same bits as API keys).
     scopes: number;
     status: OAuthAppStatus;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 // Returned once on create / secret rotation; client_secret is shown a single time.
@@ -68,8 +68,8 @@ export interface OAuthAuthorizedApp {
     logo_url: string;
     website_url: string;
     scopes: number;
-    authorized_at: string;
-    last_used_at?: string;
+    authorized_at: Date;
+    last_used_at?: Date;
 }
 
 export interface OAuthAuthorizedAppsResult {

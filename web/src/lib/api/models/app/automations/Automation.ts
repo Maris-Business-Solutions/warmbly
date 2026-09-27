@@ -104,8 +104,8 @@ export interface Automation {
     trigger_event: string;
     filter?: Record<string, unknown>;
     graph: AutomationGraph;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
     // Public POST path that fires this automation, set only when its trigger is
     // the inbound webhook. Append to the API origin for the full URL.
     inbound_url?: string;
@@ -139,8 +139,8 @@ export interface AutomationRun {
     status: string; // running | success | error
     node_results: AutomationNodeResult[];
     error_detail?: string;
-    started_at: string;
-    finished_at?: string | null;
+    started_at: Date;
+    finished_at?: Date | null;
 }
 
 // Dry-run (test) response: the trace of the walk + the sample data used.

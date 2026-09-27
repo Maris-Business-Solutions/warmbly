@@ -5,7 +5,7 @@ export interface TeamMember {
     user_id: string;
     email: string;
     name: string;
-    added_at: string;
+    added_at: Date;
 }
 
 export default interface Team {
@@ -13,7 +13,7 @@ export default interface Team {
     organization_id: string;
     name: string;
     color: string;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
     members: TeamMember[];
 }

@@ -96,7 +96,7 @@ export interface CampaignSegmentLink {
     contact_count: number;
     lead_count: number;
     held_out_count: number;
-    linked_at: string;
+    linked_at: Date;
 }
 
 // Operators per field kind, mirrored from the backend catalog.

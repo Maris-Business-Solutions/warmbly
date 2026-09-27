@@ -17,7 +17,7 @@ export interface PreflightReport {
     score: number;
     checks: PreflightCheckResult[];
     recommendations: string[];
-    created_at: string;
+    created_at: Date;
 }
 
 // Only failures are worth a user's attention; a passing check is noise in a

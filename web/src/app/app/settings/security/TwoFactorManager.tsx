@@ -19,7 +19,7 @@ type Dialog = "enroll" | "regenerate" | "disable" | null;
 // Below this many unused codes the row turns amber and asks for a new set.
 const LOW_CODES = 3;
 
-const fmt = (d: string) =>
+const fmt = (d: string | Date) =>
     new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
 export default function TwoFactorManager() {

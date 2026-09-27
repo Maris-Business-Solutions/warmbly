@@ -34,7 +34,7 @@ describe("leadCanBePaused", () => {
     });
     it("refuses a lead that is already held", () => {
         expect(
-            leadCanBePaused(state({ lead_status: "paused", hold: { since: "2026-09-01T00:00:00Z", source: "manual" } })),
+            leadCanBePaused(state({ lead_status: "paused", hold: { since: new Date("2026-09-01T00:00:00Z"), source: "manual" } })),
         ).toBe(false);
     });
     it("refuses ended leads, finished campaigns and an unknown next step", () => {

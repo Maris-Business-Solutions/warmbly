@@ -412,7 +412,7 @@ function actorLabel(log: AuditLog): string {
     return "System";
 }
 
-function fmt(d: string) {
+function fmt(d: string | Date) {
     if (!d) return "—";
     try {
         const dt = new Date(d);

@@ -21,9 +21,9 @@ export default interface LimitIncreaseRequest {
     reason: string;
     status: LimitRequestStatus;
     submitted_by: string;
-    submitted_at: string;
+    submitted_at: Date;
     reviewed_by?: string | null;
-    reviewed_at?: string | null;
+    reviewed_at?: Date | null;
     review_notes: string;
 }
 
