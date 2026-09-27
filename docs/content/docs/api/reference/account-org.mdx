@@ -123,7 +123,7 @@ Same shape as `/auth/login`: `email`, `password`, `turnstile`.
 
 `POST /auth/register/confirm`
 
-Confirms the emailed code, creates the account and signs it in: the response is the same shape as a completed `/auth/login` (a `token` pair, or a `two_fa_required` challenge), so the client lands in the dashboard without a second sign-in. `/auth/register` itself returns that shape directly when the deployment does not require email verification.
+Confirms the emailed code, creates the account and signs it in: the response is the same shape as a completed `/auth/login` (a `token` pair, or a `two_fa_required` challenge), so the client lands in the dashboard without a second sign-in. `/auth/register` itself returns that shape directly when the deployment does not require email verification. An address that already has an account is refused with `409` `conflict` (see [error codes](/api/error-codes/#409-conflict)).
 
 Auth: public (not available to API keys).
 

@@ -8,6 +8,7 @@ import (
 
 	goimap "github.com/emersion/go-imap/v2"
 	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/models"
 )
 
 // A transport error must never read as success: mapping net.ErrClosed to nil
@@ -42,6 +43,8 @@ func TestHandleErrorTransientResponseCodes(t *testing.T) {
 	}{
 		{goimap.ResponseCodeUnavailable, errx.MailErrorCodeServerUnreachable},
 		{goimap.ResponseCodeInUse, errx.MailErrorCodeServerUnreachable},
+		{goimap.ResponseCodeServerBug, errx.MailErrorCodeServerUnreachable},
+		{goimap.ResponseCodeLimit, errx.MailErrorCodeSendingTooFast},
 		{goimap.ResponseCodeNonExistent, errx.MailErrorCodeNotFound},
 	} {
 		t.Run(string(tc.code), func(t *testing.T) {
@@ -85,9 +88,19 @@ func TestHandleErrorCodelessImapErrorKeepsServerText(t *testing.T) {
 			want: "BAD Command unrecognized",
 		},
 		{
-			name: "a response code still wins over the text",
-			err:  &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeServerBug, Text: "oops"},
-			want: "SERVERBUG",
+			name: "a response code leads and keeps the text",
+			err:  &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeContactAdmin, Text: "oops"},
+			want: "[CONTACTADMIN] oops",
+		},
+		{
+			name: "an unrecognised ALERT keeps the text it must show",
+			err:  &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeAlert, Text: "Your account is locked"},
+			want: "[ALERT] Your account is locked",
+		},
+		{
+			name: "a codeless LOGIN failure is not read as a server fault",
+			err:  &goimap.Error{Type: goimap.StatusResponseTypeNo, Text: "LOGIN failed."},
+			want: "NO LOGIN failed.",
 		},
 		{
 			name: "no code and no text still says something",
@@ -121,5 +134,41 @@ func TestHandleErrorImapDetailIsNeverEmpty(t *testing.T) {
 		if detail := imapErrDetail(err); strings.TrimSpace(detail) == "" {
 			t.Errorf("imapErrDetail(%+v) = %q, want a non-empty detail", err, detail)
 		}
+	}
+}
+
+// Provider throttles back off, sign-ins the owner must finish ask for
+// credentials, and a reasonless server failure retries without a report.
+func TestHandleErrorProviderConditions(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		auth models.AuthType
+		err  *goimap.Error
+		want errx.MailErrorCode
+	}{
+		{"gmail too many connections", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeAlert, Text: "Too many simultaneous connections. (Failure)"}, errx.MailErrorCodeSendingTooFast},
+		{"gmail bandwidth", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeAlert, Text: "Account exceeded command or bandwidth limits. (Failure)"}, errx.MailErrorCodeSendingTooFast},
+		{"gmail app password", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeAlert, Text: "Application-specific password required: https://support.google.com/accounts/answer/185833 (Failure)"}, errx.MailErrorCodeInvalidCredentials},
+		{"gmail web login", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeAlert, Text: "Please log in via your web browser: https://support.google.com/mail/accounts/answer/78754 (Failure)"}, errx.MailErrorCodeInvalidCredentials},
+		{"web login on oauth", models.AuthOAuth2, &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeAlert, Text: "Web login required"}, errx.MailErrorCodeAuthenticationFailed},
+		{"unknown alert", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeAlert, Text: "Maintenance tonight"}, errx.MailErrorCodeImapUnknown},
+		{"expired passphrase", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Code: goimap.ResponseCodeExpired, Text: "Password expired"}, errx.MailErrorCodeInvalidCredentials},
+		{"ovh LIST failed", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Text: "LIST failed"}, errx.MailErrorCodeServerUnreachable},
+		{"EXAMINE failed", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Text: "EXAMINE failed"}, errx.MailErrorCodeServerUnreachable},
+		{"zoho UID FETCH failed", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Text: "UID FETCH failed."}, errx.MailErrorCodeServerUnreachable},
+		{"BAD LIST failed stays unknown", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeBad, Text: "LIST failed"}, errx.MailErrorCodeImapUnknown},
+		{"LOGIN failed stays unknown", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Text: "LOGIN failed"}, errx.MailErrorCodeImapUnknown},
+		{"LIST with a reason stays unknown", models.AuthPlain, &goimap.Error{Type: goimap.StatusResponseTypeNo, Text: "LIST failed: permission denied"}, errx.MailErrorCodeImapUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Client{AuthType: tc.auth}
+			got := c.handleError(tc.err)
+			if got == nil {
+				t.Fatal("handleError returned nil for a refusal")
+			}
+			if got.Code != tc.want {
+				t.Errorf("Code = %q, want %q", got.Code, tc.want)
+			}
+		})
 	}
 }

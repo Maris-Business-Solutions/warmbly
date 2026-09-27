@@ -71,6 +71,10 @@ import { Toaster } from '@/components/ui/toaster';
 
 import { initErrorReporting } from "@/lib/observability";
 import { initProductAnalytics } from "@/lib/productAnalytics";
+import { installDomMutationGuard } from "@/lib/domGuard";
+
+// Before the first render, so a translated page never commits unguarded.
+installDomMutationGuard();
 
 // Before the first render, so a boot failure is reported too.
 initErrorReporting();

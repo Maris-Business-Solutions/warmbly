@@ -459,6 +459,8 @@ Returned when the request conflicts with existing data.
 }
 ```
 
+Creating an account for an address that already has one answers `409` with the generic `conflict` code and a message pointing to sign-in and password reset. With email verification on it comes from `POST /auth/register/confirm`, after the emailed code has shown the address is the caller's; without it, `POST /auth/register` answers it directly.
+
 A few conflicts carry their own `code`. The mailbox import's are under [mailbox import refusals](#mailbox-import-refusals). A contact's email address has to be free, so changing one to an address another contact already holds is refused rather than merging the two:
 
 | `code` | Status | Meaning |

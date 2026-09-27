@@ -364,7 +364,8 @@ export default function LoginPage() {
         prepareExplicitPasskey(false, challenges.signal);
         void runConditionalPasskey(challenges.signal);
         return () => {
-            challenges.abort();
+            // A named reason keeps leaving the page recognisable as a cancellation wherever the rejection surfaces.
+            challenges.abort(new PasskeyCancelled("aborted"));
             cancelPasskeyCeremony();
         };
     }, [passkeysEnabled, prepareExplicitPasskey, runConditionalPasskey]);

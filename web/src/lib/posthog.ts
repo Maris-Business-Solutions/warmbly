@@ -176,7 +176,13 @@ const NOISE = [
 // A session ending is a lifecycle event, not a crash: normalizeError turns an
 // AuthError into a redirect and UserProvider sends the user to sign in. It
 // reached error tracking only by also escaping to the global rejection handler.
-const NOISE_TYPES = ["AuthError"];
+// PasskeyCancelled is control flow by definition: the sign-in page aborts with it when it is left.
+const NOISE_TYPES = ["AuthError", "PasskeyCancelled"];
+
+// posthog-js aborts its own slow requests with this named AbortError and retries them; an app abort stays reported.
+function isSdkRequestTimeout(type: unknown, value: unknown): boolean {
+    return type === "AbortError" && typeof value === "string" && value.startsWith("PostHog request timed out");
+}
 
 // An exception whose message is an object's default toString, with no stack and
 // no real Error behind it, carries nothing: no name, no cause, no place. They
@@ -199,7 +205,7 @@ function isUninformative(entry: Record<string, unknown>): boolean {
 
 const DEFAULT_OBJECT_STRING = /\[object [A-Z][A-Za-z]*\]/;
 
-function isNoise(properties: Properties): boolean {
+export function isNoise(properties: Properties): boolean {
     const exceptionList = properties.$exception_list;
     if (Array.isArray(exceptionList) && exceptionList.some((exception) => {
         if (!exception || typeof exception !== "object") return false;
@@ -208,6 +214,7 @@ function isNoise(properties: Properties): boolean {
         const value = entry.value ?? entry.$exception_value;
         return (typeof type === "string" && NOISE_TYPES.includes(type))
             || (typeof value === "string" && NOISE.includes(value.trim()))
+            || isSdkRequestTimeout(type, value)
             || isUninformative(entry);
     })) {
         return true;
@@ -217,6 +224,7 @@ function isNoise(properties: Properties): boolean {
     if (typeof type === "string" && NOISE_TYPES.includes(type)) return true;
     const message = properties.$exception_message;
     if (typeof message === "string" && NOISE.includes(message.trim())) return true;
+    if (isSdkRequestTimeout(type, message)) return true;
 
     // Keep accepting flattened payloads while cached SDK chunks are still in
     // browsers during a rolling release.
@@ -224,6 +232,7 @@ function isNoise(properties: Properties): boolean {
     if (Array.isArray(types) && types.some((t) => typeof t === "string" && NOISE_TYPES.includes(t))) return true;
     const values = properties.$exception_values;
     if (!Array.isArray(values)) return false;
+    if (Array.isArray(types) && types.some((t, i) => isSdkRequestTimeout(t, values[i]))) return true;
     return values.some((v) => typeof v === "string" && NOISE.includes(v.trim()));
 }
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/db"
 	"github.com/warmbly/warmbly/internal/infrastructure/kms"
@@ -86,6 +87,9 @@ func NewUserRepostory(db *db.DB, kms kms.Provider) UserRepository {
 	}
 }
 
+// ErrUserEmailTaken is CreateUser's answer when the address already belongs to an account.
+var ErrUserEmailTaken = errors.New("an account with this email address already exists")
+
 func (r *userRepository) CreateUser(ctx context.Context, email *mail.Address, passwordHash string) (*models.User, error) {
 	id := uuid.New()
 
@@ -124,6 +128,10 @@ func (r *userRepository) CreateUser(ctx context.Context, email *mail.Address, pa
 		q,
 		params...)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_email_key" {
+			return nil, ErrUserEmailTaken
+		}
 		db.CaptureError(err, q, nil, "exec")
 		return nil, err
 	}
