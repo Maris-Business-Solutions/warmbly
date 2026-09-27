@@ -204,6 +204,72 @@ defmodule RealtimeWeb.OrgChannel do
 
   @impl true
   def handle_info({:pubsub_event, event}, socket) do
+    case refresh_membership(socket, event) do
+      {:ok, socket} ->
+        deliver(socket, event)
+
+      :revoked ->
+        # The event is this member's own removal; it lets their dashboard leave the workspace.
+        {:noreply, socket} = deliver(socket, event)
+        {:stop, :normal, socket}
+    end
+  end
+
+  # A membership re-read that could not be answered earlier is retried until it is.
+  def handle_info(:refresh_membership, socket) do
+    case reread_membership(assign(socket, :membership_retry, false)) do
+      {:ok, socket} -> {:noreply, socket}
+      :revoked -> {:stop, :normal, socket}
+    end
+  end
+
+  # Swallow the duplicate %Broadcast{} our manual PubSub subscription delivers
+  # to the channel process (the fastlane copy is what reaches the client).
+  def handle_info(%Phoenix.Socket.Broadcast{}, socket), do: {:noreply, socket}
+
+  # Membership is read at join; a change to this member, to a role or to ownership re-reads it.
+  defp refresh_membership(socket, %{"event_type" => "AUDIT_CREATED"} = event) do
+    if affects_membership?(socket.assigns.user_id, event),
+      do: reread_membership(socket),
+      else: {:ok, socket}
+  end
+
+  defp refresh_membership(socket, _event), do: {:ok, socket}
+
+  @doc false
+  def affects_membership?(user_id, event) do
+    case {event["entity_type"], event["action"]} do
+      {"organization_member", _} -> event["entity_id"] == user_id
+      {"role", action} -> action in ["update", "delete"]
+      {"organization", "transfer"} -> true
+      _ -> false
+    end
+  end
+
+  # An unanswered read withholds gated events and retries with jitter, so an org's sockets do not retry together.
+  defp reread_membership(socket) do
+    case Auth.check_org_membership(socket.assigns.user_id, socket.assigns.org_id) do
+      {:ok, member} ->
+        {:ok,
+         socket
+         |> assign(:member, member)
+         |> assign(:permissions, Map.get(member, :permissions, 0))}
+
+      {:error, :not_a_member} ->
+        :revoked
+
+      {:error, reason} ->
+        Logger.warning("Failed to re-read org membership: #{inspect(reason)}")
+
+        unless socket.assigns[:membership_retry] do
+          Process.send_after(self(), :refresh_membership, 1_000 + :rand.uniform(4_000))
+        end
+
+        {:ok, socket |> assign(:permissions, 0) |> assign(:membership_retry, true)}
+    end
+  end
+
+  defp deliver(socket, event) do
     # Rate limit outbound messages
     user_id = socket.assigns.user_id
     limits = Map.get(socket.assigns, :rate_limits, %{})
@@ -228,11 +294,6 @@ defmodule RealtimeWeb.OrgChannel do
 
     {:noreply, socket}
   end
-
-  # Swallow the duplicate %Broadcast{} our manual PubSub subscription delivers
-  # to the channel process (the fastlane copy is what reaches the client).
-  @impl true
-  def handle_info(%Phoenix.Socket.Broadcast{}, socket), do: {:noreply, socket}
 
   # Presence diffs arrive as channel out-events. Phoenix routes them to
   # handle_out/3, so we must define it (its absence crashed the channel and

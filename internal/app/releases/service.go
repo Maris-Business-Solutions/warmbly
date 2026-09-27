@@ -16,9 +16,6 @@ package releases
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"log"
 	"net/http"
@@ -31,10 +28,9 @@ import (
 )
 
 type Config struct {
-	Enabled         bool   // RELEASES_ENABLED (default true)
+	Enabled         bool   // RELEASES_ENABLED (default false)
 	GithubRepo      string // "owner/repo", e.g. "warmbly/warmbly"
 	WorkerImageRepo string // "ghcr.io/warmbly/warmbly/worker"
-	WebhookSecret   string // shared secret for GitHub webhook HMAC
 	GithubToken     string // optional, raises API rate limit
 	HTTPClient      *http.Client
 }
@@ -201,26 +197,6 @@ func (s *Service) SetTag(ctx context.Context, tag string) (*models.FleetReleaseS
 	return next, nil
 }
 
-// HandleWebhook validates the GitHub `release` event signature and triggers a
-// re-resolve. Returns an error on signature mismatch: only the secret holder
-// can move the fleet.
-func (s *Service) HandleWebhook(ctx context.Context, body []byte, signature, eventType string) error {
-	if !s.cfg.Enabled {
-		return errors.New("releases not enabled")
-	}
-	if s.cfg.WebhookSecret == "" {
-		return errors.New("webhook secret not configured")
-	}
-	if !verifySignature(s.cfg.WebhookSecret, body, signature) {
-		return errors.New("signature mismatch")
-	}
-	if eventType != "release" {
-		return nil
-	}
-	_, err := s.CheckGitHub(ctx)
-	return err
-}
-
 func (s *Service) GetState() State {
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
@@ -233,8 +209,7 @@ func (s *Service) GetState() State {
 	return st
 }
 
-// RunBootCheck syncs once on start so the dashboard is not empty and a fleet
-// brought up after a release converges without waiting for a webhook.
+// RunBootCheck syncs once on start so a fleet brought up after a release converges.
 func (s *Service) RunBootCheck(ctx context.Context) {
 	if !s.cfg.Enabled {
 		log.Printf("releases: disabled; nodes will not be told to update")
@@ -276,17 +251,4 @@ func (s *Service) channelView(name string, r *Release) ChannelView {
 		PublishedAt: r.PublishedAt,
 		HTMLURL:     r.HTMLURL,
 	}
-}
-
-func verifySignature(secret string, body []byte, header string) bool {
-	if !strings.HasPrefix(header, "sha256=") {
-		return false
-	}
-	got, err := hex.DecodeString(strings.TrimPrefix(header, "sha256="))
-	if err != nil {
-		return false
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	return hmac.Equal(got, mac.Sum(nil))
 }

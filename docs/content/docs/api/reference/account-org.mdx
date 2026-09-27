@@ -1309,7 +1309,7 @@ The updated member object (same shape as a list-members entry).
 
 `DELETE /organization/members/:id`
 
-Removes a member from the organization. The member's sessions stop selecting it at once, so their next request that needs a workspace answers `400` until they switch to another one.
+Removes a member from the organization. The member's sessions stop selecting it at once, so their next request that needs a workspace answers `400` until they switch to another one. Every OAuth app authorization the member granted in the workspace is revoked. API keys stay, because they belong to the workspace rather than to the member who created them.
 
 Auth: Session only (not available to API keys). **Org permission** `manage_team`.
 
@@ -1938,7 +1938,7 @@ Auth: Session only (not available to API keys). Requires a selected organization
 
 Creates a Stripe checkout session for a price and returns the redirect URL.
 
-Auth: Session only (not available to API keys). Requires a selected organization.
+Auth: Session only (not available to API keys). **Org permission** `manage_billing`.
 
 #### Request body
 
@@ -2005,7 +2005,7 @@ When invalid, `valid` is `false` and `reason` explains why.
 
 Creates a Stripe billing portal session for the organization's customer and returns the portal URL.
 
-Auth: Session only (not available to API keys). Requires a selected organization.
+Auth: Session only (not available to API keys). **Org permission** `manage_billing`.
 
 #### Request body
 
@@ -2029,7 +2029,7 @@ Auth: Session only (not available to API keys). Requires a selected organization
 
 Cancels the organization's subscription, either at period end or immediately.
 
-Auth: Session only (not available to API keys). Requires a selected organization.
+Auth: Session only (not available to API keys). **Org permission** `manage_billing`.
 
 #### Request body
 

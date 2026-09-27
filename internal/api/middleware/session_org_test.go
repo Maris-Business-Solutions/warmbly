@@ -17,10 +17,18 @@ import (
 type sessionTokens struct {
 	token.TokenService
 	session *models.Session
+	left    *int
 }
 
 func (f sessionTokens) ValidateAccessToken(context.Context, string) (*models.Session, *errx.Error) {
 	return f.session, nil
+}
+
+func (f sessionTokens) LeaveOrganization(context.Context, uuid.UUID, uuid.UUID) *errx.Error {
+	if f.left != nil {
+		*f.left++
+	}
+	return nil
 }
 
 type membershipOrgs struct {
@@ -116,5 +124,32 @@ func TestSessionMemberAnswersPermissionGates(t *testing.T) {
 	}
 	if orgs.permissionHits != 0 {
 		t.Fatalf("permission lookups = %d, want 0 (answered from the session's membership)", orgs.permissionHits)
+	}
+}
+
+func TestFormerMemberSelectionIsClearedAndDetached(t *testing.T) {
+	userID, orgID := uuid.New(), uuid.New()
+	session := &models.Session{ID: uuid.New(), UserID: userID, CurrentOrganizationID: &orgID}
+	left := 0
+	h := &Handler{TokenService: sessionTokens{session: session, left: &left}, OrganizationService: &membershipOrgs{}}
+
+	var seen *models.Session
+	r := gin.New()
+	r.GET("/x", h.AuthMiddleware(), func(c *gin.Context) {
+		seen = GetSession(c)
+		c.Status(http.StatusOK)
+	})
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/x", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	if left != 1 {
+		t.Fatalf("selection cleared %d times, want 1", left)
+	}
+	if seen == nil || seen.CurrentOrganizationID != nil {
+		t.Fatalf("the request's session still names the workspace")
+	}
+	if session.CurrentOrganizationID == nil {
+		t.Fatalf("the shared session was changed instead of copied")
 	}
 }

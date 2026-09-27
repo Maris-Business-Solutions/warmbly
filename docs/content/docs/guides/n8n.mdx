@@ -22,7 +22,7 @@ Both deliver the same JSON body: a delivery id, the event type and the full even
 
 Two routes, depending on where you want the field mapping to live.
 
-**Mapping in n8n.** An HTTP Request node calling `POST /api/v1/contacts` with the contact's fields, `categories` and `campaigns`. The write is an upsert by email, so re-running a workflow updates the contact instead of duplicating it.
+**Mapping in n8n.** An HTTP Request node calling `POST /v1/contacts` with the contact's fields, `categories` and `campaigns`. The write is an upsert by email, so re-running a workflow updates the contact instead of duplicating it.
 
 **Mapping in Warmbly.** Create an automation with the **Inbound webhook** trigger, copy its URL, and POST the raw payload to it from an HTTP Request node. The automation's **Create or update contact** action maps the JSON keys onto contact fields with templates (`{{.email}}`, `{{.answers.company}}`), tags the contact and enrols it in a campaign, and the same flow can notify Slack or open a task. See [Lead intake](/guides/automations/#lead-intake). This route needs no API key: the URL is the credential.
 

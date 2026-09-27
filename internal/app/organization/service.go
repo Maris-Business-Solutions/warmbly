@@ -60,6 +60,8 @@ type OrganizationService interface {
 	// WireWorkspaceSeeder attaches a hook that runs once for every new
 	// workspace, so premade rows (inbox labels) exist before the first mail.
 	WireWorkspaceSeeder(fn func(ctx context.Context, orgID uuid.UUID))
+	// WireMemberRemoval attaches a hook that ends a removed member's access, run after every removal.
+	WireMemberRemoval(fn func(ctx context.Context, orgID, userID uuid.UUID) error)
 
 	// CRUD
 	Create(ctx context.Context, userID uuid.UUID, name, timezone string) (*models.Organization, *errx.Error)
@@ -184,11 +186,19 @@ type organizationService struct {
 	opsNotify OperatorNotifier
 	// seeders run after a workspace is created, best-effort.
 	seeders []func(ctx context.Context, orgID uuid.UUID)
+	// removals end a removed member's sessions and grants; the auth middleware backs them up.
+	removals []func(ctx context.Context, orgID, userID uuid.UUID) error
 }
 
 func (s *organizationService) WireWorkspaceSeeder(fn func(ctx context.Context, orgID uuid.UUID)) {
 	if fn != nil {
 		s.seeders = append(s.seeders, fn)
+	}
+}
+
+func (s *organizationService) WireMemberRemoval(fn func(ctx context.Context, orgID, userID uuid.UUID) error) {
+	if fn != nil {
+		s.removals = append(s.removals, fn)
 	}
 }
 
@@ -937,6 +947,15 @@ func (s *organizationService) RemoveMember(ctx context.Context, orgID, memberUse
 	if err := s.orgRepo.RemoveMember(ctx, orgID, memberUserID); err != nil {
 		errs.CaptureException(err)
 		return errx.New(errx.Internal, "failed to remove member")
+	}
+
+	// Detached from the caller, so a dropped request cannot leave the removed member's access in place.
+	hookCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	for _, fn := range s.removals {
+		if err := fn(hookCtx, orgID, memberUserID); err != nil {
+			errs.CaptureException(err)
+		}
 	}
 
 	return nil

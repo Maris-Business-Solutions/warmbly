@@ -37,7 +37,7 @@ Each row shows email, role, and join date, with your own row tagged "you". Open 
 
 To remove someone, hover (or tap) their row and click the remove icon. **You cannot remove the owner or yourself.** To leave a workspace you own, transfer ownership first.
 
-Removal takes effect at once, including for someone who is signed in right now. Their open dashboard loses the workspace on its next request and its live updates stop, and they are asked to pick another workspace they belong to. Nothing they created is removed with them: mailboxes, contacts and campaigns belong to the workspace.
+Removal takes effect at once, including for someone who is signed in right now. Their open dashboard loses the workspace on its next request and its live updates stop, and they are asked to pick another workspace they belong to. Apps they authorized in the workspace are disconnected. Nothing they created is removed with them: mailboxes, contacts, campaigns and API keys belong to the workspace, so revoke their keys under **API keys** if those should go too. A changed role or a new owner reaches open dashboards' live updates without a reload.
 
 ## Roles
 
@@ -66,7 +66,7 @@ Roles are workspace data. Every workspace starts with three seeded roles that ar
 | | Send campaigns | Start, pause, resume |
 | | Use unified inbox | Read and reply from the shared inbox |
 | **Workspace** | Manage settings | Workspace-wide settings |
-| | Manage billing | Invoices and plan changes |
+| | Manage billing | Checkout, invoices, plan changes and cancellation |
 | | Manage API keys | Create and revoke workspace keys |
 
 How the seeded roles map: **Viewer** holds only the two view permissions plus analytics. **Manager** adds everything operational (manage campaigns, contacts, sequences, mailboxes, send, unibox, integrations, AI). **Admin** adds team, settings, billing, and API keys. **Owner** is Admin plus ownership transfer.

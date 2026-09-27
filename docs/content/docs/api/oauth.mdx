@@ -145,7 +145,7 @@ curl -X POST "https://api.warmbly.com/v1/oauth/revoke" \
   -d client_secret=wmcs_...
 ```
 
-Users can also revoke your app themselves under **Settings -> OAuth apps -> Authorized apps**, which invalidates every token issued to it for that workspace.
+Users can also revoke your app themselves under **Settings -> OAuth apps -> Authorized apps**, which invalidates every token issued to it for that workspace. A user who is removed from a workspace loses every authorization they granted in it the same way, so expect `invalid_grant` on the next refresh.
 
 ## Token lifetimes
 
