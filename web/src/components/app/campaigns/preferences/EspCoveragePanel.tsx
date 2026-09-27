@@ -53,7 +53,7 @@ export default function EspCoveragePanel({
     // The campaign whose leads are counted by provider; none on a draft.
     campaignId?: string;
 }) {
-    const { emails, isLoading } = useEmails({ query: "", tag: "", limit: 200 });
+    const { emails, isLoading } = useEmails({ query: "", tag: "" });
     const leadSearch = useSearchContacts({
         options: { query: "", custom_field_filters: [], campaign_ids: campaignId ? [campaignId] : [], sort_by: "created_at", reverse: false },
         limit: 1,

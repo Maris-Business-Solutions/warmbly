@@ -48,6 +48,7 @@ import {
     FilterIcon,
     GaugeIcon,
     GlobeIcon,
+    Loader2Icon,
     PauseIcon,
     PlayIcon,
     PlusIcon,
@@ -299,9 +300,9 @@ export default function AddressesPage() {
             <PageTopbar
                 eyebrow="Accounts"
                 subtitle={
-                    emailsData.emails
-                        ? `${stats.total} mailboxes`
-                        : "Loading…"
+                    emailsData.isPending
+                        ? "Loading…"
+                        : `${stats.total.toLocaleString()}${emailsData.isLoadingRest || emailsData.isIncomplete ? "+" : ""} mailbox${stats.total === 1 ? "" : "es"}`
                 }
             >
                 <MailboxImportsMenu />
@@ -472,6 +473,25 @@ export default function AddressesPage() {
                             ))}
                         </tbody>
                     </table>
+                )}
+                {emailsData.isLoadingRest && !emailsData.isPending && (
+                    <div className="h-11 px-5 flex items-center gap-2 text-[12px] text-slate-400 border-b border-slate-200/60">
+                        <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+                        Loading more mailboxes…
+                    </div>
+                )}
+                {emailsData.isIncomplete && (
+                    <div className="h-11 px-5 flex items-center gap-2 text-[12px] text-amber-700 bg-amber-50/60 border-b border-amber-200/60">
+                        <span>Showing {stats.total.toLocaleString()} mailboxes; the rest couldn't be loaded.</span>
+                        <button
+                            type="button"
+                            onClick={() => void emailsData.fetchNextPage()}
+                            className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+                        >
+                            <RotateCcwIcon className="w-3.5 h-3.5" />
+                            Retry
+                        </button>
+                    </div>
                 )}
 
                 {selected.length > 0 && (

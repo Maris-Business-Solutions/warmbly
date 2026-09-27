@@ -28,7 +28,7 @@ import mailboxDisplayStatus from "@/lib/mailboxStatus";
 import { browserTimezone, followWorkspaceLabel, timezoneOptions } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 
-// Enough for any workspace's whole campaign and mailbox list in one page.
+// Enough for any workspace's whole campaign list in one page.
 const LIST_LIMIT = 200;
 
 const CAMPAIGN_TONE: Record<string, string> = {
@@ -255,8 +255,8 @@ function CampaignZoneRow({ campaign, workspaceZone, fallback }: { campaign: Camp
 /* ── Mailboxes ─────────────────────────────────────────────────────── */
 
 function MailboxClocks({ workspaceZone }: { workspaceZone: string }) {
-    const list = useEmails({ query: "", tag: "", limit: LIST_LIMIT });
-    const loading = useRemainingPages(list) || list.isPending;
+    const list = useEmails({ query: "", tag: "" });
+    const loading = list.isLoadingRest || list.isPending;
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [open, setOpen] = React.useState(false);
