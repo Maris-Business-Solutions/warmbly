@@ -58,6 +58,7 @@ func runInboxTagBackfill(ctx context.Context, args []string) error {
 	limit := fs.Int("limit", 200, "most messages to classify in this run")
 	dryRun := fs.Bool("dry-run", false, "list what would be classified and call nothing")
 	recheck := fs.Bool("recheck-cold-inbound", false, "re-classify mail stored as cold_inbound in threads a campaign send belongs to")
+	recheckNotices := fs.Bool("recheck-notifications", false, "ask notifications stored before the check whether they need action, and keep the ones that do in the inbox")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -109,10 +110,11 @@ func runInboxTagBackfill(ctx context.Context, args []string) error {
 
 	start := time.Now()
 	p, err := svc.Backfill(ctx, orgID, inboxtag.BackfillOptions{
-		Since:              since,
-		Limit:              *limit,
-		DryRun:             *dryRun,
-		RecheckColdInbound: *recheck,
+		Since:                since,
+		Limit:                *limit,
+		DryRun:               *dryRun,
+		RecheckColdInbound:   *recheck,
+		RecheckNotifications: *recheckNotices,
 		OnProgress: func(p inboxtag.BackfillProgress, subject string) {
 			// One line per message. A long run that goes quiet looks hung, and
 			// the subject is what tells an operator it is working on real mail

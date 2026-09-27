@@ -42,7 +42,7 @@ func confidentReply() map[string]Answer {
 }
 
 func TestQuestionsForAddsWorkspaceQuestions(t *testing.T) {
-	q := QuestionsFor([]models.InboxTagQuestion{laterMaybe(models.InboxTagQuestionAction{}), roleQuestion()})
+	q := QuestionsFor([]models.InboxTagQuestion{laterMaybe(models.InboxTagQuestionAction{}), roleQuestion()}, false)
 	if len(q) != len(Questions())+2 {
 		t.Fatalf("got %d questions, want the built-in set plus two", len(q))
 	}

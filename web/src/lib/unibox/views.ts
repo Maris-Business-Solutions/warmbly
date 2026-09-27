@@ -11,7 +11,7 @@
 
 import type { UniboxCategoryOverview } from "@/lib/api/models/app/unibox/UniboxOverview";
 
-export type UniboxViewId = "hot" | "needs_reply" | "follow_up" | "declined" | "automated";
+export type UniboxViewId = "action_required" | "hot" | "needs_reply" | "follow_up" | "declined" | "automated";
 
 export interface UniboxView {
     id: UniboxViewId;
@@ -25,6 +25,12 @@ export interface UniboxView {
 }
 
 export const UNIBOX_VIEWS: UniboxView[] = [
+    {
+        id: "action_required",
+        label: "Action required",
+        meaning: "Automated mail that needs someone to act: a failed payment, a suspended account, a suspicious sign-in, a sending limit, a service about to expire. Kept in the inbox so it is not missed.",
+        labels: ["action required"],
+    },
     {
         id: "hot",
         label: "Hot leads",
@@ -52,7 +58,7 @@ export const UNIBOX_VIEWS: UniboxView[] = [
     {
         id: "automated",
         label: "Automated",
-        meaning: "Security alerts, notifications, bounces and auto-replies. Kept out of the inbox because nobody wrote them.",
+        meaning: "Sign-in codes, receipts, newsletters, bounces and auto-replies. Kept out of the inbox because nobody wrote them. Anything that needs your action stays in the inbox instead.",
         labels: ["bounced", "out of office", "auto-reply", "notification"],
         automated: true,
     },

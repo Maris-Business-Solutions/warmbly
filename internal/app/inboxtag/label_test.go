@@ -174,7 +174,7 @@ func TestUnreadableIntentKeepsTheConfidentKind(t *testing.T) {
 // the count: a label added here without an explanation there ships with no
 // hover text, which is the state the feature started in.
 func TestLabelCountMatchesTheDashboardMeanings(t *testing.T) {
-	const documented = 19 // keep in step with EVERY_AUTOMATIC_LABEL in tagMeanings.test.ts
+	const documented = 20 // keep in step with EVERY_AUTOMATIC_LABEL in tagMeanings.test.ts
 	if got := len(AllLabels()); got != documented {
 		t.Fatalf("AllLabels has %d labels but the dashboard explains %d.\n"+
 			"Add the new label to web/src/lib/unibox/tagMeanings.ts and to\n"+

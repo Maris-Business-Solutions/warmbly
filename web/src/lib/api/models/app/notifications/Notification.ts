@@ -33,6 +33,7 @@ export interface NotificationPreferences {
     health_domain_auth: CategoryPref;
     placement_finished: CategoryPref;
     placement_alert: CategoryPref;
+    inbox_action_required: CategoryPref;
     email_digest_minutes: number;
 }
 
@@ -80,6 +81,9 @@ export function normalizeNotificationPreferences(
         // Emails by default: a campaign landing in spam has to reach whoever
         // can fix it even when nobody has the dashboard open.
         placement_alert: p?.placement_alert ?? billing,
+        // Emails by default: a mailbox about to lose its subscription has to
+        // reach whoever can fix it even when nobody reads that inbox.
+        inbox_action_required: p?.inbox_action_required ?? billing,
         email_digest_minutes: Math.min(Math.max(minutes, EMAIL_WINDOW_MIN_MINUTES), EMAIL_WINDOW_MAX_MINUTES),
     };
 }

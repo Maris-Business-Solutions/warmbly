@@ -60,6 +60,9 @@ type InboxTagRepository interface {
 	// verdicts made before the campaign behind a thread could be resolved.
 	ListColdInboundInCampaignThreads(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error)
 	Reopen(ctx context.Context, orgID uuid.UUID, messageID, kind string) ([]string, error)
+	// ListUncheckedNotifications backs the re-check of notifications stored
+	// before they were asked whether they need acting on.
+	ListUncheckedNotifications(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error)
 
 	// ThreadStates backs the follow-up sweep: who spoke last, when, and how far
 	// the thread ever got.
@@ -335,6 +338,18 @@ func (r *inboxTagRepository) ListColdInboundInCampaignThreads(ctx context.Contex
 		                    WHERE ids.id <> ''
 		                ))
 		          )
+		      )`, orgID, since, limit)
+}
+
+// ListUncheckedNotifications returns inbound messages stored as notifications
+// by a verdict that never asked whether they need the recipient to act.
+func (r *inboxTagRepository) ListUncheckedNotifications(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error) {
+	return r.listCandidates(ctx, `
+		  AND EXISTS (
+		        SELECT 1 FROM inbox_tag_results r
+		        WHERE r.organization_id = $1 AND r.message_id = ue.message_id
+		          AND r.status = 'complete' AND r.kind = 'notification'
+		          AND NOT (r.answers ? 'action_required')
 		      )`, orgID, since, limit)
 }
 

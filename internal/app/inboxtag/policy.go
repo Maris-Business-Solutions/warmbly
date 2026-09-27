@@ -168,6 +168,20 @@ var signalInstructions = map[string]string{
 	SigNeedsHumanJudgement:   "Answering this message well requires a person to read it.",
 }
 
+// SigActionRequired is the one question asked of automated mail: whether it
+// needs the recipient to act. A match keeps the conversation in the inbox.
+const SigActionRequired = "action_required"
+
+const actionRequiredInstruction = "The message tells the recipient about a problem with their own account, " +
+	"payment, domain or service that they must act on, such as a failed payment, a suspended or restricted " +
+	"account, a suspicious sign-in, a sending limit, or a service about to expire."
+
+// ActionRequiredQuestion is that question, sent only when the workspace keeps
+// such mail in the inbox.
+func ActionRequiredQuestion() Question {
+	return Question{Type: QuestionNoul, Instructions: actionRequiredInstruction}
+}
+
 // Scores are ordered rubrics. Ten levels is the API maximum; eleven is a 400.
 // The score value is used for threshold checks only, never as a magnitude to
 // do arithmetic between levels with.
@@ -219,6 +233,9 @@ var Weights = map[string]float64{
 	IntentNotInterested:    -40,
 	"auto_reply":           -60, // either auto_reply_* kind
 	"bounce":               -80, // either bounce_* kind
+
+	// Automated mail that needs acting on sorts with the replies due today.
+	SigActionRequired: 40,
 }
 
 // Priority buckets, applied to the clamped 0-100 relevance.
@@ -254,6 +271,10 @@ func bucket(relevance float64) string {
 // the one label that means "the system declined to decide".
 const LabelNeedsReview = "Needs review"
 
+// LabelActionRequired marks automated mail that needs the recipient to act,
+// which is why it stayed in the inbox.
+const LabelActionRequired = "Action required"
+
 // labelTitles is the label a person reads for each answer, in plain words a
 // non-native speaker understands. An answer missing here is recorded but never
 // becomes a label, because it would sit on most threads and filter nothing.
@@ -280,6 +301,8 @@ var labelTitles = map[string]string{
 	SigAsksForCall:     "Meeting",
 	SigRequestsRemoval: "Unsubscribe",
 	SigLegalThreat:     "Legal threat",
+
+	SigActionRequired: LabelActionRequired,
 }
 
 // LabelFor is the label an answer files under, or "" when it has none.

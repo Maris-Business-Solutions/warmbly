@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -725,6 +726,9 @@ func (s *JobsService) tagInboundMessage(ctx context.Context, e *models.JobEventN
 	// Phases 2 and 3: what the verdict may do, per the workspace's switches.
 	// Live arrivals only; the backfill labels history and never acts on it.
 	s.actOnInboxTag(ctx, orgID, msg, d)
+	if d.ActionRequired {
+		s.notifyActionRequired(ctx, orgID, e.Message)
+	}
 
 	// Tell the dashboard the message changed.
 	//
@@ -738,6 +742,31 @@ func (s *JobsService) tagInboundMessage(ctx context.Context, e *models.JobEventN
 	if d.KindSource != "" {
 		s.publishEmailUpdated(ctx, e.UserID, e.Message)
 	}
+}
+
+// notifyActionRequired tells the members who keep mailboxes running that one
+// received mail needing action, since nobody may be reading that mailbox.
+func (s *JobsService) notifyActionRequired(ctx context.Context, orgID uuid.UUID, m *models.EmailMessageStoreData) {
+	if s.Notifier == nil {
+		return
+	}
+	title := "Action required in a mailbox"
+	if acc := s.recipientAccount(ctx, m.EmailID); acc != nil && acc.Email != "" {
+		title = "Action required in " + acc.Email
+	}
+	body := strings.TrimSpace(m.Subject)
+	if body == "" {
+		body = "(no subject)"
+	}
+	link := "/app/unibox"
+	if m.ThreadID != "" {
+		link = "/app/unibox/all/" + url.PathEscape(m.ThreadID)
+	}
+	s.Notifier.NotifyOrgAboutMessage(ctx, orgID, models.PermManageEmails|models.PermAccessUnibox, m.ID,
+		models.NotifInboxActionRequired, title, body, link, map[string]any{
+			"email_account_id": m.EmailID.String(),
+			"thread_id":        m.ThreadID,
+		}, "inbox_action_required:"+m.ID.String())
 }
 
 // actOnInboxTag executes the actions the tagging policy allows for one

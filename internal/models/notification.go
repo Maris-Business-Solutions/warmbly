@@ -34,6 +34,10 @@ const (
 	// NotifPlacementAlert fires when a campaign's scheduled placement test
 	// comes back below its alert threshold, so it emails by default.
 	NotifPlacementAlert NotificationCategory = "placement_alert"
+	// NotifInboxActionRequired fires when automatic tagging finds automated
+	// mail in a mailbox that needs someone to act, such as a failed payment or
+	// a suspended account, so it emails by default.
+	NotifInboxActionRequired NotificationCategory = "inbox_action_required"
 )
 
 // ChannelPrefs is the per-category delivery toggles: in-app feed, account
@@ -67,6 +71,8 @@ type NotificationPreferences struct {
 	// PlacementFinished and PlacementAlert are the inbox placement test pair.
 	PlacementFinished CategoryPref `json:"placement_finished"`
 	PlacementAlert    CategoryPref `json:"placement_alert"`
+	// InboxActionRequired is mailbox mail that needs someone to act.
+	InboxActionRequired CategoryPref `json:"inbox_action_required"`
 
 	// EmailDigestMinutes is the email-channel bundling window: pending
 	// notification emails hold this long, then flush as one email. Bounded
@@ -94,19 +100,22 @@ func DefaultNotificationPreferences() NotificationPreferences {
 	// whoever can edit the DNS, so this one emails by default too.
 	domainAuth := CategoryPref{Enabled: true, Channels: ChannelPrefs{InApp: true, Push: true, Email: true}}
 	return NotificationPreferences{
-		InboundReply:       off,
-		InboundOOO:         off,
-		HealthBounce:       on,
-		HealthComplaint:    on,
-		WorkerDowntime:     on,
-		SecuritySignIn:     on,
-		BillingAlert:       billing,
-		TeamActivity:       on,
-		CampaignPaused:     campaignPaused,
-		DomainAuth:         domainAuth,
-		PlacementFinished:  on,
-		PlacementAlert:     domainAuth,
-		EmailDigestMinutes: 30,
+		InboundReply:      off,
+		InboundOOO:        off,
+		HealthBounce:      on,
+		HealthComplaint:   on,
+		WorkerDowntime:    on,
+		SecuritySignIn:    on,
+		BillingAlert:      billing,
+		TeamActivity:      on,
+		CampaignPaused:    campaignPaused,
+		DomainAuth:        domainAuth,
+		PlacementFinished: on,
+		PlacementAlert:    domainAuth,
+		// A mailbox about to lose its subscription has to reach whoever can
+		// fix it even when nobody reads the inbox, so this emails too.
+		InboxActionRequired: domainAuth,
+		EmailDigestMinutes:  30,
 	}
 }
 
@@ -137,6 +146,8 @@ func (p NotificationPreferences) CategoryPref(c NotificationCategory) CategoryPr
 		return p.PlacementFinished
 	case NotifPlacementAlert:
 		return p.PlacementAlert
+	case NotifInboxActionRequired:
+		return p.InboxActionRequired
 	default:
 		return CategoryPref{}
 	}

@@ -5,6 +5,7 @@
 import React from "react";
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { NumberInput, TextInput } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
 import { useConfirm } from "@/hooks/context/confirm";
 import { isAutomaticTag } from "@/lib/unibox/tagMeanings";
@@ -107,13 +108,15 @@ function problems(q: InboxTagQuestion, taken: Set<string>): string[] {
 // the fields the question type uses.
 function finalize(q: InboxTagQuestion): InboxTagQuestion {
     const question = q.question.trim().replace(/\s+/g, " ");
+    const automated = q.automated ? { automated: true } : {};
     if (q.type === "yes_no") {
-        return { id: q.id, type: "yes_no", question, label: inboxTagLabelName(q.label ?? ""), action: q.action };
+        return { id: q.id, type: "yes_no", question, label: inboxTagLabelName(q.label ?? ""), action: q.action, ...automated };
     }
     return {
         id: q.id,
         type: "choice",
         question,
+        ...automated,
         action: { type: "" },
         choices: (q.choices ?? []).map((c) => ({
             label: inboxTagLabelName(c.label),
@@ -199,6 +202,7 @@ export default function TaggingQuestions({
                                     ))}
                                     <span className="text-[11px] text-slate-400">
                                         {q.type === "choice" ? "pick one" : "yes or no"}
+                                        {q.automated && " · also asked of automated notifications"}
                                     </span>
                                 </div>
                             </div>
@@ -421,6 +425,21 @@ function QuestionForm({
                     </div>
                 </div>
             )}
+
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <Checkbox
+                    tone="slate"
+                    checked={!!q.automated}
+                    onChange={(e) => patch({ automated: e.target.checked || undefined })}
+                    className="mt-0.5"
+                />
+                <span className="text-[12px] leading-snug text-slate-700">
+                    Also ask about automated notifications
+                    <span className="block text-[11px] text-slate-500 mt-0.5">
+                        Notifications leave the inbox for the Automated view. A notification this question matches gets its label and stays in the inbox instead. It never holds, stops or opens a task for one; those still apply to replies only.
+                    </span>
+                </span>
+            </label>
 
             {tried && issues.length > 0 && (
                 <ul className="text-[11.5px] text-red-600 space-y-0.5">

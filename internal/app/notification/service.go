@@ -64,6 +64,8 @@ type Service interface {
 	// message with every recipient in To; Slack fires at most once. Each
 	// member's own preferences still gate their channels. Best-effort.
 	NotifyOrg(ctx context.Context, orgID uuid.UUID, perm models.OrganizationPermission, exclude uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any, groupKey string)
+	// NotifyOrgAboutMessage is NotifyOrg for one unibox message.
+	NotifyOrgAboutMessage(ctx context.Context, orgID uuid.UUID, perm models.OrganizationPermission, uniboxEmailID uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any, groupKey string)
 
 	// WireDelivery attaches the email + Slack + user/member-lookup
 	// dependencies (wired post-construction in both mains) and starts the
@@ -172,6 +174,19 @@ func (s *service) NotifyAboutMessage(ctx context.Context, userID uuid.UUID, orgI
 // notification for each member. Slack posts to one org workspace, so it fires
 // for the first member whose prefs allow it and stays suppressed for the rest.
 func (s *service) NotifyOrg(ctx context.Context, orgID uuid.UUID, perm models.OrganizationPermission, exclude uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any, groupKey string) {
+	s.notifyMembers(ctx, orgID, perm, exclude, nil, category, title, body, link, meta, groupKey)
+}
+
+// NotifyOrgAboutMessage is NotifyOrg for one unibox message, so each member's
+// notification leaves with the message and is read with it.
+func (s *service) NotifyOrgAboutMessage(ctx context.Context, orgID uuid.UUID, perm models.OrganizationPermission, uniboxEmailID uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any, groupKey string) {
+	if uniboxEmailID == uuid.Nil {
+		return
+	}
+	s.notifyMembers(ctx, orgID, perm, uuid.Nil, &uniboxEmailID, category, title, body, link, meta, groupKey)
+}
+
+func (s *service) notifyMembers(ctx context.Context, orgID uuid.UUID, perm models.OrganizationPermission, exclude uuid.UUID, uniboxEmailID *uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any, groupKey string) {
 	if s == nil || s.members == nil || orgID == uuid.Nil {
 		return
 	}
@@ -188,7 +203,7 @@ func (s *service) NotifyOrg(ctx context.Context, orgID uuid.UUID, perm models.Or
 		if perm != 0 && !m.Permissions.HasPermission(perm) {
 			continue
 		}
-		fired := s.notifyOne(ctx, m.UserID, &org, nil, category, title, body, link, meta, groupKey, slackFired)
+		fired := s.notifyOne(ctx, m.UserID, &org, uniboxEmailID, category, title, body, link, meta, groupKey, slackFired)
 		slackFired = slackFired || fired
 	}
 }

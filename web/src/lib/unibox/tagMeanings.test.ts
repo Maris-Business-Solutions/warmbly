@@ -9,7 +9,7 @@ import { tagMeaning, isAutomaticTag } from "./tagMeanings";
 // Mirrors AllLabels() in internal/app/inboxtag/policy.go. Kept by hand, which
 // is exactly why it is asserted rather than trusted.
 const EVERY_AUTOMATIC_LABEL = [
-    "Auto-reply", "Bounced", "Follow up", "Gone quiet", "Interested",
+    "Action required", "Auto-reply", "Bounced", "Follow up", "Gone quiet", "Interested",
     "Legal threat", "Meeting", "Needs reply", "Needs review", "Not interested",
     "Not now", "Notification", "Out of office", "Pricing", "Question",
     "Sales pitch", "Unsubscribe", "Update", "Wrong person",
