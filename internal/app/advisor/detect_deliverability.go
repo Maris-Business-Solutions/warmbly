@@ -160,14 +160,11 @@ func detectBounceRate(s *repository.AdvisorSnapshot) []Finding {
 func detectSpamPlacement(s *repository.AdvisorSnapshot) []Finding {
 	out := []Finding{}
 	for _, m := range s.Mailboxes {
-		// Warmup deliveries are the denominator: the mail we know landed
-		// somewhere, and could observe the folder for.
-		delivered := m.WarmupSent7d
-		if delivered < minWarmupDeliveriesForPlacement || m.WarmupSpam7d == 0 {
-			continue
-		}
-		r := rate(m.WarmupSpam7d, delivered)
-		if r < spamPlacementWarn {
+		// The pool's own reading, over verified deliveries at Google,
+		// Microsoft and Yahoo, so the advice and the band cannot disagree.
+		p := m.WarmupPlacement
+		r, delivered := p.Judged()
+		if delivered < minWarmupDeliveriesForPlacement || r < spamPlacementWarn {
 			continue
 		}
 
@@ -194,8 +191,8 @@ func detectSpamPlacement(s *repository.AdvisorSnapshot) []Finding {
 			Impact:      clampImpact(45 + int(r)),
 			Title:       fmt.Sprintf("%s is landing in spam %s of the time", m.Email, pct(r)),
 			Detail: fmt.Sprintf(
-				"%d of %d warmup messages from %s were filed into spam by the receiving inbox in the last 7 days. Warmup placement is the earliest honest read on where cold mail is landing, because it is measured on mail the platform controls end to end.",
-				m.WarmupSpam7d, delivered, m.Email),
+				"Over the last 7 days %d of %d warmup messages from %s delivered at Google, Microsoft and Yahoo went to spam. Warmup placement is the earliest honest read on where cold mail is landing, because it is measured on mail the platform controls end to end. Other mail hosts run their own filters and are not counted.",
+				p.MajorSpam, p.MajorDelivered, m.Email),
 			Remedy: remedy,
 			Steps: []string{
 				"Check SPF, DKIM and DMARC on this domain first. Authentication is the single biggest cause of spam placement, and no amount of volume tuning compensates for it.",
@@ -205,13 +202,13 @@ func detectSpamPlacement(s *repository.AdvisorSnapshot) []Finding {
 				"Give it a week and check this number again before putting the mailbox back into full rotation.",
 			},
 			Evidence: map[string]any{
-				"mailbox":                 m.Email,
-				"warmup_spam_7d":          m.WarmupSpam7d,
-				"warmup_delivered_7d":     delivered,
-				"spam_placement_percent":  band(r),
-				"quarantine_band_percent": spamPlacementQuarantine,
-				"currently_sending_cold":  m.InActiveCampaign,
-				"current_daily_cap":       m.CampaignLimit,
+				"mailbox":                     m.Email,
+				"major_provider_spam_7d":      p.MajorSpam,
+				"major_provider_delivered_7d": p.MajorDelivered,
+				"spam_placement_percent":      band(r),
+				"quarantine_band_percent":     spamPlacementQuarantine,
+				"currently_sending_cold":      m.InActiveCampaign,
+				"current_daily_cap":           m.CampaignLimit,
 			},
 		}
 

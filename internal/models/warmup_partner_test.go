@@ -43,3 +43,25 @@ func TestWarmupPoolReturnsToMirrorsTheBorrow(t *testing.T) {
 		}
 	}
 }
+
+// Only a small host's own filter is read, and only on a sample: at the major
+// providers a junk verdict is the senders' reputation, not the recipient's.
+func TestWarmupPartnerCandidateFilterJunkRate(t *testing.T) {
+	cases := []struct {
+		name string
+		c    WarmupPartnerCandidate
+		want float64
+	}{
+		{"small host junking half", WarmupPartnerCandidate{Provider: "smtp_imap", Received7d: 20, Junked7d: 10}, 0.5},
+		{"below the sample", WarmupPartnerCandidate{Provider: "smtp_imap", Received7d: 9, Junked7d: 9}, 0},
+		{"gmail is never read", WarmupPartnerCandidate{Provider: "gmail", Received7d: 20, Junked7d: 20}, 0},
+		{"workspace on imap is never read", WarmupPartnerCandidate{Provider: "smtp_imap", MailHost: "google_workspace", Received7d: 20, Junked7d: 20}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.c.FilterJunkRate(); got != tc.want {
+				t.Fatalf("FilterJunkRate() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -94,9 +94,9 @@ The **inbox rate** is inbox plus category tabs over everything delivered in the 
 | `80%` to `90%` | Watch |
 | Below `80%` | Landing in spam |
 
-A rate only appears once `20` deliveries are in the window, the same sample the pool needs before it acts on spam placement. Until then the mailbox shows how far along it is (`8/20`) rather than a percentage that would swing on every delivery. The mailbox's health score is capped at its inbox rate, so a mailbox with some mail in spam reads `97`, not a flat `100`.
+The rate is taken at Google, Microsoft and Yahoo, the providers that judge a mailbox, and over every host only when none of them received its warmup mail in the window. Other mail hosts are still shown: their inbox rate sits right under the headline in the drawer and on **Deliverability**, and they appear in the daily charts, the counts and the per-provider breakdown. It only appears once `20` deliveries are in the window, the same sample the pool needs before it acts on spam placement. Until then the mailbox shows how far along it is (`8/20`) rather than a percentage that would swing on every delivery. The mailbox's health score is capped at its inbox rate, so a mailbox with some mail in spam reads `97`, not a flat `100`.
 
-Filter the drawer or the page by recipient provider to see whether a problem is general or confined to one: **Google** covers Gmail and Google Workspace, **Microsoft** covers Outlook.com and Microsoft 365, and expanding a provider shows each host inside it. **Rescued** counts spam placements Warmbly told the partner's mailbox to move back to the inbox, the "not spam" signal providers learn from; it is the rescues requested, since the partner's mailbox does not confirm the move. **Unconfirmed** counts mail sent more than a day ago that the partner has not seen yet, usually a partner whose sync is behind, and occasionally mail that never arrived. Spam is read from where the partner's provider filed the message: Gmail's Spam label, Outlook's Junk Email folder, or an IMAP server's Junk folder whether or not the server also flags it, and the same reading feeds [pool safety](#pool-safety). History from before this view existed is filled in from the receipts still on file shortly after an upgrade, without the tab and rescue split. The figures are warmup mail only, not campaign sends, and update live as partners report in. Days are UTC. The same numbers are in the [warmup placement](/api/reference/analytics/#get-warmup-placement) endpoint.
+Filter the drawer or the page by recipient provider to see whether a problem is general or confined to one: **Google** covers Gmail and Google Workspace, **Microsoft** covers Outlook.com and Microsoft 365, and expanding a provider shows each host inside it. **Rescued** counts spam placements Warmbly told the partner's mailbox to move back to the inbox, the "not spam" signal providers learn from; it is the rescues requested, since the partner's mailbox does not confirm the move. **Unconfirmed** counts mail sent more than a day ago that the partner has not seen yet, usually a partner whose sync is behind, and occasionally mail that never arrived. Spam is read from where the partner's provider filed the message: Gmail's Spam label, Outlook's Junk Email folder, or an IMAP server's Junk folder whether or not the server also flags it, and [pool safety](#how-spam-placement-is-judged) reads the same landings at Google, Microsoft and Yahoo. History from before this view existed is filled in from the receipts still on file shortly after an upgrade, without the tab and rescue split. The figures are warmup mail only, not campaign sends, and update live as partners report in. Days are UTC. The same numbers are in the [warmup placement](/api/reference/analytics/#get-warmup-placement) endpoint.
 
 ## The ramp
 
@@ -116,7 +116,7 @@ Warmup hours are read in the mailbox's timezone: its own when one is set on the 
 
 ### Holding the ramp on an early signal
 
-If any warmup email lands in a recipient's spam folder, that mailbox stops climbing immediately:
+If any warmup email lands in the spam folder of a Google, Microsoft or Yahoo recipient, that mailbox stops climbing immediately:
 
 - today's target is cut by about a quarter, for 48 hours
 - the daily increase pauses for three days
@@ -124,7 +124,9 @@ If any warmup email lands in a recipient's spam folder, that mailbox stops climb
 
 Another placement during a pause extends it and does not lift the ramp: repeated spam placement can only ever slow a mailbox down.
 
-Nothing needs to be switched on and no health band has to trip first. That matters because the bands need a sample before they can judge a mailbox at all (twenty warmup sends in seven days, a hundred delivered in thirty), which a mailbox in its first fortnight has not reached. Without this, the mailbox landing in spam on day three would keep adding an email a day until it had sent enough to be judged.
+A landing at any other mail host never holds the ramp. Those hosts each run their own filter, so their spam folder says more about the server than about your mailbox; see [how spam placement is judged](#how-spam-placement-is-judged).
+
+Nothing needs to be switched on and no health band has to trip first. That matters because the bands need a sample before they can judge a mailbox at all (twenty verified warmup deliveries in seven days, a hundred delivered in thirty), which a mailbox in its first fortnight has not reached. Without this, the mailbox landing in spam on day three would keep adding an email a day until it had sent enough to be judged.
 
 The two windows end at different times, so between 48 and 72 hours a mailbox is back at full volume while the ramp is still paused. The mailbox drawer says which of the two is happening, how many emails were affected, and when the ramp resumes. Restarting warmup resets the ramp and clears any hold with it.
 
@@ -213,6 +215,22 @@ Shared pools only work if participants behave, so every mailbox is judged on rat
 | `quarantined` | Clear problem | Out of the shared pool for a cooldown |
 | `blocked` | Serious or repeated abuse | Out for longer, review required |
 
+The thresholds for each signal are in the [health bands](/guides/deliverability/#health-bands) table.
+
+### How spam placement is judged
+
+Spam placement is a reading of reputation, not misconduct, and warming is how a mailbox recovers from it. So spam placement only ever slows a mailbox down. It never quarantines or blocks one, and there is nothing to appeal:
+
+- `10%` puts the mailbox on watch: warmup and cold sending are spaced out a little more.
+- `20%` throttles it: warmup keeps running at half volume with double spacing, and cold volume is halved.
+- A watch lifts below `7.5%` and a throttle below `15%`, on their own. They lift below the line that set them rather than at it, so a mailbox sitting near a line is not flipped in and out of a band (and announced to your integrations) with every delivery.
+
+Only Google, Microsoft and Yahoo recipients judge a mailbox. They filter on sender reputation, which is what your cold email is judged on at those same providers. Every other mail host runs its own filter, often a stock rule set tuned for that one server, so a message landing in its spam folder is not evidence that the mail is spam. Those landings are shown in the placement view and never held against the mailbox, in the bands, the ramp or the [Advisor](/guides/advisor/). The rate is taken over verified deliveries at the three providers in the last seven days, and needs `20` of them before it acts.
+
+So a mailbox that inboxes everything at Google and Microsoft stays healthy however many small hosts junk its mail. The reason in the mailbox drawer says what was judged: for example `25% of warmup mail delivered at Google, Microsoft and Yahoo landed in spam over 7 days (40 delivered). Other mail hosts (50% of 20) run their own filters and are not counted.`
+
+Partner selection favours the recipients where warmup earns something. A small-host partner whose own filter junks most of the warmup mail it receives, from everyone, is drawn less often (never excluded), since a message filed into spam there builds no reputation for the sender. This is never read at Google, Microsoft or Yahoo, where a junk verdict reflects the senders rather than the recipient.
+
 Quarantined and blocked mailboxes are selected as neither sender nor recipient. Mail arriving in a mailbox is never held against it: every warmup message carries a single-use token bound to its recipient, so a token cannot be replayed or redirected, and one that lands where it does not belong is simply filed as ordinary mail.
 
 What a mailbox does to warmup mail it received is held against it, on a ladder rather than at once. Deleting a warmup email within a day of its arrival counts as one strike and marking one as spam counts as two, over the last seven days. One strike puts the mailbox on watch with the reason shown in its drawer, two pause it from the pool for seven days, and four block it for thirty. So deleting one fresh warmup message is a warning, not a ban, while flagging pool mail as spam twice is a block.
@@ -220,7 +238,7 @@ What a mailbox does to warmup mail it received is held against it, on a ladder r
 Only a fresh deletion counts, because that is the one that costs the pool something: the engagement a warmup message earns happens in its first hours, and removing it before then takes that signal away. A warmup message deleted later is housekeeping, whether by you, by Gmail emptying its Trash, by a retention rule on your mail server or by Warmbly's own [retention](#retention), and it is never held against the mailbox. On Gmail, pressing Delete is what is judged, not the purge from Trash weeks later. A mailbox's own filing is never counted either: Warmbly moving a warmup email into its folder, marking it read, rescuing it from spam or deleting it once its window has passed is the platform acting, not the owner.
 
 <Callout type="warn" title="Acting early protects everyone">
-  Warmbly intervenes well before providers would penalize a mailbox. One landing in spam a large share of the time is already dangerous to the pool, so it is throttled or removed rather than left collecting negative signals.
+  Warmbly intervenes well before providers would penalize a mailbox. Complaints, bounces and tampering take a mailbox out of the pool early. A mailbox landing in spam at the major providers is slowed down instead, so it keeps warming, which is how it recovers.
 </Callout>
 
 Getting back in requires requalifying, not just waiting: healthy authentication, no recent complaints or hard-bounce spikes, and spam placement back to a low level. Return is gradual, not a jump back to the old ceiling.

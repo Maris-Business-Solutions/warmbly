@@ -56,14 +56,16 @@ type AdvisorMailbox struct {
 	// ColdSent7d / ColdSent1d count completed campaign sends. Bounces and
 	// complaints are 30-day windows, matching the documented complaint sample
 	// floor.
-	ColdSent7d       int
-	ColdSent1d       int
-	ColdSent30d      int
-	Bounces30d       int
-	Complaints30d    int
-	WarmupSent7d     int
-	WarmupSpam7d     int
-	WarmupRecv7d     int
+	ColdSent7d    int
+	ColdSent1d    int
+	ColdSent30d   int
+	Bounces30d    int
+	Complaints30d int
+	WarmupSent7d  int
+	WarmupRecv7d  int
+	// WarmupPlacement is the week's verified warmup deliveries, split the way
+	// the pool judges them.
+	WarmupPlacement  models.WarmupPlacementEvidence
 	PoolHealth       string
 	PoolHealthScore  float64
 	PoolHealthReason string

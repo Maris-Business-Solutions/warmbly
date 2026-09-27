@@ -7,7 +7,7 @@ import { EmptyBlock, SectionBar, Stat, StatStrip } from "@/components/layout/Pag
 import useWarmupPlacement from "@/lib/api/hooks/app/analytics/useWarmupPlacement";
 import type { PlacementGroup, PlacementMailbox } from "@/lib/api/models/app/analytics/WarmupPlacement";
 import { cn } from "@/lib/utils";
-import { BAND, GROUP_LABEL, GROUP_ORDER, bandForRate, fmtNum, fmtPct, rateSentence, totals, utcWindow, viewDays, type GroupFilter } from "./placement";
+import { BAND, GROUP_LABEL, GROUP_ORDER, bandForRate, fmtNum, fmtPct, otherHostsNote, rateSentence, totals, utcWindow, viewDays, type GroupFilter } from "./placement";
 import {
     BandChip,
     GroupFilterChips,
@@ -81,7 +81,7 @@ export default function WarmupPlacementSection({ days }: { days: number }) {
                 <Stat
                     label="Inbox rate · 7 days"
                     value={<span className={BAND[rate.band].text}>{rate.inbox_rate != null ? fmtPct(rate.inbox_rate) : "—"}</span>}
-                    sub={rate.inbox_rate != null ? BAND[rate.band].label : rateSentence(rate)}
+                    sub={rate.inbox_rate != null ? (otherHostsNote(rate, true) ?? BAND[rate.band].label) : rateSentence(rate)}
                 />
                 <Stat
                     label="Inbox rate · window"

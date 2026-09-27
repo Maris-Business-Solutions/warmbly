@@ -244,7 +244,7 @@ Returns where warmup mail landed in partners' mailboxes over a date range: the p
 
 Every figure is measured, not estimated: a delivery is counted when the recipient's own sync finds the warmup email and records the folder it arrived in. `rescued` counts spam placements the recipient's mailbox was told to move back to the inbox; the move itself is not confirmed back, so it is the rescues requested, not a verified count. `unconfirmed` counts completed sends more than 24 hours old that no recipient has reported seeing, bucketed on the day they were sent; a provider filter cannot split it, so it is only reported unfiltered.
 
-`rate` is the headline deliverability figure the dashboard shows next to each mailbox: `inbox_rate` is inbox plus tabs over everything delivered in the trailing 7 UTC days, and stays `null` until `min_sample` (`20`) deliveries are in. `band` is `good` at `90` or above, `fair` from `80`, `poor` below `80`, `collecting` below the sample floor and `none` with no deliveries. Each day's `rolling_inbox_rate` is the same trailing figure ending on that day. Rates are percentages with two decimals.
+`rate` is the headline deliverability figure the dashboard shows next to each mailbox: `inbox_rate` is inbox plus tabs over what was delivered in the trailing 7 UTC days, and stays `null` until `min_sample` (`20`) deliveries are in. `scope` says which deliveries: `major` is Google, Microsoft and Yahoo recipients only, the providers that filter on sender reputation, and `all` is every host, used only when none of those three received the mailbox's warmup mail in the window. Other hosts are always in `summary`, `daily` and `providers`, and beside a `major` rate `other_delivered` and `other_inbox_rate` give their share of the same window (`0` and `null` with none). `band` is `good` at `90` or above, `fair` from `80`, `poor` below `80`, `collecting` below the sample floor and `none` with no deliveries. Each day's `rolling_inbox_rate` is the same trailing figure ending on that day. Rates are percentages with two decimals.
 
 Recipient providers are grouped as `google` (Gmail and Google Workspace), `microsoft` (Outlook.com and Microsoft 365), `yahoo` (Yahoo and AOL) and `other`; each group lists its `hosts`, where an empty `host` means the recipient's host was not detected yet.
 
@@ -267,7 +267,7 @@ A range longer than 366 days, `from` after `to`, a malformed date or an invalid 
     "rescued": 44, "unconfirmed": 12, "inbox_rate": 93.93, "spam_rate": 6.07
   },
   "rate": {
-    "window_days": 7, "min_sample": 20, "delivered": 196, "inbox": 180, "tabs": 9, "spam": 7,
+    "window_days": 7, "min_sample": 20, "scope": "major", "delivered": 196, "inbox": 180, "tabs": 9, "spam": 7,
     "inbox_rate": 96.43, "band": "good"
   },
   "daily": [
@@ -562,6 +562,7 @@ Returns the detailed status for one email account: a combined health score (fold
   "warmup_placement": {
     "window_days": 7,
     "min_sample": 20,
+    "scope": "major",
     "delivered": 142,
     "inbox": 126,
     "tabs": 5,

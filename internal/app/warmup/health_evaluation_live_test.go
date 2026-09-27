@@ -154,16 +154,13 @@ func TestLiveSweepEvaluatesAFreePoolAccount(t *testing.T) {
 func TestLiveHealthSignalsBeforeTheFloorAreNotCounted(t *testing.T) {
 	repo, handle := liveWarmupRepo(t)
 	f := newFreePoolAccount(t, handle)
+	partner := newFreePoolAccount(t, handle)
+	execSQL(t, handle.Pool, `UPDATE email_accounts SET provider = 'gmail' WHERE id = $1`, partner.account)
 	svc := NewService(repo)
 	ctx := context.Background()
-	// One placement per send, a full sample. Sends are counted by day, so they
-	// stay in view; placements carry the timestamp the floor is applied to.
-	placements := func(offset string) {
-		insertSpamReports(t, handle, f.account, "spam_placement", offset, minSpamPlacementSample)
-	}
-	execSQL(t, handle.Pool, `INSERT INTO warmup_statistics (email_account_id, date, emails_sent, emails_replied, target_volume)
-	      VALUES ($1, CURRENT_DATE, $2, 0, $2)`, f.account, minSpamPlacementSample)
-	placements("2 hours")
+	// A full sample of deliveries, every one junked; the floor is applied to
+	// the receipts' timestamps.
+	deliverWarmup(t, handle, f.account, partner.account, "2 hours", minSpamPlacementSample, true)
 	execSQL(t, handle.Pool, `UPDATE warmup_pool_participants SET health_signals_from = NOW() - INTERVAL '1 hour'
 	      WHERE email_account_id = $1`, f.account)
 
@@ -176,14 +173,36 @@ func TestLiveHealthSignalsBeforeTheFloorAreNotCounted(t *testing.T) {
 			health.HealthState)
 	}
 
-	// The same placements after the floor are the catastrophic band.
-	placements("0 seconds")
+	// The same placements after the floor slow the mailbox down, and no more.
+	deliverWarmup(t, handle, f.account, partner.account, "0 seconds", minSpamPlacementSample, true)
 	health, err = svc.(*service).evaluateAndPersistAnyPool(ctx, f.account)
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
 	}
-	if health.HealthState != models.WarmupHealthBlocked {
+	if health.HealthState != models.WarmupHealthThrottled {
 		t.Fatalf("health_state is %q after %d placements past the floor, want %q",
-			health.HealthState, minSpamPlacementSample, models.WarmupHealthBlocked)
+			health.HealthState, minSpamPlacementSample, models.WarmupHealthThrottled)
 	}
+}
+
+// deliverWarmup files n verified receipts of sender's warmup mail at recipient,
+// stamped offset ago, each also a spam placement when junked. Rows cascade
+// away with the mailboxes.
+func deliverWarmup(t *testing.T, handle *db.DB, sender, recipient uuid.UUID, offset string, n int, junked bool) []string {
+	t.Helper()
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = "<" + uuid.NewString() + "@test.local>"
+	}
+	execSQL(t, handle.Pool, `
+		INSERT INTO warmup_received (email_account_id, internal_id, message_id, sender_account_id, created_at)
+		SELECT $1, gen_random_uuid(), m, $2, NOW() - $3::interval FROM unnest($4::text[]) AS m`,
+		recipient, sender, offset, ids)
+	if junked {
+		execSQL(t, handle.Pool, `
+			INSERT INTO warmup_spam_reports (reporter_account_id, reported_account_id, message_id, report_type, created_at)
+			SELECT $1, $2, m, 'spam_placement', NOW() - $3::interval FROM unnest($4::text[]) AS m`,
+			recipient, sender, offset, ids)
+	}
+	return ids
 }

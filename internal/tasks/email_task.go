@@ -535,6 +535,7 @@ func (s *tasksService) selectWarmupPartner(ctx context.Context, account Email) (
 	hostsByID := make(map[uuid.UUID]string, len(candidates))
 	ruleWeight := make(map[uuid.UUID]float64, len(candidates))
 	starvation := make(map[uuid.UUID]float64, len(candidates))
+	filterJunk := make(map[uuid.UUID]float64)
 	poolOf := make(map[uuid.UUID]string, len(candidates))
 	excluded := 0
 	for _, c := range candidates {
@@ -551,6 +552,9 @@ func (s *tasksService) selectWarmupPartner(ctx context.Context, account Email) (
 		hostsByID[c.ID] = partnerHost(c)
 		ruleWeight[c.ID] = weight
 		starvation[c.ID] = c.Starvation()
+		if junk := c.FilterJunkRate(); junk > 0 {
+			filterJunk[c.ID] = junk
+		}
 		poolOf[c.ID] = c.PoolType
 		eligible = append(eligible, c)
 	}
@@ -643,6 +647,7 @@ func (s *tasksService) selectWarmupPartner(ctx context.Context, account Email) (
 		placementByHost: placementByHost,
 		ruleWeight:      ruleWeight,
 		starvation:      starvation,
+		filterJunk:      filterJunk,
 	}
 
 	// A pick that fails the gate is dropped and the draw repeats; an emptied
@@ -720,6 +725,9 @@ const (
 	// and the boost fades as the pool pays it back, so traffic settles near
 	// parity instead of overshooting.
 	reciprocityBoostK = 3.0
+	// weight *= 1/(1 + k*junk). A small host whose own filter junks what the
+	// pool sends it earns no sender anything, so it is drawn less, never excluded.
+	recipientFilterPenaltyK = 3.0
 )
 
 // partnerSignals are the per-pick inputs to partner weighting.
@@ -735,6 +743,15 @@ type partnerSignals struct {
 	ruleWeight map[uuid.UUID]float64
 	// starvation is how far behind each candidate is on what it sent (0..1).
 	starvation map[uuid.UUID]float64
+	// filterJunk is how much warmup mail a small-host candidate's own filter
+	// junks (0..1); absent when nothing is known or the host is a major one.
+	filterJunk map[uuid.UUID]float64
+}
+
+// filterPenalty draws a recipient whose own filter junks warmup mail less
+// often. 1.0 when nothing is known.
+func (sig partnerSignals) filterPenalty(partnerID uuid.UUID) float64 {
+	return 1.0 / (1.0 + recipientFilterPenaltyK*sig.filterJunk[partnerID])
 }
 
 // reciprocityBoost favours the inbox that is owed the most. 1.0 for one in
@@ -768,6 +785,7 @@ func (sig partnerSignals) hostPenalty(partnerID uuid.UUID) float64 {
 //   - inverse-frequency on the partner's recipient domain (diversity)
 //   - this sender's recent junk rate at the partner's mail host (feedback)
 //   - how far behind the partner is on what it sent (reciprocity)
+//   - how much a small-host partner's own filter junks (recipient quality)
 //   - customer-defined routing rule multipliers (preference)
 //
 // Every candidate here is one the customer allows; an excluded pair was
@@ -776,7 +794,7 @@ func pickWeightedPartner(candidates []uuid.UUID, sig partnerSignals) uuid.UUID {
 	if len(candidates) == 1 {
 		return candidates[0]
 	}
-	if len(sig.domainsByID) == 0 && len(sig.ruleWeight) == 0 && len(sig.placementByHost) == 0 && len(sig.starvation) == 0 {
+	if len(sig.domainsByID) == 0 && len(sig.ruleWeight) == 0 && len(sig.placementByHost) == 0 && len(sig.starvation) == 0 && len(sig.filterJunk) == 0 {
 		return candidates[rand.Intn(len(candidates))]
 	}
 
@@ -792,6 +810,9 @@ func pickWeightedPartner(candidates []uuid.UUID, sig partnerSignals) uuid.UUID {
 
 		// The pool's debt to this inbox.
 		w *= sig.reciprocityBoost(id)
+
+		// A recipient whose own filter junks what it is sent.
+		w *= sig.filterPenalty(id)
 
 		// Routing rule multiplier (premium pool only, when configured).
 		if rw, ok := sig.ruleWeight[id]; ok {

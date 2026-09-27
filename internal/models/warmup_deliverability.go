@@ -38,6 +38,27 @@ const (
 	WarmupUnconfirmedAfterHours = 24
 )
 
+// WarmupPlacementEvidence is one sender's verified warmup deliveries, split
+// into the providers that judge it and every other host. Only Google,
+// Microsoft and Yahoo verdicts count: they filter on the sender reputation
+// cold mail is judged on, while a small host's own filter says little about
+// the sender, so its spam folder is shown and never held against anyone.
+type WarmupPlacementEvidence struct {
+	MajorDelivered int
+	MajorSpam      int
+	OtherDelivered int
+	OtherSpam      int
+}
+
+// Judged is the spam rate at the providers that judge a sender, and the
+// deliveries it is taken over.
+func (e WarmupPlacementEvidence) Judged() (rate float64, sample int) {
+	if e.MajorDelivered <= 0 {
+		return 0, 0
+	}
+	return float64(e.MajorSpam) / float64(e.MajorDelivered) * 100, e.MajorDelivered
+}
+
 // Bands a mailbox's rolling inbox rate falls into.
 const (
 	WarmupPlacementBandGood       = "good"
@@ -48,8 +69,8 @@ const (
 )
 
 // WarmupRecipientGroup buckets a recipient mailbox by who hosts it, falling
-// back to how it connects when the host is not known yet. Mirrors the CASE in
-// migration 000209.
+// back to how it connects when the host is not known yet. Mirrored in SQL by
+// recipientGroupSQL in the repository.
 func WarmupRecipientGroup(mailHost, provider string) string {
 	switch mailHost {
 	case "google_workspace", "gmail":
@@ -157,18 +178,33 @@ func (c *WarmupPlacementCounts) Add(o WarmupPlacementCounts) {
 	c.Unconfirmed += o.Unconfirmed
 }
 
+// Scopes a headline placement rate is taken over.
+const (
+	// WarmupPlacementScopeMajor is Google, Microsoft and Yahoo recipients only.
+	WarmupPlacementScopeMajor = "major"
+	// WarmupPlacementScopeAll is every host, for a mailbox none of the major
+	// providers has received warmup mail from in the window.
+	WarmupPlacementScopeAll = "all"
+)
+
 // WarmupPlacementRate is a mailbox's headline deliverability: the inbox rate
 // over the trailing window, withheld below the sample floor.
 type WarmupPlacementRate struct {
 	WindowDays int `json:"window_days"`
 	MinSample  int `json:"min_sample"`
-	Delivered  int `json:"delivered"`
-	Inbox      int `json:"inbox"`
-	Tabs       int `json:"tabs"`
-	Spam       int `json:"spam"`
+	// Scope is which recipients the rate is taken over.
+	Scope     string `json:"scope"`
+	Delivered int    `json:"delivered"`
+	Inbox     int    `json:"inbox"`
+	Tabs      int    `json:"tabs"`
+	Spam      int    `json:"spam"`
 	// InboxRate is nil until Delivered reaches MinSample.
 	InboxRate *float64 `json:"inbox_rate"`
 	Band      string   `json:"band"`
+	// OtherDelivered and OtherInboxRate are the other mail hosts left out of a
+	// major-scope rate, shown beside it and never judged; nil with none.
+	OtherDelivered int      `json:"other_delivered"`
+	OtherInboxRate *float64 `json:"other_inbox_rate"`
 }
 
 // NewWarmupPlacementRate builds the rolling rate from window counters.
@@ -176,6 +212,7 @@ func NewWarmupPlacementRate(inbox, tabs, spam int) WarmupPlacementRate {
 	r := WarmupPlacementRate{
 		WindowDays: WarmupPlacementWindowDays,
 		MinSample:  WarmupPlacementMinSample,
+		Scope:      WarmupPlacementScopeAll,
 		Inbox:      inbox,
 		Tabs:       tabs,
 		Spam:       spam,
@@ -187,6 +224,44 @@ func NewWarmupPlacementRate(inbox, tabs, spam int) WarmupPlacementRate {
 	}
 	r.Band = WarmupPlacementBand(r.Delivered, r.InboxRate)
 	return r
+}
+
+// WarmupPlacementTally is where a window's deliveries landed.
+type WarmupPlacementTally struct {
+	Inbox, Tabs, Spam int
+}
+
+// WarmupPlacementWindow is a trailing window's deliveries, at the major
+// providers and at every host.
+type WarmupPlacementWindow struct {
+	Major WarmupPlacementTally
+	All   WarmupPlacementTally
+}
+
+// Add accumulates o into w.
+func (w *WarmupPlacementWindow) Add(o WarmupPlacementWindow) {
+	w.Major.Inbox += o.Major.Inbox
+	w.Major.Tabs += o.Major.Tabs
+	w.Major.Spam += o.Major.Spam
+	w.All.Inbox += o.All.Inbox
+	w.All.Tabs += o.All.Tabs
+	w.All.Spam += o.All.Spam
+}
+
+// Rate is the headline over the major providers, or over every host when none
+// of them received anything in the window.
+func (w WarmupPlacementWindow) Rate() WarmupPlacementRate {
+	if m := w.Major; m.Inbox+m.Tabs+m.Spam > 0 {
+		r := NewWarmupPlacementRate(m.Inbox, m.Tabs, m.Spam)
+		r.Scope = WarmupPlacementScopeMajor
+		ok := w.All.Inbox + w.All.Tabs - m.Inbox - m.Tabs
+		if r.OtherDelivered = w.All.Inbox + w.All.Tabs + w.All.Spam - r.Delivered; r.OtherDelivered > 0 {
+			v := pct2(ok, r.OtherDelivered)
+			r.OtherInboxRate = &v
+		}
+		return r
+	}
+	return NewWarmupPlacementRate(w.All.Inbox, w.All.Tabs, w.All.Spam)
 }
 
 // WarmupPlacementGroupCounts is one recipient group's share of a day.

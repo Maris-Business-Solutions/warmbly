@@ -49,7 +49,7 @@ Only the first two badge a nav tab.
 
 ## What it checks
 
-**Deliverability**: complaint rate per mailbox (warns `0.03%`, critical `0.10%`, matching Google's bulk-sender ceiling); bounce rate (warns `3%`, critical `5%`, where SES opens a review); spam placement on warmup mail (warns `10%`, escalates `20%`, critical `40%`); SPF and DMARC per sending domain (critical while sending cold, since Google requires them; an unchecked domain is never called failing, and DKIM is never reported missing because its selector is not discoverable from DNS); and whether a mailbox has its own verified tracking domain.
+**Deliverability**: complaint rate per mailbox (warns `0.03%`, critical `0.10%`, matching Google's bulk-sender ceiling); bounce rate (warns `3%`, critical `5%`, where SES opens a review); spam placement on warmup mail at Google, Microsoft and Yahoo (warns `10%`, escalates `20%`, critical `50%`; other mail hosts are not counted, see [how spam placement is judged](/guides/warmup/#how-spam-placement-is-judged)); SPF and DMARC per sending domain (critical while sending cold, since Google requires them; an unchecked domain is never called failing, and DKIM is never reported missing because its selector is not discoverable from DNS); and whether a mailbox has its own verified tracking domain.
 
 **Mailbox configuration**: daily cap above the `50`/day safe band (gently with clean numbers, firmly without); a mailbox under `30` days old sending above `20`/day; a send gap under `5` minutes; unresolved errors on a mailbox campaigns still use; too few mailboxes carrying total volume; an inactive mailbox attached to a running campaign.
 
