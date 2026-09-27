@@ -37,6 +37,8 @@ The token carries 128 bits from a cryptographic random source, which is more tha
 
 A mailbox or campaign with a verified [custom tracking domain](/guides/mailboxes/#custom-tracking-domain) serves its unsubscribe link there, so a recipient reads `https://t.yourdomain.com/unsubscribe/...` rather than an address on the platform. The campaign's own domain wins over the mailbox's, and only a verified one is used. The page itself is the same page, named after you: it carries no logo, no product name and no scripts, because the email came from your mailbox and not from a platform.
 
+The page speaks the recipient's language. It follows the language their browser asks for, in any of the [tagging languages](/guides/inbox-tagging/#tagging-languages) (German, French, Japanese, Arabic and the rest, with Traditional Chinese for Taiwan and Hong Kong), and falls back to English for a language it does not have. Right-to-left languages read right to left. Nothing about this is a setting: a German recipient reads German whatever language your workspace or campaign is in.
+
 Without a custom domain the link stays on the instance's own API address. Either way it is the sender's infrastructure, not a third party's, and the recipient's opt-out reaches the same suppression list.
 
 Unsubscribe links travel with a [workspace export](/guides/workspace-export-import/), in the Campaigns group, so moving to another instance does not break a link someone is still holding. Keep serving the tracking domain they were minted on, or they arrive at a host that no longer answers.
@@ -61,7 +63,7 @@ Two things to know. Gmail only shows its button for mail it already classes as b
 
 ## Replies that ask to stop
 
-Warmbly reads every reply to a campaign email. One that asks to stop, in wording such as "unsubscribe", "remove me", "stop emailing me", "opt out" or "do not contact", puts the sender on the suppression list immediately. German replies are read the same way, whatever languages the workspace tags in: "bitte austragen", "keine weiteren E-Mails" or "löschen Sie meine Daten" opt the sender out too. Only the new text of the reply is read: the quoted history below it carries your own opt-out wording and is ignored. Phrases match on whole words, so "stop by our booth" does not opt anyone out.
+Warmbly reads every reply to a campaign email. One that asks to stop, in wording such as "unsubscribe", "remove me", "stop emailing me", "opt out" or "do not contact", puts the sender on the suppression list immediately. Replies in every tagging language are read the same way, whatever languages the workspace tags in: "bitte austragen", "désinscrivez-moi", "denme de baja", "wypiszcie mnie", "отпишите меня" or "配信停止" opt the sender out too. The quoted history is cut in each of those languages as well, so a campaign that carries its own opt-out line in German or Japanese does not opt out everyone who answers it. Only the new text of the reply is read: the quoted history below it carries your own opt-out wording and is ignored. Phrases match on whole words, so "stop by our booth" does not opt anyone out.
 
 Only a person answering you can opt out this way: someone replying in one of your campaign threads, or one of your contacts writing to you. Everything else that lands in a mailbox is left alone, even when it says "unsubscribe":
 

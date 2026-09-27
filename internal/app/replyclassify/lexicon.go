@@ -182,16 +182,6 @@ var unsubscribeKeywords = []string{
 	"meine daten zu loeschen",
 }
 
-// optOutLanguages are the languages unsubscribeKeywords carries phrases in.
-// Opt-out is read without the workspace's tagging languages, yet a campaign
-// written in one of these carries its own opt-out line in that language, and
-// the people who answer it quote it with their mail clients' markers ("Von:
-// ... Gesendet: ..."). Those markers are always cut first, or every such
-// reply would opt its sender out.
-var optOutLanguages = []string{"de"}
-
-var optOutPatterns = compileWordPatterns(unsubscribeKeywords)
-
 // gdprObjection is a GDPR Art. 21 objection. The verb also means "I disagree"
 // ("ich widerspreche hiermit Ihrer Preisberechnung"), so it counts only when
 // the same sentence goes on to what an objection objects to, behind an
@@ -207,25 +197,15 @@ var gdprObjection = regexp.MustCompile(`(^|[^a-z0-9])(widerspreche|wir widerspre
 	`(?:[^.!?:;,]|\b(?:gem|art|abs|nr|lit|i\.v\.m|z\.b|bzw|ggf)\.){0,90}?` +
 	`\b(der|dem|den|einer|jeder|jede|jeglicher|jeglichen) (?:[a-z-]+ ){0,2}?[a-z-]*(verarbeitung|nutzung|verwendung|speicherung|weitergabe|zusendung|kontaktaufnahme|werbung|mails|nachrichten|newsletter)`)
 
-// compileWordPatterns anchors each phrase on word boundaries; "don't" and
-// "opt-out" keep their apostrophe and hyphen literal.
-func compileWordPatterns(phrases []string) []*regexp.Regexp {
-	out := make([]*regexp.Regexp, 0, len(phrases))
-	for _, p := range phrases {
-		out = append(out, regexp.MustCompile(`(^|[^a-z0-9])`+regexp.QuoteMeta(p)+`($|[^a-z0-9])`))
-	}
-	return out
-}
-
 // quoteFolder folds the typographic apostrophes mail clients substitute while
 // typing, so "don’t email me" matches the straight-quote phrase. The opt-out
-// scan folds with accentFolder, which does the same and flattens umlauts.
+// scan folds with foldOptOut, which does the same and flattens accents.
 var quoteFolder = strings.NewReplacer("\u2019", "'", "\u2018", "'", "\u02bc", "'", "\u00b4", "'", "`", "'")
 
 func matchesOptOut(lowerText string) bool {
 	// A plain-text reply wraps a phrase across lines; the phrases hold one
 	// space between words.
-	lowerText = strings.Join(strings.Fields(accentFolder.Replace(lowerText)), " ")
+	lowerText = foldOptOut(lowerText)
 	for _, re := range optOutPatterns {
 		if re.MatchString(lowerText) {
 			return true

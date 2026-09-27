@@ -116,7 +116,7 @@ export default function LanguagePicker({ value, onChange }: { value: string[]; o
                                 >
                                     <CheckSquare checked={value.includes(l.code)} />
                                     <span className="truncate">{l.name}</span>
-                                    {!OFFLINE_RULE_LANGUAGES.has(l.code) && (
+                                    {l.code !== "en" && !OFFLINE_RULE_LANGUAGES.has(l.code) && (
                                         <span className="ml-auto text-[10.5px] text-slate-400">classifier hint only</span>
                                     )}
                                 </button>

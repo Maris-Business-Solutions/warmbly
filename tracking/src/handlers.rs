@@ -21,7 +21,9 @@ use crate::links::{LinkResolver, Resolution};
 use crate::producer::Producer;
 use crate::redirects::{normalize_host, Lookup, RedirectResolver};
 use crate::scanners::{AsnSources, Request, ScannerNetworks};
-use crate::unsubscribe::{body_content_type, invalid_token, valid_token, UnsubscribeProxy};
+use crate::unsubscribe::{
+    accept_language, body_content_type, invalid_token, valid_token, UnsubscribeProxy,
+};
 
 // 1x1 transparent GIF (43 bytes)
 const TRANSPARENT_GIF: &[u8] = &[
@@ -410,12 +412,15 @@ pub async fn unsubscribe_page(
     headers: HeaderMap,
 ) -> Response {
     if !valid_token(&token) {
-        return invalid_token();
+        return invalid_token(&headers);
     }
     if let Some(limited) = spend_unsubscribe_budget(&state, peer, &headers).await {
         return limited;
     }
-    state.unsubscribe.get(&token).await
+    state
+        .unsubscribe
+        .get(&token, accept_language(&headers))
+        .await
 }
 
 /// POST /unsubscribe/{token} — the confirm button, or a provider's RFC 8058
@@ -428,10 +433,13 @@ pub async fn unsubscribe_submit(
     body: Bytes,
 ) -> Response {
     if !valid_token(&token) {
-        return invalid_token();
+        return invalid_token(&headers);
     }
     let content_type = body_content_type(&headers);
-    state.unsubscribe.post(&token, body, content_type).await
+    state
+        .unsubscribe
+        .post(&token, body, content_type, accept_language(&headers))
+        .await
 }
 
 /// POST /unsubscribe/{token}/resubscribe — the "unsubscribed by mistake" button.
@@ -443,7 +451,7 @@ pub async fn unsubscribe_undo(
     body: Bytes,
 ) -> Response {
     if !valid_token(&token) {
-        return invalid_token();
+        return invalid_token(&headers);
     }
     if let Some(limited) = spend_unsubscribe_budget(&state, peer, &headers).await {
         return limited;
@@ -451,7 +459,7 @@ pub async fn unsubscribe_undo(
     let content_type = body_content_type(&headers);
     state
         .unsubscribe
-        .resubscribe(&token, body, content_type)
+        .resubscribe(&token, body, content_type, accept_language(&headers))
         .await
 }
 
