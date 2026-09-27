@@ -192,7 +192,7 @@ func (h *Handler) RequirePermission(perm models.OrganizationPermission) gin.Hand
 			return
 		}
 
-		has, xerr := h.OrganizationService.HasPermission(c.Request.Context(), *orgID, userID, perm)
+		has, xerr := h.memberHasPermission(c, *orgID, userID, perm)
 		if xerr != nil {
 			errx.JSON(c, xerr)
 			c.Abort()

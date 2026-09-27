@@ -250,6 +250,22 @@ func (s *tokenService) SwitchOrganization(ctx context.Context, sessionID uuid.UU
 	return nil
 }
 
+// LeaveOrganization leaves the session with no workspace rather than moving it
+// to another, so a form left open cannot write into a workspace it was not for.
+func (s *tokenService) LeaveOrganization(ctx context.Context, userID, orgID uuid.UUID) *errx.Error {
+	cleared, xerr := s.tokenRepository.ClearOrganization(ctx, userID, orgID)
+	if xerr != nil {
+		return xerr
+	}
+	var failed *errx.Error
+	for _, id := range cleared {
+		if xerr := s.deleteSession(ctx, id); xerr != nil {
+			failed = xerr
+		}
+	}
+	return failed
+}
+
 // GetCurrentOrganization retrieves the current organization for a session
 func (s *tokenService) GetCurrentOrganization(ctx context.Context, sessionID uuid.UUID) (*uuid.UUID, *errx.Error) {
 	session, err := s.GetSession(ctx, sessionID)

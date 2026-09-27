@@ -30,6 +30,7 @@ type TokenRepository interface {
 	// Organization switching
 	UpdateCurrentOrganization(ctx context.Context, sessionID uuid.UUID, orgID *uuid.UUID) *errx.Error
 	DefaultOrganization(ctx context.Context, userID uuid.UUID) (*uuid.UUID, *errx.Error)
+	ClearOrganization(ctx context.Context, userID, orgID uuid.UUID) ([]uuid.UUID, *errx.Error)
 }
 
 type tokenRepository struct {
@@ -403,6 +404,39 @@ func (r *tokenRepository) UpdateCurrentOrganization(ctx context.Context, session
 	}
 
 	return nil
+}
+
+// ClearOrganization deselects orgID on every live session of userID and
+// returns the sessions it changed.
+func (r *tokenRepository) ClearOrganization(ctx context.Context, userID, orgID uuid.UUID) ([]uuid.UUID, *errx.Error) {
+	const query = `
+		UPDATE sessions
+		SET current_organization_id = NULL
+		WHERE user_id = $1 AND current_organization_id = $2 AND revoked_at IS NULL
+		RETURNING id
+	`
+	params := []any{userID, orgID}
+	rows, err := r.DB.Query(ctx, query, params...)
+	if err != nil {
+		db.CaptureError(err, query, params, "query")
+		return nil, errx.InternalError()
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			db.CaptureError(err, query, params, "scan")
+			return nil, errx.InternalError()
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		db.CaptureError(err, query, params, "rows")
+		return nil, errx.InternalError()
+	}
+	return ids, nil
 }
 
 // DefaultOrganization picks the workspace a new session starts in: the one the

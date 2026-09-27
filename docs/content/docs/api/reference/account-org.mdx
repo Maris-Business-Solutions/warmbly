@@ -998,7 +998,7 @@ The organization is the workspace tenant. These endpoints handle creating and sw
 
 ### Get the workspace sending posture
 
-`GET /organizations/current/risk`
+`GET /organization/current/risk`
 
 Returns the workspace's abuse posture and, when it is restricted, why. Readable by any member: a workspace whose sending is limited should be able to see that it is.
 
@@ -1307,7 +1307,7 @@ The updated member object (same shape as a list-members entry).
 
 `DELETE /organization/members/:id`
 
-Removes a member from the organization.
+Removes a member from the organization. The member's sessions stop selecting it at once, so their next request that needs a workspace answers `400` until they switch to another one.
 
 Auth: Session only (not available to API keys). **Org permission** `manage_team`.
 
