@@ -52,7 +52,7 @@ export default function SenderSelector({
         () => [...(profile?.user.tags ?? [])].sort((a, b) => a.position - b.position),
         [profile?.user.tags],
     );
-    const { emails, isLoading } = useEmails({ query: "", tag: "", limit: 200 });
+    const { emails, isLoading } = useEmails({ query: "", tag: "" });
 
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");

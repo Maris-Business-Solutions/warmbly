@@ -154,7 +154,8 @@ func (r *crmRepository) ListNotes(ctx context.Context, orgID, contactID uuid.UUI
 	hasMore := false
 	if len(notes) > limit {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(notes[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(notes[limit-1].ID)
 		notes = notes[:limit]
 	}
 
@@ -246,7 +247,8 @@ func (r *crmRepository) ListActivities(ctx context.Context, orgID, contactID uui
 	hasMore := false
 	if len(activities) > limit {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(activities[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(activities[limit-1].ID)
 		activities = activities[:limit]
 	}
 
@@ -734,7 +736,8 @@ func (r *crmRepository) ListDeals(ctx context.Context, orgID uuid.UUID, pipeline
 	hasMore := false
 	if len(deals) > limit {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(deals[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(deals[limit-1].ID)
 		deals = deals[:limit]
 	}
 
@@ -1267,7 +1270,8 @@ func (r *crmRepository) ListCRMTasks(ctx context.Context, orgID uuid.UUID, conta
 	hasMore := false
 	if len(tasks) > limit {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(tasks[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(tasks[limit-1].ID)
 		tasks = tasks[:limit]
 	}
 

@@ -21,7 +21,7 @@ export function contactLabel(c: Contact): string {
 // sends this step.
 export function useCampaignSenderInboxes(campaignId: string): { inboxes: Inbox[]; loading: boolean } {
     const senders = useCampaignSenders(campaignId, !!campaignId);
-    const emails = useEmails({ query: "", tag: "", limit: 200, enabled: !!campaignId });
+    const emails = useEmails({ query: "", tag: "", enabled: !!campaignId });
     const ids = new Set((senders.data ?? []).filter((s) => s.enabled).map((s) => s.email_account_id));
     const inboxes = emails.emails.filter((e) => ids.has(e.id));
 

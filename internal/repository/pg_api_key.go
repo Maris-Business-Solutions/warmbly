@@ -183,7 +183,8 @@ func (r *apiKeyRepository) List(ctx context.Context, orgID uuid.UUID, limit int,
 	hasMore := false
 	if len(keys) > limit {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(keys[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(keys[limit-1].ID)
 		keys = keys[:limit]
 	}
 
@@ -538,7 +539,8 @@ func (r *apiKeyRepository) ListUsageLogs(ctx context.Context, orgID, keyID uuid.
 	hasMore := false
 	if len(logs) > limit {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(logs[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(logs[limit-1].ID)
 		logs = logs[:limit]
 	}
 

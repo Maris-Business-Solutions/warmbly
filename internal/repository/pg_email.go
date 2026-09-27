@@ -1205,7 +1205,8 @@ func (r *emailRepository) Search(ctx context.Context, orgID, search string, curs
 
 	if len(inboxes) > int(limit) {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(inboxes[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(inboxes[limit-1].ID)
 		inboxes = inboxes[:limit]
 	}
 

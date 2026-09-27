@@ -6,6 +6,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
 import { NumberInput } from "@/components/ui/field";
 import { Section, SectionShell } from "../_components/SectionShell";
@@ -14,6 +15,8 @@ import listLimitRequests from "@/lib/api/client/app/organizations/listLimitReque
 import submitLimitRequest from "@/lib/api/client/app/organizations/submitLimitRequest";
 import cancelLimitRequest from "@/lib/api/client/app/organizations/cancelLimitRequest";
 import useBrand from "@/hooks/useBrand";
+import useOrganizationLimits from "@/lib/api/hooks/app/organizations/useOrganizationLimits";
+import type OrganizationLimits from "@/lib/api/models/app/organizations/OrganizationLimits";
 import type {
     LimitField,
     LimitRequestStatus,
@@ -27,6 +30,31 @@ const FIELD_OPTIONS: { value: LimitField; label: string; hint: string }[] = [
     { value: "max_contacts", label: "Contacts", hint: "Store more recipient records" },
     { value: "daily_campaign_limit", label: "Daily sends", hint: "Send more campaign emails per day" },
 ];
+
+// What the workspace uses of each limit, read beside the limit itself.
+function usageFor(field: LimitField, data: OrganizationLimits): number {
+    const c = data.counts;
+    switch (field) {
+        case "max_email_accounts":
+            return data.mailboxes?.used ?? c.email_accounts;
+        case "max_campaigns":
+            return c.total_campaigns;
+        case "max_active_campaigns":
+            return c.active_campaigns;
+        case "max_team_members":
+            return c.total_members;
+        case "max_contacts":
+            return c.total_contacts;
+        case "daily_campaign_limit":
+            return c.emails_sent_today;
+    }
+}
+
+// Null is unmetered. Only the mailbox allowance can be; the server refuses a request for it.
+function limitFor(field: LimitField, data: OrganizationLimits): number | null {
+    if (field === "max_email_accounts") return data.mailboxes ? data.mailboxes.allowance : (data.limits.max_email_accounts ?? null);
+    return data.limits[field] ?? null;
+}
 
 const STATUS_TONE: Record<LimitRequestStatus, string> = {
     pending: "bg-amber-50 text-amber-700 border-amber-200",
@@ -51,25 +79,44 @@ export default function LimitsSettingsPage() {
         enabled: !!orgId,
     });
 
-    const [field, setField] = useState<LimitField>("max_email_accounts");
+    const limitsQuery = useOrganizationLimits();
+    const limits = limitsQuery.data;
+
+    // An unmetered resource has nothing to raise, so it is not offered.
+    const unlimited = useMemo(
+        () => (limits ? FIELD_OPTIONS.filter((o) => limitFor(o.value, limits) === null) : []),
+        [limits],
+    );
+    const requestable = useMemo(
+        () => FIELD_OPTIONS.filter((o) => !unlimited.some((u) => u.value === o.value)),
+        [unlimited],
+    );
+
+    const [chosen, setChosen] = useState<LimitField | null>(null);
+    const field: LimitField | undefined =
+        requestable.find((o) => o.value === chosen)?.value ?? requestable[0]?.value;
     const [requested, setRequested] = useState<number>(Number.NaN);
     const [reason, setReason] = useState<string>("");
 
     const fieldSelectOptions = useMemo<SelectOption[]>(
-        () => FIELD_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label })),
-        [],
+        () => requestable.map((opt) => ({ value: opt.value, label: opt.label })),
+        [requestable],
     );
+
+    const currentLimit = field && limits ? limitFor(field, limits) : null;
+    const currentUsage = field && limits ? usageFor(field, limits) : null;
 
     const submit = useMutation({
         mutationFn: () =>
             submitLimitRequest(orgId!, {
-                field,
+                field: field!,
                 requested,
                 reason,
             }),
         onSuccess: () => {
             toast.success("Request submitted — an admin will review shortly.");
             qc.invalidateQueries({ queryKey: ["app", "organizations", orgId, "limit-requests"] });
+            qc.invalidateQueries({ queryKey: ["organizations", "limits"] });
             setRequested(Number.NaN);
             setReason("");
         },
@@ -90,12 +137,18 @@ export default function LimitsSettingsPage() {
     });
 
     const rows = requestsQuery.data?.data ?? [];
+    const pending = rows.find((r) => r.status === "pending" && r.field === field);
 
     function onSubmit(e: React.FormEvent) {
         e.preventDefault();
+        if (!field || pending) return;
         const n = requested;
         if (!Number.isInteger(n) || n <= 0) {
             toast.error("Requested value must be a positive integer");
+            return;
+        }
+        if (currentLimit !== null && n <= currentLimit) {
+            toast.error(`Ask for more than your current ${currentLimit.toLocaleString()}`);
             return;
         }
         if (reason.trim().length < 10) {
@@ -114,30 +167,75 @@ export default function LimitsSettingsPage() {
                 eyebrow="Request an increase"
                 description="Tell us what you need and why. We aim to respond within one business day."
             >
+                {unlimited.length > 0 && (
+                    <p className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">
+                        {unlimited.map((o) => o.label).join(", ")} are unlimited on your plan, so there is nothing to
+                        request.
+                        {unlimited.some((o) => o.value === "max_email_accounts") && limits?.mailboxes && (
+                            <>
+                                {" "}
+                                All {limits.mailboxes.used.toLocaleString()} connected mailbox
+                                {limits.mailboxes.used === 1 ? " is" : "es are"} on the{" "}
+                                <Link to="/app/emails" className="font-medium underline hover:text-emerald-950">
+                                    Accounts page
+                                </Link>
+                                .
+                            </>
+                        )}
+                    </p>
+                )}
+                {limitsQuery.isPending ? (
+                    <p className="text-[12px] text-slate-500">Loading…</p>
+                ) : field && (
                 <form onSubmit={onSubmit} className="space-y-3">
                     <div>
                         <label className="text-[12px] font-medium text-slate-700">Resource</label>
                         <SelectMenu
                             value={field}
-                            onChange={(v) => setField(v as LimitField)}
+                            onChange={(v) => {
+                                setChosen(v as LimitField);
+                                setRequested(Number.NaN);
+                            }}
                             options={fieldSelectOptions}
                             className="mt-1 w-full"
                             aria-label="Resource"
                         />
                         <p className="text-[11px] text-slate-500 mt-1">
                             {FIELD_OPTIONS.find((o) => o.value === field)?.hint}
+                            {currentLimit !== null && currentUsage !== null && (
+                                <>
+                                    {" · "}
+                                    Using {currentUsage.toLocaleString()} of {currentLimit.toLocaleString()}
+                                </>
+                            )}
                         </p>
                     </div>
+                    {pending ? (
+                        <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                            <span className="min-w-0">
+                                You already asked for {pending.requested.toLocaleString()}, and it is waiting for review.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => cancel.mutate(pending.id)}
+                                disabled={cancel.isPending}
+                                className="ml-auto shrink-0 text-[11px] font-medium underline hover:text-amber-950 disabled:opacity-50"
+                            >
+                                Withdraw it
+                            </button>
+                        </div>
+                    ) : (
+                    <>
                     <div>
                         <label className="text-[12px] font-medium text-slate-700">
                             Requested value
                         </label>
                         <NumberInput
-                            min={1}
+                            min={currentLimit !== null ? currentLimit + 1 : 1}
                             value={requested}
                             onChange={setRequested}
                             className="mt-1 flex w-full"
-                            placeholder="e.g. 50"
+                            placeholder={currentLimit !== null ? `More than ${currentLimit.toLocaleString()}` : "e.g. 50"}
                         />
                     </div>
                     <div>
@@ -172,7 +270,10 @@ export default function LimitsSettingsPage() {
                             )}
                         </p>
                     </div>
+                    </>
+                    )}
                 </form>
+                )}
             </Section>
 
             <Section eyebrow="Your requests" description="Pending, approved, and historical decisions.">

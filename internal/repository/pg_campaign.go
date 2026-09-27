@@ -805,9 +805,9 @@ func (r *campaignRepository) Search(ctx context.Context, orgID, query string, cu
 		 AND ($5 = '' OR CASE WHEN $5 = 'paused' THEN c.status::text LIKE 'paused%%' ELSE c.status::text = $5 END)
 		 AND ($6 = '' OR c.kind = $6)
 		GROUP BY c.id
-		ORDER BY created_at DESC
+		ORDER BY c.created_at DESC, c.id DESC
 		LIMIT %d`,
-		CAMPAIGN_SELECT_FULL, limit,
+		CAMPAIGN_SELECT_FULL, limit+1,
 	)
 
 	var countSQL string
@@ -865,7 +865,8 @@ func (r *campaignRepository) Search(ctx context.Context, orgID, query string, cu
 	var hasMore bool
 	if len(campaigns) > int(limit) {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(campaigns[limit].ID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(campaigns[limit-1].ID)
 		campaigns = campaigns[:limit]
 	}
 

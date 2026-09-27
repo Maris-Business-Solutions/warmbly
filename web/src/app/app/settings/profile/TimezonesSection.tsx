@@ -28,9 +28,6 @@ import mailboxDisplayStatus from "@/lib/mailboxStatus";
 import { browserTimezone, followWorkspaceLabel, timezoneOptions } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 
-// Enough for any workspace's whole campaign and mailbox list in one page.
-const LIST_LIMIT = 200;
-
 const CAMPAIGN_TONE: Record<string, string> = {
     active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
     paused: "bg-amber-50 text-amber-700 ring-amber-200",
@@ -130,24 +127,9 @@ export default function TimezonesSection() {
 
 /* ── Campaigns ─────────────────────────────────────────────────────── */
 
-// Summaries and "Set all" speak for every row, so keep paging until the list is whole.
-// Returns true while pages remain; a failed page stops the loop instead of retrying it.
-function useRemainingPages(list: {
-    hasNextPage: boolean;
-    isFetchingNextPage: boolean;
-    isFetchNextPageError: boolean;
-    fetchNextPage: () => unknown;
-}): boolean {
-    const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = list;
-    React.useEffect(() => {
-        if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
-    }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
-    return hasNextPage && !isFetchNextPageError;
-}
-
 function CampaignClocks({ workspaceZone }: { workspaceZone: string }) {
-    const list = useCampaigns({ query: "", folder: "", limit: LIST_LIMIT });
-    const loading = useRemainingPages(list) || list.isPending;
+    const list = useCampaigns({ query: "", folder: "" });
+    const loading = list.isLoadingRest || list.isPending;
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [open, setOpen] = React.useState(false);
@@ -255,8 +237,8 @@ function CampaignZoneRow({ campaign, workspaceZone, fallback }: { campaign: Camp
 /* ── Mailboxes ─────────────────────────────────────────────────────── */
 
 function MailboxClocks({ workspaceZone }: { workspaceZone: string }) {
-    const list = useEmails({ query: "", tag: "", limit: LIST_LIMIT });
-    const loading = useRemainingPages(list) || list.isPending;
+    const list = useEmails({ query: "", tag: "" });
+    const loading = list.isLoadingRest || list.isPending;
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [open, setOpen] = React.useState(false);

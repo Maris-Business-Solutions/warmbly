@@ -663,7 +663,7 @@ function CampaignPicker({ value, name, onChange }: { value: string; name?: strin
     const [open, setOpen] = React.useState(false);
     const [q, setQ] = React.useState("");
     const debounced = useDebouncedValue(q.trim(), 250);
-    const list = useCampaigns({ query: debounced, folder: "", limit: 20, enabled: open });
+    const list = useCampaigns({ query: debounced, folder: "", limit: 20, enabled: open, all: false });
     return (
         <PopoverMenu open={open} onOpenChange={setOpen}>
             <PopoverMenuTrigger asChild>
