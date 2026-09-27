@@ -1664,7 +1664,7 @@ func mapStripeStatus(status stripe.SubscriptionStatus) models.SubscriptionStatus
 }
 
 // businessOnlyCheckoutNotice sits beside the pay button; it states the terms' business-only and tax clauses.
-const businessOnlyCheckoutNotice = "Warmbly is sold to businesses for business use only. Prices exclude taxes: where we do not charge VAT, your business accounts for it under the reverse charge."
+const businessOnlyCheckoutNotice = "Warmbly is sold to businesses for business use only. Prices exclude taxes: where we do not charge tax, your business accounts for any tax due in its own country, for example under the reverse charge."
 
 // businessNameCollection requires the buying company's legal name on every checkout.
 func businessNameCollection() *stripe.CheckoutSessionNameCollectionParams {
