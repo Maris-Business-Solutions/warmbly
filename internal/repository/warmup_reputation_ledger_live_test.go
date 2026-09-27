@@ -527,3 +527,60 @@ func TestLiveHealthFloorKeepsTheReadingThatProducedTheSentence(t *testing.T) {
 		t.Fatalf("a reading that applied did not replace the explanation: %+v", got)
 	}
 }
+
+// A throttle slows a mailbox down and keeps it in the pool; only a quarantine
+// or block stamps blocked_at, which every partner query reads as "out".
+func TestLiveHealthThrottleStaysInThePool(t *testing.T) {
+	f := newLedgerFixture(t)
+	ctx := context.Background()
+	id := f.addMailbox(t, f.user)
+	f.join(t, id)
+
+	eligible := func() bool {
+		t.Helper()
+		ids, err := f.warmups.GetPoolParticipants(ctx, "premium", true)
+		if err != nil {
+			t.Fatalf("GetPoolParticipants: %v", err)
+		}
+		for _, got := range ids {
+			if got == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	throttleEnd := time.Now().Add(3 * 24 * time.Hour)
+	if _, err := f.warmups.UpdateParticipantHealth(ctx, id, models.WarmupHealthThrottled, &throttleEnd, "placement throttle", 20); err != nil {
+		t.Fatalf("UpdateParticipantHealth: %v", err)
+	}
+	if got := f.standing(t, id); got.state != "throttled" || got.blockedAt != nil {
+		t.Fatalf("a throttle was recorded as a block: %+v", got)
+	}
+	if !eligible() {
+		t.Fatal("a throttled mailbox was taken out of the pool; it should run at reduced volume")
+	}
+
+	quarantineEnd := time.Now().Add(7 * 24 * time.Hour)
+	if _, err := f.warmups.UpdateParticipantHealth(ctx, id, models.WarmupHealthQuarantined, &quarantineEnd, "complaints", 50); err != nil {
+		t.Fatalf("UpdateParticipantHealth: %v", err)
+	}
+	if got := f.standing(t, id); got.blockedAt == nil {
+		t.Fatalf("a quarantine did not stamp blocked_at: %+v", got)
+	}
+	if eligible() {
+		t.Fatal("a quarantined mailbox stayed in the pool")
+	}
+
+	// A served quarantine re-judged as a throttle comes back into the pool.
+	f.exec(t, `UPDATE warmup_pool_participants SET blocked_until = now() - interval '1 hour' WHERE email_account_id = $1`, id)
+	if _, err := f.warmups.UpdateParticipantHealth(ctx, id, models.WarmupHealthThrottled, &throttleEnd, "placement throttle", 20); err != nil {
+		t.Fatalf("UpdateParticipantHealth: %v", err)
+	}
+	if got := f.standing(t, id); got.state != "throttled" || got.blockedAt != nil {
+		t.Fatalf("a quarantine that ended in a throttle kept blocked_at: %+v", got)
+	}
+	if !eligible() {
+		t.Fatal("a mailbox released from quarantine into a throttle stayed out of the pool")
+	}
+}

@@ -9,12 +9,12 @@ import (
 )
 
 // StartWarmupHealthSweep runs a periodic health evaluation across all warmup pool participants.
-// Runs every interval (typically once per hour) until the context is cancelled.
+// Runs on boot, so a release that changes the rules re-judges every mailbox at once, then every interval.
 func (s *JobsService) StartWarmupHealthSweep(ctx context.Context, interval time.Duration) {
 	if s.WarmupService == nil {
 		return
 	}
-	jobrun.Loop(ctx, "warmup_health_sweep", interval, false, func(ctx context.Context) error {
+	jobrun.Loop(ctx, "warmup_health_sweep", interval, true, func(ctx context.Context) error {
 		sweepCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 		evaluated, changes, xerr := s.WarmupService.EvaluateAllParticipants(sweepCtx)
