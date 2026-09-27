@@ -398,4 +398,9 @@ func TestValidateQuestionsKeepsASavedLabelThatBecameBuiltIn(t *testing.T) {
 	if err := ValidateQuestions([]models.InboxTagQuestion{q}, []models.InboxTagQuestion{laterMaybe(models.InboxTagQuestionAction{})}); err == nil {
 		t.Fatal("a new question took a built-in label")
 	}
+	moved := q
+	moved.ID = "q7"
+	if err := ValidateQuestions([]models.InboxTagQuestion{moved}, []models.InboxTagQuestion{q}); err == nil {
+		t.Fatal("a saved built-in label moved to a new question")
+	}
 }

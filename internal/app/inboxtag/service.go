@@ -205,14 +205,17 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 			return Decision{}, err
 		}
 	case facts.DeterministicKind == KindNotification && HasContent(state):
-		// A notice decided offline is still asked whether it needs acting on,
-		// so a failed payment is not filed away with the receipts. A failed
-		// call files it as before, unasked, for --recheck-notifications.
+		// A notice decided offline is still asked whether it needs acting on.
 		if qs := NotificationQuestions(ws.questions, ws.actionRequired); len(qs) > 0 {
 			custom = ws.questions
 			state.Language = LanguageHint(ws.languages)
 			resp, err = s.asker.Ask(ctx, state, qs)
+			if err != nil && !ws.actionRequired {
+				release()
+				return Decision{}, err
+			}
 			if err != nil {
+				// Filed as before the check existed; --recheck-notifications asks it later.
 				log.Warn().Err(err).Str("message_id", m.MessageID).Msg("inbox tagging: action check failed; notification filed unasked")
 				resp = nil
 			}
@@ -480,14 +483,17 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 	}
 
 	var candidates []repository.BackfillCandidate
+	var langs []string
 	var err error
 	switch {
 	case opts.RecheckColdInbound:
 		candidates, err = s.repo.ListColdInboundInCampaignThreads(ctx, orgID, opts.Since, opts.Limit)
 	case opts.RecheckNotifications:
-		if !s.workspace(ctx, orgID).actionRequired {
+		ws := s.workspace(ctx, orgID)
+		if !ws.actionRequired {
 			return p, ErrNothingToAsk
 		}
+		langs = ws.languages
 		candidates, err = s.repo.ListUncheckedNotifications(ctx, orgID, opts.Since, opts.Limit)
 	default:
 		candidates, err = s.repo.ListUntagged(ctx, orgID, opts.Since, opts.Limit)
@@ -543,9 +549,8 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 			}
 		}
 		if opts.RecheckNotifications {
-			// Nothing to read means nothing is asked, so the verdict would
-			// come back unasked and be offered again on every run.
-			if !HasContent(BuildState(c.Subject, c.BodyText, "", "")) {
+			// Nothing to read is never asked, so reopening it would loop forever.
+			if !HasContent(BuildState(c.Subject, c.BodyText, "", "", langs...)) {
 				p.Skipped++
 				if opts.OnProgress != nil {
 					opts.OnProgress(p, c.Subject)
@@ -584,10 +589,13 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 				log.Warn().Err(rerr).Str("thread_id", c.ThreadID).Msg("inbox tagging recheck: stale labels kept")
 			}
 		}
+		_, asked := d.SignalStrength[SigActionRequired]
 		switch {
 		case err != nil:
 			p.Failed++
 			log.Warn().Err(err).Str("message_id", c.MessageID).Msg("inbox tagging backfill: message failed")
+		case opts.RecheckNotifications && stored && d.Kind == KindNotification && !asked:
+			p.Failed++
 		case d.Skipped() || d.KindSource == "":
 			p.Skipped++
 		default:

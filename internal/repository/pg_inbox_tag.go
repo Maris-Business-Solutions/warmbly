@@ -392,8 +392,8 @@ func (r *inboxTagRepository) listCandidates(ctx context.Context, filter string, 
 
 // Reopen drops one stored verdict of the given kind so the message can be
 // classified again, and returns the labels it had written. Only a complete
-// verdict of that kind is touched. The message returns to the inbox with it,
-// so a re-classification that fails leaves it untagged and visible.
+// verdict of that kind is touched.
+// The message returns to the inbox with it, so a failed re-classification leaves it visible.
 func (r *inboxTagRepository) Reopen(ctx context.Context, orgID uuid.UUID, messageID, kind string) ([]string, error) {
 	var labels []string
 	err := r.db.QueryRow(ctx, `

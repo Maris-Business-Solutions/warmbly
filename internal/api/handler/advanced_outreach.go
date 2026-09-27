@@ -38,8 +38,7 @@ func (h *Handler) UpdateOutreachSettings(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.BadRequest, "invalid user id"))
 		return
 	}
-	// A field the request omits takes its default rather than its zero value,
-	// so a client written before a default-on setting cannot switch it off.
+	// An omitted field takes its default, so an older client cannot switch a default-on setting off.
 	req := models.UpsertOutreachSettingsRequest{Settings: models.DefaultAdvancedOutreachSettings()}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errx.JSON(c, errx.InvalidBody(err))

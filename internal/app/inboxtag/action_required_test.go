@@ -265,3 +265,38 @@ func TestRecheckNotificationsRefusesWhenNothingIsAsked(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNothingToAsk", err)
 	}
 }
+
+// Without the built-in check nothing would re-ask a notice filed unasked, so a
+// failed call for the workspace's own questions releases it for a backfill.
+func TestFailedNotificationQuestionReleasesWithTheCheckOff(t *testing.T) {
+	asker := &failingAsker{}
+	repo := &fakeRepo{}
+	svc := newService(t, asker, repo)
+	svc.WireSettings(noticeSettings(false, invoiceQuestion(true)))
+
+	m := billingNotice()
+	if _, err := svc.Classify(context.Background(), m); err == nil {
+		t.Fatal("a failed call was not reported")
+	}
+	if len(repo.saved) != 0 || repo.tagged[m.MessageID] {
+		t.Fatalf("saved %v, claim kept %v", repo.saved, repo.tagged[m.MessageID])
+	}
+}
+
+// A recheck whose call failed asked nothing, and says so.
+func TestRecheckNotificationsCountsAFailedCheckAsFailed(t *testing.T) {
+	n := billingNotice()
+	repo := &fakeRepo{notices: []repository.BackfillCandidate{{
+		EmailAccountID: n.EmailAccountID, MessageID: n.MessageID, ThreadID: n.ThreadID,
+		Subject: n.Subject, BodyText: n.BodyText, FromAddr: n.FromAddr,
+	}}}
+	svc := newService(t, &failingAsker{}, repo)
+
+	p, err := svc.Backfill(context.Background(), uuid.New(), BackfillOptions{RecheckNotifications: true})
+	if err != nil {
+		t.Fatalf("recheck: %v", err)
+	}
+	if p.Failed != 1 || p.Classified != 0 {
+		t.Fatalf("progress = %+v, want the unasked recheck counted as failed", p)
+	}
+}
