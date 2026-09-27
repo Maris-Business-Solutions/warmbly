@@ -167,10 +167,16 @@ func ReservedLabel(label string) bool {
 }
 
 // ValidateQuestions refuses a workspace question whose label the built-in
-// taxonomy owns. Shape is checked by the settings model.
-func ValidateQuestions(qs []models.InboxTagQuestion) error {
+// taxonomy owns. A label the workspace had already saved stays valid, so a
+// built-in label added later does not block every settings save that follows.
+// Shape is checked by the settings model.
+func ValidateQuestions(qs, saved []models.InboxTagQuestion) error {
+	kept := map[string]bool{}
+	for _, l := range CustomLabels(saved) {
+		kept[strings.ToLower(l)] = true
+	}
 	check := func(label string) error {
-		if ReservedLabel(label) {
+		if ReservedLabel(label) && !kept[strings.ToLower(label)] {
 			return fmt.Errorf("label %q is a built-in tagging label; pick another name", label)
 		}
 		return nil

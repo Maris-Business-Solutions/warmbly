@@ -213,4 +213,14 @@ func TestLiveInboxTagUncheckedNotifications(t *testing.T) {
 	if !slices.Equal(ids, []string{"<old@notice>"}) {
 		t.Fatalf("offered %v, want only the notice never asked", ids)
 	}
+
+	// Reopening it brings the message back to the inbox until it is judged again.
+	f.exec(`UPDATE unibox_emails SET automated = true WHERE message_id = '<old@notice>' AND email_id = $1`, f.mailbox)
+	if _, err := NewInboxTagRepository(f.pool).Reopen(ctx, f.org, "<old@notice>", "notification"); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	var automated bool
+	if err := f.pool.QueryRow(ctx, `SELECT automated FROM unibox_emails WHERE message_id = '<old@notice>' AND email_id = $1`, f.mailbox).Scan(&automated); err != nil || automated {
+		t.Fatalf("automated = %v (%v), want the reopened message back in the inbox", automated, err)
+	}
 }

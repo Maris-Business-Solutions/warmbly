@@ -59,11 +59,11 @@ So every notification is also asked one question: does it tell the recipient abo
 - the conversation **stays in the inbox**, and in Unread and the unread badge, instead of moving to Automated
 - it is labelled **Action required** (next to **Notification**), and the **Action required** view in the rail lists every such conversation with its unread count
 - it sorts with the replies due today when the inbox is sorted by relevance
-- members who can both manage mailboxes and use the inbox get a **Mail that needs action** [notification](/guides/notifications/), by email too unless they turned it off. It is tied to the message, so reading the message reads the notification
+- members who can both manage mailboxes and use the inbox get a **Mail that needs action** [notification](/guides/notifications/), by email too unless they turned it off. It names the mailbox and links to the conversation but never quotes the message, since mail that claims an account is suspended is also what phishing looks like. It is tied to the message, so reading the message reads the notification
 
 Routine notices are not affected: a sign-in code, a receipt, a newsletter or a "your settings were changed" confirmation still goes to Automated. Archive the conversation once the problem is dealt with. The label is an ordinary label: removing it takes the conversation out of the **Action required** view but leaves it in the inbox.
 
-A notification recognised offline by its sender alone costs one small call for this question and nothing else; a notification the model judged has it in the same call as every other question. If the call fails, the message is left untagged and stays in the inbox rather than being filed away unread.
+A notification recognised offline by its sender alone costs one small call for this question and nothing else; a notification the model judged has it in the same call as every other question. If that call fails, the notification is filed under Automated as it was before the check existed, and `--recheck-notifications` (below) asks it later.
 
 It is on by default for every workspace. To turn it off, clear **Keep mail that needs action in the inbox** under **Settings > Sending > Automated mail**; notifications then go to Automated as before and no call is made for them. To file other automated mail your own way, ask one of [your own questions](#your-own-questions) of notifications too.
 
@@ -222,7 +222,7 @@ Notifications classified before the action check existed are sitting in Automate
 warmblyctl inbox-tag backfill --org you@example.com --days 30 --recheck-notifications
 ```
 
-Only messages stored as a notification by a verdict that never asked the action check are covered, and each is asked again, so the ones that need action return to the inbox labelled **Action required**. The workspace has to ask notifications something: the command refuses when **Keep mail that needs action in the inbox** is off and none of its questions is asked of notifications. A message whose call fails is left untagged, and in the inbox, for the next plain backfill. Like any backfill, it labels, moves and never notifies.
+Only messages stored as a notification by a verdict that never asked the action check are covered, and each is asked again, so the ones that need action return to the inbox labelled **Action required**. The command refuses when **Keep mail that needs action in the inbox** is off. A notification with no text to read is skipped. A message whose call fails is offered again by the next run, or by a plain backfill. Like any backfill, it labels, moves and never notifies.
 
 ## What it costs
 

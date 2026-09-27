@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -703,10 +702,11 @@ func containsSpamFlag(flags []string) bool {
 // because they are facts and a question about a fact is a question that can be
 // answered confidently and wrongly.
 func (s *JobsService) tagInboundMessage(ctx context.Context, e *models.JobEventNewEmail) {
-	orgID, err := s.orgForMailbox(ctx, e.Message.EmailID)
-	if err != nil || orgID == uuid.Nil {
+	account := s.recipientAccount(ctx, e.Message.EmailID)
+	if account == nil || account.OrganizationID == nil || *account.OrganizationID == uuid.Nil {
 		return
 	}
+	orgID := *account.OrganizationID
 
 	// Our previous message in the thread, read from the database rather than
 	// asked. A reply is an answer, and the question it answers is not in it:
@@ -727,7 +727,7 @@ func (s *JobsService) tagInboundMessage(ctx context.Context, e *models.JobEventN
 	// Live arrivals only; the backfill labels history and never acts on it.
 	s.actOnInboxTag(ctx, orgID, msg, d)
 	if d.ActionRequired {
-		s.notifyActionRequired(ctx, orgID, e.Message)
+		s.notifyActionRequired(orgID, account.Email, e.Message)
 	}
 
 	// Tell the dashboard the message changed.
@@ -745,28 +745,31 @@ func (s *JobsService) tagInboundMessage(ctx context.Context, e *models.JobEventN
 }
 
 // notifyActionRequired tells the members who keep mailboxes running that one
-// received mail needing action, since nobody may be reading that mailbox.
-func (s *JobsService) notifyActionRequired(ctx context.Context, orgID uuid.UUID, m *models.EmailMessageStoreData) {
+// received mail needing action, since nobody may be reading that mailbox. The
+// sender's subject stays out: this mail is phishing-shaped by selection.
+func (s *JobsService) notifyActionRequired(orgID uuid.UUID, mailbox string, m *models.EmailMessageStoreData) {
 	if s.Notifier == nil {
 		return
 	}
 	title := "Action required in a mailbox"
-	if acc := s.recipientAccount(ctx, m.EmailID); acc != nil && acc.Email != "" {
-		title = "Action required in " + acc.Email
+	if mailbox != "" {
+		title = "Action required in " + mailbox
 	}
-	body := strings.TrimSpace(m.Subject)
-	if body == "" {
-		body = "(no subject)"
+	notify := func(ctx context.Context) {
+		s.Notifier.NotifyOrgAboutMessage(ctx, orgID, models.PermManageEmails|models.PermAccessUnibox, m.ID,
+			models.NotifInboxActionRequired, title,
+			"An automated message in this mailbox says something needs someone to act. Open it in the inbox.",
+			advanced.UniboxThreadLink(m.ThreadID), map[string]any{
+				"email_account_id": m.EmailID.String(),
+				"thread_id":        m.ThreadID,
+			}, "inbox_action_required:"+m.ID.String())
 	}
-	link := "/app/unibox"
-	if m.ThreadID != "" {
-		link = "/app/unibox/all/" + url.PathEscape(m.ThreadID)
-	}
-	s.Notifier.NotifyOrgAboutMessage(ctx, orgID, models.PermManageEmails|models.PermAccessUnibox, m.ID,
-		models.NotifInboxActionRequired, title, body, link, map[string]any{
-			"email_account_id": m.EmailID.String(),
-			"thread_id":        m.ThreadID,
-		}, "inbox_action_required:"+m.ID.String())
+	// Off the ingest path: the fan-out is a round trip per member.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		notify(ctx)
+	}()
 }
 
 // actOnInboxTag executes the actions the tagging policy allows for one
@@ -802,18 +805,4 @@ func (s *JobsService) actOnInboxTag(ctx context.Context, orgID uuid.UUID, msg in
 		log.Warn().Err(err).Str("message_id", msg.MessageID).Msg("inbox tagging: actions not recorded")
 	}
 	log.Info().Str("message_id", msg.MessageID).Strs("actions", done).Msg("inbox tagging acted on a reply")
-}
-
-// orgForMailbox resolves the workspace that owns a mailbox. Tagging is scoped
-// per workspace (labels, storage, idempotency), so a mailbox with no org is not
-// taggable rather than taggable into nowhere.
-func (s *JobsService) orgForMailbox(ctx context.Context, accountID uuid.UUID) (uuid.UUID, error) {
-	if s.EmailRepository == nil {
-		return uuid.Nil, nil
-	}
-	account, xerr := s.EmailRepository.GetByID(ctx, accountID)
-	if xerr != nil || account == nil || account.OrganizationID == nil {
-		return uuid.Nil, nil
-	}
-	return *account.OrganizationID, nil
 }

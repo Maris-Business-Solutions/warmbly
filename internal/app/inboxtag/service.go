@@ -207,14 +207,14 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 	case facts.DeterministicKind == KindNotification && HasContent(state):
 		// A notice decided offline is still asked whether it needs acting on,
 		// so a failed payment is not filed away with the receipts. A failed
-		// call leaves it untagged and in the inbox, never hidden unread.
+		// call files it as before, unasked, for --recheck-notifications.
 		if qs := NotificationQuestions(ws.questions, ws.actionRequired); len(qs) > 0 {
 			custom = ws.questions
 			state.Language = LanguageHint(ws.languages)
 			resp, err = s.asker.Ask(ctx, state, qs)
 			if err != nil {
-				release()
-				return Decision{}, err
+				log.Warn().Err(err).Str("message_id", m.MessageID).Msg("inbox tagging: action check failed; notification filed unasked")
+				resp = nil
 			}
 		}
 	}
@@ -453,7 +453,7 @@ type BackfillOptions struct {
 
 // ErrNothingToAsk refuses a notification re-check for a workspace that asks
 // automated mail nothing.
-var ErrNothingToAsk = errors.New("this workspace keeps no automated mail in the inbox: turn on \"Keep mail that needs action in the inbox\" or ask one of its questions of notifications first")
+var ErrNothingToAsk = errors.New("this workspace does not ask notifications whether they need action: turn on \"Keep mail that needs action in the inbox\" under Settings > Sending first")
 
 // Backfill classifies historical inbound mail that has never been tagged.
 //
@@ -485,8 +485,7 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 	case opts.RecheckColdInbound:
 		candidates, err = s.repo.ListColdInboundInCampaignThreads(ctx, orgID, opts.Since, opts.Limit)
 	case opts.RecheckNotifications:
-		ws := s.workspace(ctx, orgID)
-		if len(NotificationQuestions(ws.questions, ws.actionRequired)) == 0 {
+		if !s.workspace(ctx, orgID).actionRequired {
 			return p, ErrNothingToAsk
 		}
 		candidates, err = s.repo.ListUncheckedNotifications(ctx, orgID, opts.Since, opts.Limit)
@@ -544,6 +543,15 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 			}
 		}
 		if opts.RecheckNotifications {
+			// Nothing to read means nothing is asked, so the verdict would
+			// come back unasked and be offered again on every run.
+			if !HasContent(BuildState(c.Subject, c.BodyText, "", "")) {
+				p.Skipped++
+				if opts.OnProgress != nil {
+					opts.OnProgress(p, c.Subject)
+				}
+				continue
+			}
 			stale, err = s.repo.Reopen(ctx, orgID, c.MessageID, KindNotification)
 			if err != nil {
 				p.Failed++

@@ -18812,7 +18812,7 @@
       "patch": {
         "operationId": "deliverability-ops_update_settings",
         "summary": "Update outreach settings",
-        "description": "Replaces the organization's advanced outreach settings with the supplied object (upserted, not deep-merged). Returns no body.",
+        "description": "Replaces the organization's advanced outreach settings with the supplied object (upserted, not deep-merged). A field the object omits takes its default, not its previous value. Returns no body.",
         "tags": [
           "deliverability-ops"
         ],

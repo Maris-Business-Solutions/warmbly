@@ -133,19 +133,23 @@ func TestOfflineNotificationWithTheCheckOffMakesNoCall(t *testing.T) {
 	}
 }
 
-// A failed check never hides the notice: it stays untagged, and in the inbox,
-// for the next backfill.
-func TestFailedActionCheckLeavesTheNoticeUntagged(t *testing.T) {
+// A failed check files the notice as it was filed before the check existed,
+// unasked, so an outage does not fill every inbox with newsletters and the
+// notification re-check asks it later.
+func TestFailedActionCheckFilesTheNoticeUnasked(t *testing.T) {
 	asker := &failingAsker{}
 	repo := &fakeRepo{}
 	svc := newService(t, asker, repo)
 
-	m := billingNotice()
-	if _, err := svc.Classify(context.Background(), m); err == nil {
-		t.Fatal("a failed call was not reported")
+	d, err := svc.Classify(context.Background(), billingNotice())
+	if err != nil {
+		t.Fatalf("classify: %v", err)
 	}
-	if asker.calls != 1 || len(repo.saved) != 0 || repo.tagged[m.MessageID] {
-		t.Fatalf("calls %d, saved %v, claim kept %v", asker.calls, repo.saved, repo.tagged[m.MessageID])
+	if asker.calls != 1 || !d.Automated() || len(repo.saved) != 1 || !repo.saved[0].Automated {
+		t.Fatalf("calls %d, decision %+v, saved %+v", asker.calls, d, repo.saved)
+	}
+	if string(repo.saved[0].Answers) != "{}" {
+		t.Fatalf("answers = %s, want none so the re-check offers it again", repo.saved[0].Answers)
 	}
 }
 
@@ -237,9 +241,26 @@ func TestRecheckNotificationsReclassifiesStoredNotices(t *testing.T) {
 	}
 }
 
+// Nothing to read is skipped rather than reopened, or it would come back
+// unasked and be offered on every run.
+func TestRecheckNotificationsSkipsEmptyNotices(t *testing.T) {
+	asker := &countingAsker{}
+	repo := &fakeRepo{notices: []repository.BackfillCandidate{{MessageID: "<empty@notice>", FromAddr: "no-reply@vendor.test"}}}
+	svc := newService(t, asker, repo)
+
+	p, err := svc.Backfill(context.Background(), uuid.New(), BackfillOptions{RecheckNotifications: true})
+	if err != nil {
+		t.Fatalf("recheck: %v", err)
+	}
+	if p.Skipped != 1 || asker.calls != 0 || len(repo.reopened) != 0 {
+		t.Fatalf("progress %+v, calls %d, reopened %v", p, asker.calls, repo.reopened)
+	}
+}
+
 func TestRecheckNotificationsRefusesWhenNothingIsAsked(t *testing.T) {
 	svc := newService(t, &countingAsker{}, &fakeRepo{})
-	svc.WireSettings(noticeSettings(false))
+	// A question asked of notifications alone does not write the check's answer.
+	svc.WireSettings(noticeSettings(false, invoiceQuestion(true)))
 	if _, err := svc.Backfill(context.Background(), uuid.New(), BackfillOptions{RecheckNotifications: true}); !errors.Is(err, ErrNothingToAsk) {
 		t.Fatalf("err = %v, want ErrNothingToAsk", err)
 	}

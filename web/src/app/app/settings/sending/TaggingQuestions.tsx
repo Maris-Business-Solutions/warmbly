@@ -74,8 +74,9 @@ function actionSummary(a: InboxTagQuestionAction): string {
 }
 
 // problems mirrors the server's checks, so Save explains a refusal instead of
-// the autosave failing after the fact.
-function problems(q: InboxTagQuestion, taken: Set<string>): string[] {
+// the autosave failing after the fact. kept holds the labels the question was
+// saved with, which stay valid even if a built-in label took the name since.
+function problems(q: InboxTagQuestion, taken: Set<string>, kept: Set<string>): string[] {
     const out: string[] = [];
     if (!q.question.trim()) out.push("Write the question.");
     const seen = new Set<string>();
@@ -87,7 +88,7 @@ function problems(q: InboxTagQuestion, taken: Set<string>): string[] {
         }
         const key = name.toLowerCase();
         if ([...name].length > INBOX_TAG_LABEL_MAX_LEN) out.push(`"${name}" is longer than ${INBOX_TAG_LABEL_MAX_LEN} characters.`);
-        if (isAutomaticTag(name)) out.push(`"${name}" is a built-in label. Pick another name.`);
+        if (isAutomaticTag(name) && !kept.has(key)) out.push(`"${name}" is a built-in label. Pick another name.`);
         else if (taken.has(key) || seen.has(key)) out.push(`"${name}" is already used by another question or option.`);
         seen.add(key);
     };
@@ -294,7 +295,8 @@ function QuestionForm({
     const [q, setQ] = React.useState<InboxTagQuestion>(initial);
     const [tried, setTried] = React.useState(false);
     const dirty = JSON.stringify(q) !== JSON.stringify(initial);
-    const issues = problems(q, taken);
+    const kept = React.useMemo(() => new Set(labelsOf(initial).map((l) => l.toLowerCase())), [initial]);
+    const issues = problems(q, taken, kept);
 
     const patch = (next: Partial<InboxTagQuestion>) => setQ((prev) => ({ ...prev, ...next }));
     const patchChoice = (i: number, next: Partial<InboxTagChoice>) =>

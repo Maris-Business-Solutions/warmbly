@@ -106,11 +106,15 @@ The `unsubscribe` block is the workspace default for the opt-out appended after 
 `send_time_optimization.enabled` defaults to `false`. Set it to `true` and campaign scheduling holds each send until the recipient's local clock reaches one of `preferred_hours`, resolving the recipient's timezone from the contact's `timezone` custom field, then the country-code suffix of its email domain, then `default_contact_timezone`. It can only delay a send: the campaign window, the mailbox's sending profile, its daily cap, and the campaign end date all still bind. See [Sending behavior](/guides/sending-behavior/).
 </Callout>
 
+<Callout type="info" title="Mail that needs action stays in the inbox by default">
+`inbox_tagging.action_required_in_inbox` defaults to `true`. With automatic inbox tagging on, each automated notification is also asked whether it needs someone to act (a failed payment, a suspended account, a suspicious sign-in, a sending limit, a service about to expire), and the ones that do stay in the inbox labelled Action required instead of moving to the Automated view. A question in `inbox_tagging.questions` with `automated: true` is also asked of notifications. See [Mail that needs your action](/guides/inbox-tagging/#mail-that-needs-your-action).
+</Callout>
+
 ## Update outreach settings
 
 `PATCH /outreach/settings`
 
-Replaces the organization's advanced outreach settings with the supplied object. Send the full settings block (the value is upserted, not deep-merged). Returns no body on success.
+Replaces the organization's advanced outreach settings with the supplied object. Send the full settings block (the value is upserted, not deep-merged). A field the object omits takes its default, not its previous value. Returns no body on success.
 
 Auth: **Scope** `WRITE_CAMPAIGNS` · **Org permission** `manage_settings`
 

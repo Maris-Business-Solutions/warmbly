@@ -196,16 +196,16 @@ func TestValidateQuestionsRefusesBuiltInLabels(t *testing.T) {
 	for _, label := range []string{LabelNeedsReview, "needs review", "SALES PITCH", LabelGoneQuiet} {
 		q := laterMaybe(models.InboxTagQuestionAction{})
 		q.Label = label
-		if err := ValidateQuestions([]models.InboxTagQuestion{q}); err == nil {
+		if err := ValidateQuestions([]models.InboxTagQuestion{q}, nil); err == nil {
 			t.Errorf("%q accepted", label)
 		}
 	}
 	c := roleQuestion()
 	c.Choices[0].Label = "interested"
-	if err := ValidateQuestions([]models.InboxTagQuestion{c}); err == nil {
+	if err := ValidateQuestions([]models.InboxTagQuestion{c}, nil); err == nil {
 		t.Error("a built-in label accepted as a choice")
 	}
-	if err := ValidateQuestions([]models.InboxTagQuestion{laterMaybe(models.InboxTagQuestionAction{}), roleQuestion()}); err != nil {
+	if err := ValidateQuestions([]models.InboxTagQuestion{laterMaybe(models.InboxTagQuestionAction{}), roleQuestion()}, nil); err != nil {
 		t.Fatalf("valid questions refused: %v", err)
 	}
 }
@@ -384,5 +384,18 @@ func TestRecheckKeepsLabelsWhenNothingWasStored(t *testing.T) {
 	}
 	if len(cats.removed) != 0 {
 		t.Fatalf("labels removed with no verdict stored: %v", cats.removed)
+	}
+}
+
+// A label saved before the built-in taxonomy took its name keeps working; a
+// new question cannot take it.
+func TestValidateQuestionsKeepsASavedLabelThatBecameBuiltIn(t *testing.T) {
+	q := laterMaybe(models.InboxTagQuestionAction{})
+	q.Label = "Action required"
+	if err := ValidateQuestions([]models.InboxTagQuestion{q}, []models.InboxTagQuestion{q}); err != nil {
+		t.Fatalf("saved label refused: %v", err)
+	}
+	if err := ValidateQuestions([]models.InboxTagQuestion{q}, []models.InboxTagQuestion{laterMaybe(models.InboxTagQuestionAction{})}); err == nil {
+		t.Fatal("a new question took a built-in label")
 	}
 }

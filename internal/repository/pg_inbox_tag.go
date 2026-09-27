@@ -392,13 +392,24 @@ func (r *inboxTagRepository) listCandidates(ctx context.Context, filter string, 
 
 // Reopen drops one stored verdict of the given kind so the message can be
 // classified again, and returns the labels it had written. Only a complete
-// verdict of that kind is touched.
+// verdict of that kind is touched. The message returns to the inbox with it,
+// so a re-classification that fails leaves it untagged and visible.
 func (r *inboxTagRepository) Reopen(ctx context.Context, orgID uuid.UUID, messageID, kind string) ([]string, error) {
 	var labels []string
 	err := r.db.QueryRow(ctx, `
-		DELETE FROM inbox_tag_results
-		WHERE organization_id = $1 AND message_id = $2 AND status = 'complete' AND kind = $3
-		RETURNING labels
+		WITH dropped AS (
+			DELETE FROM inbox_tag_results
+			WHERE organization_id = $1 AND message_id = $2 AND status = 'complete' AND kind = $3
+			RETURNING email_account_id, message_id, labels
+		), shown AS (
+			UPDATE unibox_emails ue
+			SET automated = false
+			FROM dropped
+			WHERE ue.email_id = dropped.email_account_id
+			  AND ue.message_id = dropped.message_id
+			  AND ue.automated
+		)
+		SELECT labels FROM dropped
 	`, orgID, messageID, kind).Scan(&labels)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
