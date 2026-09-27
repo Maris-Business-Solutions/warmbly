@@ -145,7 +145,7 @@ func TestLiveMultiSenderRepliesCountForEveryMailbox(t *testing.T) {
 		}
 	}
 
-	summary, xerr := repository.NewAnalyticsRepository(f.handle).GetCampaignSummary(ctx, f.org, f.campaign)
+	summary, xerr := repository.NewAnalyticsRepository(f.handle).GetCampaignSummary(ctx, f.org, f.campaign, nil)
 	if xerr != nil {
 		t.Fatalf("campaign summary: %v", xerr)
 	}

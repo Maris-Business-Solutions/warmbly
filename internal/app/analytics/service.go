@@ -19,7 +19,9 @@ type AnalyticsService interface {
 	GetWarmupPlacement(ctx context.Context, orgID uuid.UUID, emailAccountID *uuid.UUID, from, to time.Time) (*models.WarmupPlacementReport, *errx.Error)
 
 	// Campaign analytics
-	GetCampaignAnalytics(ctx context.Context, orgID, campaignID uuid.UUID) (*models.CampaignAnalytics, *errx.Error)
+	// GetCampaignAnalytics reads the performance of the sends inside period,
+	// whole UTC days with To included, or of every send when period is nil.
+	GetCampaignAnalytics(ctx context.Context, orgID, campaignID uuid.UUID, period *models.DateRange) (*models.CampaignAnalytics, *errx.Error)
 	GetCampaignDailyStats(ctx context.Context, orgID, campaignID uuid.UUID, from, to time.Time) ([]models.CampaignDailyStats, *errx.Error)
 
 	// Email account status
@@ -125,7 +127,7 @@ func (s *analyticsService) GetWarmupAnalytics(ctx context.Context, orgID uuid.UU
 	return analytics, nil
 }
 
-func (s *analyticsService) GetCampaignAnalytics(ctx context.Context, orgID, campaignID uuid.UUID) (*models.CampaignAnalytics, *errx.Error) {
+func (s *analyticsService) GetCampaignAnalytics(ctx context.Context, orgID, campaignID uuid.UUID, period *models.DateRange) (*models.CampaignAnalytics, *errx.Error) {
 	// Get campaign details
 	campaign, err := s.campaignForOrg(ctx, orgID, campaignID)
 	if err != nil {
@@ -133,31 +135,64 @@ func (s *analyticsService) GetCampaignAnalytics(ctx context.Context, orgID, camp
 	}
 
 	// Get summary
-	summary, xerr := s.analyticsRepo.GetCampaignSummary(ctx, orgID, campaignID)
+	summary, xerr := s.analyticsRepo.GetCampaignSummary(ctx, orgID, campaignID, period)
 	if xerr != nil {
 		return nil, xerr
 	}
 
 	// Get sequence stats
-	sequences, xerr := s.analyticsRepo.GetSequenceStats(ctx, campaignID)
+	sequences, xerr := s.analyticsRepo.GetSequenceStats(ctx, campaignID, period)
 	if xerr != nil {
 		return nil, xerr
 	}
 
 	// Where and on what people engaged; best-effort, the totals stand alone.
-	engagement, xerr := s.analyticsRepo.GetCampaignEngagementBreakdown(ctx, campaignID, 8)
+	engagement, xerr := s.analyticsRepo.GetCampaignEngagementBreakdown(ctx, campaignID, period, 8)
 	if xerr != nil {
 		engagement = nil
+	}
+
+	resolved, xerr := s.campaignPeriod(ctx, campaign, period)
+	if xerr != nil {
+		return nil, xerr
 	}
 
 	return &models.CampaignAnalytics{
 		CampaignID: campaignID,
 		Name:       campaign.Name,
 		Status:     campaign.Status,
+		DateRange:  resolved,
 		Summary:    *summary,
 		Sequences:  sequences,
 		Engagement: engagement,
 	}, nil
+}
+
+// campaignPeriod is the window the figures cover: the one asked for, or for
+// all time the first send's UTC day (creation before one) through today.
+func (s *analyticsService) campaignPeriod(ctx context.Context, campaign *models.Campaign, period *models.DateRange) (models.DateRange, *errx.Error) {
+	if period != nil {
+		return *period, nil
+	}
+	start := campaign.CreatedAt
+	first, xerr := s.analyticsRepo.GetCampaignFirstSentAt(ctx, campaign.ID)
+	if xerr != nil {
+		return models.DateRange{}, xerr
+	}
+	if first != nil {
+		start = *first
+	}
+	today := utcDay(time.Now())
+	from := utcDay(start)
+	if from.After(today) {
+		from = today
+	}
+	return models.DateRange{From: from, To: today}, nil
+}
+
+func utcDay(t time.Time) time.Time {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func (s *analyticsService) GetCampaignDailyStats(ctx context.Context, orgID, campaignID uuid.UUID, from, to time.Time) ([]models.CampaignDailyStats, *errx.Error) {

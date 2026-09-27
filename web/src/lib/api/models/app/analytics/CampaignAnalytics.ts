@@ -73,6 +73,8 @@ export default interface CampaignAnalytics {
     campaign_id: string
     name: string
     status: string
+    // The UTC days the figures cover: the requested from/to, or for all time
+    // the first send's day (creation before one) through today.
     date_range: DateRange
     summary: CampaignSummary
     steps: SequenceStats[]

@@ -46,7 +46,7 @@ func TestLiveCampaignStepStatsFollowTheCanvas(t *testing.T) {
 	}
 
 	repo := &analyticsRepository{DB: handle}
-	stats, xerr := repo.GetSequenceStats(ctx, f.campaign)
+	stats, xerr := repo.GetSequenceStats(ctx, f.campaign, nil)
 	if xerr != nil {
 		t.Fatalf("GetSequenceStats: %v", xerr)
 	}

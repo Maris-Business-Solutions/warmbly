@@ -20,7 +20,7 @@ type campaignAnalyticsAccessStub struct {
 	org, campaign uuid.UUID
 }
 
-func (s *campaignAnalyticsAccessStub) GetCampaignAnalytics(_ context.Context, orgID, campaignID uuid.UUID) (*models.CampaignAnalytics, *errx.Error) {
+func (s *campaignAnalyticsAccessStub) GetCampaignAnalytics(_ context.Context, orgID, campaignID uuid.UUID, _ *models.DateRange) (*models.CampaignAnalytics, *errx.Error) {
 	s.calls++
 	s.org, s.campaign = orgID, campaignID
 	return &models.CampaignAnalytics{CampaignID: campaignID, Summary: models.CampaignSummary{EmailsSent: 7}}, nil

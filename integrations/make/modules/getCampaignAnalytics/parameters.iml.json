@@ -1,3 +1,5 @@
 [
-    { "name": "campaign_id", "type": "select", "label": "Campaign", "required": true, "options": "rpc://campaignList" }
+    { "name": "campaign_id", "type": "select", "label": "Campaign", "required": true, "options": "rpc://campaignList" },
+    { "name": "from", "type": "text", "label": "From", "help": "First day of the period, YYYY-MM-DD (UTC). Fill in both From and To, or leave both empty for all time. The period counts the emails sent on those days, with every open, click, reply and bounce they earned." },
+    { "name": "to", "type": "text", "label": "To", "help": "Last day of the period, YYYY-MM-DD (UTC), included." }
 ]

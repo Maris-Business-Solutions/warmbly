@@ -20,6 +20,8 @@ import SendPlanCard from "@/components/app/campaigns/SendPlanCard";
 import CampaignFormsPanel from "@/components/app/campaigns/CampaignFormsPanel";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
 import AdvisorStrip from "@/components/app/advisor/AdvisorStrip";
+import CampaignPeriodPicker from "@/components/app/campaigns/CampaignPeriodPicker";
+import { formatWindow, loadCampaignPeriod, periodWindow, type CampaignPeriod, type DayWindow } from "@/lib/campaignPeriod";
 
 const AUTO_OPENS_TIP = "Auto-opens: pixel fetches from privacy proxies (e.g. Apple Mail) or within seconds of sending, not a person reading. Logged as delivery proof, not counted as opens";
 const AUTO_CLICKS_TIP = "Auto-clicks: links followed by a security gateway scanning the email, not a person; not counted as clicks";
@@ -46,8 +48,18 @@ export default function CampaignOverview() {
     const campaign = useCampaign();
     const id = campaign?.id ?? "";
 
-    const analytics = useCampaignAnalytics(id);
-    const daily = useCampaignDailyStats(id);
+    // One period drives every figure on the page: summary, steps, engagement
+    // and the chart all read the same sends.
+    const [period, setPeriod] = useState<CampaignPeriod>(loadCampaignPeriod);
+    const asked = useMemo(() => periodWindow(period), [period]);
+    const analytics = useCampaignAnalytics(id, asked);
+    // All time charts from the first send, which only the summary knows.
+    const covered: DayWindow | null = useMemo(() => {
+        if (asked) return asked;
+        const r = analytics.isPlaceholderData ? undefined : analytics.data?.date_range;
+        return r ? { from: r.from.slice(0, 10), to: r.to.slice(0, 10) } : null;
+    }, [asked, analytics.isPlaceholderData, analytics.data?.date_range]);
+    const daily = useCampaignDailyStats(id, covered);
 
     // Legend toggles: every metric charts together; hidden ones drop out.
     const [hiddenMetrics, setHiddenMetrics] = useState<Metric[]>([]);
@@ -76,10 +88,12 @@ export default function CampaignOverview() {
 
     const loading = analytics.isPending || daily.isPending;
     const hasSends = (summary?.emails_sent ?? 0) > 0;
+    const allTime = period.key === "all";
+    const periodLabel = covered ? formatWindow(covered) : null;
 
     const shareData = {
         title: campaign?.name ?? "Campaign",
-        subtitle: "Campaign",
+        subtitle: periodLabel ? `${allTime ? "All time, " : ""}${periodLabel}` : "Campaign",
         metrics: [
             { label: "Sent", value: num(summary?.emails_sent), sub: "emails" },
             { label: "Open rate", value: pct(summary?.open_rate) },
@@ -135,6 +149,12 @@ export default function CampaignOverview() {
                                     Live
                                 </span>
                             )}
+                            {periodLabel && period.key !== "custom" && (
+                                <span className="hidden md:inline text-[10.5px] text-slate-400 tabular-nums mr-1" title="UTC days">
+                                    {periodLabel}
+                                </span>
+                            )}
+                            <CampaignPeriodPicker value={period} onChange={setPeriod} resolved={covered} />
                             <AnalyticsShareButton
                                 data={shareData}
                                 filename={`warmbly-${campaign.id}.png`}
@@ -211,7 +231,9 @@ export default function CampaignOverview() {
                                         emptyLabel={
                                             hasSends
                                                 ? "No activity in this window yet"
-                                                : "No sends yet — start the campaign to see performance"
+                                                : allTime
+                                                  ? "No sends yet. Start the campaign to see performance"
+                                                  : "Nothing was sent in this period"
                                         }
                                     />
                                 )}
@@ -306,7 +328,7 @@ export default function CampaignOverview() {
                         )}
                     </div>
 
-                    <EngagementAudience breakdown={analytics.data?.engagement ?? null} loading={loading} />
+                    <EngagementAudience breakdown={analytics.data?.engagement ?? null} loading={loading} scoped={!allTime} />
 
                     <CampaignFormsPanel campaignId={id} />
 
@@ -465,9 +487,12 @@ function bucketLabel(kind: "countries" | "clients" | "devices", key: string): st
 function EngagementAudience({
     breakdown,
     loading,
+    scoped,
 }: {
     breakdown: CampaignEngagementBreakdown | null;
     loading: boolean;
+    // A period is selected, so an empty list means none of its sends engaged.
+    scoped: boolean;
 }) {
     const columns: { kind: "countries" | "clients" | "devices"; label: string; rows: EngagementBucket[] }[] = [
         { kind: "countries", label: "Country", rows: breakdown?.countries ?? [] },
@@ -482,7 +507,9 @@ function EngagementAudience({
                 <div className="h-24 animate-pulse bg-slate-50" />
             ) : empty ? (
                 <div className="px-5 py-8 text-center">
-                    <p className="text-[12.5px] text-slate-700 font-medium mb-1">No opens or clicks yet</p>
+                    <p className="text-[12.5px] text-slate-700 font-medium mb-1">
+                        {scoped ? "No opens or clicks on this period's sends" : "No opens or clicks yet"}
+                    </p>
                     <p className="text-[11.5px] text-slate-400 max-w-[36ch] mx-auto leading-relaxed">
                         Once people open and click, this shows which countries, mail clients and devices they did it from.
                     </p>

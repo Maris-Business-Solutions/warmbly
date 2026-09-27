@@ -57,6 +57,19 @@ export function DatePicker({
         };
     }, [open]);
 
+    // Escape closes the calendar only: stopped in the window capture phase so
+    // the popover or dialog holding this field stays open.
+    React.useEffect(() => {
+        if (!open) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            setOpen(false);
+        };
+        window.addEventListener("keydown", onKey, true);
+        return () => window.removeEventListener("keydown", onKey, true);
+    }, [open]);
+
     return (
         <div ref={wrapRef} className={cn("relative inline-flex", className)}>
             <button

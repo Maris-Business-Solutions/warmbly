@@ -1,5 +1,5 @@
 import type { Bundle, ZObject } from '../lib/types';
-import { api } from '../lib/client';
+import { api, pruneEmpty } from '../lib/client';
 
 const getCampaignAnalytics = {
   key: 'getCampaignAnalytics',
@@ -17,10 +17,24 @@ const getCampaignAnalytics = {
         required: true,
         dynamic: 'campaignList.id.name',
       },
+      {
+        key: 'from',
+        label: 'From',
+        type: 'string',
+        helpText:
+          'First day of the period, YYYY-MM-DD (UTC). Fill in both From and To, or leave both empty for all time. The period counts the emails sent on those days, with every open, click, reply and bounce they earned.',
+      },
+      {
+        key: 'to',
+        label: 'To',
+        type: 'string',
+        helpText: 'Last day of the period, YYYY-MM-DD (UTC), included.',
+      },
     ],
     perform: async (z: ZObject, bundle: Bundle): Promise<any[]> => {
       const response = await z.request({
         url: api(`/analytics/campaigns/${bundle.inputData.campaign_id}`),
+        params: pruneEmpty({ from: bundle.inputData.from, to: bundle.inputData.to }),
       });
       return response.data ? [response.data] : [];
     },

@@ -1,6 +1,10 @@
 {
     "url": "/analytics/campaigns/{{parameters.campaign_id}}",
     "method": "GET",
+    "qs": {
+        "from": "{{parameters.from}}",
+        "to": "{{parameters.to}}"
+    },
     "response": {
         "iterate": "{{if(body, add(emptyarray, body), emptyarray)}}",
         "output": "{{item}}"

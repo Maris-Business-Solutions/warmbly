@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/models"
 )
 
 // GetWarmupAnalytics gets warmup statistics for the selected organization.
@@ -107,7 +108,7 @@ func (h *Handler) GetWarmupPlacement(c *gin.Context) {
 }
 
 // GetCampaignAnalytics gets analytics for a specific campaign
-// GET /analytics/campaigns/:id
+// GET /analytics/campaigns/:id[?from=YYYY-MM-DD&to=YYYY-MM-DD]
 func (h *Handler) GetCampaignAnalytics(c *gin.Context) {
 	orgID := middleware.GetOrganizationID(c)
 	if orgID == nil {
@@ -122,13 +123,43 @@ func (h *Handler) GetCampaignAnalytics(c *gin.Context) {
 		return
 	}
 
-	analytics, xerr := h.AnalyticsService.GetCampaignAnalytics(c.Request.Context(), *orgID, campaignID)
+	period, xerr := optionalDayRange(c)
+	if xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
+
+	analytics, xerr := h.AnalyticsService.GetCampaignAnalytics(c.Request.Context(), *orgID, campaignID, period)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
 
 	c.JSON(http.StatusOK, analytics)
+}
+
+// optionalDayRange reads from and to as whole days, both or neither; neither
+// is nil, which callers read as all time.
+func optionalDayRange(c *gin.Context) (*models.DateRange, *errx.Error) {
+	fromStr, toStr := c.Query("from"), c.Query("to")
+	if fromStr == "" && toStr == "" {
+		return nil, nil
+	}
+	if fromStr == "" || toStr == "" {
+		return nil, errx.New(errx.BadRequest, "from and to must be supplied together")
+	}
+	from, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		return nil, errx.New(errx.BadRequest, "Invalid from date format (expected YYYY-MM-DD)")
+	}
+	to, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		return nil, errx.New(errx.BadRequest, "Invalid to date format (expected YYYY-MM-DD)")
+	}
+	if to.Before(from) {
+		return nil, errx.New(errx.BadRequest, "from must not be after to")
+	}
+	return &models.DateRange{From: from, To: to}, nil
 }
 
 // GetCampaignDailyStats gets daily statistics for a campaign
