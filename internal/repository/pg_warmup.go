@@ -705,7 +705,9 @@ func (r *warmupRepository) UpdateParticipantHealth(ctx context.Context, accountI
 		SET
 			health_state = eff.state,
 			blocked_until = eff.until,
+			-- Only a quarantine or block takes a mailbox out of the pool; a throttle's term is not one.
 			blocked_at = CASE
+				WHEN eff.state NOT IN ('quarantined', 'blocked') THEN NULL
 				WHEN eff.until IS NOT NULL AND (p.blocked_at IS NULL OR p.blocked_until IS DISTINCT FROM eff.until) THEN NOW()
 				WHEN eff.until IS NULL AND p.blocked_until IS NOT NULL THEN NULL
 				ELSE p.blocked_at
