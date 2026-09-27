@@ -1,7 +1,7 @@
-import { useEffect } from "react";
 import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
 import type GetEmails from "@/lib/api/models/app/emails/GetEmails";
 import getEmails from "@/lib/api/client/app/emails/getEmails";
+import useAllPages from "@/lib/api/hooks/useAllPages";
 
 // Pages are fetched until the list is whole, so a larger page means fewer round trips.
 const EMAILS_PAGE_LIMIT = 200;
@@ -36,20 +36,12 @@ export default function useEmails({ query, tag, limit = EMAILS_PAGE_LIMIT, enabl
         enabled,
     });
 
-    // A failed page stops the loop instead of retrying it; the caller offers the retry.
-    const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = queryResult;
-    useEffect(() => {
-        if (enabled && hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
-    }, [enabled, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
-
+    const rest = useAllPages(queryResult, enabled);
     const emails = queryResult.data?.pages.flatMap((p) => p.data) ?? [];
 
     return {
         ...queryResult,
         emails,
-        /** More pages are still on their way. */
-        isLoadingRest: hasNextPage && !isFetchNextPageError,
-        /** A later page failed, so `emails` is only part of the list. */
-        isIncomplete: hasNextPage && isFetchNextPageError,
+        ...rest,
     };
 }

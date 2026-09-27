@@ -184,7 +184,9 @@ export default function LimitsSettingsPage() {
                         )}
                     </p>
                 )}
-                {field && (
+                {limitsQuery.isPending ? (
+                    <p className="text-[12px] text-slate-500">Loading…</p>
+                ) : field && (
                 <form onSubmit={onSubmit} className="space-y-3">
                     <div>
                         <label className="text-[12px] font-medium text-slate-700">Resource</label>

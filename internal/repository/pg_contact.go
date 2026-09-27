@@ -3591,7 +3591,8 @@ func (r *contactRepository) ListSentEmails(ctx context.Context, orgID, contactID
 	var nextCursor *string
 	if len(out) > limit {
 		hasMore = true
-		nextCursor = paging.EncodeUUID(out[limit].TaskID)
+		// The last row returned: the next page starts strictly below it.
+		nextCursor = paging.EncodeUUID(out[limit-1].TaskID)
 		out = out[:limit]
 	}
 

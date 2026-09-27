@@ -1,17 +1,22 @@
 import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
 import getCampaigns from "@/lib/api/client/app/campaigns/getCampaigns";
-import { DEFAULT_PAGINATION_LIMIT } from "@/lib/information";
+import useAllPages from "@/lib/api/hooks/useAllPages";
 import type GetCampaigns from "@/lib/api/models/app/campaigns/GetCampaigns";
 import useRealtimeFallbackInterval from "@/hooks/useRealtimeFallback";
+
+// Pages are fetched until the list is whole, so a larger page means fewer round trips.
+const CAMPAIGNS_PAGE_LIMIT = 200;
 
 interface UseCampaignsProps {
     query: string;
     folder: string;
     limit?: number;
     enabled?: boolean;
+    /** Page to the end; off for a search picker that only shows the top matches. */
+    all?: boolean;
 }
 
-export default function useCampaigns({ query, folder, limit = DEFAULT_PAGINATION_LIMIT, enabled = true }: UseCampaignsProps) {
+export default function useCampaigns({ query, folder, limit = CAMPAIGNS_PAGE_LIMIT, enabled = true, all = true }: UseCampaignsProps) {
     // Send counts on these cards move on realtime invalidation, so the long
     // staleTime below is free while the socket is up and strands the list for
     // five minutes when it is not. Poll only in that second case.
@@ -38,6 +43,8 @@ export default function useCampaigns({ query, folder, limit = DEFAULT_PAGINATION
         enabled,
     });
 
+    const rest = useAllPages(queryResult, enabled && all);
+
     // Defensive: backend may return `data: null` on empty result sets if
     // the underlying slice was nil. Coerce + drop nulls so consumers can
     // safely read fields without optional-chaining every access.
@@ -49,5 +56,6 @@ export default function useCampaigns({ query, folder, limit = DEFAULT_PAGINATION
     return {
         ...queryResult,
         campaigns,
+        ...rest,
     };
 }
