@@ -26,7 +26,8 @@ export interface PlacementRate {
     window_days: number;
     min_sample: number;
     // "major": Google, Microsoft and Yahoo recipients only. "all": every host,
-    // for a mailbox none of them received warmup mail from in the window.
+    // when those three have fewer than min_sample deliveries in the window
+    // (including none) and every host together has at least that many.
     scope?: "major" | "all";
     delivered: number;
     inbox: number;
