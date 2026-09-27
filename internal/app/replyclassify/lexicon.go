@@ -13,8 +13,10 @@ import (
 //  1. Compliance words (unsubscribe / stop / remove me / take me off) ALWAYS win.
 //     Treating these as anything other than an unsubscribe request is a
 //     compliance risk, so they short-circuit before sentiment.
-//  2. Clear interest phrases => positive.
-//  3. Clear rejection phrases => negative.
+//  2. A declined interest ("not interested") => negative. It is read before
+//     the interest phrases, which would take its "interested" for interest.
+//  3. Clear interest phrases => positive.
+//  4. Clear rejection phrases => negative.
 func classifyLexicon(in Input) (Result, bool) {
 	text := quoteFolder.Replace(strings.ToLower(strings.TrimSpace(in.Subject + "\n" + StripQuoted(in.BodyText, in.Languages...))))
 	if text == "" {
@@ -26,14 +28,21 @@ func classifyLexicon(in Input) (Result, bool) {
 		return Result{Class: ClassUnsubscribe, Confidence: 0.9, Source: SourceLexicon}, true
 	}
 
-	// 2. Clear interest => positive.
+	// 2. Declined interest => negative, before "interested" reads as interest.
+	for _, kw := range declinedInterestKeywords {
+		if strings.Contains(text, kw) {
+			return Result{Class: ClassNegative, Confidence: 0.8, Source: SourceLexicon}, true
+		}
+	}
+
+	// 3. Clear interest => positive.
 	for _, kw := range positiveKeywords {
 		if strings.Contains(text, kw) {
 			return Result{Class: ClassPositive, Confidence: 0.8, Source: SourceLexicon}, true
 		}
 	}
 
-	// 3. Clear rejection => negative.
+	// 4. Clear rejection => negative.
 	for _, kw := range negativeKeywords {
 		if strings.Contains(text, kw) {
 			return Result{Class: ClassNegative, Confidence: 0.8, Source: SourceLexicon}, true
@@ -210,10 +219,27 @@ var positiveKeywords = []string{
 	"send pricing",
 }
 
-// negativeKeywords are clear rejection signals. "not interested" is the canonical
-// cold-outreach brush-off.
-var negativeKeywords = []string{
+// declinedInterestKeywords turn "interested" around. "not interested" is the
+// canonical cold-outreach brush-off, and every one of these carries
+// "interested", so they are read before positiveKeywords.
+var declinedInterestKeywords = []string{
 	"not interested",
+	"n't interested",
+	"not really interested",
+	"not very interested",
+	"not that interested",
+	"not too interested",
+	"not particularly interested",
+	"not currently interested",
+	"no longer interested",
+	"not be interested",
+	"n't be interested",
+	"uninterested",
+	"disinterested",
+}
+
+// negativeKeywords are clear rejection signals.
+var negativeKeywords = []string{
 	"no thanks",
 	"no thank you",
 	"not a fit",
