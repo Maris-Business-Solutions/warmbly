@@ -248,6 +248,8 @@ func (s *stripeService) CreateCheckoutSession(ctx context.Context, userID uuid.U
 		AutomaticTax:             &stripe.CheckoutSessionAutomaticTaxParams{Enabled: stripe.Bool(true)},
 		BillingAddressCollection: stripe.String(string(stripe.CheckoutSessionBillingAddressCollectionRequired)),
 		TaxIDCollection:          &stripe.CheckoutSessionTaxIDCollectionParams{Enabled: stripe.Bool(true)},
+		NameCollection:           businessNameCollection(),
+		CustomText:               businessOnlyNotice(),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(priceID),
@@ -416,6 +418,8 @@ func (s *stripeService) CreateCreditCheckoutSession(ctx context.Context, userID,
 		AutomaticTax:             &stripe.CheckoutSessionAutomaticTaxParams{Enabled: stripe.Bool(true)},
 		BillingAddressCollection: stripe.String(string(stripe.CheckoutSessionBillingAddressCollectionRequired)),
 		TaxIDCollection:          &stripe.CheckoutSessionTaxIDCollectionParams{Enabled: stripe.Bool(true)},
+		NameCollection:           businessNameCollection(),
+		CustomText:               businessOnlyNotice(),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{Price: stripe.String(priceID), Quantity: stripe.Int64(1)},
 		},
@@ -1656,5 +1660,21 @@ func mapStripeStatus(status stripe.SubscriptionStatus) models.SubscriptionStatus
 		return models.SubscriptionStatusPaused
 	default:
 		return models.SubscriptionStatusIncomplete
+	}
+}
+
+// businessOnlyCheckoutNotice sits beside the pay button; it states the terms' business-only and tax clauses.
+const businessOnlyCheckoutNotice = "Warmbly is sold to businesses for business use only. Prices exclude taxes: where we do not charge tax, your business accounts for any tax due in its own country, for example under the reverse charge."
+
+// businessNameCollection requires the buying company's legal name on every checkout.
+func businessNameCollection() *stripe.CheckoutSessionNameCollectionParams {
+	return &stripe.CheckoutSessionNameCollectionParams{
+		Business: &stripe.CheckoutSessionNameCollectionBusinessParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(false)},
+	}
+}
+
+func businessOnlyNotice() *stripe.CheckoutSessionCustomTextParams {
+	return &stripe.CheckoutSessionCustomTextParams{
+		Submit: &stripe.CheckoutSessionCustomTextSubmitParams{Message: stripe.String(businessOnlyCheckoutNotice)},
 	}
 }
