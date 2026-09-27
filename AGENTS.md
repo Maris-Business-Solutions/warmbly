@@ -791,9 +791,16 @@ Do not wait for an inbox to reach an extreme failure state before acting.
 
 Important:
 
-- `80%` spam placement is not a sensible block threshold
-- if a mailbox is landing in spam `80%` of the time, it has already become dangerous to the shared pool
-- action should happen much earlier
+- complaints, bounces and tampering are things a mailbox does to other people, and they act early
+- spam placement is a reading of reputation, not misconduct, and warming is how it recovers, so it only ever slows a mailbox down: watch at `10%`, throttled (half volume, warmup keeps running) at `20%`, and nothing past that. It never quarantines, blocks or needs an appeal. Do not add a placement band above throttled
+- a band a mailbox is already in lifts only below `0.75` of the line that set it (`spamPlacementExitFactor`), so a mailbox near a line is not flipped and announced on every delivery
+
+How placement is read (`WarmupPlacementEvidence` in `internal/models/warmup_deliverability.go`, `placementEvidenceSQL` in `internal/repository/warmup_placement_sql.go`, the one definition behind the health bands and the advisor):
+
+- over verified deliveries (`warmup_received`), not over sends
+- only Google, Microsoft and Yahoo recipients judge a sender. They filter on sender reputation, which is what cold mail is judged on; a small host runs its own filter, so its spam folder is not evidence of spam and is never held against a sender, in the bands, the ramps (`majorRecipientSQL`) or the advisor. A host that junks half of everything once froze the ramp permanently and quarantined healthy mailboxes
+- the headline inbox rate (`WarmupPlacementWindow.Rate`) is taken at the same three providers, and over every host only when none of them received the mailbox's mail in the window (`scope: "all"`)
+- partner selection draws a small-host recipient whose own filter junks what it receives less often (`FilterJunkRate`, `recipientFilterPenaltyK`), never excludes it, and never reads this at the big three, where a junk verdict is the senders' reputation
 
 Use separate metrics for separate failure modes:
 
@@ -805,35 +812,33 @@ Use separate metrics for separate failure modes:
 Recommended internal policy for shared paid pools:
 
 - start evaluating after a minimum sample size
-- suggested sample floor for spam placement: at least `20` warmup deliveries in the last `7 days`
+- sample floor for spam placement: at least `20` verified warmup deliveries in the last `7 days`
 - suggested sample floor for complaints: at least `100` delivered emails in the last `30 days`
 
 Suggested automatic actions:
 
 - warning band:
-  spam-folder placement `>= 10%` over the last `20+` warmup deliveries
+  spam placement at the big three `>= 10%` over the last `20+` verified warmup deliveries there
   or complaint rate `>= 0.03%`
   Action: lower warmup volume, increase spacing, increase monitoring
 
+- throttle band:
+  spam placement at the big three `>= 20%`
+  Action: warmup keeps running at half volume and double spacing; cold volume halved; lifts on its own
+
 - quarantine band:
-  spam-folder placement `>= 20%`
-  or complaint rate `>= 0.10%`
+  complaint rate `>= 0.10%`
   or bounce rate `>= 5%`
   or repeated tampering with received warmup mail
-  Action: immediately remove mailbox from the shared paid warmup pool for `7 days`
+  Action: immediately remove mailbox from the shared paid warmup pool for `7 days`; cold sending paused
 
 - hard block band:
-  spam-folder placement `>= 40%`
-  or complaint rate `>= 0.30%`
+  complaint rate `>= 0.30%`
   or bounce rate `>= 10%`
   or clear abuse indicators such as repeated spam flags on received warmup mail
-  Action: block mailbox from shared paid pool for `30 days` and require review before re-entry
+  Action: block mailbox from shared paid pool for `30 days`
 
-- catastrophic band:
-  spam-folder placement `>= 80%`
-  Action: immediate long-duration block and full reputation reset workflow; do not allow the mailbox back into the shared paid pool automatically
-
-These thresholds are intentionally stricter than the point where large providers start penalizing senders, because shared warmup pools should act before provider-level enforcement hits the IP reputation.
+The complaint and bounce thresholds are intentionally stricter than the point where large providers start penalizing senders, because shared warmup pools should act before provider-level enforcement hits the IP reputation.
 
 ### What should happen when a paid-pool mailbox is quarantined
 
@@ -858,7 +863,7 @@ Do not automatically restore a blocked mailbox just because time elapsed.
 
 Two mechanisms make the sentence real, and both are easy to undo by accident:
 
-- a quarantine or block holds until `blocked_until` whatever fresh metrics say. The floor is inside `UpdateParticipantHealth`'s SQL (`internal/repository/pg_warmup.go`), decided against the row at write time, so it is compare-and-swap and an admin unblock landing mid-sweep is not overwritten by the block the sweep read earlier. Equal severity keeps the later end (a 90-day catastrophic block is not cut to 30 by a milder reading); throttled is not floored because the docs promise it lifts on recovery. The bands read windows shorter than the terms they hand out (seven days of placement against a 30-day block), so without this every block cleared within a week, and a re-added mailbox with no history on the next sweep
+- a quarantine or block holds until `blocked_until` whatever fresh metrics say. The floor is inside `UpdateParticipantHealth`'s SQL (`internal/repository/pg_warmup.go`), decided against the row at write time, so it is compare-and-swap and an admin unblock landing mid-sweep is not overwritten by the block the sweep read earlier. Equal severity keeps the later end (a 30-day block is not cut to 7 by a milder reading); throttled is not floored because the docs promise it lifts on recovery. The bands read windows shorter than the terms they hand out (seven days of placement against a 30-day block), so without this every block cleared within a week, and a re-added mailbox with no history on the next sweep
 - the standing follows the address within the workspace: `warmup_reputation_ledger` is a mirror of the address's worst live standing, written only by the `warmup_reputation_mirror` trigger on `warmup_pool_participants` (migration 000152, scoped to the standing columns by 000156 so a pool move does not restart the retention window), so every path that writes a standing keeps it current and no caller can bypass it. The pool row dies on paths that never touch the mailbox (`LeaveAllPools` on an auth error, a lapsed plan, warmup toggled off) and on `HardDeleteUser`'s cascade, which is why a snapshot at mailbox deletion was not enough. `MoveToPool` seeds a new row from it and never consumes it; `Delete` and `LeaveAllPools` only restart its retention window (`config.WarmupReputationLedgerDays`, applied by the purge in `EvaluateAllParticipants`, never while a live row backs it). A review-required block (`blocked_until NULL`) never lapses. A mailbox in good standing has no row, and recovery clears it (#476)
 
 Require the mailbox to pass re-entry checks such as:

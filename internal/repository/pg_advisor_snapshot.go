@@ -55,7 +55,8 @@ func (r *advisorRepository) loadMailboxes(ctx context.Context, orgID uuid.UUID) 
 			ea.risk_band::text,
 			COALESCE(sent.d7, 0), COALESCE(sent.d1, 0), COALESCE(sent.d30, 0),
 			COALESCE(dl.bounces, 0), COALESCE(dl.complaints, 0),
-			COALESCE(w.sent7, 0), COALESCE(w.recv7, 0), COALESCE(ws.spam7, 0),
+			COALESCE(w.sent7, 0), COALESCE(w.recv7, 0),
+			ws.major, ws.major_spam, ws.other, ws.other_spam,
 			COALESCE(p.health_state, ''), COALESCE(p.last_health_score, 0), COALESCE(p.last_health_reason, ''),
 			COALESCE(p.blocked_until > NOW(), false) AS pool_blocked,
 			COALESCE(err.n, 0),
@@ -88,12 +89,7 @@ func (r *advisorRepository) loadMailboxes(ctx context.Context, orgID uuid.UUID) 
 			FROM warmup_statistics wst
 			WHERE wst.email_account_id = ea.id AND wst.date > CURRENT_DATE - 7
 		) w ON true
-		LEFT JOIN LATERAL (
-			SELECT COUNT(*) AS spam7
-			FROM warmup_spam_reports sr
-			WHERE sr.reported_account_id = ea.id
-			  AND sr.report_type = 'spam_placement'
-			  AND sr.created_at > NOW() - INTERVAL '7 days'
+		LEFT JOIN LATERAL (` + placementEvidenceSQL("ea.id", "NOW() - INTERVAL '7 days'") + `
 		) ws ON true
 		LEFT JOIN LATERAL (
 			SELECT wpp.health_state, wpp.last_health_score, wpp.last_health_reason, wpp.blocked_until
@@ -148,7 +144,9 @@ func (r *advisorRepository) loadMailboxes(ctx context.Context, orgID uuid.UUID) 
 			&m.RiskBand,
 			&m.ColdSent7d, &m.ColdSent1d, &m.ColdSent30d,
 			&m.Bounces30d, &m.Complaints30d,
-			&m.WarmupSent7d, &m.WarmupRecv7d, &m.WarmupSpam7d,
+			&m.WarmupSent7d, &m.WarmupRecv7d,
+			&m.WarmupPlacement.MajorDelivered, &m.WarmupPlacement.MajorSpam,
+			&m.WarmupPlacement.OtherDelivered, &m.WarmupPlacement.OtherSpam,
 			&m.PoolHealth, &m.PoolHealthScore, &m.PoolHealthReason, &m.PoolBlocked,
 			&m.UnresolvedErrs, &m.InActiveCampaign,
 		); err != nil {

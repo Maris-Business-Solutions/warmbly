@@ -31,11 +31,21 @@ func (s *analyticsService) placementRates(ctx context.Context, orgID uuid.UUID, 
 	if s.placementRepo == nil {
 		return nil
 	}
-	rates, err := s.placementRepo.Rates(ctx, orgID, emailID, placementWindowStart(time.Now().UTC()))
+	windows, err := s.placementRepo.Rates(ctx, orgID, emailID, placementWindowStart(time.Now().UTC()))
 	if err != nil {
 		return nil
 	}
-	return rates
+	return headlineRates(windows)
+}
+
+// headlineRates is each mailbox's headline, over the major providers when
+// they received its warmup mail.
+func headlineRates(windows map[uuid.UUID]models.WarmupPlacementWindow) map[uuid.UUID]models.WarmupPlacementRate {
+	out := make(map[uuid.UUID]models.WarmupPlacementRate, len(windows))
+	for id, w := range windows {
+		out[id] = w.Rate()
+	}
+	return out
 }
 
 // placementWindowStart is the first UTC day of the trailing window ending on now's day.
@@ -44,10 +54,11 @@ func placementWindowStart(now time.Time) time.Time {
 	return day.AddDate(0, 0, -(models.WarmupPlacementWindowDays - 1))
 }
 
-// applyWarmupPlacement caps the health score at the measured inbox rate, so a
-// mailbox landing in spam reads as degraded before the pool acts on it.
+// applyWarmupPlacement caps the health score at the headline inbox rate, so a
+// mailbox landing in spam at the major providers reads as degraded. An
+// all-host rate is shown, never held against the mailbox.
 func applyWarmupPlacement(health *models.AccountHealth, r *models.WarmupPlacementRate) {
-	if r == nil || r.InboxRate == nil {
+	if r == nil || r.InboxRate == nil || r.Scope != models.WarmupPlacementScopeMajor {
 		return
 	}
 	if capped := int(math.Floor(*r.InboxRate)); capped < health.Score {
@@ -109,10 +120,11 @@ func (s *analyticsService) GetWarmupPlacement(ctx context.Context, orgID uuid.UU
 	if err != nil {
 		return nil, errx.InternalError()
 	}
-	rates, err := s.placementRepo.Rates(ctx, orgID, emailID, placementWindowStart(time.Now().UTC()))
+	windows, err := s.placementRepo.Rates(ctx, orgID, emailID, placementWindowStart(time.Now().UTC()))
 	if err != nil {
 		return nil, errx.InternalError()
 	}
+	rates := headlineRates(windows)
 
 	b := newPlacementBuilder(from, to)
 	for _, r := range dayRows {
@@ -132,13 +144,11 @@ func (s *analyticsService) GetWarmupPlacement(ctx context.Context, orgID uuid.UU
 	report.Summary.Finish()
 	report.Providers = placementProviders(hostRows)
 
-	var total [3]int
-	for _, r := range rates {
-		total[0] += r.Inbox
-		total[1] += r.Tabs
-		total[2] += r.Spam
+	var total models.WarmupPlacementWindow
+	for _, w := range windows {
+		total.Add(w)
 	}
-	report.Rate = models.NewWarmupPlacementRate(total[0], total[1], total[2])
+	report.Rate = total.Rate()
 
 	if emailID == nil {
 		// Names come from the org-scoped rows themselves, so no mailbox with

@@ -15,7 +15,7 @@ Before you start a recovery plan, decide whether the mailbox is worth recovering
 
 - Pause every [campaign](/guides/campaigns/) sending from the affected mailbox immediately.
 - Remove the mailbox from active sender pools in your campaigns.
-- If the mailbox is in the [warmup pool](/learn/warmup-pools/), let the platform's auto-quarantine kick in (it likely already has).
+- If the mailbox is in the [warmup pool](/learn/warmup-pools/), keep warmup running. Warmbly slows a mailbox landing in spam down on its own and keeps it warming, because warming is how placement recovers.
 - Do not "send a few test emails to gauge". Every additional send while reputation is poor is another data point in the wrong column.
 
 ## Audit the basics

@@ -161,9 +161,10 @@ type WarmupRepository interface {
 	// StampColdRampStart records a mailbox's first cold send. Idempotent: a
 	// mailbox that already has an anchor keeps it.
 	StampColdRampStart(ctx context.Context, accountID uuid.UUID) error
-	// SpamPlacementsSince lists when this sender's warmup mail was found in a
-	// recipient's junk folder. The ramp subtracts a freeze window per
-	// placement, so it needs all of them, not just the newest.
+	// SpamPlacementsSince lists when this sender's warmup mail was found in the
+	// junk folder of a Google, Microsoft or Yahoo recipient; another host's
+	// junk folder is never held against a sender. The ramp subtracts a freeze
+	// window per placement, so it needs all of them, not just the newest.
 	SpamPlacementsSince(ctx context.Context, accountID uuid.UUID, since time.Time) ([]time.Time, error)
 	SumWarmupSentSince(ctx context.Context, accountID uuid.UUID, since time.Time) (int, error)
 
@@ -749,8 +750,9 @@ func (r *warmupRepository) ListParticipantHealth(ctx context.Context) ([]models.
 	return out, rows.Err()
 }
 
-// HealthMetricCounts runs the four aggregates as one statement; each keeps
-// its own predicate so the (type, created_at) indexes still serve it.
+// HealthMetricCounts runs the aggregates as one statement; each keeps its own
+// predicate so the (type, created_at) indexes still serve it. Placement is read
+// through the sender's verified receipts, so its rate is over deliveries.
 func (r *warmupRepository) HealthMetricCounts(ctx context.Context, accountID uuid.UUID, since7d, since30d time.Time) (models.WarmupHealthCounts, error) {
 	query := `
 		SELECT
@@ -771,13 +773,17 @@ func (r *warmupRepository) HealthMetricCounts(ctx context.Context, accountID uui
 			(SELECT COUNT(*) FILTER (WHERE kind = 'deletion') FROM warmup_tampering_events
 			  WHERE email_account_id = $1 AND created_at >= $2),
 			(SELECT COUNT(*) FILTER (WHERE kind = 'spam_flag') FROM warmup_tampering_events
-			  WHERE email_account_id = $1 AND created_at >= $2)
+			  WHERE email_account_id = $1 AND created_at >= $2),
+			placed.major, placed.major_spam, placed.other, placed.other_spam
+		FROM (` + placementEvidenceSQL("$1", "$2") + `) placed
 	`
 	var c models.WarmupHealthCounts
+	p := &c.Placement
 	err := r.db.QueryRow(ctx, query, accountID, since7d, since30d).Scan(
 		&c.SentLast7d, &c.SpamPlacementsLast7d, &c.UserComplaintsLast7d,
 		&c.ComplaintsLast30d, &c.BouncesLast30d, &c.DeliveredLast30d,
-		&c.DeletionsLast7d, &c.SpamFlagsLast7d)
+		&c.DeletionsLast7d, &c.SpamFlagsLast7d,
+		&p.MajorDelivered, &p.MajorSpam, &p.OtherDelivered, &p.OtherSpam)
 	return c, err
 }
 
@@ -832,10 +838,11 @@ func (r *warmupRepository) ColdRampStateForAccounts(ctx context.Context, account
 
 	placementRows, err := r.db.Query(ctx, `
 		SELECT reported_account_id, created_at
-		FROM warmup_spam_reports
+		FROM warmup_spam_reports sr
 		WHERE reported_account_id = ANY($1::uuid[])
 		  AND report_type = 'spam_placement'
 		  AND created_at >= $2
+		  AND `+majorRecipientSQL+`
 		ORDER BY created_at
 	`, accountIDs, since)
 	if err != nil {
@@ -867,10 +874,11 @@ func (r *warmupRepository) StampColdRampStart(ctx context.Context, accountID uui
 func (r *warmupRepository) SpamPlacementsSince(ctx context.Context, accountID uuid.UUID, since time.Time) ([]time.Time, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT created_at
-		FROM warmup_spam_reports
+		FROM warmup_spam_reports sr
 		WHERE reported_account_id = $1
 		  AND report_type = 'spam_placement'
 		  AND created_at >= $2
+		  AND `+majorRecipientSQL+`
 		ORDER BY created_at
 	`, accountID, since)
 	if err != nil {
@@ -1111,8 +1119,8 @@ const partnerProvenSQL = `
 		  AND o.risk_state NOT IN ('restricted', 'suspended')`
 
 // partnerCandidateSelectPrefix and partnerCandidateSelectSuffix wrap a
-// candidate set in the reciprocity counts the draw reads (what each candidate
-// sent and received over the last seven days) and apply the inbound cap: a
+// candidate set in the counts the draw reads (what each candidate sent,
+// received and filed as spam over the last seven days) and apply the inbound cap: a
 // candidate that has already received, or been dispatched, its day's share is
 // not offered. The cap is decided here, before any count or sample is taken
 // from the set, so a thin tier is sized on who can still receive. Aggregated
@@ -1130,8 +1138,12 @@ func partnerCandidateSelectSuffix(sharePercent int) string {
 		recv AS (
 			SELECT wr.email_account_id,
 			       COUNT(*) AS week,
-			       COUNT(*) FILTER (WHERE wr.created_at >= date_trunc('day', NOW())) AS today
+			       COUNT(*) FILTER (WHERE wr.created_at >= date_trunc('day', NOW())) AS today,
+			       COUNT(sr.id) AS junk
 			FROM warmup_received wr
+			LEFT JOIN warmup_spam_reports sr
+			  ON sr.reporter_account_id = wr.email_account_id AND sr.message_id = wr.message_id
+			 AND sr.report_type = 'spam_placement' AND wr.message_id <> ''
 			WHERE wr.created_at >= NOW() - interval '7 days'
 			  AND wr.email_account_id IN (SELECT id FROM cand)
 			GROUP BY wr.email_account_id
@@ -1152,7 +1164,7 @@ func partnerCandidateSelectSuffix(sharePercent int) string {
 			GROUP BY wt.recipient_account_id
 		)
 		SELECT cand.id, cand.email, cand.organization_id, cand.provider, cand.mail_host,
-		       COALESCE(sent.week, 0), COALESCE(recv.week, 0)
+		       COALESCE(sent.week, 0), COALESCE(recv.week, 0), COALESCE(recv.junk, 0)
 		FROM cand
 		LEFT JOIN recv ON recv.email_account_id = cand.id
 		LEFT JOIN sent ON sent.sender_account_id = cand.id
@@ -1296,7 +1308,7 @@ func (r *warmupRepository) queryPartnerCandidates(ctx context.Context, candidate
 	var out []models.WarmupPartnerCandidate
 	for rows.Next() {
 		c := models.WarmupPartnerCandidate{PoolType: poolType, Origin: origin}
-		if err := rows.Scan(&c.ID, &c.Email, &c.OrganizationID, &c.Provider, &c.MailHost, &c.Sent7d, &c.Received7d); err != nil {
+		if err := rows.Scan(&c.ID, &c.Email, &c.OrganizationID, &c.Provider, &c.MailHost, &c.Sent7d, &c.Received7d, &c.Junked7d); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

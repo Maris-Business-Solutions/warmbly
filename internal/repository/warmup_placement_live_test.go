@@ -118,8 +118,8 @@ func TestLiveWarmupPlacementRollup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Rates: %v", err)
 	}
-	if r := rates[sender]; r.Delivered != 4 || r.Spam != 1 || r.Band != models.WarmupPlacementBandCollecting {
-		t.Fatalf("rate = %+v, want 4 delivered, below the floor", r)
+	if r := rates[sender].Rate(); r.Delivered != 4 || r.Spam != 1 || r.Band != models.WarmupPlacementBandCollecting || r.Scope != models.WarmupPlacementScopeMajor {
+		t.Fatalf("rate = %+v, want 4 delivered at the major providers, below the floor", r)
 	}
 
 	// Every receipt the live path counted is marked, so the sweep never counts it again.

@@ -10,7 +10,7 @@ import (
 func TestDecideRestsOnRealTrouble(t *testing.T) {
 	now := time.Now()
 	for _, h := range []models.WarmupHealthState{
-		models.WarmupHealthThrottled, models.WarmupHealthQuarantined, models.WarmupHealthBlocked,
+		models.WarmupHealthQuarantined, models.WarmupHealthBlocked,
 	} {
 		d := Decide(models.SendLifecycleActive, nil, h, now)
 		if d.Next != models.SendLifecycleResting {
@@ -22,11 +22,13 @@ func TestDecideRestsOnRealTrouble(t *testing.T) {
 	}
 }
 
-// Watch is the band defined to change nothing a customer can feel. Leaving
-// cold rotation is very much something they feel.
-func TestDecideDoesNotRestOnWatch(t *testing.T) {
-	if d := Decide(models.SendLifecycleActive, nil, models.WarmupHealthWatch, time.Now()); d.Next != models.SendLifecycleActive {
-		t.Errorf("watch gave %q, want active", d.Next)
+// Watch and throttled are spam placement, which only slows a mailbox down: its
+// cold budget is dampened, and it stays in rotation.
+func TestDecideDoesNotRestOnPlacementBands(t *testing.T) {
+	for _, h := range []models.WarmupHealthState{models.WarmupHealthWatch, models.WarmupHealthThrottled} {
+		if d := Decide(models.SendLifecycleActive, nil, h, time.Now()); d.Next != models.SendLifecycleActive {
+			t.Errorf("%s gave %q, want active", h, d.Next)
+		}
 	}
 }
 
@@ -43,8 +45,11 @@ func TestDecideResumesOnlyAfterProbation(t *testing.T) {
 		t.Errorf("an hour of rest gave %q, want it still resting", d.Next)
 	}
 
-	if d := Decide(models.SendLifecycleResting, &served, models.WarmupHealthWatch, now); d.Next != models.SendLifecycleResting {
-		t.Errorf("a still-degraded mailbox gave %q, want resting", d.Next)
+	if d := Decide(models.SendLifecycleResting, &served, models.WarmupHealthQuarantined, now); d.Next != models.SendLifecycleResting {
+		t.Errorf("a still-quarantined mailbox gave %q, want resting", d.Next)
+	}
+	if d := Decide(models.SendLifecycleResting, &served, models.WarmupHealthThrottled, now); d.Next != models.SendLifecycleActive {
+		t.Errorf("a throttled mailbox that served its rest gave %q, want active at its dampened volume", d.Next)
 	}
 }
 
@@ -68,19 +73,19 @@ func TestDecideTreatsAnUnsetStateAsActive(t *testing.T) {
 	}
 }
 
-// The bug this guards: probation has to measure HEALTHY time. A mailbox that
-// sat resting and unhealthy for three days would otherwise resume on its first
-// healthy tick, having served no clean time at all.
-func TestDecideRestartsProbationWhileStillUnhealthy(t *testing.T) {
+// The bug this guards: probation has to measure time back in the pool. A
+// mailbox that sat resting and quarantined for a week would otherwise resume on
+// its first tick out, having served no probation at all.
+func TestDecideRestartsProbationWhileStillOut(t *testing.T) {
 	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
 	longAgo := now.Add(-10 * 24 * time.Hour)
 
-	d := Decide(models.SendLifecycleResting, &longAgo, models.WarmupHealthWatch, now)
+	d := Decide(models.SendLifecycleResting, &longAgo, models.WarmupHealthQuarantined, now)
 	if d.Next != models.SendLifecycleResting {
 		t.Errorf("next = %q, want it still resting", d.Next)
 	}
 	if !d.RestartProbation {
-		t.Error("a still-unhealthy mailbox must restart its clean streak, not bank the time")
+		t.Error("a still-quarantined mailbox must restart its probation, not bank the time")
 	}
 
 	// Once healthy, the clock runs and is not restarted.

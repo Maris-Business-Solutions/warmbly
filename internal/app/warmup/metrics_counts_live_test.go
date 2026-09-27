@@ -113,3 +113,34 @@ func TestLiveSweepListsTheStalestFirst(t *testing.T) {
 		t.Fatalf("order never=%d stale=%d fresh=%d; want never, then stale, then fresh", pos[never.account], pos[stale.account], pos[fresh.account])
 	}
 }
+
+// Placement is read over verified deliveries, and only a Google, Microsoft or
+// Yahoo recipient's junk folder is judged; another host's is carried apart.
+func TestLivePlacementIsJudgedAtTheMajorProviders(t *testing.T) {
+	repo, handle := liveWarmupRepo(t)
+	ctx := context.Background()
+	sender := newFreePoolAccount(t, handle)
+	gmail := newFreePoolAccount(t, handle)
+	small := newFreePoolAccount(t, handle)
+	execSQL(t, handle.Pool, `UPDATE email_accounts SET provider = 'gmail' WHERE id = $1`, gmail.account)
+	execSQL(t, handle.Pool, `UPDATE warmup_pool_participants SET health_signals_from = NOW() - INTERVAL '1 day' WHERE email_account_id = $1`, sender.account)
+
+	deliverWarmup(t, handle, sender.account, gmail.account, "30 minutes", 18, false)
+	deliverWarmup(t, handle, sender.account, gmail.account, "30 minutes", 2, true)
+	deliverWarmup(t, handle, sender.account, small.account, "30 minutes", 10, true)
+	// Spam reported with no receipt behind it was never verifiably delivered.
+	insertSpamReports(t, handle, sender.account, "spam_placement", "10 minutes", 3)
+
+	row, err := repo.GetParticipantHealthForAccount(ctx, sender.account)
+	if err != nil || row == nil {
+		t.Fatalf("participant row: %v", err)
+	}
+	m, err := NewService(repo).(*service).loadMetrics(ctx, sender.account, row)
+	if err != nil {
+		t.Fatalf("loadMetrics: %v", err)
+	}
+	if m.PlacementSample != 20 || m.SpamPlacementRate != 10 || m.OtherDelivered != 10 || m.OtherSpamRate != 100 {
+		t.Fatalf("sample %d, rate %v, other %d at %v%%; want 20 at 10%%, other 10 at 100%%",
+			m.PlacementSample, m.SpamPlacementRate, m.OtherDelivered, m.OtherSpamRate)
+	}
+}

@@ -60,12 +60,14 @@ In Warmbly, free-tier mailboxes never silently appear in the premium pool. Even 
 
 ## When to quarantine a mailbox
 
-Most platforms wait until a mailbox is landing in spam 80% of the time before they pull it. By then the reputation damage is already done. Acting earlier protects everyone in the shared pool. Our policy:
+Complaints, bounces and tampering are things a mailbox does to other people, so they act early. Spam placement is different: it is a reading of reputation, and warming is how reputation recovers, so pulling a struggling mailbox out of warmup takes away the one thing that would fix it. Placement only ever slows a mailbox down. Our policy:
 
-- **Watch**: spam placement ≥ 10% over a 20-delivery sample. Lower volume, increase spacing.
-- **Quarantine**: spam placement ≥ 20%, or complaint rate ≥ 0.10%, or bounce rate ≥ 5%. 7-day removal from the paid pool.
-- **Block**: spam placement ≥ 40%, or complaint rate ≥ 0.30%. 30-day block, manual review to re-enter.
-- **Catastrophic**: spam placement ≥ 80%. Long block plus reputation reset, with no automatic re-entry.
+- **Watch**: spam placement ≥ 10% over a 20-delivery sample, or complaint rate ≥ 0.03%. Lower volume, increase spacing.
+- **Throttled**: spam placement ≥ 20%. Warmup keeps running at half volume; cold volume is halved too. Lifts by itself once placement recovers.
+- **Quarantine**: complaint rate ≥ 0.10%, or bounce rate ≥ 5%, or repeated tampering with received warmup mail. 7-day removal from the paid pool.
+- **Block**: complaint rate ≥ 0.30%, or bounce rate ≥ 10%. 30-day block.
+
+Which mailbox provider filed a message matters too. Google, Microsoft and Yahoo filter on sender reputation, the same reputation your cold email is judged on, so only their verdicts count. A small mail host runs its own filter with its own rules, so a message in its spam folder is not evidence that the mail is spam, and it is never held against the sender.
 
 ## Practical checklist
 

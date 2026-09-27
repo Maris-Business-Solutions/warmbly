@@ -25,12 +25,19 @@ export interface PlacementCounts {
 export interface PlacementRate {
     window_days: number;
     min_sample: number;
+    // "major": Google, Microsoft and Yahoo recipients only. "all": every host,
+    // when those three have fewer than min_sample deliveries in the window
+    // (including none) and every host together has at least that many.
+    scope?: "major" | "all";
     delivered: number;
     inbox: number;
     tabs: number;
     spam: number;
     inbox_rate: number | null;
     band: PlacementBand;
+    // Other mail hosts beside a "major" rate: shown, never judged.
+    other_delivered?: number;
+    other_inbox_rate?: number | null;
 }
 
 export interface PlacementGroupCounts {

@@ -376,3 +376,23 @@ func TestReciprocityBoostFavoursTheStarvedInbox(t *testing.T) {
 		t.Fatalf("starved inbox drawn %d/2000, want about 1600", draws[starved])
 	}
 }
+
+// A small host whose own filter junks everything it receives is drawn a
+// quarter as often, and never ruled out.
+func TestFilterPenaltyDrawsAJunkingRecipientLess(t *testing.T) {
+	strict, fine := uuid.New(), uuid.New()
+	sig := partnerSignals{filterJunk: map[uuid.UUID]float64{strict: 1}}
+	if got := sig.filterPenalty(strict); got != 1/(1+recipientFilterPenaltyK) {
+		t.Fatalf("strict penalty = %v, want %v", got, 1/(1+recipientFilterPenaltyK))
+	}
+	if got := sig.filterPenalty(fine); got != 1 {
+		t.Fatalf("unknown recipient penalty = %v, want 1", got)
+	}
+	picks := map[uuid.UUID]int{}
+	for range 4000 {
+		picks[pickWeightedPartner([]uuid.UUID{strict, fine}, sig)]++
+	}
+	if picks[strict] == 0 || picks[strict]*2 > picks[fine] {
+		t.Fatalf("picks = strict %d, fine %d; want the junking host drawn far less but still drawn", picks[strict], picks[fine])
+	}
+}

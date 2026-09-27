@@ -28,7 +28,10 @@ type rampFixture struct {
 	user    uuid.UUID
 	org     uuid.UUID
 	mailbox uuid.UUID
-	svc     AnalyticsService
+	// gmail is the recipient that files the placements: only a Google,
+	// Microsoft or Yahoo placement moves the ramp on its own.
+	gmail uuid.UUID
+	svc   AnalyticsService
 }
 
 func newRampFixture(t *testing.T, daysWarming, base, increase, max int) *rampFixture {
@@ -44,7 +47,7 @@ func newRampFixture(t *testing.T, daysWarming, base, increase, max int) *rampFix
 	}
 	t.Cleanup(func() { handle.Pool.Close() })
 
-	f := &rampFixture{pool: handle.Pool, user: uuid.New(), org: uuid.New(), mailbox: uuid.New()}
+	f := &rampFixture{pool: handle.Pool, user: uuid.New(), org: uuid.New(), mailbox: uuid.New(), gmail: uuid.New()}
 	exec := func(sql string, args ...any) {
 		t.Helper()
 		if _, err := f.pool.Exec(ctx, sql, args...); err != nil {
@@ -62,6 +65,10 @@ func newRampFixture(t *testing.T, daysWarming, base, increase, max int) *rampFix
 	              $5, $6, $7, $8)`,
 		f.mailbox, f.user, f.org, "ramp-"+f.mailbox.String()[:8]+"@test.local",
 		time.Now().Add(-time.Duration(daysWarming)*24*time.Hour), base, increase, max)
+	exec(`INSERT INTO email_accounts (id, user_id, organization_id, email, name, signature_plain,
+	          signature_html, provider, status, campaign_limit, min_wait_time, timezone)
+	      VALUES ($1, $2, $3, $4, 'Partner', '', '', 'gmail', 'active', 50, 600, 'UTC')`,
+		f.gmail, f.user, f.org, "ramp-"+f.gmail.String()[:8]+"@gmail.test")
 
 	t.Cleanup(func() {
 		c := context.Background()
@@ -73,6 +80,7 @@ func newRampFixture(t *testing.T, daysWarming, base, increase, max int) *rampFix
 			{`DELETE FROM warmup_statistics WHERE email_account_id = $1`, f.mailbox},
 			{`DELETE FROM campaigns WHERE organization_id = $1`, f.org},
 			{`DELETE FROM email_accounts WHERE id = $1`, f.mailbox},
+			{`DELETE FROM email_accounts WHERE id = $1`, f.gmail},
 			{`DELETE FROM organizations WHERE id = $1`, f.org},
 			{`DELETE FROM users WHERE id = $1`, f.user},
 		} {
@@ -100,8 +108,8 @@ func (f *rampFixture) placement(t *testing.T, hoursAgo int) {
 	t.Helper()
 	if _, err := f.pool.Exec(context.Background(),
 		`INSERT INTO warmup_spam_reports (id, reporter_account_id, reported_account_id, message_id, report_type, created_at)
-		 VALUES (gen_random_uuid(), $1, $1, $2, 'spam_placement', $3)`,
-		f.mailbox, "msg-"+uuid.New().String(),
+		 VALUES (gen_random_uuid(), $1, $2, $3, 'spam_placement', $4)`,
+		f.gmail, f.mailbox, "msg-"+uuid.New().String(),
 		time.Now().Add(-time.Duration(hoursAgo)*time.Hour)); err != nil {
 		t.Fatalf("record placement: %v", err)
 	}
@@ -162,6 +170,23 @@ func TestLiveRecentPlacementCutsTheTargetAndExplainsItself(t *testing.T) {
 	}
 	if !held {
 		t.Error("target was cut but nothing explains why; the drawer would show a silent drop")
+	}
+}
+
+// A junk-folder landing at a small host's own filter reaches the health band at
+// a fifth of its weight but never holds or cuts the ramp by itself.
+func TestLiveSmallHostPlacementDoesNotHoldTheRamp(t *testing.T) {
+	f := newRampFixture(t, 10, 10, 1, 40)
+	if _, err := f.pool.Exec(context.Background(),
+		`INSERT INTO warmup_spam_reports (id, reporter_account_id, reported_account_id, message_id, report_type, created_at)
+		 VALUES (gen_random_uuid(), $1, $1, $2, 'spam_placement', NOW() - INTERVAL '2 hours')`,
+		f.mailbox, "msg-"+uuid.New().String()); err != nil {
+		t.Fatalf("record placement: %v", err)
+	}
+
+	target, held := f.status(t)
+	if held || target != 20 {
+		t.Errorf("target = %d, held = %v; want the unheld day-10 target of 20", target, held)
 	}
 }
 

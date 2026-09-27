@@ -460,7 +460,7 @@ The mailbox's cold-rotation state.
 
 `POST /emails/:id/release`
 
-Puts a held or resting mailbox back into automatic management. It lands in `active`, or straight in `resting` when warmup is running and still reports the mailbox as throttled or worse, so a release never sends cold mail from a mailbox that warmup can see is struggling. A resting mailbox with no warmup running has no signal to wait for and lands in `active`. Bodyless and idempotent; releasing a mailbox that is already active returns its current state.
+Puts a held or resting mailbox back into automatic management. It lands in `active`, or straight in `resting` when warmup is running and still reports the mailbox as quarantined or blocked, so a release never sends cold mail from a mailbox the pool has taken out. A `watch` or `throttled` mailbox lands in `active` and sends at its dampened volume. A resting mailbox with no warmup running has no signal to wait for and lands in `active`. Bodyless and idempotent; releasing a mailbox that is already active returns its current state.
 
 Auth: **Scope** `WRITE_EMAILS` · **Org permission** `manage_emails`
 
@@ -601,7 +601,7 @@ Auth: **Scope** `READ_EMAILS` · **Org permission** `view_campaigns`
   "email_account_id": "0c0f1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
   "blocked": true,
   "health_state": "quarantined",
-  "reason": "spam-folder placement above threshold",
+  "reason": "complaint rate 0.15% exceeded quarantine threshold",
   "blocked_at": "2026-06-09T14:00:00Z",
   "blocked_until": "2026-06-16T14:00:00Z",
   "can_appeal": true,

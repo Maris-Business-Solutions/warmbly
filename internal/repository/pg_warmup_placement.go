@@ -66,7 +66,7 @@ type WarmupPlacementRepository interface {
 	// those sent before cutoff.
 	Unconfirmed(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, from, to, cutoff time.Time) ([]WarmupSenderDayCount, error)
 	// Rates is each sender's trailing-window placement since the given day.
-	Rates(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, since time.Time) (map[uuid.UUID]models.WarmupPlacementRate, error)
+	Rates(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, since time.Time) (map[uuid.UUID]models.WarmupPlacementWindow, error)
 }
 
 type warmupPlacementRepository struct {
@@ -123,10 +123,9 @@ func (r *warmupPlacementRepository) RecordPlacement(ctx context.Context, recipie
 }
 
 func (r *warmupPlacementRepository) SweepUnplaced(ctx context.Context, cutoff time.Time, limit int) (int, error) {
-	// The group CASE mirrors models.WarmupRecipientGroup. Category tabs and
-	// rescues are only known on the live path, so a swept receipt reads as
-	// inbox or spam.
-	const query = `
+	// Category tabs and rescues are only known on the live path, so a swept
+	// receipt reads as inbox or spam.
+	query := `
 		WITH batch AS (
 			SELECT email_account_id, internal_id FROM warmup_received
 			WHERE NOT placed AND created_at < $1
@@ -141,14 +140,7 @@ func (r *warmupPlacementRepository) SweepUnplaced(ctx context.Context, cutoff ti
 		), graded AS (
 			SELECT c.sender_account_id,
 				(c.created_at AT TIME ZONE 'UTC')::date AS day,
-				CASE
-					WHEN rec.mail_host IN ('google_workspace', 'gmail') THEN 'google'
-					WHEN rec.mail_host IN ('microsoft365', 'outlook') THEN 'microsoft'
-					WHEN rec.mail_host IN ('yahoo', 'aol') THEN 'yahoo'
-					WHEN rec.mail_host = '' AND rec.provider = 'gmail' THEN 'google'
-					WHEN rec.mail_host = '' AND rec.provider = 'outlook' THEN 'microsoft'
-					ELSE 'other'
-				END AS grp,
+				` + recipientGroupSQL("rec") + ` AS grp,
 				rec.mail_host AS host,
 				EXISTS (
 					SELECT 1 FROM warmup_spam_reports sr
@@ -286,9 +278,13 @@ func (r *warmupPlacementRepository) senderDayCounts(ctx context.Context, query s
 	return out, rows.Err()
 }
 
-func (r *warmupPlacementRepository) Rates(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, since time.Time) (map[uuid.UUID]models.WarmupPlacementRate, error) {
+func (r *warmupPlacementRepository) Rates(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, since time.Time) (map[uuid.UUID]models.WarmupPlacementWindow, error) {
 	const query = `
-		SELECT p.sender_account_id, SUM(p.inbox)::int, SUM(p.tabs)::int, SUM(p.spam)::int
+		SELECT p.sender_account_id,
+			SUM(p.inbox) FILTER (WHERE p.recipient_group <> 'other')::int,
+			SUM(p.tabs) FILTER (WHERE p.recipient_group <> 'other')::int,
+			SUM(p.spam) FILTER (WHERE p.recipient_group <> 'other')::int,
+			SUM(p.inbox)::int, SUM(p.tabs)::int, SUM(p.spam)::int
 		FROM warmup_placement_daily p
 		JOIN email_accounts ea ON ea.id = p.sender_account_id
 		WHERE ea.organization_id = $1
@@ -303,14 +299,21 @@ func (r *warmupPlacementRepository) Rates(ctx context.Context, orgID uuid.UUID, 
 		return nil, err
 	}
 	defer rows.Close()
-	out := make(map[uuid.UUID]models.WarmupPlacementRate)
+	out := make(map[uuid.UUID]models.WarmupPlacementWindow)
 	for rows.Next() {
 		var id uuid.UUID
-		var inbox, tabs, spam int
-		if err := rows.Scan(&id, &inbox, &tabs, &spam); err != nil {
+		var major [3]*int
+		var w models.WarmupPlacementWindow
+		if err := rows.Scan(&id, &major[0], &major[1], &major[2], &w.All.Inbox, &w.All.Tabs, &w.All.Spam); err != nil {
 			return nil, err
 		}
-		out[id] = models.NewWarmupPlacementRate(inbox, tabs, spam)
+		// A sum over no major rows is NULL.
+		for i, dst := range []*int{&w.Major.Inbox, &w.Major.Tabs, &w.Major.Spam} {
+			if major[i] != nil {
+				*dst = *major[i]
+			}
+		}
+		out[id] = w
 	}
 	return out, rows.Err()
 }

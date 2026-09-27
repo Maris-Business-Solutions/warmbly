@@ -61,3 +61,35 @@ func TestNewWarmupPlacementRate(t *testing.T) {
 		t.Fatalf("75%% is poor: %+v", r)
 	}
 }
+
+// The headline is taken at the major providers while any of them received
+// mail, and the other hosts ride beside it; with none it covers every host.
+func TestWarmupPlacementWindowRate(t *testing.T) {
+	w := WarmupPlacementWindow{
+		Major: WarmupPlacementTally{Inbox: 18, Tabs: 2},
+		All:   WarmupPlacementTally{Inbox: 28, Tabs: 2, Spam: 10},
+	}
+	r := w.Rate()
+	if r.Scope != WarmupPlacementScopeMajor || r.Delivered != 20 || r.InboxRate == nil || *r.InboxRate != 100 {
+		t.Fatalf("major rate = %+v, want 20 delivered at 100%%", r)
+	}
+	if r.OtherDelivered != 20 || r.OtherInboxRate == nil || *r.OtherInboxRate != 50 {
+		t.Fatalf("other hosts = %d at %v, want 20 at 50%%", r.OtherDelivered, r.OtherInboxRate)
+	}
+
+	only := WarmupPlacementWindow{All: WarmupPlacementTally{Inbox: 15, Spam: 5}}.Rate()
+	if only.Scope != WarmupPlacementScopeAll || only.Delivered != 20 || only.OtherDelivered != 0 || only.OtherInboxRate != nil {
+		t.Fatalf("all-host rate = %+v, want every host and nothing beside it", only)
+	}
+
+	// Three Gmail deliveries do not hide a rate over 150 at small hosts.
+	thin := WarmupPlacementWindow{Major: WarmupPlacementTally{Inbox: 3}, All: WarmupPlacementTally{Inbox: 120, Spam: 33}}.Rate()
+	if thin.Scope != WarmupPlacementScopeAll || thin.InboxRate == nil || thin.Delivered != 153 {
+		t.Fatalf("thin major rate = %+v, want the all-host figure", thin)
+	}
+	// With neither at the sample, the major count is what is being collected.
+	early := WarmupPlacementWindow{Major: WarmupPlacementTally{Inbox: 3}, All: WarmupPlacementTally{Inbox: 8}}.Rate()
+	if early.Scope != WarmupPlacementScopeMajor || early.Band != WarmupPlacementBandCollecting || early.Delivered != 3 {
+		t.Fatalf("early rate = %+v, want 3 of the major sample collecting", early)
+	}
+}

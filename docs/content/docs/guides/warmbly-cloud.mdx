@@ -86,7 +86,7 @@ The Warmup plan is the same plan a hosted workspace buys when it only warms and 
 
 ## Safety and enforcement
 
-Enrolled mailboxes are ordinary members of the hosted pool and are held to the same rules: verification tokens on every warmup message, spam placement and complaint tracking, and automatic quarantine or blocking when a mailbox starts hurting partners. A mailbox that gets quarantined on the cloud shows that state on your instance, stops being offered to partners, and re-enters on the same probation terms as any hosted mailbox.
+Enrolled mailboxes are ordinary members of the hosted pool and are held to the same rules: verification tokens on every warmup message, complaint and bounce tracking with automatic quarantine or blocking when a mailbox starts hurting partners, and spam placement that slows a mailbox down. A mailbox that gets quarantined on the cloud shows that state on your instance, stops being offered to partners, and re-enters on the same probation terms as any hosted mailbox.
 
 For mailboxes signed in through Warmbly Cloud the enforcement reaches sending too. Every access token the instance draws is checked on the cloud: a mailbox the cloud has **blocked**, one that is no longer active there, one that was removed from the workspace, or an instance whose link was revoked gets no token, and the instance stops sending and syncing from that mailbox as soon as its cached token expires.
 

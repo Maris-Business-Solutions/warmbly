@@ -3,6 +3,8 @@ package warmup
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,11 +33,14 @@ type HealthRealtimePublisher interface {
 const (
 	minSpamPlacementSample = 20
 
-	spamPlacementWatchPct        = 10.0
-	spamPlacementThrottlePct     = 15.0
-	spamPlacementQuarantinePct   = 20.0
-	spamPlacementBlockPct        = 40.0
-	spamPlacementCatastrophicPct = 80.0
+	// Placement is a reading of reputation, not misconduct, and warming is how
+	// it recovers, so it only ever slows a mailbox down: it never quarantines,
+	// blocks or needs an appeal.
+	spamPlacementWatchPct    = 10.0
+	spamPlacementThrottlePct = 20.0
+	// A watch or throttle lifts only once the rate falls this far below the
+	// line that set it, so a mailbox near a line does not flap across it.
+	spamPlacementExitFactor = 0.75
 
 	complaintRateWatchPct      = 0.03
 	complaintRateQuarantinePct = 0.10
@@ -65,7 +70,6 @@ const (
 	warmupThrottleDuration   = 3 * 24 * time.Hour
 	warmupQuarantineDuration = 7 * 24 * time.Hour
 	warmupBlockDuration      = 30 * 24 * time.Hour
-	warmupCatastrophicBlock  = 90 * 24 * time.Hour
 )
 
 type Service interface {
@@ -177,20 +181,6 @@ func (s *service) dispatchHealthEvent(ctx context.Context, accountID uuid.UUID, 
 		return
 	}
 
-	var event models.WebhookEventType
-	switch newState {
-	case models.WarmupHealthBlocked:
-		event = models.WebhookEventWarmupBlocked
-	case models.WarmupHealthQuarantined:
-		event = models.WebhookEventWarmupQuarantined
-	case models.WarmupHealthThrottled, models.WarmupHealthWatch, models.WarmupHealthHealthy:
-		// Fire the generic health_changed event for these — quarantine /
-		// blocked also re-fire it so subscribers can carry a single handler.
-		event = models.WebhookEventWarmupHealthChanged
-	default:
-		return
-	}
-
 	payload := map[string]any{
 		"email_account_id": accountID,
 		"email":            account.Email,
@@ -198,10 +188,9 @@ func (s *service) dispatchHealthEvent(ctx context.Context, accountID uuid.UUID, 
 		"new_state":        string(newState),
 		"reason":           reason,
 	}
-	_, _ = s.webhooks.Dispatch(ctx, *account.OrganizationID, event, payload)
-
-	// For block/quarantine, also fire the specific event in addition to
-	// the generic transition so callers can subscribe selectively.
+	// Every transition fires health_changed once; a quarantine or block also
+	// fires its own event once, so a subscriber to either hears it once.
+	_, _ = s.webhooks.Dispatch(ctx, *account.OrganizationID, models.WebhookEventWarmupHealthChanged, payload)
 	switch newState {
 	case models.WarmupHealthBlocked:
 		_, _ = s.webhooks.Dispatch(ctx, *account.OrganizationID, models.WebhookEventWarmupBlocked, payload)
@@ -564,7 +553,7 @@ func (s *service) evaluateAndPersist(ctx context.Context, participant *models.Wa
 
 	// The floor that keeps a block from being overturned by a fresh reading is
 	// applied by UpdateParticipantHealth against the row as it is at write time.
-	decision := evaluateMetrics(metrics, s.now().UTC())
+	decision := evaluateMetrics(metrics, placementPrior(participant), s.now().UTC())
 	health, err := s.repo.UpdateParticipantHealth(ctx, accountID, decision.State, decision.BlockedUntil, decision.Reason, decision.Score)
 	if err != nil {
 		return nil, fail("persist", err)
@@ -602,12 +591,11 @@ func (s *service) loadMetrics(ctx context.Context, accountID uuid.UUID, particip
 
 	// Placement (the provider's classifier) and complaint (the recipient) have
 	// different remediation paths, so they earn separate rates.
-	placementRate := 0.0
 	warmupComplaintRate := 0.0
 	if sentLast7d > 0 {
-		placementRate = float64(spamPlacementsLast7d) / float64(sentLast7d) * 100
 		warmupComplaintRate = float64(userComplaintsLast7d) / float64(sentLast7d) * 100
 	}
+	placementRate, placementSample := counts.Placement.Judged()
 
 	complaintRate := 0.0
 	if deliveredLast30d > 0 {
@@ -622,6 +610,9 @@ func (s *service) loadMetrics(ctx context.Context, accountID uuid.UUID, particip
 		SentLast7d:           sentLast7d,
 		SpamPlacementsLast7d: spamPlacementsLast7d,
 		SpamPlacementRate:    placementRate,
+		PlacementSample:      placementSample,
+		OtherSpamRate:        pct(counts.Placement.OtherSpam, counts.Placement.OtherDelivered),
+		OtherDelivered:       counts.Placement.OtherDelivered,
 		UserComplaintsLast7d: userComplaintsLast7d,
 		WarmupComplaintRate:  warmupComplaintRate,
 		ComplaintsLast30d:    complaintsLast30d,
@@ -634,6 +625,13 @@ func (s *service) loadMetrics(ctx context.Context, accountID uuid.UUID, particip
 	}, nil
 }
 
+func pct(part, whole int) float64 {
+	if whole <= 0 {
+		return 0
+	}
+	return float64(part) / float64(whole) * 100
+}
+
 type evaluationDecision struct {
 	State        models.WarmupHealthState
 	BlockedUntil *time.Time
@@ -644,8 +642,11 @@ type evaluationDecision struct {
 // evaluateMetrics is the rate bands and the tampering band judged apart, with
 // the more severe finding kept, so a seven-day rate quarantine can never hide
 // a thirty-day tampering block or the other way round.
-func evaluateMetrics(metrics *models.WarmupHealthMetrics, now time.Time) evaluationDecision {
-	return moreSevere(evaluateRateBands(metrics, now), evaluateTampering(metrics, now))
+// prior is the standing the placement band gave the row last time, which it
+// needs to hold a watch or throttle until the rate has clearly recovered.
+func evaluateMetrics(metrics *models.WarmupHealthMetrics, prior models.WarmupHealthState, now time.Time) evaluationDecision {
+	rates := moreSevere(evaluateRateBands(metrics, now), evaluatePlacement(metrics, prior, now))
+	return moreSevere(rates, evaluateTampering(metrics, now))
 }
 
 // healthSeverity orders the bands; ties go to the later term.
@@ -800,57 +801,65 @@ func evaluateRateBands(metrics *models.WarmupHealthMetrics, now time.Time) evalu
 		}
 	}
 
-	// Evaluate spam placement rate (requires minimum 20 warmup sends in 7d)
-	if metrics.SentLast7d < minSpamPlacementSample {
-		return decision
-	}
+	return decision
+}
 
+// evaluatePlacement is the spam-placement ladder. It only slows a mailbox
+// down, and lifts on its own once the rate is clearly back down.
+func evaluatePlacement(m *models.WarmupHealthMetrics, prior models.WarmupHealthState, now time.Time) evaluationDecision {
+	healthy := evaluationDecision{State: models.WarmupHealthHealthy, Score: m.SpamPlacementRate}
+	if m.PlacementSample < minSpamPlacementSample {
+		return healthy
+	}
+	rate := m.SpamPlacementRate
 	switch {
-	case metrics.SpamPlacementRate >= spamPlacementCatastrophicPct:
-		until := now.Add(warmupCatastrophicBlock)
-		return evaluationDecision{
-			State:        models.WarmupHealthBlocked,
-			BlockedUntil: &until,
-			Reason:       fmt.Sprintf("catastrophic warmup spam placement %.1f%% over %d sends", metrics.SpamPlacementRate, metrics.SentLast7d),
-			Score:        metrics.SpamPlacementRate,
-		}
-	case metrics.SpamPlacementRate >= spamPlacementBlockPct:
-		until := now.Add(warmupBlockDuration)
-		return evaluationDecision{
-			State:        models.WarmupHealthBlocked,
-			BlockedUntil: &until,
-			Reason:       fmt.Sprintf("warmup spam placement %.1f%% exceeded block threshold", metrics.SpamPlacementRate),
-			Score:        metrics.SpamPlacementRate,
-		}
-	case metrics.SpamPlacementRate >= spamPlacementQuarantinePct:
-		until := now.Add(warmupQuarantineDuration)
-		return evaluationDecision{
-			State:        models.WarmupHealthQuarantined,
-			BlockedUntil: &until,
-			Reason:       fmt.Sprintf("warmup spam placement %.1f%% exceeded quarantine threshold", metrics.SpamPlacementRate),
-			Score:        metrics.SpamPlacementRate,
-		}
-	case metrics.SpamPlacementRate >= spamPlacementThrottlePct:
+	case rate >= spamPlacementThrottlePct,
+		prior == models.WarmupHealthThrottled && rate >= spamPlacementThrottlePct*spamPlacementExitFactor:
 		until := now.Add(warmupThrottleDuration)
 		return evaluationDecision{
 			State:        models.WarmupHealthThrottled,
 			BlockedUntil: &until,
-			Reason:       fmt.Sprintf("warmup spam placement %.1f%% in throttle band", metrics.SpamPlacementRate),
-			Score:        metrics.SpamPlacementRate,
+			Reason: fmt.Sprintf("%s Warmup and cold sending run at half volume with wider spacing until it is below %s, then return to normal on their own.",
+				placementSummary(m), fmtPct(spamPlacementThrottlePct*spamPlacementExitFactor)),
+			Score: rate,
 		}
-	case metrics.SpamPlacementRate >= spamPlacementWatchPct:
-		// Only upgrade to watch if not already at a worse state from complaint checks
-		if decision.State == models.WarmupHealthHealthy {
-			return evaluationDecision{
-				State:  models.WarmupHealthWatch,
-				Reason: fmt.Sprintf("warmup spam placement %.1f%% in watch band", metrics.SpamPlacementRate),
-				Score:  metrics.SpamPlacementRate,
-			}
+	case rate >= spamPlacementWatchPct,
+		(prior == models.WarmupHealthWatch || prior == models.WarmupHealthThrottled) && rate >= spamPlacementWatchPct*spamPlacementExitFactor:
+		return evaluationDecision{
+			State: models.WarmupHealthWatch,
+			Reason: fmt.Sprintf("%s Sending is slowed slightly until it is below %s.",
+				placementSummary(m), fmtPct(spamPlacementWatchPct*spamPlacementExitFactor)),
+			Score: rate,
 		}
-		return decision
-	default:
-		return decision
 	}
+	return healthy
+}
+
+// placementReasonMarker is in every reason the placement band writes, which is
+// how the next evaluation knows a watch or throttle is placement's to hold.
+const placementReasonMarker = "of warmup mail delivered at Google, Microsoft and Yahoo landed in spam"
+
+// placementPrior is the row's standing when the placement band set it, and
+// empty otherwise, so a probation or complaint watch is never held by it.
+func placementPrior(p *models.WarmupParticipantHealth) models.WarmupHealthState {
+	if p.LastHealthReason != nil && strings.Contains(*p.LastHealthReason, placementReasonMarker) {
+		return p.HealthState
+	}
+	return ""
+}
+
+// placementSummary says what the placement band read.
+func placementSummary(m *models.WarmupHealthMetrics) string {
+	out := fmt.Sprintf("%s %s over 7 days (%d delivered).", fmtPct(m.SpamPlacementRate), placementReasonMarker, m.PlacementSample)
+	if m.OtherDelivered > 0 && m.OtherSpamRate > 0 {
+		out += fmt.Sprintf(" Other mail hosts (%s of %d) run their own filters and are not counted.", fmtPct(m.OtherSpamRate), m.OtherDelivered)
+	}
+	return out
+}
+
+// fmtPct is a percentage to one decimal, without a trailing ".0".
+func fmtPct(v float64) string {
+	return strconv.FormatFloat(math.Round(v*10)/10, 'f', -1, 64) + "%"
 }
 
 func maxFloat(a, b float64) float64 {
