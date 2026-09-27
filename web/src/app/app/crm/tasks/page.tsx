@@ -80,6 +80,7 @@ import { useSuppressGlobalCursors } from "@/components/app/presence/GlobalCursor
 import { useLivePatch } from "@/hooks/useLivePatch";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import type CRMTask from "@/lib/api/models/app/crm/CRMTask";
+import type { CRMTaskWrite } from "@/lib/api/models/app/crm/CRMTask";
 import type { CRMTaskPriority, CRMTaskStatus } from "@/lib/api/models/app/crm/CRMTask";
 import type SearchTasks from "@/lib/api/models/app/crm/SearchTasks";
 import type { TaskSortBy } from "@/lib/api/models/app/crm/SearchTasks";
@@ -146,7 +147,7 @@ const TONE = {
     muted: { dot: "bg-slate-300", label: "text-slate-500" },
 } as const;
 
-function bucketize(due: string | undefined): Bucket {
+function bucketize(due: string | Date | undefined): Bucket {
     if (!due) return "no_due";
     const d = new Date(due);
     if (Number.isNaN(d.getTime())) return "no_due";
@@ -739,7 +740,7 @@ function FlatRow({
         try {
             await update.mutateAsync({
                 id: task.id,
-                data: { status: done ? "completed" : "pending" } as Partial<CRMTask>,
+                data: { status: done ? "completed" : "pending" } as CRMTaskWrite,
             });
         } catch (err) {
             toast.error(buildError(err as AppError));
@@ -1012,7 +1013,7 @@ function GroupedRow({
         e.stopPropagation();
         const next: CRMTaskStatus = isDone ? "pending" : "completed";
         try {
-            await update.mutateAsync({ id: task.id, data: { status: next } as Partial<CRMTask> });
+            await update.mutateAsync({ id: task.id, data: { status: next } as CRMTaskWrite });
         } catch (err) {
             toast.error(buildError(err as AppError));
         }
@@ -1210,7 +1211,7 @@ function TaskTypeTag({
     );
 }
 
-function DueCell({ due, overdue }: { due: string | undefined; overdue: boolean }) {
+function DueCell({ due, overdue }: { due: string | Date | undefined; overdue: boolean }) {
     if (!due) return <span className="text-slate-300 text-[11px]">—</span>;
     if (overdue) {
         return (
@@ -1823,7 +1824,7 @@ function TaskDialog({
             toast.error("Title required");
             return;
         }
-        const data: Partial<CRMTask> = {
+        const data: CRMTaskWrite = {
             title: title.trim(),
             priority,
             type,
@@ -2210,7 +2211,7 @@ function hasAnyFilter(f: SearchTasks): boolean {
     );
 }
 
-function fmtDue(d: string) {
+function fmtDue(d: string | Date) {
     try {
         const dt = new Date(d);
         const now = new Date();

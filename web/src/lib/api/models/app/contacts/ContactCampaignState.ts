@@ -10,12 +10,12 @@ export interface ContactCampaignStep {
     position: number;
     subject?: string;
 
-    sent_at?: string | null;
-    opened_at?: string | null;
-    clicked_at?: string | null;
-    replied_at?: string | null;
-    bounced_at?: string | null;
-    failed_at?: string | null;
+    sent_at?: Date | null;
+    opened_at?: Date | null;
+    clicked_at?: Date | null;
+    replied_at?: Date | null;
+    bounced_at?: Date | null;
+    failed_at?: Date | null;
     attempts?: number;
     in_flight?: boolean;
 }
@@ -38,8 +38,8 @@ export interface ContactNextAction {
     // Only when due now, and then it is the campaign chain's own next wakeup,
     // not a slot reserved for this contact: leads queued ahead can still push
     // this step to a later pass. Absent while the chain is being re-seeded.
-    scheduled_at?: string | null;
-    not_before?: string | null;
+    scheduled_at?: Date | null;
+    not_before?: Date | null;
     constraint?: string;
 }
 
@@ -62,7 +62,7 @@ export default interface ContactCampaignState {
 
     current_step?: ContactCampaignStep | null;
     last_action?: string;
-    last_action_at?: string | null;
+    last_action_at?: Date | null;
 
     // The live per-lead hold: an out-of-office auto-reply parked the contact,
     // or a member paused them. Absent when the lead is not held.

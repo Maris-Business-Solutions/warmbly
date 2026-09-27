@@ -17,7 +17,7 @@ export interface AccountError {
     title: string;
     message: string;
     action_required?: string;
-    created_at: string;
+    created_at: Date;
 }
 
 export interface AccountDailyUsage {
@@ -31,8 +31,8 @@ export interface AccountDailyUsage {
 export interface WarmupStatusInfo {
     enabled: boolean;
     paused: boolean;
-    paused_at?: string | null;
-    started_at: string;
+    paused_at?: Date | null;
+    started_at: Date;
     current_volume: number;
     target_volume: number;
     max_volume: number;
@@ -58,7 +58,7 @@ export interface WarmupRampHold {
     placements: number;
     sends: number;
     volume_cut: boolean;
-    resumes_at: string;
+    resumes_at: Date;
 }
 
 // Warmup-pool reputation for this mailbox. Folded into health.score and also
@@ -71,8 +71,8 @@ export interface WarmupHealthInfo {
     /** @deprecated Always 0 since the warmup spam score was retired; read score and reason. */
     spam_score: number;
     reason?: string;
-    blocked_until?: string | null;
-    evaluated_at?: string | null;
+    blocked_until?: Date | null;
+    evaluated_at?: Date | null;
     /** Distinct warmup partners over the last 7 days: mailboxes, their domains, and the workspaces behind them. */
     partner_mailboxes_7d: number;
     partner_domains_7d: number;
@@ -87,7 +87,7 @@ export default interface AccountStatus {
     email: string;
     provider: string;
     status: string;
-    last_synced_at: string | null;
+    last_synced_at: Date | null;
     health: AccountHealth;
     errors: AccountError[];
     daily_usage: AccountDailyUsage;
@@ -117,6 +117,6 @@ export type SendLifecycle = "active" | "resting" | "reserve";
 // Why a mailbox is not being offered cold sends.
 export interface SendLifecycleState {
     state: SendLifecycle;
-    since?: string;
+    since?: Date;
     reason?: string;
 }

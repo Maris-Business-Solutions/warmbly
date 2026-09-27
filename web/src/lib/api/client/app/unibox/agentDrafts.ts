@@ -19,8 +19,8 @@ export interface AIThreadDraft {
     confidence: number
     model: string
     status: "pending" | "approved" | "discarded"
-    created_at: string
-    updated_at: string
+    created_at: Date
+    updated_at: Date
 }
 
 // listAgentDrafts returns the org's pending inbox-agent drafts, newest first.

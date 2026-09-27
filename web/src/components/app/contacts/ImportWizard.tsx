@@ -1219,7 +1219,7 @@ function StatCard({
     );
 }
 
-function durationText(start: string, end: string): string {
+function durationText(start: string | Date, end: string | Date): string {
     const s = new Date(start).getTime();
     const e = new Date(end).getTime();
     if (Number.isNaN(s) || Number.isNaN(e)) return "—";

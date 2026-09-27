@@ -10,7 +10,7 @@ export interface SnoozeRequest {
 export interface SnoozeResponse {
     id: string;
     thread_id: string;
-    snoozed_until: string;
+    snoozed_until: Date;
 }
 
 export async function snoozeThread(req: SnoozeRequest): Promise<SnoozeResponse> {

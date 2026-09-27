@@ -367,7 +367,7 @@ function ComposeWindowInner({
                 // Undo window: the send is queued a few seconds out. No
                 // "sent" toast; the header pill counts down and can cancel,
                 // reopening the composer from this seed.
-                const nowIso = new Date().toISOString();
+                const now = new Date();
                 addOutbox({
                     taskId: res.task_id,
                     scheduledAt: resolveSendAt(res.scheduled_at, user.undo_send_seconds || 30),
@@ -382,8 +382,8 @@ function ComposeWindowInner({
                         bcc,
                         subject: subject.trim(),
                         body: trimmedBody,
-                        updated_at: nowIso,
-                        created_at: nowIso,
+                        updated_at: now,
+                        created_at: now,
                     },
                 });
             } else {

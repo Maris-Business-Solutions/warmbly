@@ -25,7 +25,7 @@ const REASON_COPY: Record<SyncThrottleReason, string> = {
     priority_daily: "the daily limit for replies was reached",
 };
 
-function relative(iso: string): string {
+function relative(iso: string | Date): string {
     const diff = Date.now() - new Date(iso).getTime();
     const m = Math.round(diff / 60_000);
     if (m < 1) return "just now";
@@ -35,7 +35,7 @@ function relative(iso: string): string {
     return new Date(iso).toLocaleDateString();
 }
 
-function until(iso: string): string {
+function until(iso: string | Date): string {
     const d = new Date(iso);
     const sameDay = d.toDateString() === new Date().toDateString();
     return sameDay

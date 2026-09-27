@@ -107,10 +107,10 @@ export interface AdvisorFinding {
     evidence?: Record<string, unknown>;
     action?: AdvisorAction;
 
-    first_seen_at: string;
-    last_seen_at: string;
-    snoozed_until?: string;
-    applied_at?: string;
+    first_seen_at: Date;
+    last_seen_at: Date;
+    snoozed_until?: Date;
+    applied_at?: Date;
     applied_result?: string;
 }
 
@@ -129,7 +129,7 @@ export interface AdvisorSummary {
     medium: number;
     low: number;
     surfaces: AdvisorSurfaceCount[];
-    last_run_at?: string;
+    last_run_at?: Date;
 }
 
 export interface AdvisorSettings {
@@ -142,7 +142,7 @@ export interface AdvisorSettings {
     // it on.
     autopilot: boolean;
     autopilot_actor_id?: string;
-    updated_at: string;
+    updated_at: Date;
 }
 
 export interface AdvisorFindingsQuery {

@@ -29,7 +29,7 @@ export interface RecentActivityItem {
     campaign_name: string
     contact_email: string
     contact_id?: string
-    timestamp: string
+    timestamp: Date
     link?: string
     // Client, device and location of a person's open or click, when logged.
     origin?: EngagementOrigin

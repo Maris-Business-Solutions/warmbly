@@ -61,7 +61,9 @@ import useUpdateDeal from "@/lib/api/hooks/app/crm/deals/useUpdateDeal";
 import usePipelines from "@/lib/api/hooks/app/crm/pipelines/usePipelines";
 import type { Stage } from "@/lib/api/models/app/crm/Pipeline";
 import type Deal from "@/lib/api/models/app/crm/Deal";
+import type { DealWrite } from "@/lib/api/models/app/crm/Deal";
 import type CRMTask from "@/lib/api/models/app/crm/CRMTask";
+import type { CRMTaskWrite } from "@/lib/api/models/app/crm/CRMTask";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 
@@ -369,7 +371,7 @@ function campaignLine(s: ContactCampaignState): { text: string; title?: string }
     return { text, title: text };
 }
 
-function shortDate(iso: string): string {
+function shortDate(iso: string | Date): string {
     return new Date(iso).toLocaleString(undefined, {
         month: "short",
         day: "numeric",
@@ -424,7 +426,7 @@ function DealsSection({
             toast.error("Deal name required");
             return;
         }
-        const data: Partial<Deal> = {
+        const data: DealWrite = {
             pipeline_id: pipelineId,
             stage_id: stageId,
             name: name.trim(),
@@ -453,7 +455,7 @@ function DealsSection({
     async function moveDeal(dealId: string, newStageId: string) {
         try {
             await toast.promise(
-                updateDeal.mutateAsync({ id: dealId, data: { stage_id: newStageId } as Partial<Deal> }),
+                updateDeal.mutateAsync({ id: dealId, data: { stage_id: newStageId } as DealWrite }),
                 { loading: "Moving…", success: "Moved", error: (e: AppError) => buildError(e) },
             );
         } catch {
@@ -639,7 +641,7 @@ function TasksSection({
             toast.error("Task title required");
             return;
         }
-        const data: Partial<CRMTask> = {
+        const data: CRMTaskWrite = {
             title: title.trim(),
             contact_id: contactId,
             priority,

@@ -30,7 +30,7 @@ export interface InboxTagRow {
     answers: Record<string, unknown>;
     model: string;
     input_tokens: number;
-    created_at: string;
+    created_at: Date;
 }
 
 export default interface InboxTagReview {

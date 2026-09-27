@@ -123,7 +123,7 @@ const LIMITED_BY: Record<MailboxPlan["limited_by"], string> = {
     workspace_risk: "workspace posture",
 };
 
-function fmtTime(iso: string | undefined, tz: string): string {
+function fmtTime(iso: string | Date | undefined, tz: string): string {
     if (!iso) return "";
     try {
         return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: tz });
@@ -132,7 +132,7 @@ function fmtTime(iso: string | undefined, tz: string): string {
     }
 }
 
-function fmtDay(iso: string | undefined, tz: string): string {
+function fmtDay(iso: string | Date | undefined, tz: string): string {
     if (!iso) return "";
     const d = new Date(iso);
     const today = new Date();

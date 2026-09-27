@@ -23,14 +23,14 @@ export default interface APIKey {
     rate_limit_per_minute: number;
 
     status: APIKeyStatus;
-    last_used_at?: string | null;
+    last_used_at?: Date | null;
     last_request_ip?: string | null;
-    expires_at?: string | null;
-    revoked_at?: string | null;
+    expires_at?: Date | null;
+    revoked_at?: Date | null;
     revoked_reason?: string | null;
 
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 // The `status` column only ever holds "active" or "revoked": expiry is applied

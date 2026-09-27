@@ -4,7 +4,7 @@
 export default interface FormsDomainStatus {
     forms_domain: string;
     forms_domain_verified: boolean;
-    forms_domain_verified_at?: string;
+    forms_domain_verified_at?: Date;
     /** The value to put in the CNAME: this install's forms host. */
     cname_target: string;
     /** verified | unset | no_target | not_found | wrong_target | lookup_error | pending */

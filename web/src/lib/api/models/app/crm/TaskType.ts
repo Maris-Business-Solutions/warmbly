@@ -6,6 +6,6 @@ export default interface TaskType {
     name: string;
     color: string;
     position: number;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }

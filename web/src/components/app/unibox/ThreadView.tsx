@@ -777,9 +777,9 @@ function IconAction({
 
 // Friendly relative-or-absolute time used for scheduled cards.
 // Examples: "in 12 min", "in 3 h", "tomorrow, 09:00", "Mar 5, 17:00".
-function formatScheduled(iso: string): string {
+function formatScheduled(iso: string | Date): string {
   const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return iso;
+  if (!Number.isFinite(d.getTime())) return String(iso);
   const now = new Date();
   const diffMs = d.getTime() - now.getTime();
   const diffMin = Math.round(diffMs / 60_000);

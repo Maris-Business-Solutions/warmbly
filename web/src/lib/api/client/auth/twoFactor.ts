@@ -4,7 +4,7 @@ import Request from "../Request";
 export interface TwoFactorStatus {
     enabled: boolean;
     /** When the authenticator was confirmed. Absent while 2FA is off. */
-    confirmed_at?: string;
+    confirmed_at?: Date;
     recovery_codes_remaining: number;
     recovery_codes_total: number;
 }

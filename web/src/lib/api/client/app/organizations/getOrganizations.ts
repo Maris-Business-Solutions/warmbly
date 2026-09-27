@@ -15,7 +15,7 @@ interface RawMembership {
         avatar?: string;
         avatar_url?: string | null;
         plan?: string;
-        created_at: string;
+        created_at: Date;
     };
 }
 

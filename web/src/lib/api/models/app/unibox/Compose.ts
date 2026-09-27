@@ -17,7 +17,7 @@ export interface ComposeCandidate {
   /** Prior messages exchanged with the recipient from this mailbox. */
   history_messages: number;
   /** RFC3339; omitted when this mailbox never contacted the recipient. */
-  last_contact_at?: string | null;
+  last_contact_at?: Date | null;
   score: number;
   /** Human-readable scoring signals ("has history", "low load today", ...). */
   reasons: string[];
@@ -55,7 +55,7 @@ export interface ComposeSendInput {
 
 export interface ComposeSendResponse {
   task_id: string;
-  scheduled_at: string;
+  scheduled_at: Date;
   send_mode: string;
   account_id: string;
   account_email: string;

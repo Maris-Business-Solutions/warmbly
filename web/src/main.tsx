@@ -102,6 +102,7 @@ import CloudOAuthDonePage from './app/cloud-oauth/done/page';
 import WarmblyCloudSettingsPage from './app/app/settings/warmbly-cloud/page';
 import SetupPage from './app/setup/page';
 import SSOCallbackPage from './app/auth/sso/page';
+import shareDeep from './lib/helper/shareDeep';
 
 // React-Query defaults tuned for a dashboard. The library's
 // out-of-the-box behaviour treats every query as immediately stale
@@ -119,6 +120,8 @@ import SSOCallbackPage from './app/auth/sso/page';
 //     comes back, do refresh once.
 //   - retry: 1 — react-query's default of 3 turns a 500ms backend
 //     hiccup into ~5s of stacked retries on the user.
+//   - structuralSharing: shareDeep — keeps equal revived Dates, so
+//     unchanged data keeps its identity across a refetch.
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
@@ -127,6 +130,7 @@ const queryClient = new QueryClient({
             refetchOnWindowFocus: false,
             refetchOnReconnect: "always",
             retry: 1,
+            structuralSharing: shareDeep,
         },
         mutations: {
             retry: 0,

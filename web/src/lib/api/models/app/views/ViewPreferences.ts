@@ -15,7 +15,7 @@ export interface ViewPreferences {
     columns: string[];
     // Null or absent means the list's default sort.
     sort?: ViewSort | null;
-    updated_at?: string | null;
+    updated_at?: Date | null;
 }
 
 export interface ViewPreferencesEnvelope {

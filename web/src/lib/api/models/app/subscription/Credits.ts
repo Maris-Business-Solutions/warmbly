@@ -21,9 +21,9 @@ export interface CreditBalance {
     // Lifetime purchased credits.
     total_purchased: number;
     // When the monthly pool was last reset.
-    monthly_reset_at: string;
+    monthly_reset_at: Date;
     // When the monthly pool next resets (subscription period end), if any.
-    next_reset_at: string | null;
+    next_reset_at: Date | null;
     packs: CreditPack[];
 }
 
@@ -43,7 +43,7 @@ export interface CreditTransaction {
     // what ran (campaign/step/contact, automation/node/run, thread, session).
     actor_user_id?: string | null;
     context?: CreditContext;
-    created_at: string;
+    created_at: Date;
 }
 
 export interface CreditTransactionsPage {
@@ -66,7 +66,7 @@ export interface AISpendSettings {
     member_limit_weekly: number | null;
     member_limit_monthly: number | null;
     low_balance_threshold: number;
-    low_balance_notified_at?: string | null;
+    low_balance_notified_at?: Date | null;
     auto_topup_enabled: boolean;
     auto_topup_pack: string;
     auto_topup_threshold: number;

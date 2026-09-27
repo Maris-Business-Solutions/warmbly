@@ -488,7 +488,7 @@ function formatMoney(cents: number, currency: string): string {
     }
 }
 
-function formatDate(value?: string): string {
+function formatDate(value?: string | Date): string {
     if (!value) return "—";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "—";

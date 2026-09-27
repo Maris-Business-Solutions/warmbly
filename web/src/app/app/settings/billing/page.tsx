@@ -517,7 +517,7 @@ function describeRedemption(d: DiscountRedemption): string {
     return d.type || "Discount";
 }
 
-function fmtDate(value?: string | null): string {
+function fmtDate(value?: string | Date | null): string {
     if (!value) return "—";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "—";

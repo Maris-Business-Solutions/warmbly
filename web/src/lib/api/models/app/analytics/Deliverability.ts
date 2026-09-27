@@ -64,8 +64,8 @@ export interface WarmupHostPlacement {
 }
 
 export default interface DeliverabilityDashboard {
-    from: string;
-    to: string;
+    from: Date;
+    to: Date;
     events_total: number;
     bounce_count: number;
     complaint_count: number;

@@ -5,8 +5,8 @@ export interface Stage {
     color: string;
     position: number;
     deal_count?: number;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export default interface Pipeline {
@@ -15,6 +15,6 @@ export default interface Pipeline {
     name: string;
     position: number;
     stages: Stage[];
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }

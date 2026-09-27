@@ -42,9 +42,9 @@ export interface ContactRow {
     verification_sub_status?: string;
     verification_source?: VerificationSource;
     verification_provider?: string;
-    verification_checked_at?: string | null;
+    verification_checked_at?: Date | null;
     verification_confidence?: number;
-    verification_requested_at?: string | null;
+    verification_requested_at?: Date | null;
     mail_host?: string;
     created_at: Date;
     updated_at?: Date;

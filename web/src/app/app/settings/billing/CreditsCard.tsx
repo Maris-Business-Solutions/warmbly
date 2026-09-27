@@ -285,14 +285,14 @@ function describeReason(reason: string): string {
     return map[reason] ?? reason.replace(/_/g, " ");
 }
 
-function formatReset(value: string | null | undefined): string {
+function formatReset(value: string | Date | null | undefined): string {
     if (!value) return "on renewal";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "on renewal";
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function formatWhen(value: string): string {
+function formatWhen(value: string | Date): string {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "—";
     return d.toLocaleDateString("en-US", {

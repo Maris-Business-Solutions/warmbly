@@ -36,7 +36,7 @@ export interface FormIdentifiedVisitor {
     contact_id: string;
     name: string;
     email: string;
-    last_seen: string;
+    last_seen: Date;
     furthest_page: number;
     completed: boolean;
     /** Campaign whose email brought this contact here, when known. */

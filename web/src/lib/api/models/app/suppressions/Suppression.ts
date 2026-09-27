@@ -11,10 +11,10 @@ export default interface Suppression {
     reason: string;
     source: SuppressionSource | string;
     campaign_id?: string | null;
-    expires_at?: string | null;
+    expires_at?: Date | null;
     metadata?: Record<string, unknown>;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export interface SuppressionListResult {

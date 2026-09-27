@@ -18,18 +18,18 @@ export interface WebhookEndpoint {
     description: string;
     event_types: string[];
     enabled: boolean;
-    last_success_at?: string;
-    last_failure_at?: string;
+    last_success_at?: Date;
+    last_failure_at?: Date;
     last_failure_reason?: string;
     consecutive_failures: number;
     oauth_application_id?: string;
     created_by?: string;
-    verified_at?: string;
+    verified_at?: Date;
     ownership_confirmed: boolean;
-    auto_disabled_at?: string;
+    auto_disabled_at?: Date;
     disabled_reason?: string;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 // Returned once on create; secret is shown a single time and never again.
@@ -56,21 +56,21 @@ export interface WebhookDelivery {
     status: WebhookDeliveryStatus;
     attempt_count: number;
     max_attempts: number;
-    next_attempt_at: string;
-    last_attempt_at?: string;
+    next_attempt_at: Date;
+    last_attempt_at?: Date;
     response_status?: number;
     response_body_excerpt?: string;
     error_reason?: string;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 // A high-volume event family that was throttled (dropped windows) for a day.
 export interface WebhookEventDrop {
     event_type: string;
-    day: string;
+    day: Date;
     dropped_windows: number;
-    last_dropped_at: string;
+    last_dropped_at: Date;
 }
 
 // GET /webhooks

@@ -60,7 +60,7 @@ export default interface UniboxOverview {
   mailboxes: UniboxMailboxOverview[];
   tags: UniboxTagOverview[];
   categories: UniboxCategoryOverview[];
-  generated_at: string;
-  window_today_start: string;
-  window_week_start: string;
+  generated_at: Date;
+  window_today_start: Date;
+  window_week_start: Date;
 }

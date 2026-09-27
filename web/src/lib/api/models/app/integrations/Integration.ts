@@ -121,7 +121,7 @@ export interface IntegrationFieldMapping {
     transform: string;
     static_value: string;
     is_default: boolean;
-    created_at: string;
+    created_at: Date;
 }
 
 export interface IntegrationConnection {
@@ -136,15 +136,15 @@ export interface IntegrationConnection {
     external_account_id?: string;
     external_account_name?: string;
     granted_scopes?: string[];
-    token_expires_at?: string | null;
+    token_expires_at?: Date | null;
     health: IntegrationHealth;
     health_detail?: string | null;
-    health_checked_at?: string | null;
-    last_synced_at?: string | null;
+    health_checked_at?: Date | null;
+    last_synced_at?: Date | null;
     last_error?: string | null;
-    last_error_at?: string | null;
-    created_at: string;
-    updated_at: string;
+    last_error_at?: Date | null;
+    created_at: Date;
+    updated_at: Date;
 
     /** Per-connection onboarding/capability snapshot (selected use-cases, picker
      *  selections, scheduling_url for meeting providers). */
@@ -187,8 +187,8 @@ export interface IntegrationEventSubscription {
     action: IntegrationAction;
     config: Record<string, unknown>;
     enabled: boolean;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export interface IntegrationSyncRun {
@@ -199,8 +199,8 @@ export interface IntegrationSyncRun {
     status: "running" | "success" | "error";
     detail: string;
     records_processed: number;
-    started_at: string;
-    finished_at?: string | null;
+    started_at: Date;
+    finished_at?: Date | null;
 }
 
 export interface IntegrationOAuthStartResponse {
@@ -226,8 +226,8 @@ export interface MeetingBooking {
     invitee_name: string;
     event_name: string;
     event_type?: string;
-    scheduled_for?: string;
-    end_time?: string;
+    scheduled_for?: Date;
+    end_time?: Date;
     join_url?: string;
     location?: string;
     cancel_url?: string;
@@ -236,8 +236,8 @@ export interface MeetingBooking {
     contact_id?: string;
     campaign_id?: string;
     contact_name?: string;
-    created_at: string;
-    updated_at?: string;
+    created_at: Date;
+    updated_at?: Date;
 }
 
 export interface MeetingsSummary {

@@ -48,11 +48,11 @@ export interface LeadSyncSource {
     subscribed_default: boolean;
     label?: string;
     status: LeadSyncStatus;
-    last_synced_at?: string;
+    last_synced_at?: Date;
     last_result?: ImportResult;
     last_error?: string;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 // Result of POST /sources/:id/sync.

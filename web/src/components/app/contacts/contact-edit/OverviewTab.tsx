@@ -365,7 +365,7 @@ function LatestRow({
     icon,
 }: {
     label: string;
-    ts?: string | null;
+    ts?: Date | string | null;
     icon: React.ReactNode;
 }) {
     return (

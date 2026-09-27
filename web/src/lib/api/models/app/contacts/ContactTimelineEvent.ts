@@ -27,7 +27,7 @@ export interface ContactPageHit {
     id: string;
     visitor_id: string;
     session_key: string;
-    occurred_at: string;
+    occurred_at: Date;
     url: string;
     path: string;
     title: string;
@@ -86,7 +86,7 @@ export interface EngagementOrigin {
 
 export default interface ContactTimelineEvent {
     type: ContactTimelineEventType;
-    at: string;
+    at: Date;
 
     // Engagement classification (email_opened / email_clicked): true when an
     // automated fetcher (mail privacy proxy, security gateway) did it rather
@@ -120,7 +120,7 @@ export default interface ContactTimelineEvent {
     content?: string | null;
 
     // Meeting events (meeting_booked / rescheduled / canceled).
-    scheduled_for?: string | null;
+    scheduled_for?: Date | null;
     join_url?: string | null;
     meeting_state?: string | null;
 

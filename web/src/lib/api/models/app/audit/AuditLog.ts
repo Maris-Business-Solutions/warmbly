@@ -82,7 +82,7 @@ export default interface AuditLog {
     org_id: string;
     user_id: string; // actor id (kept for backwards compatibility)
     actor?: AuditActor;
-    action_date: string;
+    action_date: Date;
     action: AuditAction;
     entity_type: AuditEntityType;
     entity_id?: string;
@@ -90,7 +90,7 @@ export default interface AuditLog {
     user_agent: string;
     changes?: Record<string, string>;
     metadata?: Record<string, string>;
-    timestamp: string;
+    timestamp: Date;
 }
 
 export interface AuditLogsResult {

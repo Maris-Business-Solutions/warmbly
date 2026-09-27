@@ -570,7 +570,7 @@ function money(n: number | undefined, currency = "USD") {
     }
 }
 
-function fmtDate(d: string | undefined) {
+function fmtDate(d: string | Date | undefined) {
     if (!d) return "—";
     try {
         return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });

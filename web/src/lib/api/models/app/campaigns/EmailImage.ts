@@ -10,7 +10,7 @@ export default interface EmailImage {
     width: number;
     height: number;
     url: string;
-    created_at: string;
+    created_at: Date;
 }
 
 // One keyset page of the library, newest first.

@@ -12,7 +12,7 @@ export function dueInDaysToISO(days: number): string {
 
 // Convert an existing absolute due date back into a whole-day offset from
 // today (used to seed the control when editing a task). Negative = overdue.
-export function isoToDueInDays(iso?: string): number | null {
+export function isoToDueInDays(iso?: string | Date): number | null {
     if (!iso) return null;
     const due = new Date(iso);
     if (Number.isNaN(due.getTime())) return null;

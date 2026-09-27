@@ -13,6 +13,7 @@ import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { AlertTriangleIcon, RefreshCcwIcon } from "lucide-react";
 import { captureException } from "@/lib/observability";
+import { SENTRY_RELEASE } from "@/lib/information";
 
 interface State {
     error: Error | null;
@@ -108,6 +109,7 @@ function BoundaryFallback({ error, info, reset }: { error: Error; info: React.Er
                                 Stack
                             </summary>
                             <pre className="px-3 py-3 text-[10.5px] font-mono text-slate-700 leading-relaxed overflow-x-auto whitespace-pre-wrap border-t border-slate-200">
+                                {SENTRY_RELEASE ? `Build: ${SENTRY_RELEASE}\n\n` : ""}
                                 {error.stack || ""}
                                 {info?.componentStack ? `\n\nComponent stack:${info.componentStack}` : ""}
                             </pre>

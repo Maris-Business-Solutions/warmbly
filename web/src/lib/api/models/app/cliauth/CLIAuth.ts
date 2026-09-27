@@ -13,6 +13,6 @@ export interface CLIAuthCode {
     status: CLIAuthCodeStatus;
     organization_id?: string;
     api_key_id?: string;
-    expires_at: string;
-    created_at: string;
+    expires_at: Date;
+    created_at: Date;
 }

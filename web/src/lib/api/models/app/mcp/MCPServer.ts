@@ -13,8 +13,8 @@ export interface MCPServer {
     enabled: boolean;
     discovered_tools: MCPTool[];
     last_error?: string;
-    created_at: string;
-    updated_at: string;
+    created_at: Date;
+    updated_at: Date;
 }
 
 export interface CreateMCPServer {

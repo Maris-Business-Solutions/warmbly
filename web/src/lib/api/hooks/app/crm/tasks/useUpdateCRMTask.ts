@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type CRMTask from "@/lib/api/models/app/crm/CRMTask";
+import type { CRMTaskWrite } from "@/lib/api/models/app/crm/CRMTask";
 import updateCRMTask from "@/lib/api/client/app/crm/tasks/updateCRMTask";
 import { useLivePatch } from "@/hooks/useLivePatch";
 
@@ -10,7 +10,7 @@ export default function useUpdateCRMTask() {
     const { pushPatch } = useLivePatch("crm_tasks");
 
     return useMutation({
-        mutationFn: ({ id, data }: { id: string; data: Partial<CRMTask> }) => updateCRMTask(id, data),
+        mutationFn: ({ id, data }: { id: string; data: CRMTaskWrite }) => updateCRMTask(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({
                 queryKey: ["crm", "tasks"],

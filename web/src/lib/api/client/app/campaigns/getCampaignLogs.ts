@@ -6,7 +6,7 @@ interface CampaignLogRow {
     event_type: string;
     message: string;
     metadata?: Record<string, unknown> | null;
-    created_at: string;
+    created_at: Date;
 }
 
 export interface CampaignLogItem {
