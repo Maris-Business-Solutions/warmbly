@@ -171,14 +171,6 @@ var unsubscribeKeywords = []string{
 	"loeschen sie mich",
 	"meine daten loeschen",
 	"meine daten zu loeschen",
-	// A GDPR Art. 21 objection. The bare verb also means "I disagree".
-	"widerspreche hiermit",
-	"widerspreche der verarbeitung",
-	"widerspreche der nutzung",
-	"widerspreche der verwendung",
-	"widerspreche ich der verarbeitung",
-	"widerspreche ich der nutzung",
-	"widerspreche ich der verwendung",
 }
 
 // optOutLanguages are the languages unsubscribeKeywords carries phrases in.
@@ -190,6 +182,21 @@ var unsubscribeKeywords = []string{
 var optOutLanguages = []string{"de"}
 
 var optOutPatterns = compileWordPatterns(unsubscribeKeywords)
+
+// gdprObjection is a GDPR Art. 21 objection. The verb also means "I disagree"
+// ("ich widerspreche hiermit Ihrer Preisberechnung"), so it counts only when
+// the same sentence goes on to what an objection objects to, behind an
+// article: "der Verarbeitung", "dem Erhalt weiterer E-Mails", "jeglicher
+// Kontaktaufnahme". The words between vary too much for a phrase list
+// ("ich widerspreche hiermit ausdrücklich gem. Art. 21 DSGVO der weiteren
+// Datenverarbeitung"), so a dot counts only in those abbreviations, and a
+// comma not at all ("da widerspreche ich, bei der Nutzung hatten wir nie
+// Probleme"). Only the
+// first person counts: a signature's privacy notice says "Sie können der
+// Verarbeitung jederzeit widersprechen".
+var gdprObjection = regexp.MustCompile(`(^|[^a-z0-9])(widerspreche|wir widersprechen|widersprechen wir)([^a-z0-9]|$)` +
+	`(?:[^.!?:;,]|\b(?:gem|art|abs|nr|lit|i\.v\.m|z\.b|bzw|ggf)\.){0,90}?` +
+	`\b(der|dem|den|einer|jeder|jede|jeglicher|jeglichen) (?:[a-z-]+ ){0,2}?[a-z-]*(verarbeitung|nutzung|verwendung|speicherung|weitergabe|zusendung|kontaktaufnahme|werbung|mails|nachrichten|newsletter)`)
 
 // compileWordPatterns anchors each phrase on word boundaries; "don't" and
 // "opt-out" keep their apostrophe and hyphen literal.
@@ -215,7 +222,7 @@ func matchesOptOut(lowerText string) bool {
 			return true
 		}
 	}
-	return false
+	return gdprObjection.MatchString(lowerText)
 }
 
 // MentionsOptOut reports opt-out wording anywhere in a message, quoted history
