@@ -223,7 +223,7 @@ function ScheduledRow({
                                     ? "bg-amber-100 text-amber-800"
                                     : "bg-sky-100 text-sky-700",
                             )}
-                            title={item.scheduled_at}
+                            title={when.absolute}
                         >
                             {when.relative || "soon"}
                         </span>

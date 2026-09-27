@@ -1,6 +1,8 @@
 // Per-mailbox warmup analytics from GET /analytics/warmup?email_id=&from=&to=
 // (backend models.WarmupAnalytics).
 
+import type { DateRange } from "./CampaignAnalytics";
+
 export interface WarmupSummary {
     total_sent: number;
     total_replied: number;
@@ -22,7 +24,7 @@ export interface WarmupDailyStat {
 export default interface WarmupAnalytics {
     email_account_id: string;
     email: string;
-    date_range: { from: string; to: string };
+    date_range: DateRange;
     summary: WarmupSummary;
     daily_stats: WarmupDailyStat[];
 }

@@ -1,6 +1,8 @@
 // Where warmup mail landed (GET /analytics/warmup/placement, backend
 // models.WarmupPlacementReport). Days are UTC; rates are percentages 0-100.
 
+import type { DateRange } from "./CampaignAnalytics";
+
 export type PlacementGroup = "google" | "microsoft" | "yahoo" | "other";
 export type PlacementBand = "good" | "fair" | "poor" | "collecting" | "none";
 
@@ -73,7 +75,7 @@ export interface PlacementMailbox extends PlacementCounts {
 
 export default interface WarmupPlacement {
     email_account_id?: string;
-    date_range: { from: string; to: string };
+    date_range: DateRange;
     summary: PlacementCounts;
     rate: PlacementRate;
     daily: PlacementDay[];

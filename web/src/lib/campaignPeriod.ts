@@ -19,7 +19,8 @@ export const COHORT_TIP =
 
 const STORAGE_KEY = "warmbly.campaign-period";
 
-function utcDay(d: Date): string {
+// The UTC day of an instant, "yyyy-MM-dd".
+export function utcDay(d: Date): string {
     return d.toISOString().slice(0, 10);
 }
 

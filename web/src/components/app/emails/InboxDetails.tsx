@@ -87,6 +87,7 @@ import SendingBehaviorTab from "./SendingBehaviorTab";
 import { useUserProfile } from "@/hooks/context/user";
 import useCurrentOrganization from "@/lib/api/hooks/app/organizations/useCurrentOrganization";
 import { timezoneOptions } from "@/lib/timezone";
+import { utcDay } from "@/lib/campaignPeriod";
 import SyncStatusCard from "./SyncStatusCard";
 import CloudWarmupCard from "./CloudWarmupCard";
 import WarmupPartnerDiversity from "./WarmupPartnerDiversity";
@@ -865,7 +866,7 @@ function AnalyticsTab({ warmup, loading }: { warmup?: import("@/lib/api/models/a
                 <StatCard label="Replies" value={s.total_replied} sub={`${s.reply_rate.toFixed(1)}% reply rate`} />
                 <StatCard label="Target met" value={`${Math.round(s.target_progress)}%`} sub="of planned volume" />
                 <div className="col-span-2">
-                    <StatCard label="Days active" value={s.days_active} sub={`${warmup.date_range.from} → ${warmup.date_range.to}`} />
+                    <StatCard label="Days active" value={s.days_active} sub={`${utcDay(warmup.date_range.from)} → ${utcDay(warmup.date_range.to)}`} />
                 </div>
             </div>
 

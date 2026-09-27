@@ -261,12 +261,14 @@ function VariantEditor({
     const [subject, setSubject] = React.useState(variant.subject);
     const [bodyHtml, setBodyHtml] = React.useState(variant.body_html);
 
+    // A refetch revives updated_at into a new Date; compare the instant, not the object.
+    const updatedAt = variant.updated_at ? new Date(variant.updated_at).getTime() : 0;
     React.useEffect(() => {
         setName(variant.name);
         setSubject(variant.subject);
         setBodyHtml(variant.body_html);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [variant.id, variant.updated_at]);
+    }, [variant.id, updatedAt]);
 
     const dirty = name !== variant.name || subject !== variant.subject || bodyHtml !== variant.body_html;
 

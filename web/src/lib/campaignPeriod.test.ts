@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatWindow, loadCampaignPeriod, periodWindow, savePreset } from "./campaignPeriod";
+import { formatWindow, loadCampaignPeriod, periodWindow, savePreset, utcDay } from "./campaignPeriod";
+import reviveDates from "@/lib/helper/reviveDates";
 
 describe("periodWindow", () => {
     afterEach(() => vi.useRealTimers());
@@ -18,6 +19,13 @@ describe("periodWindow", () => {
     it("sends no window for all time and the chosen days for custom", () => {
         expect(periodWindow({ key: "all" })).toBeNull();
         expect(periodWindow({ key: "custom", from: "2026-09-01", to: "2026-09-07" })).toEqual({ from: "2026-09-01", to: "2026-09-07" });
+    });
+});
+
+describe("utcDay", () => {
+    it("reads the day of a date_range the client revived into Dates", () => {
+        const r = reviveDates({ from: "2026-09-01T00:00:00Z", to: "2026-09-27T00:00:00Z" }) as unknown as { from: Date; to: Date };
+        expect({ from: utcDay(r.from), to: utcDay(r.to) }).toEqual({ from: "2026-09-01", to: "2026-09-27" });
     });
 });
 
