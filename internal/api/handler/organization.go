@@ -302,8 +302,6 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	// LeaveOrganization captures its own failures; the auth middleware's membership gate holds regardless.
-	_ = h.TokenService.LeaveOrganization(c.Request.Context(), memberUserID, *orgID)
 
 	h.auditOrg(c, models.AuditActionRemove, models.AuditEntityOrganizationMember, &memberUserID, nil, nil)
 

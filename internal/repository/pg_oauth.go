@@ -50,6 +50,7 @@ type OAuthRepository interface {
 	RevokeGrantByTokenHash(ctx context.Context, appID uuid.UUID, hash string) error
 	ListAuthorizedApps(ctx context.Context, orgID, userID uuid.UUID) ([]models.OAuthAuthorizedApp, error)
 	RevokeAuthorization(ctx context.Context, orgID, userID, appID uuid.UUID) error
+	RevokeMemberGrants(ctx context.Context, orgID, userID uuid.UUID) ([]uuid.UUID, error)
 }
 
 type oauthRepository struct {
@@ -321,9 +322,13 @@ func (r *oauthRepository) CreateAccessGrant(ctx context.Context, g *models.OAuth
 	return err
 }
 
+// grantHolderIsMember limits a token lookup to grants whose user still belongs to the grant's workspace.
+const grantHolderIsMember = ` AND EXISTS (SELECT 1 FROM organization_members m
+	WHERE m.organization_id = oauth_access_grants.organization_id AND m.user_id = oauth_access_grants.user_id)`
+
 func (r *oauthRepository) GetGrantByAccessTokenHash(ctx context.Context, hash string) (*models.OAuthAccessGrant, error) {
 	var g models.OAuthAccessGrant
-	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE access_token_hash = $1`, hash)
+	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE access_token_hash = $1`+grantHolderIsMember, hash)
 	if err := scanOAuthGrant(row, &g); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -335,7 +340,7 @@ func (r *oauthRepository) GetGrantByAccessTokenHash(ctx context.Context, hash st
 
 func (r *oauthRepository) GetGrantByRefreshTokenHash(ctx context.Context, hash string) (*models.OAuthAccessGrant, error) {
 	var g models.OAuthAccessGrant
-	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE refresh_token_hash = $1`, hash)
+	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE refresh_token_hash = $1`+grantHolderIsMember, hash)
 	if err := scanOAuthGrant(row, &g); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -397,6 +402,30 @@ func (r *oauthRepository) ListAuthorizedApps(ctx context.Context, orgID, userID 
 		out = append(out, ap)
 	}
 	return out, rows.Err()
+}
+
+// RevokeMemberGrants revokes every live grant userID holds in orgID and returns the apps they were for.
+func (r *oauthRepository) RevokeMemberGrants(ctx context.Context, orgID, userID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.db.Query(ctx, `
+		WITH revoked AS (
+			UPDATE oauth_access_grants SET revoked_at=now()
+			WHERE organization_id=$1 AND user_id=$2 AND revoked_at IS NULL
+			RETURNING application_id
+		)
+		SELECT DISTINCT application_id FROM revoked`, orgID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var apps []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		apps = append(apps, id)
+	}
+	return apps, rows.Err()
 }
 
 func (r *oauthRepository) RevokeAuthorization(ctx context.Context, orgID, userID, appID uuid.UUID) error {

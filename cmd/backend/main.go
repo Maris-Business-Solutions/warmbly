@@ -841,6 +841,15 @@ func main() {
 		tokenService = token.NewService(primaryDB, tokenRepostory, cache, geoloc, authCfg.AuthSecret)
 		userService = user.NewService(userRepostory, cache)
 
+		// A removed member's sessions and app authorizations end with the membership, on every removal path.
+		organizationService.WireMemberRemoval(func(ctx context.Context, orgID, userID uuid.UUID) error {
+			if xerr := tokenService.LeaveOrganization(ctx, userID, orgID); xerr != nil {
+				return xerr
+			}
+			return nil
+		})
+		organizationService.WireMemberRemoval(oauthService.RevokeMemberGrants)
+
 		// A login ban has to end the sessions the person already holds, or it
 		// does nothing until their tokens expire twelve hours later. Wired here
 		// rather than at construction because the admin service is built before
@@ -1141,7 +1150,6 @@ func main() {
 				Enabled:         getenvDefault("RELEASES_ENABLED", "false") == "true",
 				GithubRepo:      getenvDefault("RELEASES_GITHUB_REPO", "warmbly/warmbly"),
 				WorkerImageRepo: getenvDefault("RELEASES_WORKER_IMAGE_REPO", "ghcr.io/warmbly/warmbly/worker"),
-				WebhookSecret:   os.Getenv("RELEASES_WEBHOOK_SECRET"),
 				GithubToken:     os.Getenv("RELEASES_GITHUB_TOKEN"),
 			},
 			fleetSettingsRepo,

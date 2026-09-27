@@ -341,6 +341,18 @@ func (s *Service) RevokeAuthorization(ctx context.Context, orgID, userID, appID 
 	return nil
 }
 
+// RevokeMemberGrants ends every app authorization a member holds in a workspace they left.
+func (s *Service) RevokeMemberGrants(ctx context.Context, orgID, userID uuid.UUID) error {
+	apps, err := s.repo.RevokeMemberGrants(ctx, orgID, userID)
+	if err != nil {
+		return err
+	}
+	for _, appID := range apps {
+		s.ReconcileAppEndpoints(ctx, appID)
+	}
+	return nil
+}
+
 // validateRedirectURIs enforces the OAuth 2.1 redirect rules: present, absolute,
 // HTTPS (loopback HTTP allowed for native apps), and no fragment.
 func validateRedirectURIs(uris []string) ([]string, error) {

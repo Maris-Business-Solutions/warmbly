@@ -406,14 +406,20 @@ func (r *tokenRepository) UpdateCurrentOrganization(ctx context.Context, session
 	return nil
 }
 
-// ClearOrganization deselects orgID on every live session of userID and
-// returns the sessions it changed.
+// ClearOrganization deselects orgID on every live session of userID and returns every live session left
+// with none, so a cached copy of a row the organization's deletion already cleared is evicted too.
 func (r *tokenRepository) ClearOrganization(ctx context.Context, userID, orgID uuid.UUID) ([]uuid.UUID, *errx.Error) {
 	const query = `
-		UPDATE sessions
-		SET current_organization_id = NULL
-		WHERE user_id = $1 AND current_organization_id = $2 AND revoked_at IS NULL
-		RETURNING id
+		WITH cleared AS (
+			UPDATE sessions
+			SET current_organization_id = NULL
+			WHERE user_id = $1 AND current_organization_id = $2 AND revoked_at IS NULL
+			RETURNING id
+		)
+		SELECT id FROM cleared
+		UNION
+		SELECT id FROM sessions
+		WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now() AND current_organization_id IS NULL
 	`
 	params := []any{userID, orgID}
 	rows, err := r.DB.Query(ctx, query, params...)

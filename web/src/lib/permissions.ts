@@ -57,7 +57,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
     { key: "ACCESS_UNIBOX",      bit: PERMISSION_BITS.ACCESS_UNIBOX,      label: "Use unified inbox", description: "Read and reply from the shared inbox.",                   category: "send" },
     // Admin
     { key: "MANAGE_SETTINGS",    bit: PERMISSION_BITS.MANAGE_SETTINGS,    label: "Manage settings",   description: "Edit workspace-wide settings.",                           category: "admin" },
-    { key: "MANAGE_BILLING",     bit: PERMISSION_BITS.MANAGE_BILLING,     label: "Manage billing",    description: "View invoices and change the subscription plan.",         category: "admin" },
+    { key: "MANAGE_BILLING",     bit: PERMISSION_BITS.MANAGE_BILLING,     label: "Manage billing",    description: "Check out, change or cancel the plan and open the billing portal.", category: "admin" },
     { key: "MANAGE_API_KEYS",    bit: PERMISSION_BITS.MANAGE_API_KEYS,    label: "Manage API keys",   description: "Create and revoke workspace API keys.",                   category: "admin" },
 ];
 

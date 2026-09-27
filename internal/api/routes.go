@@ -1537,10 +1537,10 @@ func Run(
 				subscriptions.GET("/limits", h.GetSubscriptionLimits)
 				subscriptions.GET("/trial", h.GetTrialStatus)
 				subscriptions.GET("/features", h.GetFeatureStatus)
-				subscriptions.POST("/checkout", h.CreateCheckoutSession)
+				subscriptions.POST("/checkout", m.RequireOrganization(), m.RequirePermission(models.PermManageBilling), h.CreateCheckoutSession)
 				subscriptions.POST("/discount/validate", h.ValidateDiscountCode)
-				subscriptions.POST("/portal", h.CreateBillingPortalSession)
-				subscriptions.POST("/cancel", h.CancelSubscription)
+				subscriptions.POST("/portal", m.RequireOrganization(), m.RequirePermission(models.PermManageBilling), h.CreateBillingPortalSession)
+				subscriptions.POST("/cancel", m.RequireOrganization(), m.RequirePermission(models.PermManageBilling), h.CancelSubscription)
 
 				subscriptions.POST("/change-plan", m.RequireOrganization(), m.RequirePermission(models.PermManageBilling), h.ChangePlan)
 				subscriptions.GET("/preview-change", m.RequireOrganization(), m.RequirePermission(models.PermManageBilling), h.PreviewPlanChange)

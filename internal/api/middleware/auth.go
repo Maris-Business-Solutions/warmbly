@@ -66,6 +66,13 @@ func (h *Handler) setSessionOrganization(c *gin.Context, session *models.Session
 		return xerr
 	}
 	if member == nil {
+		// Clear a selection that outlived its membership, and stop the request's copy of the session naming it.
+		if h.TokenService != nil {
+			_ = h.TokenService.LeaveOrganization(c.Request.Context(), session.UserID, orgID)
+		}
+		detached := *session
+		detached.CurrentOrganizationID = nil
+		c.Set(SessionKey, &detached)
 		return nil
 	}
 	c.Set(OrganizationIDKey, orgID)

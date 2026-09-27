@@ -99,9 +99,9 @@ Because it delays sends, a campaign with tight delivery hours and a small mailbo
 The profile and today's plan are both readable and writable through the API. See [Endpoints](/api/endpoints/) for the scopes.
 
 ```http
-GET  /api/v1/emails/{id}/behavior
-PUT  /api/v1/emails/{id}/behavior
-GET  /api/v1/emails/{id}/behavior/plan
+GET  /v1/emails/{id}/behavior
+PUT  /v1/emails/{id}/behavior
+GET  /v1/emails/{id}/behavior/plan
 ```
 
 `PUT` is a partial update: send only the fields you want to change. It is naturally idempotent, so retries are safe without an `Idempotency-Key`.

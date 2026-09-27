@@ -17,6 +17,7 @@ import usePlans from "@/lib/api/hooks/app/subscription/usePlans";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import type ServerPlan from "@/lib/api/models/app/subscription/Plan";
 import buildError from "@/lib/helper/buildError";
+import { checkPermission, showPermissionDenied } from "@/hooks/usePermission";
 import { getPlan, type PlanID } from "@/lib/plans";
 import type { BillingInterval } from "@/lib/pricing";
 
@@ -75,6 +76,10 @@ export default function useUpgradeFlow() {
     );
 
     const openPortal = React.useCallback(async (): Promise<boolean> => {
+        if (!checkPermission("MANAGE_BILLING")) {
+            showPermissionDenied("MANAGE_BILLING");
+            return false;
+        }
         if (!hasBillingCustomer) {
             toast.error(subscription.isPending ? "Still loading billing. Try again in a moment." : "Complete checkout to set up billing before opening the portal.");
             return false;
@@ -96,6 +101,11 @@ export default function useUpgradeFlow() {
     const upgrade = React.useCallback(
         async (catalogId: PlanID, opts: UpgradeOptions): Promise<UpgradeOutcome> => {
             if (pending) return "failed";
+            // Checkout, plan changes and the portal all need Manage billing; say so before any request.
+            if (!checkPermission("MANAGE_BILLING")) {
+                showPermissionDenied("MANAGE_BILLING");
+                return "failed";
+            }
             // Wait for billing state before choosing checkout or a plan change.
             if (plansQuery.isPending || subscription.isPending) {
                 toast.error("Still loading plans. Try again in a moment.");
