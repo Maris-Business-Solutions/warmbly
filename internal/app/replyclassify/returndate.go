@@ -109,7 +109,13 @@ var endCues = map[string]bool{"bis": true, "bis zum": true, "bis einschliesslich
 
 // rangeBreak is a sentence end or a return word between an "ab" date and a
 // "bis" date, which makes them two statements instead of one range.
-var rangeBreak = regexp.MustCompile(`[a-z][.!?;:](\s|$)|[!?;]|\b(wieder|zurueck|erreichbar|buero|da)\b`)
+var rangeBreak = regexp.MustCompile(sentenceMark + `|[a-z][.!?;:](\s|$)|[!?;]|\b(wieder|zurueck|erreichbar|buero|da)\b`)
+
+// sentenceMark stands in for a sentence that opens on "Bis" after a date's
+// dot ("ab dem 4.9. Bis zum 11.9. vertritt mich"), which lower-casing hides.
+const sentenceMark = "\x00"
+
+var sentenceStartBis = regexp.MustCompile(`([.!?;:])(\s+)Bis\b`)
 
 // rangeNoise is taken out before rangeBreak reads the text: an absence said
 // as a negated return word ("ab dem 7.9. nicht erreichbar, bis 18.9.") and a
@@ -319,6 +325,7 @@ func foldAccents(s string) string {
 // "KW" the week cues and pattern read, and "KW42" spaced so a cue ending in
 // "kw" still ends on a word boundary.
 func normalizeForDates(s string) string {
+	s = sentenceStartBis.ReplaceAllString(s, "$1"+sentenceMark+"$2Bis")
 	return weekDigits.ReplaceAllString(strings.ReplaceAll(foldAccents(s), "kalenderwoche", "kw"), "kw $1")
 }
 

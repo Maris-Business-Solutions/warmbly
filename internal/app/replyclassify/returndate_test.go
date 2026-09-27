@@ -76,6 +76,7 @@ func TestParseReturnDate(t *testing.T) {
 		{name: "a month abbreviation keeps the range", subject: "Abwesenheitsnotiz", body: "Ich bin ab dem 4. Sept. bis zum 18. Sept. im Urlaub.", want: "2026-09-18"},
 		{name: "a return word ends the range", subject: "Abwesenheitsnotiz", body: "Ab dem 14.9. bin ich wieder erreichbar, bis zum 30.9. jedoch nur eingeschränkt.", want: "2026-09-14"},
 		{name: "a sentence ends the range", subject: "Abwesenheitsnotiz", body: "Ab Montag, 14.9., bin ich im Haus. Bis 30.9. gilt unser Aktionspreis.", want: "2026-09-14"},
+		{name: "a sentence opening on bis after a date ends the range", subject: "Abwesenheitsnotiz", body: "Ich bin ab dem 4.9. Bis zum 18.9. vertritt mich Frau Klein, danach Herr Braun.", want: "2026-09-04"},
 		{name: "a bis before the return date is not its end", subject: "Abwesenheitsnotiz", body: "Ab dem 14.9. wieder da. Bis zum 11.9. vertritt mich Frau Klein.", want: "2026-09-14"},
 		{name: "a week already over is not a return date", subject: "Abwesenheitsnotiz", body: "Ich bin bis KW 30 im Urlaub."},
 		{name: "a week that does not exist", subject: "Abwesenheitsnotiz", body: "Ich bin ab KW 60 wieder da."},
