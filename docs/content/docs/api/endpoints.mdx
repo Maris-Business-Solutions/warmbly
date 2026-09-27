@@ -438,8 +438,8 @@ These changes require the session to have confirmed the account holder within th
 | Create an API key | `POST /api-keys` |
 | Add a passkey | `POST /auth/passkey/register/begin`, `/finish` |
 | Remove a passkey | `DELETE /auth/passkey/credentials/:id` |
-| Transfer a workspace | `POST /organizations/transfer-ownership` |
-| Schedule a workspace or account for deletion | `POST /organizations/current/danger-zone/delete`, `POST /me/danger-zone/delete` |
+| Transfer a workspace | `POST /organization/transfer-ownership` |
+| Schedule a workspace or account for deletion | `POST /organization/current/danger-zone/delete`, `POST /me/danger-zone/delete` |
 | Record, use or remove an admin grant over a whole domain | `POST /emails/grants/google/finish`, `POST /emails/grants/microsoft/finish`, `POST /emails/grants/:id/connect`, `DELETE /emails/grants/:id` |
 
 Each either hands out a credential that outlives the session that created it, cannot be reversed by the person it was done to, or reaches a whole domain's mail. Without a confirmation they answer `403` with code `reauth_required`; confirm with `POST /auth/reauth` (password or a current two-factor code) and retry. See [error codes](/api/error-codes/#confirmation-required).

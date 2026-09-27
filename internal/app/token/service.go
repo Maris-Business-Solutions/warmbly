@@ -54,6 +54,9 @@ type TokenService interface {
 	// Organization switching
 	SwitchOrganization(ctx context.Context, sessionID uuid.UUID, orgID *uuid.UUID) *errx.Error
 	GetCurrentOrganization(ctx context.Context, sessionID uuid.UUID) (*uuid.UUID, *errx.Error)
+	// LeaveOrganization deselects an organization the user no longer belongs to
+	// on every one of their sessions, so the dashboard asks them to pick again.
+	LeaveOrganization(ctx context.Context, userID, orgID uuid.UUID) *errx.Error
 }
 
 type tokenService struct {

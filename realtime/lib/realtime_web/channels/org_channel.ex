@@ -202,8 +202,37 @@ defmodule RealtimeWeb.OrgChannel do
     {:noreply, socket}
   end
 
+  # A removed member loses every socket; each channel's rejoin re-checks membership.
   @impl true
   def handle_info({:pubsub_event, event}, socket) do
+    if membership_ended?(event, socket.assigns.user_id) do
+      RealtimeWeb.Endpoint.broadcast("user_socket:#{socket.assigns.user_id}", "disconnect", %{})
+      {:stop, {:shutdown, :membership_ended}, socket}
+    else
+      forward_event(event, socket)
+    end
+  end
+
+  # Swallow the duplicate %Broadcast{} our manual PubSub subscription delivers
+  # to the channel process (the fastlane copy is what reaches the client).
+  @impl true
+  def handle_info(%Phoenix.Socket.Broadcast{}, socket), do: {:noreply, socket}
+
+  @doc false
+  def membership_ended?(
+        %{
+          "event_type" => "AUDIT_CREATED",
+          "entity_type" => "organization_member",
+          "action" => "remove",
+          "entity_id" => removed
+        },
+        user_id
+      ),
+      do: removed == user_id
+
+  def membership_ended?(_event, _user_id), do: false
+
+  defp forward_event(event, socket) do
     # Rate limit outbound messages
     user_id = socket.assigns.user_id
     limits = Map.get(socket.assigns, :rate_limits, %{})
@@ -228,11 +257,6 @@ defmodule RealtimeWeb.OrgChannel do
 
     {:noreply, socket}
   end
-
-  # Swallow the duplicate %Broadcast{} our manual PubSub subscription delivers
-  # to the channel process (the fastlane copy is what reaches the client).
-  @impl true
-  def handle_info(%Phoenix.Socket.Broadcast{}, socket), do: {:noreply, socket}
 
   # Presence diffs arrive as channel out-events. Phoenix routes them to
   # handle_out/3, so we must define it (its absence crashed the channel and

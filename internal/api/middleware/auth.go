@@ -14,6 +14,8 @@ const (
 	AccessTokenKey    = "access_token"
 	SessionKey        = "session"
 	OrganizationIDKey = "organization_id"
+	// SessionMemberKey holds the caller's membership in the session's workspace.
+	SessionMemberKey = "session_member"
 )
 
 func (h *Handler) AuthMiddleware() gin.HandlerFunc {
@@ -38,13 +40,48 @@ func (h *Handler) AuthMiddleware() gin.HandlerFunc {
 		c.Set(SessionKey, session)
 		c.Set(AccessTokenKey, token)
 
-		// Set organization context if available
-		if session.CurrentOrganizationID != nil {
-			c.Set(OrganizationIDKey, *session.CurrentOrganizationID)
+		if xerr := h.setSessionOrganization(c, session); xerr != nil {
+			errx.JSON(c, xerr)
+			c.Abort()
+			return
 		}
 
 		c.Next()
 	}
+}
+
+// setSessionOrganization puts the session's workspace in the request only
+// while the session's user is a member of it; otherwise the request has none.
+func (h *Handler) setSessionOrganization(c *gin.Context, session *models.Session) *errx.Error {
+	if session.CurrentOrganizationID == nil {
+		return nil
+	}
+	orgID := *session.CurrentOrganizationID
+	if h.OrganizationService == nil {
+		c.Set(OrganizationIDKey, orgID)
+		return nil
+	}
+	member, xerr := h.OrganizationService.GetMembership(c.Request.Context(), orgID, session.UserID)
+	if xerr != nil {
+		return xerr
+	}
+	if member == nil {
+		return nil
+	}
+	c.Set(OrganizationIDKey, orgID)
+	c.Set(SessionMemberKey, member)
+	return nil
+}
+
+// memberHasPermission answers from the membership resolved at authentication
+// when it is for orgID, and from the database otherwise.
+func (h *Handler) memberHasPermission(c *gin.Context, orgID, userID uuid.UUID, perm models.OrganizationPermission) (bool, *errx.Error) {
+	if v, ok := c.Get(SessionMemberKey); ok {
+		if m, ok := v.(*models.OrganizationMember); ok && m.OrganizationID == orgID && m.UserID == userID {
+			return m.HasPermission(perm), nil
+		}
+	}
+	return h.OrganizationService.HasPermission(c.Request.Context(), orgID, userID, perm)
 }
 
 func GetUserID(c *gin.Context) string {
