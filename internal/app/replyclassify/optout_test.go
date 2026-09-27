@@ -35,3 +35,111 @@ func TestLexiconIgnoresQuotedHistory(t *testing.T) {
 		t.Fatalf("got %+v ok=%v, want positive", r, ok)
 	}
 }
+
+// German opt-out wording is read on every reply, whatever languages the
+// workspace tags in, and never from the quoted original: a German campaign
+// step carries its own "bitte austragen" line.
+func TestIsOptOutGerman(t *testing.T) {
+	const ownLine = "Kein Interesse? Antworten Sie einfach mit \u201ebitte austragen\u201c."
+	optOut := []string{
+		"Bitte austragen.",
+		"Bitte tragen Sie mich aus Ihrem Verteiler aus.",
+		"Bitte tragen Sie uns aus.",
+		"Trag mich bitte aus.",
+		"Ich möchte mich abmelden.",
+		"Bitte melden Sie mich ab.",
+		"Bitte um Abmeldung.",
+		"Ich möchte keine weiteren E-Mails von Ihnen erhalten.",
+		"Keine weitere Mail, danke.",
+		"Bitte entfernen Sie meine Adresse aus Ihrer Datenbank.",
+		"Bitte nimm mich raus.",
+		"Bitte löschen Sie meine Daten.",
+		"Bitte loeschen Sie meine Daten.",
+		"Löschen Sie bitte meine Daten.",
+		"Schreib mir bitte nicht mehr.",
+		"Bitte schreiben Sie mich nicht mehr an.",
+		"Bitte sehen Sie von weiteren Kontaktaufnahmen ab.",
+		"Unterlassen Sie künftig jegliche Kontaktaufnahme.",
+		"Keine Werbemails mehr bitte.",
+		"Bitte stoppen Sie die Zusendungen.",
+		"Hiermit widerspreche ich der Verwendung meiner Daten zu Werbezwecken.",
+		"Ich widerspreche hiermit der Verarbeitung meiner personenbezogenen Daten.",
+		"Ich widerspreche hiermit der Zusendung von Werbung.",
+		"Ich widerspreche jeglicher Kontaktaufnahme zu Werbezwecken.",
+		"Ich widerspreche hiermit ausdrücklich der Verarbeitung meiner Daten.",
+		"Hiermit widerspreche ich gem. Art. 21 DSGVO der Nutzung meiner Daten.",
+		"Gemäß Art. 21 DSGVO widerspreche ich hiermit der weiteren Datenverarbeitung.",
+		"Ich widerspreche der werblichen Nutzung meiner Adresse.",
+		"Ich widerspreche dem Erhalt weiterer E-Mails.",
+		"Wir widersprechen hiermit der Verarbeitung unserer Daten.",
+		"Ich widerspreche gem. Art. 21 Abs. 2 DSGVO der Nutzung meiner Daten für Werbung.",
+		"Ich widerspreche einer weiteren Verarbeitung meiner Daten.",
+		"Ich widerspreche den Werbemails.",
+		"Ich widerspreche dem Erhalt Ihres Newsletters.",
+		"Ich widerspreche gem. Art. 21 Abs. 2 i.V.m. Abs. 3 DSGVO der Weitergabe meiner Daten.",
+		"BITTE MICH NICHT MEHR KONTAKTIEREN",
+		"Bitte löschen Sie mich aus Ihrer Datenbank.",
+		"Keine weitere Kontaktaufnahme erwünscht.",
+		"Bitte aus dem Verteiler nehmen.",
+		"Bitte von der Liste streichen.",
+		"Ich möchte keine weiteren\r\nE-Mails erhalten.",
+		"Bitte austragen.\r\n\r\nVon: Marc <marc@example.com>\r\nGesendet: Montag, 28. September 2026 09:12\r\n\r\n" + ownLine,
+	}
+	for _, body := range optOut {
+		if !IsOptOut("", body) {
+			t.Errorf("IsOptOut(%q) = false, want true", body)
+		}
+	}
+	if !IsOptOut("Abmelden bitte", "") {
+		t.Error("an opt-out subject with an empty body was missed")
+	}
+
+	notOptOut := map[string]string{
+		"interest":        "Klingt spannend, rufen Sie mich gerne an.",
+		"meeting":         "Ich muss mich leider vom Termin am Freitag abmelden, passt Montag?",
+		"calendar":        "Ich musste den Termin leider wieder austragen.",
+		"participle":      "Ich bin heute abgemeldet, melde mich morgen.",
+		"consent":         "Mit der Verwendung meiner Daten für die Terminbuchung bin ich einverstanden.",
+		"disagree":        "Da widerspreche ich Ihnen, unser Vertrieb läuft gut.",
+		"disagree formal": "Ich widerspreche hiermit Ihrer Preisberechnung, bitte senden Sie ein neues Angebot.",
+		"disagree price":  "Da widerspreche ich, der Preis ist zu hoch. Rufen Sie mich an!",
+		"privacy notice":  "Gerne, Termin passt.\n\n-- \nMax Muster GmbH\nSie können der Verarbeitung Ihrer Daten jederzeit widersprechen. Infos zur Datenverarbeitung: example.de/datenschutz",
+		"next sentence":   "Da widerspreche ich Ihnen. Die Nutzung Ihres Tools wäre für uns interessant.",
+		"colon":           "Da widerspreche ich: wir lesen alle Mails. Gerne ein Termin.",
+		"no article":      "Ich widerspreche Ihnen, Werbung funktioniert bei uns gut.",
+		"comma":           "Da widerspreche ich, bei der Nutzung Ihrer Software hatten wir nie Probleme, gerne Termin.",
+		"no ads":          "Wir machen aktuell keine Werbung, aber gerne ein Termin.",
+		"colleague":       "Herrn Müller brauchen Sie nicht mehr kontaktieren, ich bin jetzt zuständig.",
+		"forwarded":       "Ich habe Ihre Mail an die Kollegen aus dem Verteiler weitergeleitet.",
+		"contact person":  "Für weitere Kontaktaufnahmen wenden Sie sich bitte an Frau Klein.",
+		"from monday":     "Ich meld mich ab Montag wieder, dann gerne ein Termin.",
+		"pilot":           "Melden Sie mich ab Oktober für den Pilot an.",
+		"call instead":    "Bitte kontaktieren Sie mich nicht per Mail, sondern rufen Sie an.",
+		"not before":      "Kontaktieren Sie uns nicht vor Oktober, dann gerne.",
+		"quote item":      "Streichen Sie uns bitte Position 3 aus dem Angebot.",
+		"print ads":       "Wir machen keine Werbung mehr in Print, aber online gerne.",
+		"no mail yet":     "Ich habe bisher keine weiteren Nachrichten erhalten.",
+		"disclaimer":      "Gerne, passt.\n\nDiese E-Mail enthält vertrauliche Informationen. Wenn Sie nicht der richtige Adressat sind, informieren Sie bitte sofort den Absender und löschen Sie diese E-Mail.",
+		"gmail quote":     "Klingt gut, melden Sie sich.\n\nAm Mo., 28. Sept. 2026 um 09:12 Uhr schrieb Marc <marc@example.com>:\n> " + ownLine,
+		"outlook quote":   "Klingt interessant, rufen Sie mich an.\r\n\r\nVon: Marc <marc@example.com>\r\nGesendet: Montag, 28. September 2026 09:12\r\nAn: Jan <jan@example.de>\r\nBetreff: Kurze Frage\r\n\r\n" + ownLine,
+		"outlook divider": "Passt, gerne.\r\n\r\n-----Ursprüngliche Nachricht-----\r\n" + ownLine,
+		"gmx quote":       "Klingt interessant.\r\n\r\nGesendet: Montag, 28. September 2026 um 09:12 Uhr\r\nVon: \"Marc\" <marc@example.com>\r\nAn: jan@example.de\r\nBetreff: Kurze Frage\r\n\r\n" + ownLine,
+		"t-online quote":  "Gerne, rufen Sie an.\r\n\r\n-------- Original-Nachricht --------\r\n" + ownLine,
+	}
+	for name, body := range notOptOut {
+		if IsOptOut("", body) {
+			t.Errorf("%s: IsOptOut(%q) = true, want false", name, body)
+		}
+	}
+}
+
+func TestLexiconGermanOptOut(t *testing.T) {
+	r, ok := classifyLexicon(Input{Subject: "AW: Kurze Frage", BodyText: "Bitte austragen, danke."})
+	if !ok || r.Class != ClassUnsubscribe {
+		t.Fatalf("got %+v ok=%v, want unsubscribe", r, ok)
+	}
+	r, ok = classifyLexicon(Input{BodyText: "Sounds good, let's talk.\r\n\r\nVon: Marc <marc@example.com>\r\nGesendet: Montag, 28. September 2026 09:12\r\n\r\nKein Interesse? Einfach \u201ebitte austragen\u201c antworten."})
+	if !ok || r.Class != ClassPositive {
+		t.Fatalf("got %+v ok=%v, want positive", r, ok)
+	}
+}
