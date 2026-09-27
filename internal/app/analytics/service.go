@@ -152,16 +152,11 @@ func (s *analyticsService) GetCampaignAnalytics(ctx context.Context, orgID, camp
 		engagement = nil
 	}
 
-	resolved, xerr := s.campaignPeriod(ctx, campaign, period)
-	if xerr != nil {
-		return nil, xerr
-	}
-
 	return &models.CampaignAnalytics{
 		CampaignID: campaignID,
 		Name:       campaign.Name,
 		Status:     campaign.Status,
-		DateRange:  resolved,
+		DateRange:  campaignPeriod(campaign, summary.FirstSentAt, period, time.Now()),
 		Summary:    *summary,
 		Sequences:  sequences,
 		Engagement: engagement,
@@ -170,24 +165,20 @@ func (s *analyticsService) GetCampaignAnalytics(ctx context.Context, orgID, camp
 
 // campaignPeriod is the window the figures cover: the one asked for, or for
 // all time the first send's UTC day (creation before one) through today.
-func (s *analyticsService) campaignPeriod(ctx context.Context, campaign *models.Campaign, period *models.DateRange) (models.DateRange, *errx.Error) {
+func campaignPeriod(campaign *models.Campaign, firstSent *time.Time, period *models.DateRange, now time.Time) models.DateRange {
 	if period != nil {
-		return *period, nil
+		return *period
 	}
 	start := campaign.CreatedAt
-	first, xerr := s.analyticsRepo.GetCampaignFirstSentAt(ctx, campaign.ID)
-	if xerr != nil {
-		return models.DateRange{}, xerr
+	if firstSent != nil {
+		start = *firstSent
 	}
-	if first != nil {
-		start = *first
-	}
-	today := utcDay(time.Now())
+	today := utcDay(now)
 	from := utcDay(start)
 	if from.After(today) {
 		from = today
 	}
-	return models.DateRange{From: from, To: today}, nil
+	return models.DateRange{From: from, To: today}
 }
 
 func utcDay(t time.Time) time.Time {

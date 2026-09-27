@@ -412,11 +412,11 @@ Returns per-hour stats for one campaign on a single day. The campaign must belon
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
 | `id` | path | string (uuid) | Campaign id. |
-| `date` | query | string | Day to report (`YYYY-MM-DD`). Defaults to today. |
+| `date` | query | string | Day to report (`YYYY-MM-DD`, UTC). Defaults to today. |
 
 ### Response
 
-The series is returned under a `data` envelope, with the resolved `date` echoed back. Each item's `hour` is `0`-`23`.
+The series is returned under a `data` envelope, with the resolved `date` echoed back. Each item's `hour` is the UTC hour, `0`-`23`, so a day's rows add up to that day's row in the [daily stats](#get-campaign-daily-stats).
 
 ```json
 {

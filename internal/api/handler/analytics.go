@@ -141,25 +141,11 @@ func (h *Handler) GetCampaignAnalytics(c *gin.Context) {
 // optionalDayRange reads from and to as whole days, both or neither; neither
 // is nil, which callers read as all time.
 func optionalDayRange(c *gin.Context) (*models.DateRange, *errx.Error) {
-	fromStr, toStr := c.Query("from"), c.Query("to")
-	if fromStr == "" && toStr == "" {
-		return nil, nil
-	}
-	if fromStr == "" || toStr == "" {
-		return nil, errx.New(errx.BadRequest, "from and to must be supplied together")
-	}
-	from, err := time.Parse("2006-01-02", fromStr)
+	period, err := models.ParseDayRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		return nil, errx.New(errx.BadRequest, "Invalid from date format (expected YYYY-MM-DD)")
+		return nil, errx.New(errx.BadRequest, err.Error())
 	}
-	to, err := time.Parse("2006-01-02", toStr)
-	if err != nil {
-		return nil, errx.New(errx.BadRequest, "Invalid to date format (expected YYYY-MM-DD)")
-	}
-	if to.Before(from) {
-		return nil, errx.New(errx.BadRequest, "from must not be after to")
-	}
-	return &models.DateRange{From: from, To: to}, nil
+	return period, nil
 }
 
 // GetCampaignDailyStats gets daily statistics for a campaign

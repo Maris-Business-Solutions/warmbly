@@ -485,26 +485,13 @@ func (d Deps) getCampaignStats(ctx context.Context, inv Invocation, args json.Ra
 }
 
 // parseDayRangeArgs reads an optional from/to pair of whole days; both empty
-// is nil (all time), and a half-given or reversed pair is refused.
+// is nil (all time).
 func parseDayRangeArgs(from, to string) (*models.DateRange, error) {
-	if from == "" && to == "" {
-		return nil, nil
-	}
-	if from == "" || to == "" {
-		return nil, fmt.Errorf("%w: from and to must be given together", ErrInvalidArgs)
-	}
-	f, err := time.Parse("2006-01-02", from)
+	period, err := models.ParseDayRange(from, to)
 	if err != nil {
-		return nil, fmt.Errorf("%w: from must be YYYY-MM-DD", ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidArgs, err.Error())
 	}
-	t, err := time.Parse("2006-01-02", to)
-	if err != nil {
-		return nil, fmt.Errorf("%w: to must be YYYY-MM-DD", ErrInvalidArgs)
-	}
-	if t.Before(f) {
-		return nil, fmt.Errorf("%w: from must not be after to", ErrInvalidArgs)
-	}
-	return &models.DateRange{From: f, To: t}, nil
+	return period, nil
 }
 
 func (d Deps) createCampaignDraft(ctx context.Context, inv Invocation, args json.RawMessage) (string, error) {

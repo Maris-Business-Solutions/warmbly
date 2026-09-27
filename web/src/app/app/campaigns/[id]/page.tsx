@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     MailCheckIcon,
     MousePointerClickIcon,
@@ -21,7 +21,7 @@ import CampaignFormsPanel from "@/components/app/campaigns/CampaignFormsPanel";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
 import AdvisorStrip from "@/components/app/advisor/AdvisorStrip";
 import CampaignPeriodPicker from "@/components/app/campaigns/CampaignPeriodPicker";
-import { formatWindow, loadCampaignPeriod, periodWindow, type CampaignPeriod, type DayWindow } from "@/lib/campaignPeriod";
+import { formatWindow, loadCampaignPeriod, periodWindow, utcToday, type CampaignPeriod, type DayWindow } from "@/lib/campaignPeriod";
 
 const AUTO_OPENS_TIP = "Auto-opens: pixel fetches from privacy proxies (e.g. Apple Mail) or within seconds of sending, not a person reading. Logged as delivery proof, not counted as opens";
 const AUTO_CLICKS_TIP = "Auto-clicks: links followed by a security gateway scanning the email, not a person; not counted as clicks";
@@ -51,15 +51,26 @@ export default function CampaignOverview() {
     // One period drives every figure on the page: summary, steps, engagement
     // and the chart all read the same sends.
     const [period, setPeriod] = useState<CampaignPeriod>(loadCampaignPeriod);
-    const asked = useMemo(() => periodWindow(period), [period]);
+    // A preset ends today, so a page left open rolls over at UTC midnight.
+    const [today, setToday] = useState(utcToday);
+    useEffect(() => {
+        const t = window.setInterval(() => setToday(utcToday()), 60_000);
+        return () => window.clearInterval(t);
+    }, []);
+    const asked = useMemo(() => periodWindow(period, today), [period, today]);
     const analytics = useCampaignAnalytics(id, asked);
-    // All time charts from the first send, which only the summary knows.
+    // All time charts from the campaign's creation day, before any send, so
+    // the chart loads alongside the summary instead of after it.
+    const created = campaign?.created_at ? new Date(campaign.created_at) : null;
+    const createdDay = created && !Number.isNaN(created.getTime()) ? created.toISOString().slice(0, 10) : null;
+    const chartWindow: DayWindow | null = asked ?? (createdDay ? { from: createdDay, to: today } : null);
+    const daily = useCampaignDailyStats(id, chartWindow);
+    // The days the figures cover, as the summary resolved them.
     const covered: DayWindow | null = useMemo(() => {
         if (asked) return asked;
         const r = analytics.isPlaceholderData ? undefined : analytics.data?.date_range;
         return r ? { from: r.from.slice(0, 10), to: r.to.slice(0, 10) } : null;
     }, [asked, analytics.isPlaceholderData, analytics.data?.date_range]);
-    const daily = useCampaignDailyStats(id, covered);
 
     // Legend toggles: every metric charts together; hidden ones drop out.
     const [hiddenMetrics, setHiddenMetrics] = useState<Metric[]>([]);
@@ -86,7 +97,7 @@ export default function CampaignOverview() {
         return { labels: rows.map((d) => d.date), series };
     }, [daily.data, hiddenMetrics]);
 
-    const loading = analytics.isPending || daily.isPending;
+    const loading = analytics.isPending || (!!chartWindow && daily.isPending);
     const hasSends = (summary?.emails_sent ?? 0) > 0;
     const allTime = period.key === "all";
     const periodLabel = covered ? formatWindow(covered) : null;

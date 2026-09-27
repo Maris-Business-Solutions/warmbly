@@ -23,15 +23,20 @@ function utcDay(d: Date): string {
     return d.toISOString().slice(0, 10);
 }
 
-// The window a period asks the API for; null is all time, which sends none.
-export function periodWindow(p: CampaignPeriod): DayWindow | null {
+// Today's UTC day, "yyyy-MM-dd".
+export function utcToday(): string {
+    return utcDay(new Date());
+}
+
+// The window a period asks the API for, ending on `today` (a UTC day); null
+// is all time, which sends none.
+export function periodWindow(p: CampaignPeriod, today: string = utcToday()): DayWindow | null {
     if (p.key === "custom") return { from: p.from, to: p.to };
     const days = PRESETS.find((x) => x.key === p.key)?.days;
     if (!days) return null;
-    const to = new Date();
-    const from = new Date();
+    const from = new Date(`${today}T00:00:00Z`);
     from.setUTCDate(from.getUTCDate() - (days - 1));
-    return { from: utcDay(from), to: utcDay(to) };
+    return { from: utcDay(from), to: today };
 }
 
 // "Sep 1 – Sep 27, 2026", with the year on both ends when they differ.

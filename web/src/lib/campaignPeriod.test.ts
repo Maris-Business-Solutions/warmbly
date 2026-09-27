@@ -11,6 +11,10 @@ describe("periodWindow", () => {
         expect(periodWindow({ key: "30d" })).toEqual({ from: "2026-08-29", to: "2026-09-27" });
     });
 
+    it("ends a preset on the day it is given", () => {
+        expect(periodWindow({ key: "7d" }, "2026-03-02")).toEqual({ from: "2026-02-24", to: "2026-03-02" });
+    });
+
     it("sends no window for all time and the chosen days for custom", () => {
         expect(periodWindow({ key: "all" })).toBeNull();
         expect(periodWindow({ key: "custom", from: "2026-09-01", to: "2026-09-07" })).toEqual({ from: "2026-09-01", to: "2026-09-07" });

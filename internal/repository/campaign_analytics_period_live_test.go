@@ -166,14 +166,21 @@ func TestLiveCampaignAnalyticsPeriodIsASendCohort(t *testing.T) {
 		t.Errorf("all-time countries = %+v, want all four", allEng.Countries)
 	}
 
-	first, xerr := repo.GetCampaignFirstSentAt(ctx, f.campaign)
-	if xerr != nil {
-		t.Fatalf("first sent: %v", xerr)
+	// The first send resolves an all-time period, whatever period was read.
+	if sum.FirstSentAt == nil || !sum.FirstSentAt.Equal(sends["before"].sent) {
+		t.Errorf("first sent = %v, want %v", sum.FirstSentAt, sends["before"].sent)
 	}
-	if first == nil || !first.Equal(sends["before"].sent) {
-		t.Errorf("first sent = %v, want %v", first, sends["before"].sent)
-	}
-	if none, xerr := repo.GetCampaignFirstSentAt(ctx, f.other); xerr != nil || none != nil {
+	none, xerr := repo.GetCampaignSummary(ctx, f.org, f.other, nil)
+	if xerr != nil || none.FirstSentAt != nil {
 		t.Errorf("a campaign that never sent: first = %v, err %v, want nil", none, xerr)
+	}
+
+	// The hourly drill-down files the last day's late send under that UTC day.
+	hours, xerr := repo.GetCampaignHourlyStats(ctx, f.campaign, period.To)
+	if xerr != nil {
+		t.Fatalf("hourly: %v", xerr)
+	}
+	if len(hours) != 1 || hours[0].Hour != 23 || hours[0].Sent != 1 {
+		t.Errorf("hourly on the last day = %+v, want one send at 23:00 UTC", hours)
 	}
 }

@@ -20,8 +20,6 @@ type AnalyticsRepository interface {
 	// Campaign analytics. A nil period is the campaign's whole history; a
 	// period scopes the performance figures to the sends inside it.
 	GetCampaignSummary(ctx context.Context, orgID, campaignID uuid.UUID, period *models.DateRange) (*models.CampaignSummary, *errx.Error)
-	// GetCampaignFirstSentAt is the campaign's earliest email send, nil before one.
-	GetCampaignFirstSentAt(ctx context.Context, campaignID uuid.UUID) (*time.Time, *errx.Error)
 
 	// Direct (hand-written) mail analytics.
 	GetDirectMailAnalytics(ctx context.Context, orgID uuid.UUID, from, to time.Time) (*models.DirectMailAnalytics, *errx.Error)
@@ -156,7 +154,13 @@ func sentWithin(alias string, period *models.DateRange, next int) (string, []any
 		return "", nil
 	}
 	return fmt.Sprintf(` AND %[1]s.sent_at >= $%[2]d AND %[1]s.sent_at < $%[3]d`, alias, next, next+1),
-		[]any{period.From, period.To.AddDate(0, 0, 1)}
+		[]any{calendarDay(period.From), calendarDay(period.To).AddDate(0, 0, 1)}
+}
+
+// calendarDay is midnight UTC on the date t names, whatever its time of day.
+func calendarDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
 func (r *analyticsRepository) GetCampaignSummary(ctx context.Context, orgID, campaignID uuid.UUID, period *models.DateRange) (*models.CampaignSummary, *errx.Error) {
@@ -167,15 +171,18 @@ func (r *analyticsRepository) GetCampaignSummary(ctx context.Context, orgID, cam
 		WITH campaign_plan AS (
 			SELECT
 				(SELECT COUNT(*) FROM campaign_leads WHERE campaign_id = $1) AS total_contacts,
-				(SELECT COUNT(*) FROM sequences WHERE campaign_id = $1 AND kind = 'email') AS email_steps,
-				(SELECT COUNT(*) FROM campaign_contact_progress p
-					JOIN sequences s ON s.id = p.sequence_id AND s.kind = 'email'
-					WHERE p.campaign_id = $1 AND p.sent_at IS NOT NULL) AS sent_all
+				(SELECT COUNT(*) FROM sequences WHERE campaign_id = $1 AND kind = 'email') AS email_steps
+		), campaign_sends AS (
+			SELECT COUNT(*) AS sent_all, MIN(p.sent_at) AS first_sent_at
+			FROM campaign_contact_progress p
+			JOIN sequences s ON s.id = p.sequence_id AND s.kind = 'email'
+			WHERE p.campaign_id = $1 AND p.sent_at IS NOT NULL
 		)
 		SELECT
 			cp.total_contacts,
+			cs.first_sent_at,
 			COUNT(CASE WHEN ccp.sent_at IS NOT NULL THEN 1 END) as emails_sent,
-			GREATEST(cp.total_contacts * cp.email_steps - cp.sent_all, 0) as emails_pending,
+			GREATEST(cp.total_contacts * cp.email_steps - cs.sent_all, 0) as emails_pending,
 			COUNT(CASE WHEN ccp.opened_at IS NOT NULL AND NOT ccp.opened_machine THEN 1 END) as unique_opens,
 			COUNT(CASE WHEN ccp.opened_at IS NOT NULL AND ccp.opened_machine THEN 1 END) as machine_opens,
 			COUNT(CASE WHEN ccp.clicked_at IS NOT NULL THEN 1 END) as unique_clicks,
@@ -184,10 +191,11 @@ func (r *analyticsRepository) GetCampaignSummary(ctx context.Context, orgID, cam
 			COUNT(CASE WHEN ccp.bounced_at IS NOT NULL THEN 1 END) as bounces
 		FROM campaigns c
 		CROSS JOIN campaign_plan cp
+		CROSS JOIN campaign_sends cs
 		LEFT JOIN campaign_contact_progress ccp ON ccp.campaign_id = c.id
 			AND EXISTS (SELECT 1 FROM sequences s WHERE s.id = ccp.sequence_id AND s.kind = 'email')` + cohort + machineClicksJoin + `
 		WHERE c.id = $1 AND c.organization_id = $2
-		GROUP BY cp.total_contacts, cp.email_steps, cp.sent_all
+		GROUP BY cp.total_contacts, cp.email_steps, cs.sent_all, cs.first_sent_at
 	`
 
 	params := append([]any{campaignID, orgID}, cohortArgs...)
@@ -195,6 +203,7 @@ func (r *analyticsRepository) GetCampaignSummary(ctx context.Context, orgID, cam
 	var summary models.CampaignSummary
 	err := r.DB.QueryRow(ctx, query, params...).Scan(
 		&summary.TotalContacts,
+		&summary.FirstSentAt,
 		&summary.EmailsSent,
 		&summary.EmailsPending,
 		&summary.UniqueOpens,
@@ -218,21 +227,6 @@ func (r *analyticsRepository) GetCampaignSummary(ctx context.Context, orgID, cam
 	}
 
 	return &summary, nil
-}
-
-func (r *analyticsRepository) GetCampaignFirstSentAt(ctx context.Context, campaignID uuid.UUID) (*time.Time, *errx.Error) {
-	query := `
-		SELECT MIN(ccp.sent_at)
-		FROM campaign_contact_progress ccp
-		JOIN sequences s ON s.id = ccp.sequence_id AND s.kind = 'email'
-		WHERE ccp.campaign_id = $1 AND ccp.sent_at IS NOT NULL
-	`
-	var first *time.Time
-	if err := r.DB.QueryRow(ctx, query, campaignID).Scan(&first); err != nil {
-		db.CaptureError(err, query, []any{campaignID}, "GetCampaignFirstSentAt")
-		return nil, errx.InternalError()
-	}
-	return first, nil
 }
 
 func (r *analyticsRepository) GetCampaignDailyStats(ctx context.Context, campaignID uuid.UUID, from, to time.Time) ([]models.CampaignDailyStats, *errx.Error) {
@@ -893,9 +887,11 @@ func (r *analyticsRepository) GetAccountHealthSummary(ctx context.Context, orgID
 }
 
 func (r *analyticsRepository) GetCampaignHourlyStats(ctx context.Context, campaignID uuid.UUID, date time.Time) ([]models.CampaignHourlyStats, *errx.Error) {
+	// UTC hours of one UTC day, the same day the daily series files it under.
+	cohort, cohortArgs := sentWithin("ccp", &models.DateRange{From: date, To: date}, 2)
 	query := `
 		SELECT
-			EXTRACT(HOUR FROM ccp.sent_at)::int as hour,
+			EXTRACT(HOUR FROM ccp.sent_at AT TIME ZONE 'UTC')::int as hour,
 			COUNT(*) as sent,
 			COUNT(CASE WHEN ccp.opened_at IS NOT NULL AND NOT ccp.opened_machine THEN 1 END) as opens,
 			COUNT(CASE WHEN ccp.clicked_at IS NOT NULL THEN 1 END) as clicks,
@@ -903,13 +899,12 @@ func (r *analyticsRepository) GetCampaignHourlyStats(ctx context.Context, campai
 		FROM campaign_contact_progress ccp
 		JOIN sequences s ON s.id = ccp.sequence_id AND s.kind = 'email'
 		WHERE ccp.campaign_id = $1
-		  AND ccp.sent_at IS NOT NULL
-		  AND ccp.sent_at::date = $2::date
-		GROUP BY EXTRACT(HOUR FROM ccp.sent_at)
-		ORDER BY hour
+		  AND ccp.sent_at IS NOT NULL` + cohort + `
+		GROUP BY 1
+		ORDER BY 1
 	`
 
-	params := []any{campaignID, date}
+	params := append([]any{campaignID}, cohortArgs...)
 
 	rows, err := r.DB.Query(ctx, query, params...)
 	if err != nil {
@@ -960,7 +955,7 @@ func (r *analyticsRepository) CompareCampaigns(ctx context.Context, orgID uuid.U
 	`
 
 	// to is a whole day: the window ends at the start of the next one.
-	params := []any{orgID, from, to.AddDate(0, 0, 1), campaignIDs}
+	params := []any{orgID, calendarDay(from), calendarDay(to).AddDate(0, 0, 1), campaignIDs}
 
 	rows, err := r.DB.Query(ctx, query, params...)
 	if err != nil {
