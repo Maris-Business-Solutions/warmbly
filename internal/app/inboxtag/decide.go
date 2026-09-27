@@ -68,13 +68,19 @@ type Decision struct {
 	// Custom are the workspace questions that fired. Their labels are already
 	// in Labels; they never move relevance.
 	Custom []CustomMatch
+
+	// ActionRequired is automated mail that needs the recipient to act.
+	ActionRequired bool
+	// KeepInInbox is automated mail a check matched, the built-in one or a
+	// workspace question asked of automated mail, so it stays in the inbox.
+	KeepInInbox bool
 }
 
 // Automated reports a trusted verdict that no person wrote this message. An
 // untrusted kind is never automated, so a message the model was unsure about
-// stays in the inbox.
+// stays in the inbox, and neither is one that needs acting on.
 func (d Decision) Automated() bool {
-	return IsAutomatedKind(d.Kind) && d.ReviewReason != "kind" && !d.Skipped()
+	return IsAutomatedKind(d.Kind) && !d.KeepInInbox && d.ReviewReason != "kind" && !d.Skipped()
 }
 
 // Skipped reports a decision that did nothing because the message was ours.
@@ -170,6 +176,15 @@ func DecideWith(answers map[string]Answer, facts Facts, custom []models.InboxTag
 			d.Signals = append(d.Signals, id)
 		}
 	}
+	// Asked of a notification only; any other kind already reaches a person.
+	if a, ok := answers[SigActionRequired]; ok && d.Kind == KindNotification {
+		d.SignalStrength[SigActionRequired] = a.Noul
+		if a.Noul >= Yes {
+			d.Signals = append(d.Signals, SigActionRequired)
+			d.ActionRequired = true
+			d.KeepInInbox = true
+		}
+	}
 	sort.Strings(d.Signals)
 
 	// ── Scores, normalised to 0..1 ─────────────────────────────────────────
@@ -251,6 +266,9 @@ func labelsFor(d Decision) []string {
 	}
 
 	add(d.Kind)
+	if d.ActionRequired {
+		add(SigActionRequired)
+	}
 	if d.Kind == KindHumanReply && d.ReviewReason != "intent" {
 		add(d.Intent)
 	}

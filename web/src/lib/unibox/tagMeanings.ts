@@ -8,11 +8,14 @@
 // labels a user created ever need their own explanations too.
 
 const TAG_MEANINGS: Record<string, string> = {
-    // What the message is. Automated mail leaves the inbox for the Automated view.
+    // What the message is. Automated mail leaves the inbox for the Automated view,
+    // unless it needs your action.
     bounced: "The email was not delivered: the address does not exist, or the server refused it for now.",
     "out of office": "An automatic out-of-office or vacation reply, not a person.",
     "auto-reply": "An automatic \"we got your message\" or ticket receipt, not a person.",
     notification: "An automatic message from a service: security alerts, sign-in codes, receipts, newsletters.",
+    "action required":
+        "An automatic message saying something needs your action: a failed payment, a suspended or restricted account, a suspicious sign-in, a sending limit, or a service about to expire. Kept in the inbox so it is not missed.",
     "sales pitch": "Someone trying to sell to you. Not a reply to your outreach.",
 
     // What a reply wants. Only ever on a person's reply.

@@ -290,7 +290,11 @@ func (s *service) UpdateOrganizationSettings(ctx context.Context, organizationID
 	if err := settings.Validate(); err != nil {
 		return errx.NewWithIdentifier(errx.BadRequest, "invalid_setting", err.Error())
 	}
-	if err := inboxtag.ValidateQuestions(settings.InboxTagging.Questions); err != nil {
+	var saved []models.InboxTagQuestion
+	if current, err := s.repo.GetOutreachSettings(ctx, organizationID); err == nil && current != nil {
+		saved = current.InboxTagging.Questions
+	}
+	if err := inboxtag.ValidateQuestions(settings.InboxTagging.Questions, saved); err != nil {
 		return errx.NewWithIdentifier(errx.BadRequest, "invalid_setting", err.Error())
 	}
 	if err := s.repo.UpsertOutreachSettings(ctx, organizationID, updatedBy, settings); err != nil {
@@ -1567,7 +1571,7 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 				body = "Held until " + held.Format("2 Jan") + " · " + msg.Subject
 			}
 		}
-		s.notifyAboutMessage(uid, account.OrganizationID, msg.ID, cat, title, body, uniboxThreadLink(msg.ThreadID), map[string]any{
+		s.notifyAboutMessage(uid, account.OrganizationID, msg.ID, cat, title, body, UniboxThreadLink(msg.ThreadID), map[string]any{
 			"intent":           string(intent),
 			"email_account_id": emailAccountID.String(),
 			"thread_id":        msg.ThreadID,

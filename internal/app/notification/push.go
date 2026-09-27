@@ -231,6 +231,8 @@ func digestTitle(category models.NotificationCategory, n int) string {
 		return fmt.Sprintf("%d placement tests finished", n)
 	case models.NotifPlacementAlert:
 		return fmt.Sprintf("%d placement alerts", n)
+	case models.NotifInboxActionRequired:
+		return fmt.Sprintf("%d messages need action", n)
 	default:
 		return fmt.Sprintf("%d new notifications", n)
 	}

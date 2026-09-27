@@ -35,6 +35,7 @@ import {
   MessageSquareReplyIcon,
   BotIcon,
   BanIcon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import useUniboxOverview from "@/lib/api/hooks/app/unibox/useUniboxOverview";
 import useMarkSeen from "@/lib/api/hooks/app/unibox/useMarkSeen";
@@ -101,6 +102,7 @@ const MAIL_FOLDERS: {
 ];
 
 const VIEW_ICONS: Record<UniboxViewId, React.ReactNode> = {
+  action_required: <TriangleAlertIcon className={ICON} />,
   hot: <FlameIcon className={ICON} />,
   needs_reply: <MessageSquareReplyIcon className={ICON} />,
   follow_up: <ClockIcon className={ICON} />,

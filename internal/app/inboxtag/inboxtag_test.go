@@ -225,6 +225,7 @@ type fakeRepo struct {
 	saved     []*repository.InboxTagResult
 	untagged  []repository.BackfillCandidate
 	cold      []repository.BackfillCandidate
+	notices   []repository.BackfillCandidate
 	previous  string
 	campaign  string
 	inReplyTo []string
@@ -270,6 +271,9 @@ func (f *fakeRepo) PreviousOutbound(_ context.Context, _ uuid.UUID, _ string, in
 }
 func (f *fakeRepo) ListColdInboundInCampaignThreads(context.Context, uuid.UUID, time.Time, int) ([]repository.BackfillCandidate, error) {
 	return f.cold, nil
+}
+func (f *fakeRepo) ListUncheckedNotifications(context.Context, uuid.UUID, time.Time, int) ([]repository.BackfillCandidate, error) {
+	return f.notices, nil
 }
 func (f *fakeRepo) Reopen(_ context.Context, _ uuid.UUID, id, _ string) ([]string, error) {
 	delete(f.tagged, id)
@@ -331,7 +335,7 @@ func TestOneCallPerEmailWithAllQuestions(t *testing.T) {
 	if asker.calls != 1 {
 		t.Fatalf("made %d calls, want exactly 1", asker.calls)
 	}
-	if want := len(Questions()); asker.questions != want {
+	if want := len(QuestionsFor(nil, true)); asker.questions != want {
 		t.Fatalf("sent %d questions, want all %d in the one call", asker.questions, want)
 	}
 }

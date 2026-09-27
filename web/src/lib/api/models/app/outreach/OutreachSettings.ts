@@ -61,6 +61,9 @@ export interface InboxTaggingSettings {
     questions?: InboxTagQuestion[] | null;
     // models.MailLanguageNames codes tagging reads mail in.
     languages?: string[] | null;
+    // Ask automated notifications whether they need action, and keep the ones
+    // that do in the inbox instead of the Automated view.
+    action_required_in_inbox: boolean;
 }
 
 export type InboxTagActionType = "" | "hold" | "stop" | "task";
@@ -85,6 +88,9 @@ export interface InboxTagQuestion {
     label?: string;
     action: InboxTagQuestionAction;
     choices?: InboxTagChoice[];
+    // Also asked of automated notifications; a match keeps the conversation in
+    // the inbox. Never acts on one.
+    automated?: boolean;
 }
 
 export const DEFAULT_INBOX_TAGGING: InboxTaggingSettings = {
@@ -95,6 +101,7 @@ export const DEFAULT_INBOX_TAGGING: InboxTaggingSettings = {
     suppress_on_removal_request: false,
     questions: [],
     languages: [],
+    action_required_in_inbox: true,
 };
 
 // Bounds matching internal/models/advanced_outreach.go.

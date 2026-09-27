@@ -102,22 +102,29 @@ func (s *Service) WireSettings(src SettingsSource) {
 type workspaceSettings struct {
 	questions []models.InboxTagQuestion
 	languages []string
+	// actionRequired asks whether automated mail needs the recipient to act.
+	actionRequired bool
 }
 
 // workspace reads them. A failed read costs the workspace's additions for this
-// message, never the classification.
+// message, never the classification, and keeps the defaults.
 func (s *Service) workspace(ctx context.Context, orgID uuid.UUID) workspaceSettings {
+	defaults := workspaceSettings{actionRequired: models.DefaultAdvancedOutreachSettings().InboxTagging.ActionRequiredInInbox}
 	if s.settings == nil || orgID == uuid.Nil {
-		return workspaceSettings{}
+		return defaults
 	}
 	cfg, err := s.settings.GetOutreachSettings(ctx, orgID)
 	if err != nil || cfg == nil {
 		if err != nil {
 			log.Warn().Err(err).Str("org_id", orgID.String()).Msg("inbox tagging: workspace settings not read; built-in set only")
 		}
-		return workspaceSettings{}
+		return defaults
 	}
-	return workspaceSettings{questions: cfg.InboxTagging.Questions, languages: cfg.InboxTagging.Languages}
+	return workspaceSettings{
+		questions:      cfg.InboxTagging.Questions,
+		languages:      cfg.InboxTagging.Languages,
+		actionRequired: cfg.InboxTagging.ActionRequiredInInbox,
+	}
 }
 
 func (s *Service) Enabled() bool {
@@ -182,7 +189,8 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 	var custom []models.InboxTagQuestion
 
 	var resp *Response
-	if facts.DeterministicKind == "" {
+	switch {
+	case facts.DeterministicKind == "":
 		if !HasContent(state) {
 			release()
 			return Decision{}, nil
@@ -191,10 +199,26 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 		state.Language = LanguageHint(ws.languages)
 		// 4. Send every question, the workspace's own included, in one request
 		// to avoid repeated state ingest.
-		resp, err = s.asker.Ask(ctx, state, QuestionsFor(custom))
+		resp, err = s.asker.Ask(ctx, state, QuestionsFor(custom, ws.actionRequired))
 		if err != nil {
 			release()
 			return Decision{}, err
+		}
+	case facts.DeterministicKind == KindNotification && HasContent(state):
+		// A notice decided offline is still asked whether it needs acting on.
+		if qs := NotificationQuestions(ws.questions, ws.actionRequired); len(qs) > 0 {
+			custom = ws.questions
+			state.Language = LanguageHint(ws.languages)
+			resp, err = s.asker.Ask(ctx, state, qs)
+			if err != nil && !ws.actionRequired {
+				release()
+				return Decision{}, err
+			}
+			if err != nil {
+				// Filed as before the check existed; --recheck-notifications asks it later.
+				log.Warn().Err(err).Str("message_id", m.MessageID).Msg("inbox tagging: action check failed; notification filed unasked")
+				resp = nil
+			}
 		}
 	}
 
@@ -424,7 +448,15 @@ type BackfillOptions struct {
 	// that belong to a campaign, instead of untagged mail. Those verdicts were
 	// made without the campaign in the state.
 	RecheckColdInbound bool
+	// RecheckNotifications asks stored notifications whether they need acting
+	// on, instead of untagged mail. Those verdicts were made before the
+	// question existed, so a failed payment among them sits in Automated.
+	RecheckNotifications bool
 }
+
+// ErrNothingToAsk refuses a notification re-check for a workspace that asks
+// automated mail nothing.
+var ErrNothingToAsk = errors.New("this workspace does not ask notifications whether they need action: turn on \"Keep mail that needs action in the inbox\" under Settings > Sending first")
 
 // Backfill classifies historical inbound mail that has never been tagged.
 //
@@ -446,11 +478,24 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 		opts.Limit = 200
 	}
 
+	if opts.RecheckColdInbound && opts.RecheckNotifications {
+		return p, errors.New("re-check cold inbound mail and notifications in separate runs")
+	}
+
 	var candidates []repository.BackfillCandidate
+	var langs []string
 	var err error
-	if opts.RecheckColdInbound {
+	switch {
+	case opts.RecheckColdInbound:
 		candidates, err = s.repo.ListColdInboundInCampaignThreads(ctx, orgID, opts.Since, opts.Limit)
-	} else {
+	case opts.RecheckNotifications:
+		ws := s.workspace(ctx, orgID)
+		if !ws.actionRequired {
+			return p, ErrNothingToAsk
+		}
+		langs = ws.languages
+		candidates, err = s.repo.ListUncheckedNotifications(ctx, orgID, opts.Since, opts.Limit)
+	default:
 		candidates, err = s.repo.ListUntagged(ctx, orgID, opts.Since, opts.Limit)
 	}
 	if err != nil {
@@ -503,6 +548,22 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 				continue
 			}
 		}
+		if opts.RecheckNotifications {
+			// Nothing to read is never asked, so reopening it would loop forever.
+			if !HasContent(BuildState(c.Subject, c.BodyText, "", "", langs...)) {
+				p.Skipped++
+				if opts.OnProgress != nil {
+					opts.OnProgress(p, c.Subject)
+				}
+				continue
+			}
+			stale, err = s.repo.Reopen(ctx, orgID, c.MessageID, KindNotification)
+			if err != nil {
+				p.Failed++
+				log.Warn().Err(err).Str("message_id", c.MessageID).Msg("inbox tagging recheck: verdict not reopened")
+				continue
+			}
+		}
 
 		d, err := s.Classify(ctx, Message{
 			OrganizationID:  orgID,
@@ -528,10 +589,13 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 				log.Warn().Err(rerr).Str("thread_id", c.ThreadID).Msg("inbox tagging recheck: stale labels kept")
 			}
 		}
+		_, asked := d.SignalStrength[SigActionRequired]
 		switch {
 		case err != nil:
 			p.Failed++
 			log.Warn().Err(err).Str("message_id", c.MessageID).Msg("inbox tagging backfill: message failed")
+		case opts.RecheckNotifications && stored && d.Kind == KindNotification && !asked:
+			p.Failed++
 		case d.Skipped() || d.KindSource == "":
 			p.Skipped++
 		default:

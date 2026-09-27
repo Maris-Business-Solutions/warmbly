@@ -18,6 +18,7 @@ The feed and the bell count update live, without refreshing.
 | Bounce detected | Health | On | A campaign starts bouncing |
 | Spam complaint | Health | On | A complaint lands on a campaign |
 | Worker downtime | Health | On | A sender worker stops responding |
+| Mail that needs action | Health | On, including email | [Automatic inbox tagging](/guides/inbox-tagging/#mail-that-needs-your-action) found automated mail in a mailbox that needs someone to act, such as a failed payment, a suspended account or a suspicious sign-in |
 | Campaign auto-paused | Health | On, including email | An [auto-pause guardrail](/guides/campaigns/) stopped a campaign |
 | Placement monitor alert | Health | On, including email | A campaign's scheduled [placement test](/guides/placement-tests/#campaign-placement-monitors) landed less of its mail in the primary inbox than the monitor's threshold |
 | Placement test finished | Health | On | A [placement test](/guides/placement-tests/) you started has a verdict for every copy |
@@ -30,12 +31,12 @@ The feed and the bell count update live, without refreshing.
 Health defaults **on** because those alerts are operationally important and low volume. Inbound defaults **off** because a large campaign would generate one notification per recipient and flood the feed. Turn **Reply received** on only for smaller, higher-touch campaigns.
 
 <Callout type="info" title="Who gets notified">
-Workspace events never fan out to everyone. Reply and bounce alerts go to the owner of the mailbox or campaign, worker downtime to members who can manage mailboxes, a finished placement test to whoever started it, a placement monitor alert to members who can view campaigns, billing to those who can manage billing, and team changes to those who can manage the team. The person who joined is not notified about themselves.
+Workspace events never fan out to everyone. Reply and bounce alerts go to the owner of the mailbox or campaign, worker downtime to members who can manage mailboxes, mailbox mail that needs action to members who can both manage mailboxes and use the inbox, a finished placement test to whoever started it, a placement monitor alert to members who can view campaigns, billing to those who can manage billing, and team changes to those who can manage the team. The person who joined is not notified about themselves.
 </Callout>
 
-## Reply notifications follow the message
+## Notifications about a message follow it
 
-A **Reply received** or **Out-of-office detected** notification is about one message in the [Unibox](/guides/unibox/), and it stays in step with it:
+A **Reply received**, **Out-of-office detected** or **Mail that needs action** notification is about one message in the [Unibox](/guides/unibox/), and it stays in step with it:
 
 - **Clicking it opens that conversation**, not the inbox in general.
 - **Reading the message reads the notification**, wherever you read it: in the Unibox, through the API, or in Gmail or Outlook, which Warmbly picks up on the next sync. A notification read this way is not emailed later either.

@@ -60,6 +60,9 @@ type InboxTagRepository interface {
 	// verdicts made before the campaign behind a thread could be resolved.
 	ListColdInboundInCampaignThreads(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error)
 	Reopen(ctx context.Context, orgID uuid.UUID, messageID, kind string) ([]string, error)
+	// ListUncheckedNotifications backs the re-check of notifications stored
+	// before they were asked whether they need acting on.
+	ListUncheckedNotifications(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error)
 
 	// ThreadStates backs the follow-up sweep: who spoke last, when, and how far
 	// the thread ever got.
@@ -338,6 +341,18 @@ func (r *inboxTagRepository) ListColdInboundInCampaignThreads(ctx context.Contex
 		      )`, orgID, since, limit)
 }
 
+// ListUncheckedNotifications returns inbound messages stored as notifications
+// by a verdict that never asked whether they need the recipient to act.
+func (r *inboxTagRepository) ListUncheckedNotifications(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error) {
+	return r.listCandidates(ctx, `
+		  AND EXISTS (
+		        SELECT 1 FROM inbox_tag_results r
+		        WHERE r.organization_id = $1 AND r.message_id = ue.message_id
+		          AND r.status = 'complete' AND r.kind = 'notification'
+		          AND NOT (r.answers ? 'action_required')
+		      )`, orgID, since, limit)
+}
+
 func (r *inboxTagRepository) listCandidates(ctx context.Context, filter string, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error) {
 	q := `
 		SELECT ue.email_id, ue.user_id, ue.message_id, ue.thread_id,
@@ -378,12 +393,23 @@ func (r *inboxTagRepository) listCandidates(ctx context.Context, filter string, 
 // Reopen drops one stored verdict of the given kind so the message can be
 // classified again, and returns the labels it had written. Only a complete
 // verdict of that kind is touched.
+// The message returns to the inbox with it, so a failed re-classification leaves it visible.
 func (r *inboxTagRepository) Reopen(ctx context.Context, orgID uuid.UUID, messageID, kind string) ([]string, error) {
 	var labels []string
 	err := r.db.QueryRow(ctx, `
-		DELETE FROM inbox_tag_results
-		WHERE organization_id = $1 AND message_id = $2 AND status = 'complete' AND kind = $3
-		RETURNING labels
+		WITH dropped AS (
+			DELETE FROM inbox_tag_results
+			WHERE organization_id = $1 AND message_id = $2 AND status = 'complete' AND kind = $3
+			RETURNING email_account_id, message_id, labels
+		), shown AS (
+			UPDATE unibox_emails ue
+			SET automated = false
+			FROM dropped
+			WHERE ue.email_id = dropped.email_account_id
+			  AND ue.message_id = dropped.message_id
+			  AND ue.automated
+		)
+		SELECT labels FROM dropped
 	`, orgID, messageID, kind).Scan(&labels)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

@@ -18812,7 +18812,7 @@
       "patch": {
         "operationId": "deliverability-ops_update_settings",
         "summary": "Update outreach settings",
-        "description": "Replaces the organization's advanced outreach settings with the supplied object (upserted, not deep-merged). Returns no body.",
+        "description": "Replaces the organization's advanced outreach settings with the supplied object (upserted, not deep-merged). A field the object omits takes its default, not its previous value. Returns no body.",
         "tags": [
           "deliverability-ops"
         ],
@@ -28692,6 +28692,11 @@
                 "type": "boolean",
                 "description": "Add the sender to the suppression list when the classifier is at least 80% sure the reply asks to be removed."
               },
+              "action_required_in_inbox": {
+                "type": "boolean",
+                "default": true,
+                "description": "Ask each automated notification whether it needs the recipient to act (a failed payment, a suspended or restricted account, a suspicious sign-in, a sending limit, a service about to expire) and keep the ones that do in the inbox, labelled Action required, instead of the Automated view."
+              },
               "languages": {
                 "type": ["array", "null"],
                 "description": "The languages the workspace's mail is written in, for inbox tagging. Each is named to the classifier, and where Warmbly has its vocabulary, tagging also cuts that language's quoted history and recognises its away messages and bounce notices before asking. Nothing about a language is used until it is listed. Empty reads with the default set only.",
@@ -28726,6 +28731,11 @@
                       "type": "string",
                       "maxLength": 40,
                       "description": "yes_no only: the label applied on yes (noul 0.60 or more); its action runs at 0.80 or more. Plain words: letters, digits, and single spaces or hyphens. A built-in label name, in any capitalization, is refused."
+                    },
+                    "automated": {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "Also ask it of automated notifications. A notification it matches gets its label and stays in the inbox instead of the Automated view; it never acts on one."
                     },
                     "action": {
                     "type": "object",

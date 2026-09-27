@@ -185,8 +185,8 @@ func (s *service) notifyAboutMessage(userID uuid.UUID, orgID *uuid.UUID, uniboxE
 	}()
 }
 
-// uniboxThreadLink opens the conversation itself rather than the inbox.
-func uniboxThreadLink(threadID string) string {
+// UniboxThreadLink opens the conversation itself rather than the inbox.
+func UniboxThreadLink(threadID string) string {
 	if threadID == "" {
 		return "/app/unibox"
 	}

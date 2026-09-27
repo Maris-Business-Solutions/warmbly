@@ -9,19 +9,19 @@ Classification sends message content to TypeSafe, so it is opt-in twice: an oper
 
 ## What it does
 
-It writes labels and a relevance score for every inbound message, and moves mail nobody wrote (security alerts, notifications, bounces, auto-replies) out of the inbox into the **Automated** view. That part needs nothing from you beyond turning the feature on.
+It writes labels and a relevance score for every inbound message, and moves mail nobody wrote (sign-in codes, receipts, notifications, bounces, auto-replies) out of the inbox into the **Automated** view. Automated mail that needs your action, such as a failed payment or a suspended account, stays in the inbox labelled **Action required**. That part needs nothing from you beyond turning the feature on.
 
 It can also act on a confident verdict: hold a contact who said not now, stop a contact who declined, open a task when someone asks for a call, and suppress a sender who asked to be removed. Each of those is its own switch under **Settings > Sending > Classified replies**. The three reversible ones are on from the start; the suppression is off until you turn it on, because it is the one the system cannot undo. See [Acting on a verdict](#acting-on-a-verdict).
 
 ## Nothing to set up
 
-The whole label set is created when a workspace is created (and, on an instance that turned the feature on later, within the hour by the follow-up sweep), so the inbox can filter for **Unsubscribe** before anyone has asked. The premade **Views** in the inbox rail (Hot leads, Needs a reply, Follow up, Declined, Automated) are built on those labels and fill as mail is classified; see [Unified inbox](/guides/unibox/). Every label has a hover explanation, so nobody has to learn the taxonomy first.
+The whole label set is created when a workspace is created (and, on an instance that turned the feature on later, within the hour by the follow-up sweep), so the inbox can filter for **Unsubscribe** before anyone has asked. The premade **Views** in the inbox rail (Action required, Hot leads, Needs a reply, Follow up, Declined, Automated) are built on those labels and fill as mail is classified; see [Unified inbox](/guides/unibox/). Every label has a hover explanation, so nobody has to learn the taxonomy first.
 
 ## The labels
 
 Labels are plain words, so anyone on the team can read them without learning a taxonomy first. They are ordinary workspace labels: the inbox filters on them like any label you made yourself. A workspace that already had a label with the same name keeps it and the automatic one files under it.
 
-**What the message is.** At most one: **Bounced**, **Out of office**, **Auto-reply**, **Notification** or **Sales pitch**. A reply from a person carries no label for being a reply, because nearly every thread is one.
+**What the message is.** At most one: **Bounced**, **Out of office**, **Auto-reply**, **Notification** or **Sales pitch**. A reply from a person carries no label for being a reply, because nearly every thread is one. A notification that needs your action also carries **Action required**; see [Mail that needs your action](#mail-that-needs-your-action).
 
 **What a reply wants.** Only on a person's reply:
 
@@ -44,11 +44,28 @@ The classifier answers more questions than this (whether the sender is the decis
 
 ## Automated mail stays out of the inbox
 
-Security alerts, sign-in and verification codes, account and billing notices, receipts, newsletters, bounces and auto-replies are not mail anyone has to answer. When the verdict is that no person wrote a message, its conversation leaves **Inbox**, Unread, every mailbox and tag view and the unread badge, and is listed under the **Automated** view instead. **All mail** still shows everything.
+Sign-in and verification codes, routine security, account and billing notices, receipts, newsletters, bounces and auto-replies are not mail anyone has to answer. When the verdict is that no person wrote a message, its conversation leaves **Inbox**, Unread, every mailbox and tag view and the unread badge, and is listed under the **Automated** view instead. **All mail** still shows everything.
 
 Only a confident verdict moves a conversation: a message the classifier was unsure about stays in the inbox. A conversation counts as automated only while every message in it that is not yours was judged automated, so a reply from a person brings it back to the inbox the moment it arrives, before it is even classified. Nothing is moved in the mailbox itself; the provider's folders are untouched.
 
-Common senders and headers (no-reply addresses, bulk mail, out-of-office subjects, delivery failures) are decided offline without a model call. Everything else is judged by the model.
+Common senders and headers (no-reply addresses, bulk mail, out-of-office subjects, delivery failures) are decided offline. Everything else is judged by the model.
+
+## Mail that needs your action
+
+Mailboxes used only for campaigns still receive mail a person has to deal with: a failed payment for the mailbox's subscription, a suspended or restricted account, a suspicious sign-in, a sending limit or policy notice from the provider, a domain or service about to expire. Nobody logs into those mailboxes one by one, so if that mail went to Automated with the receipts it would never be seen.
+
+So every notification is also asked one question: does it tell the recipient about a problem with their own account, payment, domain or service that they must act on? When the answer is yes:
+
+- the conversation **stays in the inbox**, and in Unread and the unread badge, instead of moving to Automated
+- it is labelled **Action required** (next to **Notification**), and the **Action required** view in the rail lists every such conversation with its unread count
+- it sorts with the replies due today when the inbox is sorted by relevance
+- members who can both manage mailboxes and use the inbox get a **Mail that needs action** [notification](/guides/notifications/), by email too unless they turned it off. It names the mailbox and links to the conversation but never quotes the message, since mail that claims an account is suspended is also what phishing looks like. It is tied to the message, so reading the message reads the notification
+
+Routine notices are not affected: a sign-in code, a receipt, a newsletter or a "your settings were changed" confirmation still goes to Automated. Archive the conversation once the problem is dealt with. The label is an ordinary label: removing it takes the conversation out of the **Action required** view but leaves it in the inbox.
+
+A notification recognised offline by its sender alone costs one small call for this question and nothing else; a notification the model judged has it in the same call as every other question. If that call fails, the notification is filed under Automated as it was before the check existed, and `--recheck-notifications` (below) asks it later.
+
+It is on by default for every workspace. To turn it off, clear **Keep mail that needs action in the inbox** under **Settings > Sending > Automated mail**; notifications then go to Automated as before and no call is made for them. To file other automated mail your own way, ask one of [your own questions](#your-own-questions) of notifications too.
 
 ## Follow-ups: who owes whom a reply
 
@@ -112,6 +129,8 @@ Write each question the way the classifier reads it: literally. One judgment per
 
 Each label, or each option, can also act, with the same primitives as the switches above: **hold** the contact's sequences for 1 to 365 days, **stop** them for a year, or **open a task** for the mailbox owner. These run whatever the built-in switches say, and follow the same rules: only a confident human reply acts, never a verdict marked **Needs review**, and a suppression ends every other action. A yes/no question labels at 60% and acts at 80%; an option labels and acts at the 70% floor. When two holds apply, the longer one wins.
 
+A question can also be asked of automated notifications: tick **Also ask about automated notifications** on it. Notifications are otherwise never asked your questions, since they are about what a person said. A notification the question matches gets its label and stays in the inbox instead of the Automated view, like one that needs your action. It never holds, stops or opens a task: those still apply to replies only. A notification recognised offline by its sender is asked only these questions and the action check, in one small call.
+
 Your questions ride in the same call as the built-in ones, so they cost input tokens on every classified message but never a second request. A workspace can ask up to 10. They add labels and nothing else to a verdict: the kind, the intent and the relevance score are calibrated on the built-in questions alone and are never moved by yours. The labels are created the first time they apply, or within the hour by the hourly sweep. Questions are part of the workspace settings, so they travel with a [workspace export](/guides/workspace-export-import/).
 
 ## Tagging languages
@@ -152,7 +171,7 @@ The campaign is what separates a reply to your outreach from someone pitching yo
 
 This matters more than it sounds. Given only a message body, the model classified one of our own outbound sends as a human reply at 0.94 confidence. The answer was reasonable for the question; the question should never have been asked. Your own sends are filtered out before anything is asked about them.
 
-Common out-of-office subject prefixes and automated sender addresses are checked offline. When one is decisive, no model call is made. The review page shows which verdicts were decided offline and which came from the model.
+Common out-of-office subject prefixes and automated sender addresses are checked offline. When one is decisive, the kind is not asked; only a notification is still asked whether it needs your action. The review page shows which verdicts were decided offline and which came from the model.
 
 ## Follow-ups without TypeSafe
 
@@ -197,10 +216,18 @@ warmblyctl inbox-tag backfill --org you@example.com --days 30 --recheck-cold-inb
 
 Only messages stored as a sales pitch in a thread one of your campaign sends belongs to are asked again; nothing else is sent. Any automatic label the old verdict wrote and the new one does not comes off the thread, unless another message in it still carries it. A label a teammate applied by hand is never removed. A message the classifier still reads as a sales pitch with the campaign in front of it keeps that verdict, and is asked about again if you run the command again. Like any backfill, it labels and never acts.
 
+Notifications classified before the action check existed are sitting in Automated without having been asked. To ask them now, so a failed payment among them comes back to the inbox:
+
+```bash
+warmblyctl inbox-tag backfill --org you@example.com --days 30 --recheck-notifications
+```
+
+Only messages stored as a notification by a verdict that never asked the action check are covered, and each is asked again, so the ones that need action return to the inbox labelled **Action required**. The command refuses when **Keep mail that needs action in the inbox** is off. A notification with no text to read is skipped. A message whose call fails is offered again by the next run, or by a plain backfill. Like any backfill, it labels, moves and never notifies.
+
 ## What it costs
 
 
-One call contains every question for a message and currently uses about 1,300 input tokens on the recorded fixture set. TypeSafe evaluates the questions in parallel, but each question still contributes tokens, so check its current pricing before a large backfill. Output tokens are not billed.
+One call contains every question for a message and currently uses about 1,300 input tokens on the recorded fixture set. A notification recognised offline costs one smaller call, for the action check and any of your questions asked of notifications, and nothing when neither is on. TypeSafe evaluates the questions in parallel, but each question still contributes tokens, so check its current pricing before a large backfill. Output tokens are not billed.
 
 A message with no Message-ID is skipped. A database claim prevents two concurrent deliveries of the same Message-ID from making duplicate calls, and an abandoned claim becomes eligible for retry after 15 minutes.
 

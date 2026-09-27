@@ -20,6 +20,7 @@ import (
 // *notification.Service; local interface to avoid an import cycle.
 type OrgNotifier interface {
 	NotifyOrg(ctx context.Context, orgID uuid.UUID, perm models.OrganizationPermission, exclude uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any, groupKey string)
+	NotifyOrgAboutMessage(ctx context.Context, orgID uuid.UUID, perm models.OrganizationPermission, uniboxEmailID uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any, groupKey string)
 }
 
 // OperatorNotifier is the instance-wide operator alert surface, declared here

@@ -36,9 +36,36 @@ func customKey(id string) string { return customPrefix + id }
 
 func optionKey(i int) string { return "option_" + strconv.Itoa(i+1) }
 
-// QuestionsFor is the built-in set plus the workspace's own.
-func QuestionsFor(custom []models.InboxTagQuestion) map[string]Question {
+// QuestionsFor is the built-in set plus the workspace's own, and the
+// action-required check when the workspace keeps such mail in the inbox.
+func QuestionsFor(custom []models.InboxTagQuestion, actionRequired bool) map[string]Question {
 	q := Questions()
+	if actionRequired {
+		q[SigActionRequired] = ActionRequiredQuestion()
+	}
+	addCustom(q, custom)
+	return q
+}
+
+// NotificationQuestions is what is asked of a notification decided offline:
+// the action-required check and the workspace questions asked of automated
+// mail. Empty means nothing is worth a call.
+func NotificationQuestions(custom []models.InboxTagQuestion, actionRequired bool) map[string]Question {
+	q := map[string]Question{}
+	if actionRequired {
+		q[SigActionRequired] = ActionRequiredQuestion()
+	}
+	var own []models.InboxTagQuestion
+	for _, c := range custom {
+		if c.Automated {
+			own = append(own, c)
+		}
+	}
+	addCustom(q, own)
+	return q
+}
+
+func addCustom(q map[string]Question, custom []models.InboxTagQuestion) {
 	for _, c := range custom {
 		switch c.Type {
 		case models.InboxTagQuestionYesNo:
@@ -52,36 +79,35 @@ func QuestionsFor(custom []models.InboxTagQuestion) map[string]Question {
 			q[customKey(c.ID)] = Question{Type: QuestionChoice, Instructions: c.Question, Criteria: criteria}
 		}
 	}
-	return q
 }
 
-// automatedKind is mail no person wrote. A workspace question is about what
-// someone said, so it labels none of these.
-func automatedKind(kind string) bool {
-	switch kind {
-	case KindBounceHard, KindBounceSoft, KindAutoReplyOOO, KindAutoReplyTicket, KindNotification:
-		return true
-	}
-	return false
-}
-
-// decideCustom reads the workspace questions' answers onto a decision.
+// decideCustom reads the workspace questions' answers onto a decision. A
+// question is about what someone said, so on mail no person wrote only one
+// the workspace asked of notifications applies, and a match keeps it in the
+// inbox.
 func decideCustom(d *Decision, answers map[string]Answer, custom []models.InboxTagQuestion) {
-	if d.Kind == "" || automatedKind(d.Kind) {
+	if d.Kind == "" {
 		return
 	}
+	automated := IsAutomatedKind(d.Kind)
 	seen := map[string]bool{}
 	for _, l := range d.Labels {
 		seen[l] = true
 	}
 	add := func(m CustomMatch) {
 		d.Custom = append(d.Custom, m)
+		if automated {
+			d.KeepInInbox = true
+		}
 		if !seen[m.Label] {
 			seen[m.Label] = true
 			d.Labels = append(d.Labels, m.Label)
 		}
 	}
 	for _, c := range custom {
+		if automated && (!c.Automated || d.Kind != KindNotification) {
+			continue
+		}
 		a, ok := answers[customKey(c.ID)]
 		if !ok {
 			continue
@@ -140,22 +166,19 @@ func ReservedLabel(label string) bool {
 	return false
 }
 
-// ValidateQuestions refuses a workspace question whose label the built-in
-// taxonomy owns. Shape is checked by the settings model.
-func ValidateQuestions(qs []models.InboxTagQuestion) error {
-	check := func(label string) error {
-		if ReservedLabel(label) {
-			return fmt.Errorf("label %q is a built-in tagging label; pick another name", label)
+// ValidateQuestions refuses a built-in label name, unless that question was already saved with it.
+func ValidateQuestions(qs, saved []models.InboxTagQuestion) error {
+	kept := map[string]bool{}
+	for _, q := range saved {
+		for _, l := range CustomLabels([]models.InboxTagQuestion{q}) {
+			kept[q.ID+"/"+strings.ToLower(l)] = true
 		}
-		return nil
 	}
 	for _, q := range qs {
-		if err := check(q.Label); q.Label != "" && err != nil {
-			return err
-		}
-		for _, c := range q.Choices {
-			if err := check(c.Label); err != nil {
-				return err
+		labels := CustomLabels([]models.InboxTagQuestion{q})
+		for _, label := range labels {
+			if ReservedLabel(label) && !kept[q.ID+"/"+strings.ToLower(label)] {
+				return fmt.Errorf("label %q is a built-in tagging label; pick another name", label)
 			}
 		}
 	}

@@ -5,6 +5,7 @@
 import React from "react";
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { NumberInput, TextInput } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
 import { useConfirm } from "@/hooks/context/confirm";
 import { isAutomaticTag } from "@/lib/unibox/tagMeanings";
@@ -73,8 +74,9 @@ function actionSummary(a: InboxTagQuestionAction): string {
 }
 
 // problems mirrors the server's checks, so Save explains a refusal instead of
-// the autosave failing after the fact.
-function problems(q: InboxTagQuestion, taken: Set<string>): string[] {
+// the autosave failing after the fact. kept holds the labels the question was
+// saved with, which stay valid even if a built-in label took the name since.
+function problems(q: InboxTagQuestion, taken: Set<string>, kept: Set<string>): string[] {
     const out: string[] = [];
     if (!q.question.trim()) out.push("Write the question.");
     const seen = new Set<string>();
@@ -86,7 +88,7 @@ function problems(q: InboxTagQuestion, taken: Set<string>): string[] {
         }
         const key = name.toLowerCase();
         if ([...name].length > INBOX_TAG_LABEL_MAX_LEN) out.push(`"${name}" is longer than ${INBOX_TAG_LABEL_MAX_LEN} characters.`);
-        if (isAutomaticTag(name)) out.push(`"${name}" is a built-in label. Pick another name.`);
+        if (isAutomaticTag(name) && !kept.has(key)) out.push(`"${name}" is a built-in label. Pick another name.`);
         else if (taken.has(key) || seen.has(key)) out.push(`"${name}" is already used by another question or option.`);
         seen.add(key);
     };
@@ -107,13 +109,15 @@ function problems(q: InboxTagQuestion, taken: Set<string>): string[] {
 // the fields the question type uses.
 function finalize(q: InboxTagQuestion): InboxTagQuestion {
     const question = q.question.trim().replace(/\s+/g, " ");
+    const automated = q.automated ? { automated: true } : {};
     if (q.type === "yes_no") {
-        return { id: q.id, type: "yes_no", question, label: inboxTagLabelName(q.label ?? ""), action: q.action };
+        return { id: q.id, type: "yes_no", question, label: inboxTagLabelName(q.label ?? ""), action: q.action, ...automated };
     }
     return {
         id: q.id,
         type: "choice",
         question,
+        ...automated,
         action: { type: "" },
         choices: (q.choices ?? []).map((c) => ({
             label: inboxTagLabelName(c.label),
@@ -199,6 +203,7 @@ export default function TaggingQuestions({
                                     ))}
                                     <span className="text-[11px] text-slate-400">
                                         {q.type === "choice" ? "pick one" : "yes or no"}
+                                        {q.automated && " · also asked of automated notifications"}
                                     </span>
                                 </div>
                             </div>
@@ -290,7 +295,8 @@ function QuestionForm({
     const [q, setQ] = React.useState<InboxTagQuestion>(initial);
     const [tried, setTried] = React.useState(false);
     const dirty = JSON.stringify(q) !== JSON.stringify(initial);
-    const issues = problems(q, taken);
+    const kept = React.useMemo(() => new Set(labelsOf(initial).map((l) => l.toLowerCase())), [initial]);
+    const issues = problems(q, taken, kept);
 
     const patch = (next: Partial<InboxTagQuestion>) => setQ((prev) => ({ ...prev, ...next }));
     const patchChoice = (i: number, next: Partial<InboxTagChoice>) =>
@@ -421,6 +427,21 @@ function QuestionForm({
                     </div>
                 </div>
             )}
+
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <Checkbox
+                    tone="slate"
+                    checked={!!q.automated}
+                    onChange={(e) => patch({ automated: e.target.checked || undefined })}
+                    className="mt-0.5"
+                />
+                <span className="text-[12px] leading-snug text-slate-700">
+                    Also ask about automated notifications
+                    <span className="block text-[11px] text-slate-500 mt-0.5">
+                        Notifications leave the inbox for the Automated view. A notification this question matches gets its label and stays in the inbox instead. It never holds, stops or opens a task for one; those still apply to replies only.
+                    </span>
+                </span>
+            </label>
 
             {tried && issues.length > 0 && (
                 <ul className="text-[11.5px] text-red-600 space-y-0.5">

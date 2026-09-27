@@ -187,3 +187,40 @@ func TestLiveInboxTagRemoveAutoLabels(t *testing.T) {
 		t.Fatal("removed a label a person applied")
 	}
 }
+
+// Only notifications whose verdict never asked the action check are offered
+// again; one that answered it, and any other kind, are left alone.
+func TestLiveInboxTagUncheckedNotifications(t *testing.T) {
+	f := newInboxTagCampaignFixture(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, id := range []string{"<old@notice>", "<asked@notice>", "<bounce@notice>"} {
+		f.unibox(f.mailbox, "inbox", id, "t"+id, "Billing <no-reply@vendor.test>", nil, now.Add(-time.Hour))
+	}
+	f.verdict("<old@notice>", "t<old@notice>", "notification", []string{"Notification"})
+	f.verdict("<asked@notice>", "t<asked@notice>", "notification", []string{"Notification"})
+	f.exec(`UPDATE inbox_tag_results SET answers = '{"action_required": {"noul": 0.1}}' WHERE organization_id = $1 AND message_id = '<asked@notice>'`, f.org)
+	f.verdict("<bounce@notice>", "t<bounce@notice>", "bounce_hard", []string{"Bounced"})
+
+	got, err := NewInboxTagRepository(f.pool).ListUncheckedNotifications(ctx, f.org, now.Add(-24*time.Hour), 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var ids []string
+	for _, c := range got {
+		ids = append(ids, c.MessageID)
+	}
+	if !slices.Equal(ids, []string{"<old@notice>"}) {
+		t.Fatalf("offered %v, want only the notice never asked", ids)
+	}
+
+	// Reopening it brings the message back to the inbox until it is judged again.
+	f.exec(`UPDATE unibox_emails SET automated = true WHERE message_id = '<old@notice>' AND email_id = $1`, f.mailbox)
+	if _, err := NewInboxTagRepository(f.pool).Reopen(ctx, f.org, "<old@notice>", "notification"); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	var automated bool
+	if err := f.pool.QueryRow(ctx, `SELECT automated FROM unibox_emails WHERE message_id = '<old@notice>' AND email_id = $1`, f.mailbox).Scan(&automated); err != nil || automated {
+		t.Fatalf("automated = %v (%v), want the reopened message back in the inbox", automated, err)
+	}
+}

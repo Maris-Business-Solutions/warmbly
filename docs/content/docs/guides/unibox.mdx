@@ -78,15 +78,16 @@ Below those sit the premade **Views**, which answer the questions a pipeline tur
 
 | View | Shows |
 | --- | --- |
+| Action required | Automated mail that needs someone to act: a failed payment, a suspended account, a suspicious sign-in, a sending limit, a service about to expire |
 | Hot leads | Replies labelled Interested, Meeting or Pricing |
 | Needs a reply | They wrote last and nobody has answered for two days or more |
 | Follow up | You wrote last and heard nothing, or an interested thread went quiet |
 | Declined | Not interested, wrong person, or asked to unsubscribe |
-| Automated | Mail nobody wrote: security alerts, sign-in codes, notifications, newsletters, bounces and auto-replies |
+| Automated | Mail nobody wrote: sign-in codes, receipts, notifications, newsletters, bounces and auto-replies |
 
 A view is a filter over its labels, so a conversation appears in it as soon as a label lands and leaves it when the label does. Without a classifier key on the instance only the two follow-up views fill, from sent-message dates alone.
 
-**Automated** is different: it is where machine mail lives instead of the inbox. When automatic tagging judges that nobody wrote a conversation, it leaves **Inbox**, Unread, every mailbox and tag view, and the unread badge, and shows only under Automated (and in All mail). A message the classifier was not sure about stays in the inbox. A reply from a person brings the conversation straight back, before it is even classified.
+**Automated** is different: it is where machine mail lives instead of the inbox. When automatic tagging judges that nobody wrote a conversation, it leaves **Inbox**, Unread, every mailbox and tag view, and the unread badge, and shows only under Automated (and in All mail). A message the classifier was not sure about stays in the inbox. A reply from a person brings the conversation straight back, before it is even classified. Automated mail that needs your action, such as a failed payment for a mailbox's subscription or a suspended account, never goes to Automated: it stays in the inbox labelled **Action required**, and the **Action required** view lists it with its unread count (see [Mail that needs your action](/guides/inbox-tagging/#mail-that-needs-your-action)).
 
 Below the views, the rail lists each mailbox with its unread count, plus your **Labels** and **Tags**. Long lists collapse to the first few with a `Show all` toggle and an inline filter. For a slice of time (today, the last week), use the date range in the filters rather than a view; the list's title shows which view you are in, with how many conversations are loaded.
 

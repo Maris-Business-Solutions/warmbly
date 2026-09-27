@@ -88,6 +88,10 @@ type InboxTaggingSettings struct {
 	// MailLanguageNames codes. Tagging reads each with its vocabulary and names
 	// it to the classifier; empty uses the default set only.
 	Languages []string `json:"languages"`
+	// ActionRequiredInInbox asks whether an automated notification needs the
+	// recipient to act (a failed payment, a suspended account) and keeps the
+	// ones that do in the inbox, labelled, instead of the Automated view.
+	ActionRequiredInInbox bool `json:"action_required_in_inbox"`
 }
 
 // InboxTagQuestion is one workspace-defined tagging question. A yes/no
@@ -101,6 +105,9 @@ type InboxTagQuestion struct {
 	Label    string                 `json:"label,omitempty"`
 	Action   InboxTagQuestionAction `json:"action"`
 	Choices  []InboxTagChoice       `json:"choices,omitempty"`
+	// Automated also asks it of automated notifications; a match labels the
+	// conversation and keeps it in the inbox. It never acts on one.
+	Automated bool `json:"automated,omitempty"`
 }
 
 // InboxTagChoice is one option of a choice question.
@@ -1070,6 +1077,9 @@ func DefaultAdvancedOutreachSettings() AdvancedOutreachSettings {
 			NotNowHoldDays:    NotNowHoldDaysDefault,
 			StopOnDeclined:    true,
 			TaskOnCallRequest: true,
+			// Reversible and the point of the Automated view: mail that
+			// keeps a mailbox alive is never filed away with the receipts.
+			ActionRequiredInInbox: true,
 		},
 		SendTimeOptimization: SendTimeOptimizationSettings{
 			// Off by default: turning it on delays sends to reach the

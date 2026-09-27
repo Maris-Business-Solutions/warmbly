@@ -427,6 +427,25 @@ function SendingSettings() {
             </Section>
 
             <Section
+                eyebrow="Automated mail"
+                description="Automatic inbox tagging moves mail nobody wrote, like receipts, sign-in codes, newsletters and bounces, out of the inbox into the Automated view. Mail that keeps a mailbox running should not go with it."
+            >
+                {isLoading || !draft ? (
+                    <div className="h-7 w-40 rounded bg-slate-100 animate-pulse" />
+                ) : (
+                    <Row
+                        label="Keep mail that needs action in the inbox"
+                        description="Each notification is also asked whether it needs someone to act: a failed payment, a suspended or restricted account, a suspicious sign-in, a sending limit, or a service about to expire. The ones that do stay in the inbox labelled Action required, and members who manage mailboxes are notified. A notification recognised by its sender alone costs one small classifier call for this."
+                    >
+                        <Toggle
+                            on={tagging.action_required_in_inbox}
+                            onChange={(on) => patchInboxTagging({ action_required_in_inbox: on })}
+                        />
+                    </Row>
+                )}
+            </Section>
+
+            <Section
                 eyebrow="Tagging languages and questions"
                 description="Tune automatic inbox tagging to your own mail. Languages and questions only change how tagging reads a message; they never change a message's kind, intent or relevance on their own."
             >
