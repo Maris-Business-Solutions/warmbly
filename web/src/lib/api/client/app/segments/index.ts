@@ -12,13 +12,23 @@ import type {
     SegmentWrite,
 } from "@/lib/api/models/app/segments/Segment";
 
+// A date condition's value arrives as RFC3339, which Request revives into a
+// Date; the editor and the write path work in strings.
+function withStringValues(segment: Segment): Segment {
+    const conditions = (segment.conditions ?? []).map((c) => {
+        const v: unknown = c.value;
+        return v instanceof Date ? { ...c, value: v.toISOString() } : c;
+    });
+    return { ...segment, conditions };
+}
+
 export async function listSegments(): Promise<Segment[]> {
     const res = await Request<{ data: Segment[] }>({ method: "GET", url: "/segments", authorization: true });
-    return res.data ?? [];
+    return (res.data ?? []).map(withStringValues);
 }
 
 export async function getSegment(id: string): Promise<Segment> {
-    return await Request<Segment>({ method: "GET", url: `/segments/${id}`, authorization: true });
+    return withStringValues(await Request<Segment>({ method: "GET", url: `/segments/${id}`, authorization: true }));
 }
 
 export async function listSegmentFields(): Promise<SegmentFieldSpec[]> {
@@ -27,11 +37,11 @@ export async function listSegmentFields(): Promise<SegmentFieldSpec[]> {
 }
 
 export async function createSegment(data: SegmentWrite): Promise<Segment> {
-    return await Request<Segment>({ method: "POST", url: "/segments", data, authorization: true });
+    return withStringValues(await Request<Segment>({ method: "POST", url: "/segments", data, authorization: true }));
 }
 
 export async function updateSegment(id: string, data: SegmentWrite): Promise<Segment> {
-    return await Request<Segment>({ method: "PATCH", url: `/segments/${id}`, data, authorization: true });
+    return withStringValues(await Request<Segment>({ method: "PATCH", url: `/segments/${id}`, data, authorization: true }));
 }
 
 export async function deleteSegment(id: string): Promise<void> {

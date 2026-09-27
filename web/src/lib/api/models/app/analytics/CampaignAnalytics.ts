@@ -4,9 +4,10 @@ import type DailyStats from "./DailyStats"
 // the backend models.CampaignAnalytics. The previous flat shape (total_sent…)
 // never matched the wire body, so every field read came back undefined.
 
+// Whole UTC days sent as RFC3339 instants, which Request revives into Dates.
 export interface DateRange {
-    from: string
-    to: string
+    from: Date
+    to: Date
 }
 
 export interface CampaignSummary {

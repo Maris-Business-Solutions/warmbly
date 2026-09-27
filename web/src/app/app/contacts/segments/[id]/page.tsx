@@ -259,6 +259,7 @@ function describe(c: SegmentCondition, specs: SegmentFieldSpec[]): string {
     if (VALUELESS_OPERATORS.has(c.operator)) return `${label} ${op ?? c.operator}`;
     if (c.values && c.values.length > 0) return `${label} ${op} ${c.values.length} value${c.values.length === 1 ? "" : "s"}`;
     if (c.operator === "within_days" || c.operator === "not_within_days") return `${label} ${op} ${c.value} days`;
+    if (spec?.kind === "date" && c.value) return `${label} ${op} ${c.value.slice(0, 10)}`;
     return `${label} ${op} ${c.value ?? ""}`.trim();
 }
 

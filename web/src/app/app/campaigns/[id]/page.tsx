@@ -21,7 +21,7 @@ import CampaignFormsPanel from "@/components/app/campaigns/CampaignFormsPanel";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
 import AdvisorStrip from "@/components/app/advisor/AdvisorStrip";
 import CampaignPeriodPicker from "@/components/app/campaigns/CampaignPeriodPicker";
-import { formatWindow, loadCampaignPeriod, periodWindow, utcToday, type CampaignPeriod, type DayWindow } from "@/lib/campaignPeriod";
+import { formatWindow, loadCampaignPeriod, periodWindow, utcDay, utcToday, type CampaignPeriod, type DayWindow } from "@/lib/campaignPeriod";
 
 const AUTO_OPENS_TIP = "Auto-opens: pixel fetches from privacy proxies (e.g. Apple Mail) or within seconds of sending, not a person reading. Logged as delivery proof, not counted as opens";
 const AUTO_CLICKS_TIP = "Auto-clicks: links followed by a security gateway scanning the email, not a person; not counted as clicks";
@@ -69,7 +69,7 @@ export default function CampaignOverview() {
     const covered: DayWindow | null = useMemo(() => {
         if (asked) return asked;
         const r = analytics.isPlaceholderData ? undefined : analytics.data?.date_range;
-        return r ? { from: r.from.slice(0, 10), to: r.to.slice(0, 10) } : null;
+        return r ? { from: utcDay(r.from), to: utcDay(r.to) } : null;
     }, [asked, analytics.isPlaceholderData, analytics.data?.date_range]);
 
     // Legend toggles: every metric charts together; hidden ones drop out.

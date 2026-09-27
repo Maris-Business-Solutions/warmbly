@@ -671,7 +671,7 @@ function DealDialog({
             setStageId(editing.stage_id);
             setValue(editing.value !== undefined && editing.value !== null ? String(editing.value) : "");
             setCurrency(editing.currency || "USD");
-            setCloseDate(editing.expected_close_date ? String(editing.expected_close_date).split("T")[0] : "");
+            setCloseDate(editing.expected_close_date ? new Date(editing.expected_close_date).toISOString().slice(0, 10) : "");
             setStatus(editing.status);
             setContactEmail(editing.contact?.email ?? "");
         } else {
