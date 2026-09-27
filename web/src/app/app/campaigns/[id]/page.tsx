@@ -97,21 +97,27 @@ export default function CampaignOverview() {
         return { labels: rows.map((d) => d.date), series };
     }, [daily.data, hiddenMetrics]);
 
-    const loading = analytics.isPending || (!!chartWindow && daily.isPending);
+    // A previous period's figures kept on screen while the new one loads must
+    // not sit under the new period's label or reach a share export.
+    const loading =
+        analytics.isPending ||
+        analytics.isPlaceholderData ||
+        (!!chartWindow && (daily.isPending || daily.isPlaceholderData));
     const hasSends = (summary?.emails_sent ?? 0) > 0;
     const allTime = period.key === "all";
     const periodLabel = covered ? formatWindow(covered) : null;
 
+    const shared = loading ? undefined : summary;
     const shareData = {
         title: campaign?.name ?? "Campaign",
         subtitle: periodLabel ? `${allTime ? "All time, " : ""}${periodLabel}` : "Campaign",
         metrics: [
-            { label: "Sent", value: num(summary?.emails_sent), sub: "emails" },
-            { label: "Open rate", value: pct(summary?.open_rate) },
-            { label: "Reply rate", value: pct(summary?.reply_rate) },
-            { label: "Bounce rate", value: pct(summary?.bounce_rate) },
+            { label: "Sent", value: shared ? num(shared.emails_sent) : "—", sub: "emails" },
+            { label: "Open rate", value: pct(shared?.open_rate) },
+            { label: "Reply rate", value: pct(shared?.reply_rate) },
+            { label: "Bounce rate", value: pct(shared?.bounce_rate) },
         ],
-        daily: dailyStats.map((d) => ({ label: d.date, value: d.sent })),
+        daily: loading ? [] : dailyStats.map((d) => ({ label: d.date, value: d.sent })),
     };
 
     if (!campaign) {
