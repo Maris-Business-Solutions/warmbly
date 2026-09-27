@@ -15,6 +15,7 @@ mod producer;
 mod redirects;
 mod scanners;
 mod unsubscribe;
+mod unsubscribe_i18n;
 
 use axum::{
     extract::DefaultBodyLimit,

@@ -108,6 +108,12 @@ var nordicAttribution = quoteMarker{re: regexp.MustCompile(`(?i)(^|\s)(den\s+)?(
 // Thunderbird in Russian and Ukrainian: "03.03.2025 10:12, Name пишет:".
 var cyrillicAttribution = quoteMarker{re: regexp.MustCompile(`(?i)\d{1,2}[./]\d{1,2}[./]\d{2,4},?\s+\d{1,2}:\d{2},\s[^\n]{0,200}?\s(пишет|пише|написал(\(а\))?|написав(\(ла\))?)\s*:`), lineStart: true}
 
+// gmailSigned is Gmail's attribution in the languages whose verb follows the
+// quoted address: "<date> Anna <anna@example.com> kirjutas:".
+func gmailSigned(verbs string) quoteMarker {
+	return quoteMarker{re: regexp.MustCompile(`(?i)@[^\n]{0,120}?[>)]\s*[^\n]{0,30}?(` + verbs + `)\s*[:：]`), lineStart: true}
+}
+
 var languageRules = map[string]langRules{
 	"de": {
 		// GMX and web.de put the date first: "Gesendet: ... Von: ...".
@@ -289,6 +295,55 @@ var languageRules = map[string]langRules{
 		separators: []string{`הודעה מקורית`, `הודעה שהועברה`},
 		ooo:        []string{"תשובה אוטומטית", "מחוץ למשרד"},
 	},
+	"bg": {
+		quote:      []quoteMarker{gmailSigned(`написа`), {re: headerBlock(`от`, `изпратено|дата`)}},
+		separators: []string{`оригинално съобщение`, `препратено съобщение`},
+	},
+	"bn": {quote: []quoteMarker{gmailSigned(`লিখেছেন`)}},
+	"ca": {
+		quote:      []quoteMarker{gmailSigned(`va escriure`), {re: headerBlock(`de`, `enviat( el)?|data`)}},
+		separators: []string{`missatge original`, `missatge reenviat`},
+	},
+	"et": {
+		quote:      []quoteMarker{gmailSigned(`kirjutas`), {re: headerBlock(`saatja`, `saadetud|kuupäev`)}},
+		separators: []string{`algne sõnum`, `edasisaadetud sõnum`},
+	},
+	"fa":  {quote: []quoteMarker{gmailSigned(`نوشت`), {re: headerBlock(`از`, `ارسال شده|تاریخ`)}}},
+	"fil": {quote: []quoteMarker{gmailSigned(`sumulat`)}},
+	"hr": {
+		quote:      []quoteMarker{gmailSigned(`(je\s+)?napisa(o|la)(/la)?(\s+je)?`), {re: headerBlock(`šalje|od`, `poslano|datum`)}},
+		separators: []string{`izvorna poruka`, `proslijeđena poruka`},
+	},
+	"lt": {
+		quote:      []quoteMarker{gmailSigned(`rašė`), {re: headerBlock(`nuo`, `išsiųsta|data`)}},
+		separators: []string{`pradinis laiškas`, `persiųstas laiškas`},
+	},
+	"lv": {
+		quote:      []quoteMarker{gmailSigned(`rakstīja`), {re: headerBlock(`no`, `nosūtīts|datums`)}},
+		separators: []string{`sākotnējais ziņojums`, `pārsūtīts ziņojums`},
+	},
+	"ms": {
+		quote:      []quoteMarker{gmailSigned(`menulis`), {re: headerBlock(`daripada`, `dihantar|tarikh`)}},
+		separators: []string{`mesej asal`, `mesej dimajukan`},
+	},
+	"sk": {
+		quote:      []quoteMarker{gmailSigned(`napísal(\(a\)|a)?`), {re: headerBlock(`od`, `odoslané|dátum`)}},
+		separators: []string{`pôvodná správa`, `preposlaná správa`},
+	},
+	"sl": {
+		quote:      []quoteMarker{gmailSigned(`(je\s+)?napisal(\(-?a\)|a)?`), {re: headerBlock(`od`, `poslano|datum`)}},
+		separators: []string{`izvirno sporočilo`, `posredovano sporočilo`},
+	},
+	"sr": {
+		quote: []quoteMarker{
+			gmailSigned(`(је\s+|je\s+)?(написао|написала|napisao|napisala)(/ла|/la)?(\s+је|\s+je)?`),
+			{re: headerBlock(`од|od`, `послато|послано|poslato|poslano|датум|datum`)},
+		},
+		separators: []string{`оригинална порука`, `originalna poruka`, `прослеђена порука`, `prosleđena poruka`},
+	},
+	"sw": {quote: []quoteMarker{gmailSigned(`aliandika`)}},
+	"ta": {quote: []quoteMarker{gmailSigned(`எழுதியது`)}},
+	"ur": {quote: []quoteMarker{gmailSigned(`نے لکھا`)}},
 }
 
 // LanguagesWithRules lists the codes that add offline vocabulary, sorted.

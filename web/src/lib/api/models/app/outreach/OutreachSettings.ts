@@ -166,8 +166,9 @@ export const MAIL_LANGUAGES: { code: string; name: string }[] = [
 // replyclassify.LanguagesWithRules: the languages whose reply formats, away
 // messages and dates are read offline. The rest are only named to the classifier.
 export const OFFLINE_RULE_LANGUAGES = new Set([
-    "ar", "cs", "da", "de", "el", "es", "fi", "fr", "he", "hi", "hu", "id", "it", "ja",
-    "ko", "nb", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "zh",
+    "ar", "bg", "bn", "ca", "cs", "da", "de", "el", "es", "et", "fa", "fi", "fil", "fr",
+    "he", "hi", "hr", "hu", "id", "it", "ja", "ko", "lt", "lv", "ms", "nb", "nl", "pl",
+    "pt", "ro", "ru", "sk", "sl", "sr", "sv", "sw", "ta", "th", "tr", "uk", "ur", "vi", "zh",
 ]);
 
 // Mirrors models.InboxTagLabelName: plain words like the built-in labels,
