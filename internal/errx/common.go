@@ -58,6 +58,9 @@ var (
 	// operator sets DISABLE_REGISTRATION=true, and no invitation overrides it.
 	ErrRegistrationClosed = NewWithIdentifier(Forbidden, "registration_closed",
 		"This server is not accepting new accounts. See https://docs.warmbly.com/development/accounts-and-access/")
+	// ErrAccountExists answers a signup for an address that already has an account.
+	ErrAccountExists = New(Conflict, "An account with this email address already exists. Sign in, or reset your password if you have forgotten it.")
+
 	ErrInvitationInvalid = NewWithIdentifier(Forbidden, "invitation_invalid",
 		"That invitation link is invalid, expired, or was issued for a different email address. Ask for a fresh one.")
 

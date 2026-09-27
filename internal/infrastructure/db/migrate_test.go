@@ -1,6 +1,8 @@
 package db
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -45,6 +47,26 @@ func TestEmbeddedMigrationsLoad(t *testing.T) {
 	for stem := range downs {
 		if !ups[stem] {
 			t.Errorf("%s.down.sql has no matching .up.sql", stem)
+		}
+	}
+}
+
+type sqlStateErr string
+
+func (e sqlStateErr) Error() string    { return "pq: " + string(e) }
+func (e sqlStateErr) SQLState() string { return string(e) }
+
+func TestServerBusy(t *testing.T) {
+	cases := map[error]bool{
+		fmt.Errorf("failed to open database: %w", sqlStateErr("53300")): true,
+		sqlStateErr("57P03"):             true,
+		sqlStateErr("28P01"):             false,
+		sqlStateErr("42P01"):             false,
+		errors.New("connection refused"): false,
+	}
+	for err, want := range cases {
+		if got := serverBusy(err); got != want {
+			t.Errorf("serverBusy(%v) = %v, want %v", err, got, want)
 		}
 	}
 }

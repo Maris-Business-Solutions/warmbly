@@ -111,6 +111,11 @@ func (s *authService) finishFederatedLogin(ctx context.Context, res federatedRes
 // federated is an impersonation attempt, not a re-login. A password account
 // is not linked on the address alone: the link waits for its password.
 func (s *authService) resolveFederatedUser(ctx context.Context, provider, issuer, subject string, email *mail.Address, firstName, lastName string) (federatedResolution, *errx.Error) {
+	return s.resolveFederated(ctx, provider, issuer, subject, email, firstName, lastName, true)
+}
+
+// resolveFederated is resolveFederatedUser; retry allows one re-resolution after losing a provisioning race.
+func (s *authService) resolveFederated(ctx context.Context, provider, issuer, subject string, email *mail.Address, firstName, lastName string, retry bool) (federatedResolution, *errx.Error) {
 	identity := models.UserIdentity{
 		Provider: provider,
 		Issuer:   issuer,
@@ -145,6 +150,13 @@ func (s *authService) resolveFederatedUser(ctx context.Context, provider, issuer
 		}
 		var cerr error
 		u, cerr = s.createExternalUser(ctx, email, firstName, lastName)
+		if errors.Is(cerr, repository.ErrUserEmailTaken) {
+			// A concurrent sign-in created the account first; resolve against it like any existing one.
+			if retry {
+				return s.resolveFederated(ctx, provider, issuer, subject, email, firstName, lastName, false)
+			}
+			return federatedResolution{}, errx.ErrAccountExists
+		}
 		if cerr != nil {
 			errs.CaptureException(cerr)
 			return federatedResolution{}, errx.InternalError()

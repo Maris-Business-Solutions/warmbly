@@ -163,7 +163,7 @@ export async function beginPasskeyLogin(signal?: AbortSignal): Promise<PasskeyLo
     } catch (e) {
         // An aborted request is this page being left, which is a cancellation
         // and not a failure anybody needs to hear about.
-        if (isAbort(e)) throw new PasskeyCancelled("aborted");
+        if (e instanceof PasskeyCancelled || isAbort(e) || signal?.aborted) throw new PasskeyCancelled("aborted");
         throw e;
     }
 }
