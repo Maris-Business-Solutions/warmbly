@@ -29,18 +29,54 @@ func ParseReturnDate(subject, body string, now time.Time) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	rs := rulesFor(nil)
-	for _, m := range rs.cue.FindAllStringIndex(text, -1) {
+	at := func(m []int) (time.Time, bool) {
 		// Only the span right after the cue is considered: an auto-reply is
 		// mostly prose, and the first date anywhere in it is usually not the
 		// one that matters.
-		tail := text[m[1]:min(m[1]+returnCueWindow, len(text))]
-		d, ok := firstDate(tail, now, rs.months)
+		cue := text[m[0]:m[1]]
+		start := m[1]
+		if strings.HasSuffix(cue, "kw") {
+			// Leave the week marker in the span for the week pattern.
+			start -= len("kw")
+		}
+		tail := text[start:min(m[1]+returnCueWindow, len(text))]
+		d, kind, ok := firstDate(tail, now, rs.months, endCues[cue])
+		if !ok {
+			return time.Time{}, false
+		}
+		switch {
+		case kind == weekDate && endCues[cue]:
+			// "bis KW 41" and "bis KW 40/41" are away through the last week:
+			// back the Monday after it.
+			d = d.AddDate(0, 0, 7)
+		case kind == weekDate:
+			// A week already under way means back now, not on its Monday.
+			if today := now.UTC().Truncate(24 * time.Hour); d.Before(today) {
+				d = today
+			}
+		case rs.inclusive[cue]:
+			// The cue named the last day AWAY, not the day back.
+			d = d.AddDate(0, 0, 1)
+		}
+		return d, true
+	}
+	cues := rs.cue.FindAllStringIndex(text, -1)
+	for i, m := range cues {
+		d, ok := at(m)
 		if !ok {
 			continue
 		}
-		if rs.inclusive[text[m[0]:m[1]]] {
-			// The cue named the last day AWAY, not the day back.
-			d = d.AddDate(0, 0, 1)
+		// "ab Freitag, 4.9., bis 18.9." names the first day away, and the
+		// "bis" right behind it the end of the absence. Not when a sentence
+		// or a return word comes between: "ab dem 14.9. wieder erreichbar,
+		// bis zum 30.9. nur eingeschränkt" is back on the 14th.
+		if strings.HasPrefix(text[m[0]:m[1]], "ab ") && i+1 < len(cues) {
+			if next := cues[i+1]; next[0] < m[1]+returnCueWindow && endCues[text[next[0]:next[1]]] &&
+				!rangeBreak.MatchString(rangeNoise.ReplaceAllString(text[m[1]:next[0]], "")) {
+				if end, ok := at(next); ok && end.After(d) {
+					return end, true
+				}
+			}
 		}
 		return d, true
 	}
@@ -67,6 +103,28 @@ func NextBusinessDay(d time.Time) time.Time {
 // returnCueWindow is how much text after a cue phrase may hold the date.
 const returnCueWindow = 48
 
+// endCues name the end of an absence: the last week away when a calendar
+// week follows them, and the end of an "ab ... bis ..." range.
+var endCues = map[string]bool{"bis": true, "bis zum": true, "bis einschliesslich": true}
+
+// rangeBreak is a sentence end or a return word between an "ab" date and a
+// "bis" date, which makes them two statements instead of one range.
+var rangeBreak = regexp.MustCompile(`[a-z][.!?;:](\s|$)|[!?;]|\b(wieder|zurueck|erreichbar|buero|da)\b`)
+
+// rangeNoise is taken out before rangeBreak reads the text: an absence said
+// as a negated return word ("ab dem 7.9. nicht erreichbar, bis 18.9.") and a
+// month abbreviation's dot ("ab dem 4. Sept. bis zum 18. Sept.") are not
+// breaks.
+var rangeNoise = regexp.MustCompile(`\bnicht (mehr )?(im )?(buero|erreichbar|da)\b|\b(jan|feb|mrz|apr|jun|jul|aug|sep|sept|okt|nov|dez)\.`)
+
+// dateKind tells a day from a calendar week, returned as its Monday.
+type dateKind int
+
+const (
+	dayDate dateKind = iota
+	weekDate
+)
+
 // dateFormats are the unambiguous written forms, tried in order against the
 // text right after a cue.
 var (
@@ -76,17 +134,21 @@ var (
 	// The day group ends on a word boundary, or "October 2026" would read the
 	// "20" of the year as a day of the month and invent a return date.
 	nameThenDay = regexp.MustCompile(`\b([a-z]{3,12})\.?\s+(\d{1,2})\b(?:st|nd|rd|th|\.)?(?:,?\s+(\d{4}))?`)
+	// A German calendar week, "KW 42" or "KW42", or a range, "KW 41/42".
+	calendarWeek = regexp.MustCompile(`\bkw\s?(\d{1,2})(?:\s?[-/–]\s?(\d{1,2}))?\b`)
 )
 
 // firstDate returns the EARLIEST date the span yields, in text order rather
 // than in the order the formats happen to be tried. A cue window holds prose as
 // well as the date ("until 10 September; ref 2026-10-01"), and scanning ISO
 // first would answer with the reference number's date and park the lead three
-// weeks too long.
-func firstDate(span string, now time.Time, monthByName map[string]int) (time.Time, bool) {
+// weeks too long. kind tells a day from a calendar week; lastWeek reads a
+// range of weeks by its last week rather than its first.
+func firstDate(span string, now time.Time, monthByName map[string]int, lastWeek bool) (time.Time, dateKind, bool) {
 	type hit struct {
-		at int
-		d  time.Time
+		at   int
+		d    time.Time
+		kind dateKind
 	}
 	var hits []hit
 	add := func(re *regexp.Regexp, parse func(m []string) (time.Time, bool)) {
@@ -95,7 +157,11 @@ func firstDate(span string, now time.Time, monthByName map[string]int) (time.Tim
 		at := re.FindAllStringIndex(span, -1)
 		for i, m := range re.FindAllStringSubmatch(span, -1) {
 			if d, ok := parse(m); ok {
-				hits = append(hits, hit{at[i][0], d})
+				kind := dayDate
+				if re == calendarWeek {
+					kind = weekDate
+				}
+				hits = append(hits, hit{at[i][0], d, kind})
 			}
 		}
 	}
@@ -120,6 +186,12 @@ func firstDate(span string, now time.Time, monthByName map[string]int) (time.Tim
 		}
 		return resolve(atoi(m[2]), mon, yearOf(m[3]), now, m[3] != "")
 	})
+	add(calendarWeek, func(m []string) (time.Time, bool) {
+		if lastWeek && m[2] != "" {
+			return resolveWeek(atoi(m[2]), now)
+		}
+		return resolveWeek(atoi(m[1]), now)
+	})
 
 	best := -1
 	for i := range hits {
@@ -128,9 +200,34 @@ func firstDate(span string, now time.Time, monthByName map[string]int) (time.Tim
 		}
 	}
 	if best < 0 {
+		return time.Time{}, dayDate, false
+	}
+	return hits[best].d, hits[best].kind, true
+}
+
+// resolveWeek is the Monday of ISO week w: this year's while that week is not
+// over, else next year's. The Monday has to land inside the sanity window,
+// unless the week is the one under way.
+func resolveWeek(w int, now time.Time) (time.Time, bool) {
+	if w < 1 || w > 53 {
 		return time.Time{}, false
 	}
-	return hits[best].d, true
+	today := now.UTC().Truncate(24 * time.Hour)
+	year, _ := today.ISOWeek()
+	for _, y := range []int{year, year + 1} {
+		// 4 January always falls in week 1.
+		jan4 := time.Date(y, time.January, 4, 0, 0, 0, 0, time.UTC)
+		monday := jan4.AddDate(0, 0, 7*(w-1)-(int(jan4.Weekday())+6)%7)
+		// Week 53 of a year that has 52 is the next year's week 1.
+		if _, got := monday.ISOWeek(); got != w {
+			continue
+		}
+		if monday.AddDate(0, 0, 6).Before(today) || monday.After(today.AddDate(0, 0, ReturnWindowDays)) {
+			continue
+		}
+		return monday, true
+	}
+	return time.Time{}, false
 }
 
 // resolve builds the date and applies the sanity window. When the reply wrote
@@ -218,5 +315,11 @@ func foldAccents(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// normalizeForDates is foldAccents under the name the date scanner reads it by.
-func normalizeForDates(s string) string { return foldAccents(s) }
+// normalizeForDates is foldAccents with "Kalenderwoche" shortened to the
+// "KW" the week cues and pattern read, and "KW42" spaced so a cue ending in
+// "kw" still ends on a word boundary.
+func normalizeForDates(s string) string {
+	return weekDigits.ReplaceAllString(strings.ReplaceAll(foldAccents(s), "kalenderwoche", "kw"), "kw $1")
+}
+
+var weekDigits = regexp.MustCompile(`\bkw(\d)`)

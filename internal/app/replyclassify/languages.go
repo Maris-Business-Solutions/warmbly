@@ -70,9 +70,14 @@ var baseRules = langRules{
 		`returns on`, `available again on`, `reachable again on`, `back from`,
 		`until`, `till`, `through`,
 		// German
-		`zurueck am`, `zurueck ab`, `wieder am`, `wieder ab`, `ab dem`, `ab montag den`,
+		`zurueck am`, `zurueck ab`, `wieder am`, `wieder ab`, `ab dem`,
+		// "ab Montag den 12.10.", "ab Montag, den 12.10." and "ab Montag,
+		// 12.10.": the weekday needs "den" or a comma before the date.
+		`ab (?:montag|dienstag|mittwoch|donnerstag|freitag)(?:,? de[nm]|, ?)`,
 		`wieder erreichbar am`, `wieder erreichbar ab`, `wieder im buero am`,
 		`bis einschliesslich`, `bis zum`, `bis`,
+		// A calendar week ("ab KW 42"); "Kalenderwoche" reads as "kw".
+		`ab kw`, `ab der kw`,
 		// French
 		`de retour le`, `jusqu'au`, `jusqu au`, `a partir du`,
 		// Spanish / Portuguese

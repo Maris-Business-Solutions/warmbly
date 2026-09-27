@@ -52,6 +52,39 @@ func TestParseReturnDate(t *testing.T) {
 		// lead on it.
 		{name: "a bare month and year is not a date", subject: "Out of office", body: "I'm out of the office until October 2026."},
 		{name: "a bare month and year, back on", subject: "Out of office", body: "I'll be back on November 2026."},
+		// A weekday before the date takes "den" or a comma, the way German
+		// writes it.
+		{name: "german ab montag den", subject: "Abwesenheitsnotiz", body: "Ab Montag den 14.09. bin ich wieder im Büro.", want: "2026-09-14"},
+		{name: "german ab montag comma den", subject: "Abwesenheitsnotiz", body: "Ab Montag, den 14.09., bin ich wieder im Büro.", want: "2026-09-14"},
+		{name: "german ab montag comma", subject: "Abwesenheitsnotiz", body: "Ab Montag, 14.9., bin ich wieder im Büro.", want: "2026-09-14"},
+		{name: "german ab dienstag comma", subject: "Abwesenheitsnotiz", body: "Ab Dienstag, 15. September, bin ich wieder erreichbar.", want: "2026-09-15"},
+		// A calendar week reads as its Monday; after "bis" it is the last
+		// week away, so the return is the Monday after it.
+		{name: "german ab kw", subject: "Abwesenheitsnotiz", body: "Ich bin ab KW 38 wieder erreichbar.", want: "2026-09-14"},
+		{name: "german ab kw without a space", subject: "Abwesenheitsnotiz", body: "Ab KW38 wieder im Büro.", want: "2026-09-14"},
+		{name: "german ab der kalenderwoche", subject: "Abwesenheitsnotiz", body: "Ab der Kalenderwoche 38 bin ich wieder im Büro.", want: "2026-09-14"},
+		{name: "german bis kw is the last week away", subject: "Abwesenheitsnotiz", body: "Ich bin bis KW37 im Urlaub.", want: "2026-09-14"},
+		{name: "german bis einschliesslich kw", subject: "Abwesenheitsnotiz", body: "Ich bin bis einschließlich KW 37 nicht im Büro.", want: "2026-09-14"},
+		{name: "a week under way means back now", subject: "Abwesenheitsnotiz", body: "Ab KW 36 bin ich wieder da.", want: "2026-09-04"},
+		{name: "german bis kw range is away through the last week", subject: "Abwesenheitsnotiz", body: "Ich bin bis KW 37/38 im Urlaub.", want: "2026-09-21"},
+		{name: "german kw range with an en dash", subject: "Abwesenheitsnotiz", body: "Ich bin bis KW 37\u201338 im Urlaub.", want: "2026-09-21"},
+		{name: "german ab kw range starts with its first week", subject: "Abwesenheitsnotiz", body: "Ab KW 38/39 bin ich wieder erreichbar.", want: "2026-09-14"},
+		// "ab ... bis ..." names the first day away and then the end.
+		{name: "german ab weekday bis is a range", subject: "Abwesenheitsnotiz", body: "Ich bin ab Freitag, 4.9., bis 18.9. im Urlaub.", want: "2026-09-18"},
+		{name: "german ab dem bis zum is a range", subject: "Abwesenheitsnotiz", body: "Ich bin ab dem 4.9. bis zum 18.9. nicht im Büro.", want: "2026-09-18"},
+		{name: "a negated return word keeps the range", subject: "Abwesenheitsnotiz", body: "Ab dem 7.9. bin ich nicht erreichbar, bis einschließlich 18.9. vertritt mich Frau Klein.", want: "2026-09-19"},
+		{name: "a month abbreviation keeps the range", subject: "Abwesenheitsnotiz", body: "Ich bin ab dem 4. Sept. bis zum 18. Sept. im Urlaub.", want: "2026-09-18"},
+		{name: "a return word ends the range", subject: "Abwesenheitsnotiz", body: "Ab dem 14.9. bin ich wieder erreichbar, bis zum 30.9. jedoch nur eingeschränkt.", want: "2026-09-14"},
+		{name: "a sentence ends the range", subject: "Abwesenheitsnotiz", body: "Ab Montag, 14.9., bin ich im Haus. Bis 30.9. gilt unser Aktionspreis.", want: "2026-09-14"},
+		{name: "a bis before the return date is not its end", subject: "Abwesenheitsnotiz", body: "Ab dem 14.9. wieder da. Bis zum 11.9. vertritt mich Frau Klein.", want: "2026-09-14"},
+		{name: "a week already over is not a return date", subject: "Abwesenheitsnotiz", body: "Ich bin bis KW 30 im Urlaub."},
+		{name: "a week that does not exist", subject: "Abwesenheitsnotiz", body: "Ich bin ab KW 60 wieder da."},
+		{
+			name: "week rolls into next year", subject: "Abwesenheitsnotiz",
+			body: "Ab KW 2 bin ich wieder im Büro.",
+			now:  time.Date(2026, 12, 21, 9, 0, 0, 0, time.UTC),
+			want: "2027-01-11",
+		},
 		// Mail clients autocorrect the apostrophe; the cue has to survive it.
 		{name: "french typographic apostrophe", subject: "Réponse automatique", body: "Je suis absent jusqu\u2019au 12 septembre.", want: "2026-09-12"},
 	}
