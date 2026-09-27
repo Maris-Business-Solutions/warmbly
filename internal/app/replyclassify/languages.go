@@ -11,6 +11,8 @@ import (
 // The offline layers read every reply with the base vocabulary below, and a
 // workspace's tagging languages (models.MailLanguageNames codes) add theirs.
 // A language nobody chose adds no pattern, so it cannot misread anyone's mail.
+// The one exception is the opt-out scan, which always cuts the quote markers
+// of the languages its phrases are in (optOutLanguages in lexicon.go).
 
 // langRules is one language's vocabulary, as its mail clients and servers
 // write it.
@@ -108,8 +110,9 @@ var cyrillicAttribution = quoteMarker{re: regexp.MustCompile(`(?i)\d{1,2}[./]\d{
 
 var languageRules = map[string]langRules{
 	"de": {
-		quote:      []quoteMarker{{re: headerBlock(`von`, `gesendet|datum`)}},
-		separators: []string{`ursprüngliche nachricht`, `weitergeleitete nachricht`},
+		// GMX and web.de put the date first: "Gesendet: ... Von: ...".
+		quote:      []quoteMarker{{re: headerBlock(`von`, `gesendet|datum`)}, {re: headerBlock(`gesendet`, `von`)}},
+		separators: []string{`ursprüngliche nachricht`, `original-nachricht`, `weitergeleitete nachricht`},
 	},
 	"fr": {
 		quote:      []quoteMarker{{re: headerBlock(`de ?`, `envoyé ?|date ?`)}},

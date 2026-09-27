@@ -2,6 +2,7 @@ package replyclassify
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -16,7 +17,7 @@ import (
 //  2. Clear interest phrases => positive.
 //  3. Clear rejection phrases => negative.
 func classifyLexicon(in Input) (Result, bool) {
-	text := quoteFolder.Replace(strings.ToLower(strings.TrimSpace(in.Subject + "\n" + StripQuoted(in.BodyText, in.Languages...))))
+	text := quoteFolder.Replace(strings.ToLower(strings.TrimSpace(in.Subject + "\n" + StripQuoted(in.BodyText, slices.Concat(in.Languages, optOutLanguages)...))))
 	if text == "" {
 		return Result{}, false
 	}
@@ -69,7 +70,124 @@ var unsubscribeKeywords = []string{
 	"delete my details",
 	"delete my data",
 	"delete my information",
+	// German, written as accentFolder leaves it ("löschen" reads "loeschen").
+	// "abmelden" and "austragen" also cancel a meeting or a course, so they
+	// count only next to "bitte" or the writer themselves.
+	"bitte austragen",
+	"austragen bitte",
+	"mich austragen",
+	"uns austragen",
+	"mich auszutragen",
+	"uns auszutragen",
+	"um austragung",
+	"tragen sie mich aus",
+	"tragen sie uns aus",
+	"tragen sie mich bitte aus",
+	"tragen sie uns bitte aus",
+	"trag mich aus",
+	"trag mich bitte aus",
+	"tragt mich aus",
+	"tragt uns aus",
+	"bitte abmelden",
+	"abmelden bitte",
+	"mich abmelden",
+	"uns abmelden",
+	"um abmeldung",
+	"bitte melden sie mich ab",
+	"melden sie mich bitte ab",
+	"bitte melden sie uns ab",
+	"melden sie uns bitte ab",
+	"bitte abbestellen",
+	"mich aus dem verteiler",
+	"mich aus ihrem verteiler",
+	"mich aus eurem verteiler",
+	"mich aus deinem verteiler",
+	"uns aus dem verteiler",
+	"uns aus ihrem verteiler",
+	"aus dem verteiler nehmen",
+	"aus ihrem verteiler nehmen",
+	"aus dem verteiler loeschen",
+	"aus ihrem verteiler loeschen",
+	"entfernen sie mich",
+	"entfernen sie uns",
+	"entfernen sie meine daten",
+	"entfernen sie meine adresse",
+	"entfernen sie meine e-mail",
+	"entfern mich",
+	"streichen sie mich aus",
+	"streichen sie mich von",
+	"streichen sie uns aus",
+	"streichen sie uns von",
+	"von der liste streichen",
+	"von ihrer liste streichen",
+	"nehmen sie mich aus",
+	"nehmen sie mich von",
+	"nehmen sie mich raus",
+	"nehmen sie uns aus",
+	"nimm mich raus",
+	"keine weiteren e-mails",
+	"keine weiteren emails",
+	"keine weiteren mails",
+	"keine weitere e-mail",
+	"keine weitere email",
+	"keine weitere mail",
+	"keine e-mails mehr",
+	"keine emails mehr",
+	"keine mails mehr",
+	"keine nachrichten mehr",
+	"bitte keine werbung mehr",
+	"mir keine werbung mehr",
+	"uns keine werbung mehr",
+	"keine werbemails",
+	"stoppen sie die zusendung",
+	"stoppen sie die zusendungen",
+	"mich nicht mehr kontaktieren",
+	"uns nicht mehr kontaktieren",
+	"kontaktieren sie mich nicht mehr",
+	"kontaktieren sie uns nicht mehr",
+	"bitte nicht mehr kontaktieren",
+	"bitte nicht mehr anschreiben",
+	"nicht mehr angeschrieben",
+	"schreiben sie mich nicht mehr an",
+	"schreiben sie mir nicht mehr",
+	"schreiben sie mir bitte nicht mehr",
+	"schreib mir nicht mehr",
+	"schreib mir bitte nicht mehr",
+	"von weiteren kontaktaufnahmen",
+	"keine weiteren kontaktaufnahmen",
+	"von einer weiteren kontaktaufnahme",
+	"keine weitere kontaktaufnahme",
+	"von jeglicher kontaktaufnahme",
+	"unterlassen sie jegliche",
+	"unterlassen sie kuenftig",
+	"unterlassen sie weitere",
+	"loeschen sie meine daten",
+	"loeschen sie bitte meine daten",
+	"loeschen sie meine adresse",
+	"loeschen sie meine e-mail",
+	"loeschen sie meine kontaktdaten",
+	"loeschen sie bitte meine adresse",
+	"loeschen sie bitte meine e-mail",
+	"loeschen sie mich",
+	"meine daten loeschen",
+	"meine daten zu loeschen",
+	// A GDPR Art. 21 objection. The bare verb also means "I disagree".
+	"widerspreche hiermit",
+	"widerspreche der verarbeitung",
+	"widerspreche der nutzung",
+	"widerspreche der verwendung",
+	"widerspreche ich der verarbeitung",
+	"widerspreche ich der nutzung",
+	"widerspreche ich der verwendung",
 }
+
+// optOutLanguages are the languages unsubscribeKeywords carries phrases in.
+// Opt-out is read without the workspace's tagging languages, yet a campaign
+// written in one of these carries its own opt-out line in that language, and
+// the people who answer it quote it with their mail clients' markers ("Von:
+// ... Gesendet: ..."). Those markers are always cut first, or every such
+// reply would opt its sender out.
+var optOutLanguages = []string{"de"}
 
 var optOutPatterns = compileWordPatterns(unsubscribeKeywords)
 
@@ -84,11 +202,14 @@ func compileWordPatterns(phrases []string) []*regexp.Regexp {
 }
 
 // quoteFolder folds the typographic apostrophes mail clients substitute while
-// typing, so "don’t email me" matches the straight-quote phrase.
+// typing, so "don’t email me" matches the straight-quote phrase. The opt-out
+// scan folds with accentFolder, which does the same and flattens umlauts.
 var quoteFolder = strings.NewReplacer("\u2019", "'", "\u2018", "'", "\u02bc", "'", "\u00b4", "'", "`", "'")
 
 func matchesOptOut(lowerText string) bool {
-	lowerText = quoteFolder.Replace(lowerText)
+	// A plain-text reply wraps a phrase across lines; the phrases hold one
+	// space between words.
+	lowerText = strings.Join(strings.Fields(accentFolder.Replace(lowerText)), " ")
 	for _, re := range optOutPatterns {
 		if re.MatchString(lowerText) {
 			return true
@@ -109,7 +230,7 @@ func MentionsOptOut(subject, body string) bool {
 // the quoted original carries the sender's own opt-out line, so matching the
 // whole body would opt out everyone who replies.
 func IsOptOut(subject, body string) bool {
-	text := strings.ToLower(strings.TrimSpace(subject + "\n" + StripQuoted(body)))
+	text := strings.ToLower(strings.TrimSpace(subject + "\n" + StripQuoted(body, optOutLanguages...)))
 	if text == "" {
 		return false
 	}

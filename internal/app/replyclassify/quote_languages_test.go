@@ -86,12 +86,24 @@ func TestStripQuotedOutlookBlocksByLanguage(t *testing.T) {
 	}
 }
 
+// GMX and web.de write the date above the sender.
+func TestStripQuotedGermanDateFirstBlock(t *testing.T) {
+	body := "The reply itself.\n\nGesendet: Montag, 03. März 2025 um 10:12 Uhr\nVon: \"Anna\" <anna@example.com>\nAn: Max" + quotedTail
+	if got := StripQuoted(body, "de"); got != "The reply itself." {
+		t.Errorf("StripQuoted = %q", got)
+	}
+	if StripQuoted(body) == "The reply itself." {
+		t.Error("read without the language")
+	}
+}
+
 func TestStripQuotedSeparatorsByLanguage(t *testing.T) {
 	for sep, lang := range map[string]string{
 		"-----Original Message-----": "", "-----Message d'origine-----": "fr", "-----Mensaje original-----": "es",
 		"---------- Mensagem encaminhada ---------": "pt", "-----Oorspronkelijk bericht-----": "nl",
 		"-----Исходное сообщение-----": "ru", "-----原始邮件-----": "zh", "---------- 転送されたメッセージ ---------": "ja",
 		"-----Oryginalna wiadomość-----": "pl", "-----Αρχικό μήνυμα-----": "el",
+		"-------- Original-Nachricht --------": "de",
 	} {
 		body := "The reply itself.\n\n" + sep + "\nAnna" + quotedTail
 		if got := StripQuoted(body, lang); got != "The reply itself." {
