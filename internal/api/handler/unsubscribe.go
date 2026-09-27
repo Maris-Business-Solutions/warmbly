@@ -223,7 +223,8 @@ func unsubLanguage(acceptLanguage string) string {
 		q := 1.0
 		if v, ok := strings.CutPrefix(strings.TrimSpace(params), "q="); ok {
 			f, err := strconv.ParseFloat(v, 64)
-			if err != nil {
+			// A qvalue is 0 to 1; NaN fails both comparisons.
+			if err != nil || !(f >= 0 && f <= 1) {
 				continue
 			}
 			q = f

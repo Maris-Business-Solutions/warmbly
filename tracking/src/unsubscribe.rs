@@ -201,7 +201,8 @@ pub fn page_copy(accept_language: Option<&str>) -> (&'static str, &'static PageC
             },
             None => 1.0,
         };
-        if q <= 0.0 || best.is_some_and(|(_, _, b)| q <= b) {
+        // A qvalue is 0 to 1, and NaN is refused like the backend refuses it.
+        if !(q > 0.0 && q <= 1.0) || best.is_some_and(|(_, _, b)| q <= b) {
             continue;
         }
         if let Some((code, copy)) = lookup(tag) {
@@ -334,6 +335,9 @@ mod tests {
         assert_eq!(lang("nn-NO"), "nb");
         assert_eq!(lang("tl-PH"), "fil");
         assert_eq!(lang("ja-JP;q=0.8, ko-KR;q=0.8"), "ja");
+        assert_eq!(lang("de;q=0.5,fr;q=NaN"), "de");
+        assert_eq!(lang("de;q=0.5,fr;q=2"), "de");
+        assert_eq!(lang("de;q=0.5,fr;q=inf"), "de");
     }
 
     #[tokio::test]

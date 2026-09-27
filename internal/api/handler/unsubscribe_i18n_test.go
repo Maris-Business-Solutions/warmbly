@@ -37,6 +37,9 @@ func TestUnsubLanguageFollowsTheBrowser(t *testing.T) {
 		"AR-eg":                    "ar",
 		"es_MX":                    "es",
 		"ja-JP;q=0.8, ko-KR;q=0.8": "ja",
+		"de;q=0.5,fr;q=NaN":        "de",
+		"de;q=0.5,fr;q=2":          "de",
+		"de;q=0.5,fr;q=+Inf":       "de",
 	}
 	for header, want := range cases {
 		if got := unsubLanguage(header); got != want {
