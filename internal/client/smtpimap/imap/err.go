@@ -11,6 +11,10 @@ import (
 )
 
 func (c *Client) handleError(err error) *errx.MailError {
+	if errors.Is(err, errSyncViewMoved) {
+		// Handled like a folder gone mid-walk: the next pass re-baselines it.
+		return errx.ErrMailResourceNotFound
+	}
 	var imapErr *imap.Error
 	if errors.As(err, &imapErr) {
 		switch imapErr.Code {
