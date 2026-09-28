@@ -168,7 +168,7 @@ func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*models.Contact
 // List pages the workspace's imports, newest first. The cursor is opaque.
 func (s *Service) List(ctx context.Context, orgID uuid.UUID, cursor string, limit int) (*models.ContactImportList, *errx.Error) {
 	if limit < 1 {
-		return nil, errx.ErrLimit
+		return nil, errx.New(errx.BadRequest, "limit must be at least 1")
 	}
 	var before *time.Time
 	var beforeID *uuid.UUID

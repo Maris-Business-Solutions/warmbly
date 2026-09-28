@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -10,8 +11,15 @@ import (
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
-	"github.com/warmbly/warmbly/internal/utils/validate"
 )
+
+// The imports list pages between 1 and contactImportListMax, 50 by default.
+const (
+	contactImportListDefault = 50
+	contactImportListMax     = 100
+)
+
+var errContactImportListLimit = errx.New(errx.BadRequest, "limit must be between 1 and 100")
 
 // CreateContactImport is POST /contacts/imports: upload a file once and get a
 // draft back with the preview the column mapper needs.
@@ -49,16 +57,16 @@ func (h *Handler) ListContactImports(c *gin.Context) {
 		errx.Handle(c, errx.ErrNoOrganization)
 		return
 	}
-	limit, xerr := validate.Limit(c.Query("limit"))
-	if xerr != nil {
-		errx.Handle(c, xerr)
-		return
+	limit := contactImportListDefault
+	if raw := c.Query("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > contactImportListMax {
+			errx.Handle(c, errContactImportListLimit)
+			return
+		}
+		limit = n
 	}
-	if limit < 1 || limit > 100 {
-		errx.Handle(c, errx.ErrLimit)
-		return
-	}
-	list, xerr := h.ContactImportService.List(c.Request.Context(), *orgID, c.Query("cursor"), int(limit))
+	list, xerr := h.ContactImportService.List(c.Request.Context(), *orgID, c.Query("cursor"), limit)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
