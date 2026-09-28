@@ -1,0 +1,96 @@
+package imap
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"testing"
+
+	"github.com/emersion/go-imap/v2"
+)
+
+// The sync pass and warmup actions share one session. A warmup action selects
+// its own folder between two sync steps; the sync step after it must still
+// read the folder the sync selected, not the one the action left behind.
+func TestSyncStepReopensItsFolderAfterAWarmupAction(t *testing.T) {
+	c := testServer(t, imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapMove: {}}, "Archive")
+	if err := c.Connect(); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	appendMessage(t, c, "Archive", "<a1@test>")
+	appendMessage(t, c, "Archive", "<a2@test>")
+	appendMessage(t, c, "INBOX", "<w1@test>")
+	appendMessage(t, c, "INBOX", "<w2@test>")
+
+	if _, err := c.SelectForSync("Archive"); err != nil {
+		t.Fatalf("select Archive: %v", err)
+	}
+	if _, err := c.MoveToFolder(context.Background(), "INBOX", "Warmbly", 1); err != nil {
+		t.Fatalf("file warmup: %v", err)
+	}
+	fetched, err := c.FetchEnvelopes(context.Background(), []imap.UID{2})
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(fetched) != 1 || fetched[0].Email.MessageID != "a2@test" {
+		var got []string
+		for _, f := range fetched {
+			got = append(got, f.Email.MessageID)
+		}
+		t.Fatalf("the sync step read the folder the warmup action selected: got %v, want [a2@test]", got)
+	}
+}
+
+// Every warmup filing lands while the sync pass keeps re-selecting other
+// folders on the same session, which is the steady state of a mailbox without
+// CONDSTORE: a flag scan selects every folder on every pass.
+func TestWarmupFilingLandsWhileTheSyncWalksFolders(t *testing.T) {
+	c := testServer(t, imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapMove: {}}, "Archive", "Warmbly")
+	if err := c.Connect(); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	const n = 30
+	for i := 1; i <= n; i++ {
+		appendMessage(t, c, "INBOX", fmt.Sprintf("<w%d@test>", i))
+	}
+	appendMessage(t, c, "Archive", "<a1@test>")
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			for _, box := range []string{"Archive", "INBOX"} {
+				if _, err := c.SelectForSync(box); err != nil {
+					continue
+				}
+				_, _ = c.FetchFlags(context.Background(), 1)
+			}
+		}
+	}()
+
+	for uid := uint32(1); uid <= n; uid++ {
+		if _, err := c.MoveToFolder(context.Background(), "INBOX", "Warmbly", uid); err != nil {
+			t.Errorf("file uid %d: %v", uid, err)
+		}
+	}
+	close(stop)
+	wg.Wait()
+
+	count, err := c.SelectForSync("INBOX")
+	if err != nil {
+		t.Fatalf("select INBOX: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("%d of %d warmup messages were left in the inbox", count, n)
+	}
+	if count, err = c.SelectForSync("Warmbly"); err != nil || count != n {
+		t.Fatalf("Warmbly holds %d messages (err %v), want %d", count, err, n)
+	}
+}

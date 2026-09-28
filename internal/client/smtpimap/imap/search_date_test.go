@@ -195,7 +195,11 @@ func TestSearchSinceByDateSkipsCacheWithoutUIDValidity(t *testing.T) {
 	if _, err := c.SelectForSync("INBOX"); err != nil {
 		t.Fatalf("SelectForSync: %v", err)
 	}
-	c.selection.Store(&selection{name: "INBOX", count: 1})
+	// Stands in for a server that reports no UIDVALIDITY; recorded as the
+	// sync's own view too, or the step would re-open the folder for real.
+	sel := &selection{name: "INBOX", count: 1}
+	c.selection.Store(sel)
+	c.syncView = sel
 	c.sinceRefused.Store(true)
 
 	got, err := c.SearchSince(since)
