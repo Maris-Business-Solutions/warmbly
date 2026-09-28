@@ -35886,6 +35886,13 @@
             ],
             "description": "The warmup pool the mailbox warms in."
           },
+          "source": {
+            "type": "string",
+            "enum": [
+              "cloud"
+            ],
+            "description": "Present as cloud when Warmbly Cloud warms the mailbox for a linked self-hosted instance and reported this standing."
+          },
           "state": {
             "type": "string",
             "enum": [

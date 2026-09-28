@@ -91,12 +91,7 @@ func (r *advisorRepository) loadMailboxes(ctx context.Context, orgID uuid.UUID) 
 		) w ON true
 		LEFT JOIN LATERAL (` + placementEvidenceSQL("ea.id", "NOW() - INTERVAL '7 days'") + `
 		) ws ON true
-		LEFT JOIN LATERAL (
-			SELECT wpp.health_state, wpp.last_health_score, wpp.last_health_reason, wpp.blocked_until
-			FROM warmup_pool_participants wpp
-			WHERE wpp.email_account_id = ea.id
-			ORDER BY wpp.joined_at DESC
-			LIMIT 1
+		LEFT JOIN LATERAL (` + warmupStandingSQL("ea.id") + `
 		) p ON true
 		LEFT JOIN LATERAL (
 			SELECT COUNT(*) AS n

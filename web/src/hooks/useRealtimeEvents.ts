@@ -312,6 +312,7 @@ export function useRealtimeEvents() {
           ['analytics', 'accounts'],
           ['analytics', 'warmup'],
           ['analytics', 'dashboard'],
+          ['cloud-link'],
         ])
         return
       }

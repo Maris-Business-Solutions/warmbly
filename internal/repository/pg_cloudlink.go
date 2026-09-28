@@ -31,6 +31,15 @@ type CloudLinkRepository interface {
 	List(ctx context.Context) ([]models.CloudLinkMailbox, error)
 	// IsEnrolled is the hot-path check the warmup task and reconciler use.
 	IsEnrolled(ctx context.Context, accountID uuid.UUID) (bool, error)
+
+	// SetStanding records the warmup standing the cloud reported and returns
+	// the state it replaced ("" when none was recorded yet). initial writes
+	// only a mailbox with no standing yet, leaving changes to the sync, which
+	// reports them.
+	SetStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo, initial bool) (models.WarmupHealthState, error)
+	// CarryStanding raises a mailbox's local pool row to a cloud quarantine or
+	// block still in force, so leaving the cloud does not lift it.
+	CarryStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo) error
 }
 
 type cloudLinkRepository struct {
@@ -141,20 +150,20 @@ func (r *cloudLinkRepository) UnenrollAll(ctx context.Context) error {
 }
 
 func (r *cloudLinkRepository) GetByAccount(ctx context.Context, accountID uuid.UUID) (*models.CloudLinkMailbox, error) {
-	query := `SELECT email_account_id, remote_id, enrolled_at, managed FROM cloud_link_mailboxes WHERE email_account_id = $1`
-	var m models.CloudLinkMailbox
-	if err := r.db.QueryRow(ctx, query, accountID).Scan(&m.EmailAccountID, &m.RemoteID, &m.EnrolledAt, &m.Managed); err != nil {
+	query := `SELECT ` + cloudLinkMailboxColumns + ` FROM cloud_link_mailboxes WHERE email_account_id = $1`
+	m, err := scanCloudLinkMailbox(r.db.QueryRow(ctx, query, accountID))
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		db.CaptureError(err, query, []any{accountID}, "queryrow")
 		return nil, err
 	}
-	return &m, nil
+	return m, nil
 }
 
 func (r *cloudLinkRepository) List(ctx context.Context) ([]models.CloudLinkMailbox, error) {
-	query := `SELECT email_account_id, remote_id, enrolled_at, managed FROM cloud_link_mailboxes ORDER BY enrolled_at`
+	query := `SELECT ` + cloudLinkMailboxColumns + ` FROM cloud_link_mailboxes ORDER BY enrolled_at`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
 		db.CaptureError(err, query, nil, "query")
@@ -163,11 +172,11 @@ func (r *cloudLinkRepository) List(ctx context.Context) ([]models.CloudLinkMailb
 	defer rows.Close()
 	out := []models.CloudLinkMailbox{}
 	for rows.Next() {
-		var m models.CloudLinkMailbox
-		if err := rows.Scan(&m.EmailAccountID, &m.RemoteID, &m.EnrolledAt, &m.Managed); err != nil {
+		m, err := scanCloudLinkMailbox(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, m)
+		out = append(out, *m)
 	}
 	return out, rows.Err()
 }
@@ -178,4 +187,92 @@ func (r *cloudLinkRepository) IsEnrolled(ctx context.Context, accountID uuid.UUI
 		return false, err
 	}
 	return ok, nil
+}
+
+const cloudLinkMailboxColumns = `email_account_id, remote_id, enrolled_at, managed,
+	health_state, health_pool_type, health_reason, health_score, blocked_until, health_evaluated_at`
+
+func scanCloudLinkMailbox(row pgx.Row) (*models.CloudLinkMailbox, error) {
+	var m models.CloudLinkMailbox
+	var state, poolType, reason *string
+	var score float64
+	var blockedUntil, evaluatedAt *time.Time
+	if err := row.Scan(&m.EmailAccountID, &m.RemoteID, &m.EnrolledAt, &m.Managed,
+		&state, &poolType, &reason, &score, &blockedUntil, &evaluatedAt); err != nil {
+		return nil, err
+	}
+	if state != nil {
+		m.Standing = &models.WarmupHealthInfo{
+			Source:       models.WarmupHealthSourceCloud,
+			State:        *state,
+			Score:        score,
+			BlockedUntil: blockedUntil,
+			EvaluatedAt:  evaluatedAt,
+		}
+		if poolType != nil {
+			m.Standing.PoolType = *poolType
+		}
+		if reason != nil {
+			m.Standing.Reason = *reason
+		}
+	}
+	return &m, nil
+}
+
+func (r *cloudLinkRepository) SetStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo, initial bool) (models.WarmupHealthState, error) {
+	// The locked read makes a concurrent writer see this write's state as its
+	// previous one, so a transition is reported once across consumers.
+	query := `
+		WITH prev AS (
+			SELECT email_account_id, health_state
+			  FROM cloud_link_mailboxes
+			 WHERE email_account_id = $1
+			   FOR UPDATE
+		)
+		UPDATE cloud_link_mailboxes c
+		   SET health_state = $2,
+		       health_pool_type = NULLIF($3, ''),
+		       health_reason = NULLIF($4, ''),
+		       health_score = $5,
+		       blocked_until = $6,
+		       health_evaluated_at = $7,
+		       health_synced_at = NOW()
+		  FROM prev
+		 WHERE c.email_account_id = prev.email_account_id
+		   AND (NOT $8 OR prev.health_state IS NULL)
+		RETURNING COALESCE(prev.health_state, '')
+	`
+	var prev string
+	err := r.db.QueryRow(ctx, query, accountID, h.State, h.PoolType, h.Reason, h.Score, h.BlockedUntil, h.EvaluatedAt, initial).Scan(&prev)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		db.CaptureError(err, query, []any{accountID}, "queryrow")
+		return "", err
+	}
+	return models.WarmupHealthState(prev), nil
+}
+
+func (r *cloudLinkRepository) CarryStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo) error {
+	query := `
+		UPDATE warmup_pool_participants p
+		   SET health_state = $2,
+		       blocked_until = $3,
+		       blocked_at = COALESCE(p.blocked_at, NOW()),
+		       blocked_reason = NULLIF($4, ''),
+		       last_health_reason = NULLIF($4, ''),
+		       last_health_score = $5,
+		       last_health_evaluated_at = NOW()
+		 WHERE p.email_account_id = $1
+		   AND (` + warmupStandingRankSQL("p.health_state::text") + ` < ` + warmupStandingRankSQL("$2::text") + `
+		        OR (` + warmupStandingRankSQL("p.health_state::text") + ` = ` + warmupStandingRankSQL("$2::text") + `
+		            AND p.blocked_until IS NOT NULL
+		            AND ($3::timestamptz IS NULL OR $3::timestamptz > p.blocked_until)))
+	`
+	if _, err := r.db.Exec(ctx, query, accountID, h.State, h.BlockedUntil, h.Reason, h.Score); err != nil {
+		db.CaptureError(err, query, []any{accountID}, "exec")
+		return err
+	}
+	return nil
 }

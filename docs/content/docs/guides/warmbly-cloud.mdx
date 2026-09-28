@@ -23,7 +23,7 @@ Your instance keeps a single link to a Warmbly Cloud workspace. When you enroll 
 Verification accepts a cloud token only for the mailbox that sent or received that warmup message. It also recognises recorded message identifiers when a provider strips the header, including older messages and mail the cloud has already processed. If the cloud cannot answer, inbox ingestion retries verification before publishing the message. This can delay ordinary inbox arrivals for enrolled mailboxes during a cloud outage. Existing Unibox entries are checked automatically in background batches, and confirmed warmup is removed locally without deleting provider mail.
 
 Arrivals awaiting verification are stored in your instance's database and retried automatically, including after a consumer restart. Once verification succeeds, ordinary messages enter Unibox and warmup messages are discarded from the pending queue. Pending verification belongs to the instance and is [not included in a workspace export](/guides/workspace-export-import/).
-- health, daily volume and 7 day totals show up in your instance's settings as the cloud reports them
+- health, daily volume and 7 day totals show up in your instance's settings as the cloud reports them, and the health also gates the mailbox's campaigns here (see [safety and enforcement](#safety-and-enforcement))
 
 Unenrolling an SMTP/IMAP mailbox, disconnecting the instance, or deleting the mailbox altogether deletes its credential on the cloud immediately. Deleting an enrolled mailbox revokes its enrollment before the record goes, so the pool cannot be left holding a password for a mailbox your instance no longer has; if the cloud cannot be reached at that moment the delete is refused, the mailbox is put back as it was, and retrying it once the cloud is reachable completes it. A mailbox that was signed in through Warmbly Cloud stays in the cloud workspace when you remove it from the instance; disconnecting the instance removes its mirrors of such mailboxes, since they cannot send without the link.
 
@@ -86,7 +86,19 @@ The Warmup plan is the same plan a hosted workspace buys when it only warms and 
 
 ## Safety and enforcement
 
-Enrolled mailboxes are ordinary members of the hosted pool and are held to the same rules: verification tokens on every warmup message, complaint and bounce tracking with automatic quarantine or blocking when a mailbox starts hurting partners, and spam placement that slows a mailbox down. A mailbox that gets quarantined on the cloud shows that state on your instance, stops being offered to partners, and re-enters on the same probation terms as any hosted mailbox.
+Enrolled mailboxes are ordinary members of the hosted pool and are held to the same rules: verification tokens on every warmup message, complaint and bounce tracking with automatic quarantine or blocking when a mailbox starts hurting partners, and spam placement that slows a mailbox down. A mailbox that gets quarantined on the cloud stops being offered to partners and re-enters on the same probation terms as any hosted mailbox.
+
+Your instance holds the mailbox to the cloud's verdict as well, exactly as it would one from its own pool. It reads every enrolled mailbox's standing from the cloud every five minutes, and on enrolling, pausing or resuming, and from then on:
+
+| Cloud standing | On your instance |
+|----------------|------------------|
+| `watch` | Campaigns send from the mailbox at reduced volume |
+| `throttled` | Campaigns send from it at half volume until it recovers |
+| `quarantined` or `blocked` | Campaigns skip it until the hold ends |
+
+The same standing feeds the mailbox's health on the **Mailboxes** page, the **Warmup reputation** block in its drawer (marked **Warmbly Cloud**, with the reason and the end of any hold), a campaign's sending limits, the [Advisor](/guides/advisor/) and the dashboard's health summary. A change reaches your instance within five minutes and fires the same `warmup.health_changed`, `warmup.quarantined` and `warmup.blocked` [webhooks](/guides/webhooks/) a local transition does.
+
+If the cloud cannot be reached, the last standing it reported stays in force, and a quarantine or block still ends on its own date. Removing a mailbox from the cloud while it is quarantined or blocked does not lift the hold: when the mailbox rejoins your instance's own pool it keeps the same standing until that date (a block that requires review stays until an administrator lifts it), and from there [the standing follows the address](/guides/warmup/#pool-safety) as it does for any mailbox. Appeals go through the mailbox on Warmbly Cloud, where the verdict was reached.
 
 For mailboxes signed in through Warmbly Cloud the enforcement reaches sending too. Every access token the instance draws is checked on the cloud: a mailbox the cloud has **blocked**, one that is no longer active there, one that was removed from the workspace, or an instance whose link was revoked gets no token, and the instance stops sending and syncing from that mailbox as soon as its cached token expires.
 

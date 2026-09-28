@@ -132,8 +132,9 @@ type WarmupRepository interface {
 	BlockFromPool(ctx context.Context, accountID uuid.UUID, reason string) error
 	// GetHealthState returns the account's warmup health state plus its
 	// blocked_until, so non-warmup callers (e.g. the campaign scheduler) can
-	// gate cold sends on warmup health without needing a pool type. Returns
-	// ("healthy", nil) when the account is in no pool.
+	// gate cold sends on warmup health without needing a pool type. A mailbox
+	// Warmbly Cloud warms reads the standing the cloud last reported. Returns
+	// ("healthy", nil) when the account has neither.
 	GetHealthState(ctx context.Context, accountID uuid.UUID) (models.WarmupHealthState, *time.Time, error)
 	// GetHealthStates is GetHealthState for a pool in one read. A mailbox in
 	// no pool is healthy, as the single read reports it.
@@ -143,6 +144,9 @@ type WarmupRepository interface {
 	GetParticipantHealth(ctx context.Context, accountID uuid.UUID, poolType string) (*models.WarmupParticipantHealth, error)
 	// GetParticipantHealthForAccount returns the participant row whatever pool it is in.
 	GetParticipantHealthForAccount(ctx context.Context, accountID uuid.UUID) (*models.WarmupParticipantHealth, error)
+	// GetCloudStanding is the standing Warmbly Cloud last reported for a
+	// mailbox it warms; nil for any other mailbox.
+	GetCloudStanding(ctx context.Context, accountID uuid.UUID) (*models.WarmupHealthInfo, error)
 	// UpdateParticipantHealth returns the row as written, or nil when the
 	// review-required hold kept it (or the mailbox is in no pool). PoolType is
 	// not on the returned row; the caller has it.
@@ -462,17 +466,10 @@ func (r *warmupRepository) GetHealthStates(ctx context.Context, accountIDs []uui
 		return out, nil
 	}
 	query := `
-		SELECT DISTINCT ON (email_account_id) email_account_id, health_state, blocked_until
-		FROM warmup_pool_participants
-		WHERE email_account_id = ANY($1)
-		ORDER BY email_account_id, CASE health_state
-			WHEN 'blocked' THEN 5
-			WHEN 'quarantined' THEN 4
-			WHEN 'throttled' THEN 3
-			WHEN 'watch' THEN 2
-			WHEN 'healthy' THEN 1
-			ELSE 0
-		END DESC
+		SELECT a.id, h.health_state, h.blocked_until
+		  FROM unnest($1::uuid[]) AS a(id)
+		  CROSS JOIN LATERAL (` + warmupStandingSQL("a.id") + `
+		  ) h
 	`
 	rows, err := r.db.Query(ctx, query, accountIDs)
 	if err != nil {
@@ -494,20 +491,8 @@ func (r *warmupRepository) GetHealthStates(ctx context.Context, accountIDs []uui
 // GetHealthState returns the account's warmup health state and blocked_until without the
 // caller naming a pool. The ordering keeps the worst state winning.
 func (r *warmupRepository) GetHealthState(ctx context.Context, accountID uuid.UUID) (models.WarmupHealthState, *time.Time, error) {
-	query := `
-		SELECT health_state, blocked_until
-		FROM warmup_pool_participants
-		WHERE email_account_id = $1
-		ORDER BY CASE health_state
-			WHEN 'blocked' THEN 5
-			WHEN 'quarantined' THEN 4
-			WHEN 'throttled' THEN 3
-			WHEN 'watch' THEN 2
-			WHEN 'healthy' THEN 1
-			ELSE 0
-		END DESC
-		LIMIT 1
-	`
+	query := `SELECT health_state, blocked_until FROM (` + warmupStandingSQL("$1::uuid") + `
+	) h`
 	var state string
 	var blockedUntil *time.Time
 	err := r.db.QueryRow(ctx, query, accountID).Scan(&state, &blockedUntil)
@@ -614,6 +599,18 @@ const participantHealthColumns = `
 
 const participantHealthSelect = participantHealthColumns + `
 		WHERE wpp.email_account_id = $1`
+
+func (r *warmupRepository) GetCloudStanding(ctx context.Context, accountID uuid.UUID) (*models.WarmupHealthInfo, error) {
+	m, err := scanCloudLinkMailbox(r.db.QueryRow(ctx,
+		`SELECT `+cloudLinkMailboxColumns+` FROM cloud_link_mailboxes WHERE email_account_id = $1`, accountID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return m.Standing, nil
+}
 
 // GetParticipantHealthForAccount returns the participant row from whichever pool the mailbox
 // is in. Exact because a mailbox is in at most one (migration 000097).

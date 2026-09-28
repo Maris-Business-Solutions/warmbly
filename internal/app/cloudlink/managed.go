@@ -115,6 +115,7 @@ func (s *service) mirror(ctx context.Context, l *models.CloudLink, orgID, userID
 		}
 		return nil, errx.InternalError()
 	}
+	s.recordStanding(ctx, acc.ID, state.Health, true)
 	if s.emailSvc != nil {
 		if err := s.emailSvc.LoadAccountOntoWorker(ctx, acc.ID); err != nil {
 			log.Warn().Err(err).Str("account_id", acc.ID.String()).Msg("cloud link: worker load of managed mailbox failed; reconciler will retry")

@@ -216,12 +216,18 @@ type ColdRampInfo struct {
 	Held bool `json:"held"`
 }
 
+// WarmupHealthSourceCloud marks a standing Warmbly Cloud reported for a mailbox it warms.
+const WarmupHealthSourceCloud = "cloud"
+
 type WarmupHealthInfo struct {
 	// PoolType is the pool the mailbox warms in: premium or free.
-	PoolType string  `json:"pool_type,omitempty"`
-	State    string  `json:"state"` // healthy/watch/throttled/quarantined/blocked
-	Score    float64 `json:"score"`
-	Reason   string  `json:"reason,omitempty"`
+	PoolType string `json:"pool_type,omitempty"`
+	// Source is "cloud" when Warmbly Cloud warms the mailbox and reported this
+	// standing; empty for this instance's own pool.
+	Source string  `json:"source,omitempty"`
+	State  string  `json:"state"` // healthy/watch/throttled/quarantined/blocked
+	Score  float64 `json:"score"`
+	Reason string  `json:"reason,omitempty"`
 	// SpamScore is always 0. The accumulating score it reported was retired in
 	// #491 because it tracked volume rather than misbehaviour; the key stays so
 	// a published v1 client does not break, and goes at the next API version.

@@ -852,19 +852,7 @@ func (r *analyticsRepository) GetAccountHealthSummary(ctx context.Context, orgID
 				ELSE 'healthy'
 			END AS status
 			FROM email_accounts ea
-			LEFT JOIN LATERAL (
-				SELECT health_state
-				FROM warmup_pool_participants
-				WHERE email_account_id = ea.id
-				ORDER BY CASE health_state
-					WHEN 'blocked' THEN 0
-					WHEN 'quarantined' THEN 1
-					WHEN 'throttled' THEN 2
-					WHEN 'watch' THEN 3
-					WHEN 'healthy' THEN 4
-					ELSE 5
-				END
-				LIMIT 1
+			LEFT JOIN LATERAL (` + warmupStandingSQL("ea.id") + `
 			) wh ON true
 			WHERE ea.organization_id = $1
 		)

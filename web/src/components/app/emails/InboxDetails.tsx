@@ -1337,8 +1337,10 @@ function WarmupTab({ form, update, status, mailbox, canWarmup = true }: { form: 
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Eyebrow>Warmup reputation</Eyebrow>
-                            {wh.pool_type && (
-                                <span className="text-[10.5px] text-slate-400">{wh.pool_type === "premium" ? "Premium pool" : "Free pool"}</span>
+                            {(wh.pool_type || wh.source === "cloud") && (
+                                <span className="text-[10.5px] text-slate-400">
+                                    {[wh.source === "cloud" ? "Warmbly Cloud" : "", wh.pool_type ? (wh.pool_type === "premium" ? "Premium pool" : "Free pool") : ""].filter(Boolean).join(" · ")}
+                                </span>
                             )}
                         </div>
                         <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", warmupStateTone[wh.state]?.text ?? "text-slate-500")}>
@@ -1348,6 +1350,15 @@ function WarmupTab({ form, update, status, mailbox, canWarmup = true }: { form: 
                     {wh.reason && <p className="mt-1.5 text-[11.5px] text-slate-500 leading-relaxed">{wh.reason}</p>}
                     {wh.blocked_until && (
                         <p className="mt-1 text-[11px] text-rose-600">Paused from the pool until {new Date(wh.blocked_until).toLocaleDateString()}.</p>
+                    )}
+                    {wh.source === "cloud" && wh.state !== "healthy" && (
+                        <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
+                            {wh.state === "quarantined" || wh.state === "blocked"
+                                ? "Campaigns on this instance skip this mailbox while Warmbly Cloud holds it."
+                                : wh.state === "throttled"
+                                  ? "Campaigns on this instance send from this mailbox at half volume until it recovers."
+                                  : "Campaigns on this instance send from this mailbox at reduced volume until it recovers."}
+                        </p>
                     )}
                     <WarmupPartnerDiversity health={wh} />
                 </div>

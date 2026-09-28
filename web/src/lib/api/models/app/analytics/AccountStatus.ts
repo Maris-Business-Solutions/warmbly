@@ -66,6 +66,8 @@ export interface WarmupRampHold {
 export interface WarmupHealthInfo {
     /** The pool the mailbox warms in. */
     pool_type?: "premium" | "free";
+    /** "cloud" when Warmbly Cloud warms the mailbox and reported this standing. */
+    source?: "cloud";
     state: "healthy" | "watch" | "throttled" | "quarantined" | "blocked";
     score: number;
     /** @deprecated Always 0 since the warmup spam score was retired; read score and reason. */

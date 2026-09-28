@@ -36,6 +36,8 @@ type PoolLinkRepository interface {
 	GetMailboxByRemote(ctx context.Context, instanceID, remoteID uuid.UUID) (*models.PoolLinkMailbox, error)
 	GetMailboxByAccount(ctx context.Context, accountID uuid.UUID) (*models.PoolLinkMailbox, error)
 	ListMailboxes(ctx context.Context, instanceID uuid.UUID) ([]models.PoolLinkMailbox, error)
+	// ListStanding is every enrolled mailbox's warmup standing in one read.
+	ListStanding(ctx context.Context, instanceID uuid.UUID) ([]models.PoolLinkMailboxStanding, error)
 	DeleteMailbox(ctx context.Context, instanceID, remoteID uuid.UUID) error
 	// TouchMailboxToken records when a managed mailbox last drew an access token.
 	TouchMailboxToken(ctx context.Context, instanceID, remoteID uuid.UUID) error
@@ -321,6 +323,65 @@ func (r *poolLinkRepository) ListMailboxes(ctx context.Context, instanceID uuid.
 			return nil, err
 		}
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (r *poolLinkRepository) ListStanding(ctx context.Context, instanceID uuid.UUID) ([]models.PoolLinkMailboxStanding, error) {
+	// The pool row when there is one; otherwise a quarantine or block the
+	// address still holds, so a mailbox that left the pool keeps its standing.
+	// Neither is healthy: no hold is in force, and the instance must not keep one.
+	query := `
+		SELECT m.remote_id, COALESCE(s.health_state, 'healthy'), s.pool_type, s.last_health_reason,
+		       COALESCE(s.last_health_score, 0), s.blocked_until, s.last_health_evaluated_at
+		  FROM pool_link_mailboxes m
+		  LEFT JOIN LATERAL (
+		        SELECT st.* FROM (
+		            SELECT wpp.health_state::text AS health_state, wp.pool_type::text AS pool_type,
+		                   wpp.last_health_reason, wpp.last_health_score, wpp.blocked_until,
+		                   wpp.last_health_evaluated_at
+		              FROM warmup_pool_participants wpp
+		              JOIN warmup_pools wp ON wp.id = wpp.pool_id
+		             WHERE wpp.email_account_id = m.email_account_id
+		            UNION ALL
+		            SELECT l.health_state, NULL, l.last_health_reason, l.last_health_score,
+		                   l.blocked_until, l.recorded_at
+		              FROM email_accounts a
+		              JOIN warmup_reputation_ledger l
+		                ON l.organization_id = a.organization_id AND l.email = lower(btrim(a.email))
+		             WHERE a.id = m.email_account_id
+		               AND l.health_state IN ('quarantined', 'blocked')
+		               AND (l.blocked_until IS NULL OR l.blocked_until > NOW())
+		               AND NOT EXISTS (
+		                   SELECT 1 FROM warmup_pool_participants x WHERE x.email_account_id = m.email_account_id)
+		        ) st
+		         ORDER BY ` + warmupStandingRankSQL("st.health_state") + ` DESC
+		         LIMIT 1
+		  ) s ON true
+		 WHERE m.instance_id = $1
+	`
+	rows, err := r.db.Query(ctx, query, instanceID)
+	if err != nil {
+		db.CaptureError(err, query, []any{instanceID}, "query")
+		return nil, err
+	}
+	defer rows.Close()
+	out := []models.PoolLinkMailboxStanding{}
+	for rows.Next() {
+		var st models.PoolLinkMailboxStanding
+		var h models.WarmupHealthInfo
+		var poolType, reason *string
+		if err := rows.Scan(&st.RemoteID, &h.State, &poolType, &reason, &h.Score, &h.BlockedUntil, &h.EvaluatedAt); err != nil {
+			return nil, err
+		}
+		if poolType != nil {
+			h.PoolType = *poolType
+		}
+		if reason != nil {
+			h.Reason = *reason
+		}
+		st.Health = &h
+		out = append(out, st)
 	}
 	return out, rows.Err()
 }

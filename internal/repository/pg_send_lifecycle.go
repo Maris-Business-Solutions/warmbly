@@ -103,14 +103,15 @@ func (r *sendLifecycleRepository) ListLifecycleCandidates(ctx context.Context, l
 	if limit <= 0 {
 		limit = 500
 	}
-	// health_state stays NULL for a mailbox in no pool: leaving the pool is
-	// not evidence of health, so the caller must see "unknown" rather than a
+	// health_state stays NULL for a mailbox with no standing: leaving the pool
+	// is not evidence of health, so the caller must see "unknown" rather than a
 	// clean bill that would auto-resume it.
 	rows, err := r.DB.Pool.Query(ctx, `
 		SELECT ea.id, ea.send_lifecycle, ea.send_lifecycle_since,
-		       wpp.health_state
+		       wh.health_state
 		  FROM email_accounts ea
-		  LEFT JOIN warmup_pool_participants wpp ON wpp.email_account_id = ea.id
+		  LEFT JOIN LATERAL (`+warmupStandingSQL("ea.id")+`
+		  ) wh ON true
 		 WHERE ea.status = 'active'
 		   AND ea.send_lifecycle IN ('active', 'resting')
 		 ORDER BY ea.send_lifecycle_checked_at NULLS FIRST, ea.id
@@ -143,9 +144,10 @@ func (r *sendLifecycleRepository) GetLifecycleCandidate(ctx context.Context, acc
 	var state string
 	var health *string
 	err := r.DB.Pool.QueryRow(ctx, `
-		SELECT ea.id, ea.send_lifecycle, ea.send_lifecycle_since, wpp.health_state
+		SELECT ea.id, ea.send_lifecycle, ea.send_lifecycle_since, wh.health_state
 		  FROM email_accounts ea
-		  LEFT JOIN warmup_pool_participants wpp ON wpp.email_account_id = ea.id
+		  LEFT JOIN LATERAL (`+warmupStandingSQL("ea.id")+`
+		  ) wh ON true
 		 WHERE ea.id = $1
 	`, accountID).Scan(&c.EmailAccountID, &state, &c.Since, &health)
 	if err != nil {
