@@ -240,4 +240,15 @@ func TestLiveCloudLinkStandingExpiredHoldDoesNotMaskALiveOne(t *testing.T) {
 	if state, _, _ := f.warmup.GetHealthState(ctx, f.sender); state != models.WarmupHealthThrottled {
 		t.Fatalf("an ended quarantine masked the live throttle: %s", state)
 	}
+
+	// A throttle past its term does not mask a live watch either.
+	if _, err := f.pool.Exec(ctx, `UPDATE warmup_pool_participants SET health_state = 'throttled', blocked_until = $2 WHERE email_account_id = $1`, f.sender, past); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{State: "watch"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if state, _, _ := f.warmup.GetHealthState(ctx, f.sender); state != models.WarmupHealthWatch {
+		t.Fatalf("an ended throttle masked the live watch: %s", state)
+	}
 }
