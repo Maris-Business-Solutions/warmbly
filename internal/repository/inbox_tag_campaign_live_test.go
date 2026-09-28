@@ -224,3 +224,34 @@ func TestLiveInboxTagUncheckedNotifications(t *testing.T) {
 		t.Fatalf("automated = %v (%v), want the reopened message back in the inbox", automated, err)
 	}
 }
+
+// The return date an away message was asked about survives the round trip as
+// the same day, and a verdict that was not asked reads back as none.
+func TestLiveInboxTagReturnDateRoundTrip(t *testing.T) {
+	f := newInboxTagCampaignFixture(t)
+	ctx := context.Background()
+	repo := NewInboxTagRepository(f.pool)
+	day := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+
+	for _, tc := range []struct {
+		id   string
+		date *time.Time
+	}{{"<asked@example.com>", &day}, {"<unasked@example.com>", nil}} {
+		if err := repo.Save(ctx, &InboxTagResult{
+			OrganizationID: f.org, EmailAccountID: f.mailbox, MessageID: tc.id, ThreadID: "t-ooo",
+			Kind: "auto_reply_ooo", KindConfidence: 1, KindSource: "header", ReturnDate: tc.date,
+		}); err != nil {
+			t.Fatalf("save %s: %v", tc.id, err)
+		}
+		got, err := repo.GetByMessageID(ctx, f.org, tc.id)
+		if err != nil || got == nil {
+			t.Fatalf("read %s: %v", tc.id, err)
+		}
+		switch {
+		case tc.date == nil && got.ReturnDate != nil:
+			t.Fatalf("%s: return date %v, want none", tc.id, got.ReturnDate)
+		case tc.date != nil && (got.ReturnDate == nil || got.ReturnDate.UTC().Format(time.DateOnly) != "2026-10-12"):
+			t.Fatalf("%s: return date %v, want 2026-10-12", tc.id, got.ReturnDate)
+		}
+	}
+}

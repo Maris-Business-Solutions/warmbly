@@ -61,6 +61,42 @@ function ConfidenceChip({ value, floorBreached }: { value: number; floorBreached
     );
 }
 
+// Mirrors ReturnDateFloor in internal/app/inboxtag/policy.go.
+const RETURN_DATE_FLOOR = 0.4;
+
+function returnDateNoul(r: InboxTagRow): number | null {
+    const a = r.answers?.return_date as { noul?: unknown } | undefined;
+    return typeof a?.noul === "number" ? a.noul : null;
+}
+
+// The away message's return date and whether the model read it as the day the
+// sender is back. Below the floor the hold used the workspace fallback instead.
+function ReturnDateChip({ r }: { r: InboxTagRow }) {
+    const noul = returnDateNoul(r);
+    if (!r.return_date || noul === null) return null;
+    const doubted = noul < RETURN_DATE_FLOOR;
+    const day = new Date(`${r.return_date}T00:00:00Z`).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+    });
+    return (
+        <span
+            title={
+                doubted
+                    ? "The model read this date as not the return, so the hold used the fallback"
+                    : "Return date read from the away message, confirmed by the model"
+            }
+            className={cn(
+                "px-1.5 rounded text-[10.5px] tabular-nums",
+                doubted ? "bg-rose-50 text-rose-700 line-through" : "bg-emerald-50 text-emerald-700",
+            )}
+        >
+            back {day} · {pct(noul)}
+        </span>
+    );
+}
+
 function Row({ r }: { r: InboxTagRow }) {
     return (
         <div className="px-5 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
@@ -94,6 +130,7 @@ function Row({ r }: { r: InboxTagRow }) {
                     )}
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
+                    <ReturnDateChip r={r} />
                     {(r.actions ?? []).map((a) => (
                         <span
                             key={a}
@@ -170,7 +207,7 @@ export default function InboxTaggingPage() {
             <StatStrip cols={4}>
                 <Stat label="Classified" value={q.isPending ? "—" : (d?.summary.total ?? 0).toLocaleString()} sub="messages" accent={(d?.summary.total ?? 0) > 0} />
                 <Stat label="Needs review" value={q.isPending ? "—" : (d?.summary.needs_review ?? 0).toLocaleString()} sub="below the confidence floor" />
-                <Stat label="Decided offline" value={q.isPending ? "—" : (d?.summary.from_offline ?? 0).toLocaleString()} sub="no model call made" />
+                <Stat label="Decided offline" value={q.isPending ? "—" : (d?.summary.from_offline ?? 0).toLocaleString()} sub="kind read without the model" />
                 <Stat
                     label="Actions taken"
                     value={q.isPending ? "—" : (d?.summary.acted ?? 0).toLocaleString()}

@@ -104,6 +104,9 @@ type workspaceSettings struct {
 	languages []string
 	// actionRequired asks whether automated mail needs the recipient to act.
 	actionRequired bool
+	// holdsOnOOO is a workspace that holds a lead on an out-of-office reply,
+	// the only reader of the return-date answer.
+	holdsOnOOO bool
 }
 
 // workspace reads them. A failed read costs the workspace's additions for this
@@ -124,6 +127,7 @@ func (s *Service) workspace(ctx context.Context, orgID uuid.UUID) workspaceSetti
 		questions:      cfg.InboxTagging.Questions,
 		languages:      cfg.InboxTagging.Languages,
 		actionRequired: cfg.InboxTagging.ActionRequiredInInbox,
+		holdsOnOOO:     cfg.ReplyIntent.Enabled && cfg.ReplyIntent.HoldOnOutOfOffice,
 	}
 }
 
@@ -151,6 +155,9 @@ type Message struct {
 	Campaign        string
 	// Outbound is set by the caller from the folder, not guessed from content.
 	Outbound bool
+	// historical marks a backfill, which labels history and holds nobody, so
+	// nothing is asked on behalf of a hold.
+	historical bool
 }
 
 // Classify runs the whole pipeline for one inbound message. Safe to call on
@@ -187,6 +194,7 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 
 	state := BuildState(m.Subject, m.BodyText, m.PreviousMessage, m.Campaign, ws.languages...)
 	var custom []models.InboxTagQuestion
+	back, confirm := returnDateToConfirm(m, ws, facts.DeterministicKind, time.Now())
 
 	var resp *Response
 	switch {
@@ -199,10 +207,29 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 		state.Language = LanguageHint(ws.languages)
 		// 4. Send every question, the workspace's own included, in one request
 		// to avoid repeated state ingest.
-		resp, err = s.asker.Ask(ctx, state, QuestionsFor(custom, ws.actionRequired))
+		questions := QuestionsFor(custom, ws.actionRequired)
+		if confirm {
+			state.ReturnPhrase = back.Phrase
+			questions[QReturnDate] = ReturnDateQuestion()
+		}
+		resp, err = s.asker.Ask(ctx, state, questions)
 		if err != nil {
 			release()
 			return Decision{}, err
+		}
+	case facts.DeterministicKind == KindAutoReplyOOO && confirm:
+		// Known to be an away message, so only its date is asked, over the
+		// message alone: our previous send holds dates of its own.
+		resp, err = s.asker.Ask(ctx, State{
+			Subject:      state.Subject,
+			Body:         state.Body,
+			Language:     LanguageHint(ws.languages),
+			ReturnPhrase: back.Phrase,
+		}, map[string]Question{QReturnDate: ReturnDateQuestion()})
+		if err != nil {
+			// The parser's date stands, as it did before the question existed.
+			log.Warn().Err(err).Str("message_id", m.MessageID).Msg("inbox tagging: return date not confirmed; parsed date stands")
+			resp = nil
 		}
 	case facts.DeterministicKind == KindNotification && HasContent(state):
 		// A notice decided offline is still asked whether it needs acting on.
@@ -233,8 +260,12 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 
 	// 5. Code decides. Nothing above this line chose a label.
 	decision := DecideWith(answers, facts, custom)
+	var returnDate *time.Time
+	if decision.ReturnDateAsked {
+		returnDate = &back.Back
+	}
 
-	if err := s.persist(ctx, m, decision, answers, model, tokens); err != nil {
+	if err := s.persist(ctx, m, decision, answers, model, tokens, returnDate); err != nil {
 		release()
 		return decision, err
 	}
@@ -317,7 +348,7 @@ func isAnswer(m Message) bool {
 	return strings.HasPrefix(subject, "re:") || strings.HasPrefix(subject, "aw:") || strings.HasPrefix(subject, "sv:")
 }
 
-func (s *Service) persist(ctx context.Context, m Message, d Decision, answers map[string]Answer, model string, tokens int) error {
+func (s *Service) persist(ctx context.Context, m Message, d Decision, answers map[string]Answer, model string, tokens int, returnDate *time.Time) error {
 	raw, err := json.Marshal(answers)
 	if err != nil {
 		raw = json.RawMessage(`{}`)
@@ -338,6 +369,7 @@ func (s *Service) persist(ctx context.Context, m Message, d Decision, answers ma
 		ReviewReason:     d.ReviewReason,
 		Automated:        d.Automated(),
 		Campaign:         m.Campaign,
+		ReturnDate:       returnDate,
 		Answers:          raw,
 		Labels:           d.Labels,
 		Model:            model,
@@ -578,6 +610,7 @@ func (s *Service) Backfill(ctx context.Context, orgID uuid.UUID, opts BackfillOp
 			InReplyTo:       c.InReplyTo,
 			PreviousMessage: previous,
 			Campaign:        campaign,
+			historical:      true,
 		})
 		// Whatever the old verdict wrote and the new one does not comes off,
 		// unless another verdict in the thread still carries it.

@@ -33,7 +33,10 @@ type InboxTagResult struct {
 	Automated bool
 	// Campaign is the campaign the verdict was made with, "" when none was
 	// known.
-	Campaign    string
+	Campaign string
+	// ReturnDate is the out-of-office return date the model was asked to
+	// confirm, nil when it was not asked. The answer is Answers["return_date"].
+	ReturnDate  *time.Time
 	Answers     json.RawMessage
 	Labels      []string
 	Model       string
@@ -127,8 +130,8 @@ func (r *inboxTagRepository) Save(ctx context.Context, res *InboxTagResult) erro
 				organization_id, email_account_id, message_id, thread_id,
 				kind, kind_confidence, kind_source, intent, intent_confidence,
 				relevance, priority, needs_review, review_reason, answers, labels, model, input_tokens,
-				automated, campaign
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+				automated, campaign, return_date
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
 			ON CONFLICT (organization_id, message_id) DO UPDATE SET
 				email_account_id = EXCLUDED.email_account_id,
 				thread_id = EXCLUDED.thread_id,
@@ -147,6 +150,7 @@ func (r *inboxTagRepository) Save(ctx context.Context, res *InboxTagResult) erro
 				input_tokens = EXCLUDED.input_tokens,
 				automated = EXCLUDED.automated,
 				campaign = EXCLUDED.campaign,
+				return_date = EXCLUDED.return_date,
 				status = 'complete',
 				updated_at = NOW()
 			RETURNING email_account_id, message_id, automated
@@ -170,7 +174,7 @@ func (r *inboxTagRepository) Save(ctx context.Context, res *InboxTagResult) erro
 		res.OrganizationID, res.EmailAccountID, res.MessageID, res.ThreadID,
 		res.Kind, res.KindConfidence, res.KindSource, res.Intent, res.IntentConfidence,
 		res.Relevance, res.Priority, res.NeedsReview, res.ReviewReason, answers, labels, res.Model, res.InputTokens,
-		res.Automated, res.Campaign,
+		res.Automated, res.Campaign, res.ReturnDate,
 	)
 	return err
 }
@@ -209,14 +213,14 @@ func (r *inboxTagRepository) ListForReview(ctx context.Context, orgID uuid.UUID,
 
 const inboxTagColumns = `id, organization_id, email_account_id, message_id, thread_id,
 		       kind, kind_confidence, kind_source, intent, intent_confidence,
-		       relevance, priority, needs_review, review_reason, answers, labels, model, input_tokens, actions, created_at`
+		       relevance, priority, needs_review, review_reason, answers, labels, model, input_tokens, actions, return_date, created_at`
 
 func scanInboxTag(row pgx.Row) (InboxTagResult, error) {
 	var x InboxTagResult
 	err := row.Scan(
 		&x.ID, &x.OrganizationID, &x.EmailAccountID, &x.MessageID, &x.ThreadID,
 		&x.Kind, &x.KindConfidence, &x.KindSource, &x.Intent, &x.IntentConfidence,
-		&x.Relevance, &x.Priority, &x.NeedsReview, &x.ReviewReason, &x.Answers, &x.Labels, &x.Model, &x.InputTokens, &x.Actions, &x.CreatedAt,
+		&x.Relevance, &x.Priority, &x.NeedsReview, &x.ReviewReason, &x.Answers, &x.Labels, &x.Model, &x.InputTokens, &x.Actions, &x.ReturnDate, &x.CreatedAt,
 	)
 	return x, err
 }

@@ -28,6 +28,11 @@ export interface InboxTagRow {
     actions: string[];
     /** Every raw probability, exactly as the API returned it. */
     answers: Record<string, unknown>;
+    /**
+     * The out-of-office return date (YYYY-MM-DD) the model was asked to
+     * confirm; its answer is `answers.return_date.noul`. Null when not asked.
+     */
+    return_date: string | null;
     model: string;
     input_tokens: number;
     created_at: Date;

@@ -1417,7 +1417,7 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 
 	var held *time.Time
 	if campaignID != nil && contactID != nil && verdict.Class == replyclassify.ClassOutOfOffice && settings.ReplyIntent.HoldOnOutOfOffice {
-		held = s.holdForOutOfOffice(ctx, *contactID, settings.ReplyIntent, msg)
+		held = s.holdForOutOfOffice(ctx, *account.OrganizationID, *contactID, settings.ReplyIntent, msg)
 	}
 
 	actionTaken := ""
@@ -1583,14 +1583,16 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 
 // holdForOutOfOffice parks the contact's next step until they are back: the
 // return date the auto-reply names plus a business day, else the workspace's
-// fallback. Best-effort; a hold that cannot be written must never fail the
-// reply ingest behind it. Returns when the hold lifts, or nil if none was set.
+// fallback. With inbox tagging on, a date the model read as not the return
+// takes the fallback too. Best-effort; a hold that cannot be written must never
+// fail the reply ingest behind it. Returns when the hold lifts, or nil if none
+// was set.
 //
 // The hold covers every campaign the contact is still a lead of, not only the
 // one this reply was attributed to. An empty desk is an empty desk: holding
 // one sequence while a second kept mailing them was issue #470 again, narrowed
 // to the second campaign (issue #518).
-func (s *service) holdForOutOfOffice(ctx context.Context, contactID uuid.UUID, cfg models.ReplyIntentSettings, msg *models.EmailMessageStoreData) *time.Time {
+func (s *service) holdForOutOfOffice(ctx context.Context, orgID, contactID uuid.UUID, cfg models.ReplyIntentSettings, msg *models.EmailMessageStoreData) *time.Time {
 	if s.campaignProgressRepo == nil {
 		return nil
 	}
@@ -1605,7 +1607,11 @@ func (s *service) holdForOutOfOffice(ctx context.Context, contactID uuid.UUID, c
 	}
 	until, reason := fallback()
 	if back, ok := replyclassify.ParseReturnDate(msg.Subject, body, now); ok {
-		until, reason = replyclassify.NextBusinessDay(back), "back "+back.Format("2 Jan 2006")
+		if s.returnDateDoubted(ctx, orgID, msg.MessageID, back) {
+			until, reason = now.AddDate(0, 0, days), "auto-reply, return date unclear"
+		} else {
+			until, reason = replyclassify.NextBusinessDay(back), "back "+back.Format("2 Jan 2006")
+		}
 	}
 	// A return date already behind us (a stale auto-reply, a clock skew) would
 	// hold nothing; the fallback is the honest answer.

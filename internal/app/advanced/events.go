@@ -158,6 +158,20 @@ func (s *service) inboxTagActed(ctx context.Context, orgID uuid.UUID, messageID,
 	return false
 }
 
+// returnDateDoubted reports that inbox tagging read the away message's return
+// date as not the day the sender is back. No verdict means no doubt.
+func (s *service) returnDateDoubted(ctx context.Context, orgID uuid.UUID, messageID string, back time.Time) bool {
+	if s.inboxTags == nil || messageID == "" || orgID == uuid.Nil {
+		return false
+	}
+	res, err := s.inboxTags.GetByMessageID(ctx, orgID, messageID)
+	if err != nil {
+		log.Warn().Err(err).Str("message_id", messageID).Msg("out-of-office hold: inbox tag lookup failed; parsed date stands")
+		return false
+	}
+	return inboxtag.ReturnDateDoubted(res, back)
+}
+
 // notify raises an in-app notification off the hot path. It detaches from the
 // request context (the ingest call may return first) and is best-effort.
 func (s *service) notify(userID uuid.UUID, orgID *uuid.UUID, category models.NotificationCategory, title, body, link string, meta map[string]any) {
