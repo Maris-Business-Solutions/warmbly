@@ -720,7 +720,10 @@ function Section({
                     >
                         {section.label}
                         {hidden && active && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" aria-hidden />
+                            <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" aria-hidden />
+                                <span className="sr-only">(contains current page)</span>
+                            </>
                         )}
                         <ChevronDownIcon
                             className={cn("w-3 h-3 transition-transform", hidden && "-rotate-90")}
