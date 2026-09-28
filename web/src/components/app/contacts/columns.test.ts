@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_COLUMNS, builtinColumns, customColumnId, resolveColumns } from "./columns";
+import { DEFAULT_COLUMNS, builtinColumns, customColumnId, emptyColumnIds, resolveColumns } from "./columns";
 
 describe("resolveColumns", () => {
     it("shows the default layout with Name first when nothing is saved", () => {
@@ -49,5 +49,28 @@ describe("resolveColumns", () => {
         const col = visible[1];
         expect(col.sortKey).toBe("custom:Industry");
         expect(col.sortAsc).toBe(true);
+    });
+});
+
+describe("emptyColumnIds", () => {
+    const base = { id: "1", first_name: "A", last_name: "", email: "a@acme.com", company: "", phone: "", subscribed: true, campaigns: [], created_at: new Date() };
+
+    it("hides an optional column no row has a value for", () => {
+        const { visible } = resolveColumns("contacts", ["name", "phone", "status"], []);
+        const empty = emptyColumnIds(visible, [base, { ...base, id: "2" }]);
+        expect(empty.has("phone")).toBe(true);
+        expect(empty.has("status")).toBe(false);
+    });
+
+    it("keeps it as soon as one row has a value, and hides nothing while empty", () => {
+        const { visible } = resolveColumns("contacts", ["name", "phone"], []);
+        expect(emptyColumnIds(visible, [base, { ...base, id: "2", phone: "+1 555" }]).has("phone")).toBe(false);
+        expect(emptyColumnIds(visible, []).size).toBe(0);
+    });
+
+    it("counts a company domain as company data", () => {
+        const { visible } = resolveColumns("contacts", ["name", "company"], []);
+        expect(emptyColumnIds(visible, [base]).has("company")).toBe(false);
+        expect(emptyColumnIds(visible, [{ ...base, email: "a@gmail.com" }]).has("company")).toBe(true);
     });
 });

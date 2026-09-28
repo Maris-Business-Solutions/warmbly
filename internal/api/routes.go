@@ -791,6 +791,16 @@ func Run(
 				contacts.POST("/export", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.ExportContacts)
 				contacts.POST("/import/preview", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.ImportPreviewContacts)
 				contacts.POST("/import/commit", m.RequireAccess(models.PermManageContacts, models.APIPermBulkContacts), h.ImportCommitContacts)
+				// Background imports: upload once as a draft, analyse, start, and
+				// follow; every read and write is scoped to the organization.
+				contacts.POST("/imports", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.CreateContactImport)
+				contacts.GET("/imports", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.ListContactImports)
+				contacts.GET("/imports/:id", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.GetContactImport)
+				contacts.PATCH("/imports/:id", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.SaveContactImportDraft)
+				contacts.POST("/imports/:id/analyze", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.AnalyzeContactImport)
+				contacts.POST("/imports/:id/start", m.RequireAccess(models.PermManageContacts, models.APIPermBulkContacts), h.StartContactImport)
+				contacts.POST("/imports/:id/cancel", m.RequireAccess(models.PermManageContacts, models.APIPermBulkContacts), h.CancelContactImport)
+				contacts.GET("/imports/:id/failed.csv", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.DownloadContactImportFailures)
 				contacts.PATCH("/:id", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.UpdateContact)
 				contacts.DELETE("/:id", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.DeleteContact)
 

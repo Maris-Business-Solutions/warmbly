@@ -9,7 +9,14 @@ Contacts are the people you reach out to; the CRM tracks what happens after they
 
 Two routes share the same column-mapping screen: a file upload and an on-demand Google Sheets sync.
 
-**From a file** (CSV, TSV, or XLSX, up to 50 MB and 50,000 rows; a CSV may use commas or semicolons, read off the header line), the wizard runs **Upload**, **Map**, **Options**, **Result**. Parsing happens server-side. Start it from Contacts, or from a campaign's Leads tab to attach the imports to that campaign automatically, or from a [segment](/guides/segments/)'s member list to pin every row into that segment. The wizard names the target it inherited in its header and on the Options step, and the result step confirms it. The result step reports imported, updated, skipped, and failed counts, and failed rows download as an error CSV you can fix and re-import.
+**From a file** (CSV, TSV, or XLSX, up to 50 MB and 50,000 rows; a CSV may use commas or semicolons, read off the header line), the wizard runs **Upload**, **Map columns**, **Review**, **Import**. Start it from Contacts, or from a campaign's Leads tab to attach the imports to that campaign automatically, or from a [segment](/guides/segments/)'s member list to pin every row into that segment. The wizard names the target it inherited in its header and on the Review step, and the result confirms it.
+
+1. **Upload.** The file goes up once and is read on the server, which measures every column over the whole file. Nothing is written to your contacts yet. **Download a sample file** gives you a CSV with every standard column if you are starting from scratch.
+2. **Map columns.** Each column shows how full it is across the file, a few of its values, and where it will go. **Find a column** and **Unmapped only** help with wide CRM exports, **First row is header** moves the first row between the headers and the data, and **Preview contacts** shows the first rows as the contacts they will become, with any row missing a usable address marked.
+3. **Review.** The whole file is checked before anything is written, and the result is one line: how many new contacts will be added, how many are already in your workspace, how many repeated rows are merged, and how many rows can't be imported (open it to see which and why). When some contacts already exist, choose **Leave as is** or **Update details** for them. **Add them to** puts everything from the file into segments, categories, and campaigns; the segment picker creates a segment on the spot, and offers one named after the file, so an import becomes an audience in one step. **More options** holds whether new contacts are subscribed. An import that would be refused as a whole, because it would put the workspace over its plan's contact limit or create more than 100 categories, says so here instead of after the upload, and the import button says exactly what will happen (`Import 1,102 new · update 118`).
+4. **Import.** The import runs on the server in chunks, with live progress, its rate, and the time left. You can close the window: it keeps running, survives a refresh, and everyone in the workspace sees it finish. While it runs, an **Importing** chip on the Contacts toolbar shows how far it is and reopens it; **Stop** ends it early and keeps the rows already imported. The result reports imported, updated, skipped, and failed counts, lists the failed rows with their reasons, and **Download to fix** gives you every failed row as uploaded, under the file's own headers, with the reason in the last column, ready to correct and import again.
+
+A file whose headers match one you imported before maps itself the way you confirmed last time, marked **Mapping remembered**. The Upload step lists the workspace's recent imports, finished or still running, and opening one shows its progress or result.
 
 You must map at least one column to **Email**.
 
@@ -33,17 +40,21 @@ Each custom mapping says what it will do: **Fills your existing field**, **Creat
 
 Two columns may fill the same field, which is how a `Phone` and a `Mobile` column become one number. Each row names the other column, and where both have a value the one further right is kept; a blank cell never overwrites the other column's value.
 
-<Callout type="info" title="Duplicates match on lowercased email">
-`Dana@Acme.com` and `dana@acme.com` are the same contact. Choose **Skip existing** (leave untouched), **Update existing** (merge new values in), or **Create duplicates** (force a new one, falling back to update if a uniqueness rule blocks it).
+<Callout type="info" title="Duplicates match on lowercased email, across the workspace">
+`Dana@Acme.com` and `dana@acme.com` are the same contact, and a contact belongs to the workspace, so an address a teammate already added counts as one you have. Choose **Leave as is** (their details stay untouched) or **Update details** (empty details are filled in from the file). The API also accepts `create_duplicate`, which updates too, since one address is one contact per workspace.
 
-Skipping still adds the contact to the campaigns, segments, and categories the import targets: it leaves their fields alone, it does not leave them out of the list. If the same address appears twice in one file it becomes one contact, and the extra rows count as skipped.
+Skipping still adds the contact to the campaigns, segments, and categories the import targets: it leaves their fields alone, it does not leave them out of the list. If the same address appears twice in one file it becomes one contact, and the extra rows count as skipped with the line they repeat.
 </Callout>
+
+An address you already hold as a contact in another workspace you belong to cannot be added to this one, and that row fails with a reason saying so; the other workspace's contact is never changed by an import here.
+
+One row Warmbly cannot save (a custom field value too large to store, say) fails on its own; the rows imported alongside it are unaffected.
 
 Rows with a missing or invalid email are reported with a line number and reason rather than imported. Addresses are stored lowercased and stripped of any name around them, so a cell reading `Dana Reyes <dana@acme.com>` imports as `dana@acme.com` and both spellings of one address land on one contact. A blank cell never erases a value you already have, so re-importing a partial export enriches contacts instead of wiping them.
 
 Problems with the mapping itself, an unnamed custom field or a name Warmbly cannot use, are reported once before anything is written, so a single typo can never fail every row.
 
-The **Options** step also decides where the contacts land: **Add to campaigns** enrols everyone in the file as leads of the campaigns you pick (hidden when the wizard was started from a campaign's Leads tab, since that campaign is already the target), and **Add to segments** pins them into the [segments](/guides/segments/) you pick as manual includes, so they stay members whatever the segment's conditions say. Started from a segment, that segment is always applied and shown as a fixed row; the picker below it adds more.
+On the **Review** step, **Campaigns** enrols everyone in the file as leads of the campaigns you pick (started from a campaign's Leads tab, that campaign is shown as the fixed target), and **Segments** pins them into the [segments](/guides/segments/) you pick as manual includes, so they stay members whatever the segment's conditions say. A segment created from the picker has no conditions, so it holds exactly the contacts pinned into it. Started from a segment, that segment is always applied and shown as a fixed row; the picker below it adds more.
 
 **From Google Sheets**, a sheet is a reusable **sync source** rather than a one-time upload. Connect it once (Warmbly reads only the tab you choose and never writes back), paste the spreadsheet ID from the URL between `/d/` and `/edit`, pick the tab, map columns, then set duplicate handling, a label, and optionally a campaign to enroll into, categories to apply and segments to pin into. **Nothing syncs automatically**: press **Sync now**, or save and sync immediately.
 
@@ -51,9 +62,9 @@ Segment targets apply on every run, so a sheet you keep adding rows to keeps fee
 
 Saved sources live in your Sync sources list to re-run, edit, or remove. Each sync dedupes on lowercased email using your chosen duplicate handling, so re-syncing a sheet with new rows is safe.
 
-### What the result tells you about the list
+### What the review tells you about the list
 
-The result step also reports what the addresses themselves look like: how many were malformed, how many are on known throwaway domains, and how many are shared inboxes like `info@`. When a quarter or more of the file is malformed or throwaway, the result says so.
+The Review step and the result also report what the addresses themselves look like: how many were malformed, how many are on known throwaway domains, and how many are shared inboxes like `info@`. When a quarter or more of the file is malformed or throwaway, both say so.
 
 - **Shared inboxes are counted but not held against the list.** Mailing `info@` is a choice, and plenty of legitimate B2B lists are mostly role addresses.
 - **The import still happens.** These are your records, so nothing is refused here. A list bad enough to matter is stopped when you try to launch a campaign with it, which is where the damage would actually occur. See [the launch check](/guides/campaigns/).
@@ -95,21 +106,23 @@ Free-text search matches first name, last name, email, company and phone. Every 
 
 ## Choosing columns
 
-**Columns** in the toolbar opens the column chooser. Tick a column to show it, untick it to hide it, and drag the grip beside a shown column to change the order. Name is always the first column. Under **Custom fields** every custom field in the workspace is offered as a column, so a list imported from Apollo or Clay can show the fields you triage on (industry, title, employee count) without opening each contact.
+**Columns** in the toolbar opens the column chooser. A column of optional details (Phone, Company, a custom field) that nobody in the list you are looking at has filled in steps aside rather than showing a column of dashes, and comes back as soon as one contact has a value; the chooser marks it **empty here**. Tick a column to show it, untick it to hide it, and drag the grip beside a shown column to change the order. Name is always the first column. Under **Custom fields** every custom field in the workspace is offered as a column, so a list imported from Apollo or Clay can show the fields you triage on (industry, title, employee count) without opening each contact.
 
 The layout is yours: it is saved to your account for this workspace, so it follows you to another browser, and a teammate looking at the same list keeps their own columns. The campaign Leads tab has its own layout, separate from the contacts page. **Reset to default** at the bottom of the chooser puts the standard columns back.
 
 ## Sorting
 
-Click a column header to sort by it, and click it again to flip the direction. Text columns (name, company, email provider, phone, custom fields) start ascending; dates and counts start with the newest or largest first. The **Sort** menu in the toolbar reaches the same orderings, including columns that are hidden or that a phone screen has no room for, and every custom field in the workspace.
+Click a column header to sort by it, and click it again to flip the direction. Text columns (name, company, phone, custom fields) start ascending; dates and counts start with the newest or largest first. The **Sort** menu in the toolbar reaches the same orderings, including columns that are hidden or that a phone screen has no room for, email provider, and every custom field in the workspace.
 
 A sort on a custom field orders the values as text. Contacts that do not have the field, or have it blank, are grouped at the end when ascending and at the start when descending. The sort is saved with your layout, so the list opens the way you left it.
 
 ## Email provider
 
-The **Email provider** column shows who hosts each contact's inbox: Google Workspace, Gmail, Microsoft 365, Outlook.com, Yahoo Mail, iCloud Mail, Zoho Mail and the other hosts Warmbly recognises, with the provider's logo. It works for company domains too: `dana@acme.com` reads as Google Workspace when Acme's mail is hosted by Google. Warmbly reads it from the domain's mail records in the background, usually within a minute of a contact being added, and fills the list in live. A dash means the check has not reached the contact yet, or the domain has no mail server at all.
+Each contact's avatar carries a small badge with the logo of whoever hosts their inbox: Google Workspace, Gmail, Microsoft 365, Outlook.com, Yahoo Mail, iCloud Mail, Zoho Mail and the other hosts Warmbly recognises. Hover it for the provider's name. It works for company domains too: `dana@acme.com` reads as Google Workspace when Acme's mail is hosted by Google. Warmbly reads it from the domain's mail records in the background, usually within a minute of a contact being added, and fills the list in live. No badge means the check has not reached the contact yet, or the domain has no mail server Warmbly recognises.
 
-It is part of the standard layout on the contacts page (if you have already arranged your own columns, add it from **Columns**) and one tick away in the column chooser on a campaign's Leads tab. From there you can sort by it, filter with **Add filter** > **Email provider** (including **Unknown or not checked yet**), select every match and act on them in bulk (add them to a campaign, tag them, export them), or save the filter as a segment. Campaign [ESP matching](/guides/campaigns/) uses the same data to pair each lead with a same-provider mailbox.
+A contact on a company domain shows that company's logo in place of their initials, and the **Company** column shows it beside the company name; when no company is on file, the column shows the domain their address is on. Personal inboxes (Gmail, Outlook.com, Yahoo and the like) keep their initials. Logos are on for Warmbly Cloud and off on a self-hosted instance unless its operator turns them on, because the browser fetches each one from DuckDuckGo; see [data control](/development/data-control/#outbound-calls).
+
+It shows on the contacts page and on a campaign's Leads tab alike. You can sort by it from **Sort**, filter with **Add filter** > **Email provider** (including **Unknown or not checked yet**), select every match and act on them in bulk (add them to a campaign, tag them, export them), or save the filter as a segment. Campaign [ESP matching](/guides/campaigns/) uses the same data to pair each lead with a same-provider mailbox.
 
 ## Selecting rows
 

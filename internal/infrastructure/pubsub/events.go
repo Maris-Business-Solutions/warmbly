@@ -103,6 +103,8 @@ const (
 	EventAIResearchProgress EventType = "AI_RESEARCH_PROGRESS"
 	// EventMailboxImportProgress: a mailbox import moved (rows settled, or it finished).
 	EventMailboxImportProgress EventType = "MAILBOX_IMPORT_PROGRESS"
+	// EventContactImportProgress: a contact import moved (a chunk settled, or it finished).
+	EventContactImportProgress EventType = "CONTACT_IMPORT_PROGRESS"
 
 	// An AI-drafted unibox reply is ready for human review (org-scoped, gated on
 	// access_unibox). The web client invalidates the unibox + drafts queries.
@@ -694,6 +696,30 @@ func (p *StreamingPublisher) PublishMailboxImportProgress(ctx context.Context, o
 		Status:    status,
 	}
 	attrs := map[string]string{"org_id": orgID.String(), "event_type": string(EventMailboxImportProgress)}
+	_ = p.client.Publish(ctx, TopicUserEvents, event, attrs)
+}
+
+// ContactImportEvent is the org-scoped payload for CONTACT_IMPORT_PROGRESS.
+type ContactImportEvent struct {
+	BaseEvent
+	OrgID    string `json:"org_id"`
+	ImportID string `json:"import_id"`
+	Status   string `json:"status"`
+}
+
+// PublishContactImportProgress tells the workspace a contact import moved, so
+// every teammate watching it refetches.
+func (p *StreamingPublisher) PublishContactImportProgress(ctx context.Context, orgID, importID uuid.UUID, status string) {
+	if p == nil || p.client == nil || orgID == uuid.Nil {
+		return
+	}
+	event := &ContactImportEvent{
+		BaseEvent: BaseEvent{EventType: EventContactImportProgress, Timestamp: time.Now()},
+		OrgID:     orgID.String(),
+		ImportID:  importID.String(),
+		Status:    status,
+	}
+	attrs := map[string]string{"org_id": orgID.String(), "event_type": string(EventContactImportProgress)}
 	_ = p.client.Publish(ctx, TopicUserEvents, event, attrs)
 }
 

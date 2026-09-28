@@ -24,12 +24,28 @@ export interface ViewSortState {
     reverse: boolean;
 }
 
+// Ticked columns the current list has no data for, so the chooser can say
+// why a ticked column is not on screen.
+const NO_EMPTY = new Set<string>();
+const EmptyColumns = React.createContext<Set<string>>(NO_EMPTY);
+
 function ColumnLabel({ col }: { col: ContactColumn }) {
+    const empty = React.useContext(EmptyColumns).has(col.id);
     return (
         <>
             <span className="truncate">{col.label}</span>
-            {col.custom && (
-                <span className="ml-auto shrink-0 text-[10px] uppercase tracking-[0.08em] text-slate-400">custom</span>
+            {(empty || col.custom) && (
+                <span className="ml-auto shrink-0 flex items-center gap-1.5">
+                    {empty && (
+                        <span
+                            className="text-[10px] text-slate-400 italic"
+                            title="No contact in this list has a value, so the column is hidden until one does"
+                        >
+                            empty here
+                        </span>
+                    )}
+                    {col.custom && <span className="text-[10px] uppercase tracking-[0.08em] text-slate-400">custom</span>}
+                </span>
             )}
         </>
     );
@@ -108,6 +124,7 @@ export function ColumnChooser({
     customized,
     onChange,
     onReset,
+    empty,
 }: {
     // In display order, Name first.
     visible: ContactColumn[];
@@ -117,6 +134,8 @@ export function ColumnChooser({
     // The ids of every shown column in order, Name first.
     onChange: (ids: string[]) => void;
     onReset: () => void;
+    // Shown columns hidden because the list has no data for them.
+    empty?: Set<string>;
 }) {
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
@@ -164,6 +183,7 @@ export function ColumnChooser({
     const nothing = shownMatches.length === 0 && builtinAvail.length === 0 && customAvail.length === 0 && !locked.some(matches);
 
     return (
+        <EmptyColumns.Provider value={empty ?? NO_EMPTY}>
         <PopoverMenu align="end" open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
             <PopoverMenuTrigger asChild>
                 <SelectButton
@@ -253,6 +273,7 @@ export function ColumnChooser({
                 </div>
             </PopoverMenuContent>
         </PopoverMenu>
+        </EmptyColumns.Provider>
     );
 }
 

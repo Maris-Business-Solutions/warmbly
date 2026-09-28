@@ -7420,6 +7420,657 @@
         }
       }
     },
+    "/contacts/imports": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "contacts_imports_create",
+        "summary": "Create a background import",
+        "description": "Uploads a CSV, TSV or XLSX file once and returns a draft with its preview, including every column's fill over the whole file. Nothing is written to contacts until the import is started. Max 50 MB and 50,000 rows; a workspace holds at most 10 drafts and running imports at once. Scope `WRITE_CONTACTS`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The CSV/TSV/XLSX upload."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The draft import, with preview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing file, unsupported format, empty, or over a cap.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks WRITE_CONTACTS or caller lacks manage_contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The workspace already holds 10 drafts and running imports.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "contacts_imports_list",
+        "summary": "List imports",
+        "description": "The organization's background imports, newest first. Scope `READ_CONTACTS`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "pagination.next_cursor from the previous page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of imports.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImportList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks READ_CONTACTS or caller lacks view_contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contacts/imports/{id}": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "contacts_imports_get",
+        "summary": "Get an import",
+        "description": "An import with its progress. Once finished it carries its first 200 failed rows. Scope `READ_CONTACTS`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Import id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The import.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks READ_CONTACTS or caller lacks view_contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such import in this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contacts/imports/{id}/analyze": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "contacts_imports_analyze",
+        "summary": "Analyze an import",
+        "description": "Reports what a draft would do under a mapping, over the whole file, writing nothing. Scope `WRITE_CONTACTS`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Import id."
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactImportAnalyzeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the import would do.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImportAnalysis"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid mapping.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks WRITE_CONTACTS or caller lacks manage_contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such import in this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The import has already started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contacts/imports/{id}/start": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "contacts_imports_start",
+        "summary": "Start an import",
+        "description": "Queues a draft with its mapping and options; the server applies it in chunks. Starting an import that has already started returns it unchanged. Scope `BULK_CONTACTS`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Import id."
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactImportOptions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The queued import.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid mapping, dedup, or target.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks BULK_CONTACTS or caller lacks manage_contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such import in this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The import was cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contacts/imports/{id}/cancel": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "contacts_imports_cancel",
+        "summary": "Cancel an import",
+        "description": "Stops a draft, queued or running import. Rows already imported stay imported. Scope `BULK_CONTACTS`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Import id."
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The import.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks BULK_CONTACTS or caller lacks manage_contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such import in this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contacts/imports/{id}/failed.csv": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "contacts_imports_failed_csv",
+        "summary": "Download failed rows",
+        "description": "Every failed row as uploaded, under the file's own headers, followed by Line and Error columns. Scope `READ_CONTACTS`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Import id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The failed rows.",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks READ_CONTACTS or caller lacks view_contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such import in this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/contacts/lookup": {
       "get": {
         "tags": [
@@ -30142,6 +30793,21 @@
             "items": {
               "type": "integer"
             }
+          },
+          "column_stats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactImportColumnStats"
+            },
+            "description": "Every column's fill over the whole file. Sent by background imports."
+          },
+          "mapping_source": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "saved"
+            ],
+            "description": "saved when this organization confirmed a mapping for these exact headers before."
           }
         }
       },
@@ -30211,6 +30877,335 @@
             "items": {
               "$ref": "#/components/schemas/ContactImportRowError"
             }
+          },
+          "quality": {
+            "$ref": "#/components/schemas/ContactImportQuality"
+          }
+        }
+      },
+      "ContactImportColumnStats": {
+        "type": "object",
+        "description": "One column's fill over the whole file.",
+        "required": [
+          "filled",
+          "distinct",
+          "samples"
+        ],
+        "properties": {
+          "filled": {
+            "type": "integer",
+            "description": "Non-empty cells."
+          },
+          "distinct": {
+            "type": "integer",
+            "description": "Different values, counted up to 1,000."
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to three distinct values, in file order."
+          }
+        }
+      },
+      "ContactImportOptions": {
+        "type": "object",
+        "description": "How an import maps columns and treats rows. The same fields as the commit's options.",
+        "required": [
+          "mapping",
+          "dedup",
+          "has_header"
+        ],
+        "properties": {
+          "mapping": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactImportColumnMapping"
+            }
+          },
+          "dedup": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "update",
+              "create_duplicate"
+            ]
+          },
+          "has_header": {
+            "type": "boolean"
+          },
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "campaign_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "segment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "subscribed_default": {
+            "type": "boolean",
+            "description": "Subscription state for new contacts when no subscribed column is mapped. Defaults to true."
+          }
+        }
+      },
+      "ContactImportAnalyzeRequest": {
+        "type": "object",
+        "required": [
+          "mapping",
+          "has_header"
+        ],
+        "properties": {
+          "mapping": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactImportColumnMapping"
+            }
+          },
+          "has_header": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ContactImportAnalysis": {
+        "type": "object",
+        "description": "What an import would do, read over the whole file before anything is written. Every row lands in exactly one of new, existing, duplicates_in_file, invalid or conflicts.",
+        "required": [
+          "rows",
+          "new",
+          "existing",
+          "duplicates_in_file",
+          "invalid",
+          "conflicts",
+          "invalid_samples"
+        ],
+        "properties": {
+          "rows": {
+            "type": "integer"
+          },
+          "new": {
+            "type": "integer"
+          },
+          "existing": {
+            "type": "integer",
+            "description": "Addresses the organization already has a contact for."
+          },
+          "duplicates_in_file": {
+            "type": "integer"
+          },
+          "invalid": {
+            "type": "integer"
+          },
+          "conflicts": {
+            "type": "integer",
+            "description": "Addresses the caller holds as a contact in another organization, which cannot be created here."
+          },
+          "invalid_samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactImportRowError"
+            },
+            "description": "Up to 25 invalid or conflicting rows."
+          },
+          "quality": {
+            "$ref": "#/components/schemas/ContactImportQuality"
+          },
+          "problem": {
+            "type": "string",
+            "description": "Why starting would be refused as a whole. Omitted when it would run."
+          }
+        }
+      },
+      "ContactImport": {
+        "type": "object",
+        "description": "A background contact import.",
+        "required": [
+          "id",
+          "organization_id",
+          "filename",
+          "format",
+          "status",
+          "has_header",
+          "columns",
+          "total",
+          "processed",
+          "imported",
+          "updated",
+          "skipped",
+          "failed",
+          "notes",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "has_header": {
+            "type": "boolean"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Data rows in the file."
+          },
+          "processed": {
+            "type": "integer",
+            "description": "Rows settled so far; imported + updated + skipped + failed."
+          },
+          "imported": {
+            "type": "integer"
+          },
+          "updated": {
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "options": {
+            "$ref": "#/components/schemas/ContactImportOptions"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/ContactImportQuality"
+          },
+          "segments_pinned": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Messages about the import as a whole."
+          },
+          "error": {
+            "type": "string",
+            "description": "Why a failed import stopped."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/ContactImportPreview"
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactImportRowError"
+            },
+            "description": "The first 200 failed rows, once finished."
+          }
+        }
+      },
+      "ContactImportList": {
+        "type": "object",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactImport"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          }
+        }
+      },
+      "ContactImportQuality": {
+        "type": "object",
+        "description": "What an import's addresses look like. Advisory: a flagged list still imports.",
+        "required": [
+          "malformed",
+          "disposable",
+          "role",
+          "bad_share_pct",
+          "flagged"
+        ],
+        "properties": {
+          "malformed": {
+            "type": "integer"
+          },
+          "disposable": {
+            "type": "integer"
+          },
+          "role": {
+            "type": "integer",
+            "description": "Shared inboxes such as info@; not counted against the list."
+          },
+          "bad_share_pct": {
+            "type": "number",
+            "description": "Malformed plus disposable, as a percentage of the file."
+          },
+          "flagged": {
+            "type": "boolean",
+            "description": "Set above 25% on files of at least 20 rows."
+          },
+          "summary": {
+            "type": "string"
           }
         }
       },

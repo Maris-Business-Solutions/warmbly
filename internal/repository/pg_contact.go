@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -67,6 +68,15 @@ type ContactRepository interface {
 	// organizations whose contacts changed.
 	SetContactMailHosts(ctx context.Context, results []ContactMailHostResult) ([]uuid.UUID, error)
 	GetByEmailsAndUser(ctx context.Context, userID uuid.UUID, emails []string) (map[string]models.Contact, *errx.Error)
+	// ImportLookup resolves an import's addresses: the workspace's contact for
+	// each it already has, and the ones the importing member holds as a
+	// contact in another workspace, which the per-member unique index keeps
+	// from being created here.
+	ImportLookup(ctx context.Context, orgID, userID uuid.UUID, emails []string) (map[string]uuid.UUID, map[string]bool, *errx.Error)
+	// ImportUpdate enriches existing contacts from imported rows in one
+	// transaction: non-empty values win, blanks never erase. found[i] is false
+	// when rows[i]'s contact is no longer in the workspace.
+	ImportUpdate(ctx context.Context, orgID uuid.UUID, rows []ContactImportUpdate) ([]bool, *errx.Error)
 	// ResolveCategoryNames maps category titles (as typed in an imported file)
 	// to the workspace's category IDs, creating the ones that don't exist yet.
 	// Keys of the returned map are the lowercased titles.
@@ -355,6 +365,9 @@ func (r *contactRepository) Add(ctx context.Context, userID string, orgID uuid.U
 			  is_catch_all = CASE WHEN $13::text <> '' THEN ($14::text = 'catch_all') ELSE contacts.is_catch_all END,
 			  verification_checked_at = CASE WHEN $13::text <> '' THEN NOW() ELSE contacts.verification_checked_at END,
 			  updated_at = NOW()
+			 -- The unique index is per member, so the row it names can sit in
+			 -- another workspace the member belongs to; only this one is written.
+			 WHERE contacts.organization_id = EXCLUDED.organization_id
 			 -- xmax = 0 only on a fresh row: the source is first-touch, so an
 			 -- upsert that hit an existing contact is not a creation.
 			 RETURNING id, first_name, last_name, email, company, phone, custom_fields, subscribed, updated_at, created_at, (xmax = 0)`,
@@ -381,6 +394,10 @@ func (r *contactRepository) Add(ctx context.Context, userID string, orgID uuid.U
 			&ncon.Phone, &ncon.CustomFields, &ncon.Subscribed, &ncon.UpdatedAt, &ncon.CreatedAt, &inserted,
 		); err != nil {
 			br.Close()
+			// The address is this member's contact in another workspace.
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, errx.ErrContactEmailTaken
+			}
 			db.CaptureError(err, "", nil, "batch queryrow")
 			return nil, errx.InternalError()
 		}
@@ -3081,8 +3098,16 @@ func (r *contactRepository) Delete(ctx context.Context, userID string, orgID uui
 // otherwise mint a category per row.
 const MaxImportCategoryNames = 100
 
-func (r *contactRepository) ResolveCategoryNames(ctx context.Context, orgID, userID uuid.UUID, names []string) (map[string]uuid.UUID, *errx.Error) {
-	out := make(map[string]uuid.UUID, len(names))
+// ValidateImportCategoryNames runs ResolveCategoryNames' checks without
+// writing, so an import can be refused before it starts.
+func ValidateImportCategoryNames(names []string) *errx.Error {
+	_, _, xerr := importCategoryNames(names)
+	return xerr
+}
+
+// importCategoryNames dedupes titles case-insensitively, returning the
+// lowered titles in order and each one's first spelling.
+func importCategoryNames(names []string) ([]string, map[string]string, *errx.Error) {
 	wanted := make([]string, 0, len(names))
 	seen := make(map[string]string, len(names)) // lowered -> original casing
 	for _, raw := range names {
@@ -3091,7 +3116,7 @@ func (r *contactRepository) ResolveCategoryNames(ctx context.Context, orgID, use
 			continue
 		}
 		if len(title) > 50 {
-			return nil, errx.New(errx.BadRequest,
+			return nil, nil, errx.New(errx.BadRequest,
 				"category name "+strconv.Quote(title)+" is longer than 50 characters")
 		}
 		lower := strings.ToLower(title)
@@ -3101,13 +3126,22 @@ func (r *contactRepository) ResolveCategoryNames(ctx context.Context, orgID, use
 		seen[lower] = title
 		wanted = append(wanted, lower)
 	}
-	if len(wanted) == 0 {
-		return out, nil
-	}
 	if len(wanted) > MaxImportCategoryNames {
-		return nil, errx.New(errx.BadRequest, fmt.Sprintf(
+		return nil, nil, errx.New(errx.BadRequest, fmt.Sprintf(
 			"the categories column has %d distinct values; at most %d can be created in one import",
 			len(wanted), MaxImportCategoryNames))
+	}
+	return wanted, seen, nil
+}
+
+func (r *contactRepository) ResolveCategoryNames(ctx context.Context, orgID, userID uuid.UUID, names []string) (map[string]uuid.UUID, *errx.Error) {
+	out := make(map[string]uuid.UUID, len(names))
+	wanted, seen, xerr := importCategoryNames(names)
+	if xerr != nil {
+		return nil, xerr
+	}
+	if len(wanted) == 0 {
+		return out, nil
 	}
 
 	// Ordered, and the first match wins: the migration that made this registry
@@ -3217,6 +3251,134 @@ func (r *contactRepository) GetByEmailsAndUser(ctx context.Context, userID uuid.
 		out[strings.ToLower(c.Email)] = c
 	}
 	return out, nil
+}
+
+func (r *contactRepository) ImportLookup(ctx context.Context, orgID, userID uuid.UUID, emails []string) (map[string]uuid.UUID, map[string]bool, *errx.Error) {
+	existing := make(map[string]uuid.UUID, len(emails))
+	elsewhere := map[string]bool{}
+	norm := make([]string, 0, len(emails))
+	for _, e := range emails {
+		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+			norm = append(norm, e)
+		}
+	}
+	if len(norm) == 0 {
+		return existing, elsewhere, nil
+	}
+	// The workspace's own contact wins; of two members' copies of one address
+	// the importer's, then the oldest, so reruns resolve to the same row.
+	query := `
+		SELECT DISTINCT ON (LOWER(email)) LOWER(email), id, organization_id = $1
+		FROM contacts
+		WHERE LOWER(email) = ANY($3::text[]) AND (organization_id = $1 OR user_id = $2)
+		ORDER BY LOWER(email), (organization_id = $1) DESC, (user_id = $2) DESC, created_at ASC, id ASC`
+	rows, err := r.DB.Query(ctx, query, orgID, userID, norm)
+	if err != nil {
+		db.CaptureError(err, query, nil, "ImportLookup query")
+		return nil, nil, errx.InternalError()
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var addr string
+		var id uuid.UUID
+		var here bool
+		if err := rows.Scan(&addr, &id, &here); err != nil {
+			db.CaptureError(err, query, nil, "ImportLookup scan")
+			return nil, nil, errx.InternalError()
+		}
+		if here {
+			existing[addr] = id
+		} else {
+			elsewhere[addr] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		db.CaptureError(err, query, nil, "ImportLookup rows")
+		return nil, nil, errx.InternalError()
+	}
+	return existing, elsewhere, nil
+}
+
+// ContactImportUpdate is one imported row applied to an existing contact.
+type ContactImportUpdate struct {
+	ID      uuid.UUID
+	Contact models.AddContact
+}
+
+func (r *contactRepository) ImportUpdate(ctx context.Context, orgID uuid.UUID, rows []ContactImportUpdate) ([]bool, *errx.Error) {
+	found := make([]bool, len(rows))
+	if len(rows) == 0 {
+		return found, nil
+	}
+	batch := &pgx.Batch{}
+	for _, row := range rows {
+		c := row.Contact
+		fields := c.CustomFields
+		if fields == nil {
+			fields = map[string]string{}
+		}
+		fields, xerr := normalizeCustomFields(fields)
+		if xerr != nil {
+			return nil, xerr
+		}
+		v, xerr := verificationFromRequest(c.VerificationStatus, c.VerificationProvider)
+		if xerr != nil {
+			return nil, xerr
+		}
+		var vStatus, vSub, vReason, vProvider string
+		if v != nil {
+			vStatus, vSub, vReason, vProvider = v.Status, v.SubStatus, v.Reason, v.Provider
+		}
+		batch.Queue(`
+			UPDATE contacts SET
+			  first_name = COALESCE(NULLIF($3, ''), first_name),
+			  last_name = COALESCE(NULLIF($4, ''), last_name),
+			  company = COALESCE(NULLIF($5, ''), company),
+			  phone = COALESCE(NULLIF($6, ''), phone),
+			  custom_fields = custom_fields || $7::jsonb,
+			  subscribed = COALESCE($8::boolean, subscribed),
+			  verification_status = CASE WHEN $9::text <> '' THEN $9 ELSE verification_status END,
+			  verification_sub_status = CASE WHEN $9::text <> '' THEN $10 ELSE verification_sub_status END,
+			  verification_reason = CASE WHEN $9::text <> '' THEN $11 ELSE verification_reason END,
+			  verification_provider = CASE WHEN $9::text <> '' THEN $12 ELSE verification_provider END,
+			  verification_source = CASE WHEN $9::text <> '' THEN 'imported' ELSE verification_source END,
+			  is_catch_all = CASE WHEN $9::text <> '' THEN ($10::text = 'catch_all') ELSE is_catch_all END,
+			  verification_checked_at = CASE WHEN $9::text <> '' THEN NOW() ELSE verification_checked_at END,
+			  updated_at = NOW()
+			WHERE id = $1 AND organization_id = $2`,
+			row.ID, orgID,
+			strings.TrimSpace(c.FirstName), strings.TrimSpace(c.LastName),
+			strings.TrimSpace(c.Company), strings.TrimSpace(c.Phone),
+			fields, c.Subscribed,
+			vStatus, vSub, vReason, vProvider,
+		)
+	}
+
+	tx, err := r.DB.Begin(ctx)
+	if err != nil {
+		db.CaptureError(err, "", nil, "begin")
+		return nil, errx.InternalError()
+	}
+	defer tx.Rollback(ctx)
+	br := tx.SendBatch(ctx, batch)
+	for i := range rows {
+		tag, err := br.Exec()
+		if err != nil {
+			br.Close()
+			db.CaptureError(err, "", nil, "ImportUpdate exec")
+			return nil, errx.InternalError()
+		}
+		found[i] = tag.RowsAffected() > 0
+	}
+	if err := br.Close(); err != nil {
+		db.CaptureError(err, "", nil, "ImportUpdate close")
+		return nil, errx.InternalError()
+	}
+	if err := tx.Commit(ctx); err != nil {
+		db.CaptureError(err, "", nil, "ImportUpdate commit")
+		return nil, errx.InternalError()
+	}
+	return found, nil
 }
 
 // ExportAll fetches every contact matching the given selection so it

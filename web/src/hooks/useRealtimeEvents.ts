@@ -104,6 +104,19 @@ export function useRealtimeEvents() {
         return
       }
 
+      // A contact import moved. The import refreshes on every beat; the lists
+      // its rows land in refresh when it settles, not once a second while it runs.
+      if (event === 'CONTACT_IMPORT_PROGRESS') {
+        const importId = getString('import_id')
+        invalidate([['contacts', 'imports', 'list']])
+        if (importId) invalidate([['contacts', 'imports', importId]])
+        const status = getString('status')
+        if (status === 'completed' || status === 'cancelled' || status === 'failed') {
+          invalidate([['contacts'], ['segments'], ['campaigns', 'list'], ['organizations', 'limits']])
+        }
+        return
+      }
+
       // An AI-suggested unibox reply was drafted and is awaiting human review.
       // Refresh the unibox (badge/overview) + the drafts list, and the specific
       // thread if present.

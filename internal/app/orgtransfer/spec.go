@@ -290,6 +290,11 @@ var Tables = []Table{
 		Scope: scopeOrg,
 	},
 	{
+		Name: "contact_import_mappings", Group: models.OrgDataGroupContacts,
+		Scope: scopeOrg,
+		Note:  "Column mappings the workspace confirmed for its contact imports, keyed by header set, so the same export maps itself on the destination too.",
+	},
+	{
 		Name: "contact_categories", Group: models.OrgDataGroupContacts,
 		Scope: `contact_id IN ` + orgContacts,
 	},
@@ -895,6 +900,8 @@ var ExcludedTables = map[string]string{
 	"login_history":                "Where people signed in from, kept only to compare a new sign-in against recent ones. It belongs to the person rather than the workspace, and a destination must build its own baseline before it can call anything anomalous.",
 	"mailbox_imports":              "Mailbox imports in progress or recently finished. They are work this instance is doing, and their rows hold credentials in flight, which live on only as the mailboxes they created.",
 	"mailbox_import_rows":          "The rows of a mailbox import, with credentials sealed until each row is connected. They follow mailbox_imports, which does not travel.",
+	"contact_imports":              "Contact imports in progress or recently finished. They are work this instance is doing; the contacts they created travel with the contacts group.",
+	"contact_import_rows":          "The uploaded rows of a contact import and what became of each. They follow contact_imports, which does not travel.",
 	"user_view_preferences":        "Each member's own column layout and sort for the dashboard's lists. It belongs to the person rather than the workspace: members are matched by account on import and a layout names custom fields the destination may not hold yet, so everyone starts from the default view and picks their columns again.",
 }
 

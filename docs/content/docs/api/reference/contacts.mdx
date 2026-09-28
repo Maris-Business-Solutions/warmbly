@@ -464,6 +464,120 @@ Imports are capped at 50,000 rows. `errors` carries at most the first 1,000 entr
 
 A custom-field name may use letters, numbers, underscores, spaces, and dashes (`Company Mobile`, `first-name`, `plan_tier`). Anything else is a `400` on the whole request, raised before any row is written, along with a mapping that names no `email` column or a `custom` column with no `custom_key`. Per-row `errors` are reserved for problems with the data itself.
 
+An existing contact is matched across the organization, not only among the caller's own contacts, so an address a teammate added is `skipped` or `updated` like any other. A row whose address the caller already holds as a contact in another organization fails with a reason saying so, and that organization's contact is not changed. A row that cannot be saved fails on its own; the rows written with it are unaffected.
+
+## Background imports
+
+The commit above runs inside the request, which suits small files and scripts. For a large file, a background import uploads it once, reports what it would do over the whole file, and then runs on the server in chunks, so it survives a dropped connection and can be followed from anywhere. The mapping and options are the same as the commit's.
+
+1. `POST /contacts/imports` uploads the file and returns a draft with its `preview`.
+2. `POST /contacts/imports/:id/analyze` reports what the import would do under a mapping. Optional, and safe to repeat.
+3. `POST /contacts/imports/:id/start` queues it.
+4. `GET /contacts/imports/:id` reports progress until `status` is `completed`, `failed`, or `cancelled`. Dashboard sockets also receive `CONTACT_IMPORT_PROGRESS` as it moves; see [realtime](/api/realtime/).
+
+A draft that is never started is deleted after 24 hours, and a finished import, with its stored rows, after 30 days. A workspace may hold 10 drafts and running imports at once; creating another is a `409`.
+
+### Create an import
+
+`POST /contacts/imports`
+
+Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
+
+Send the file as `multipart/form-data` with a `file` field (max 50 MB, 50,000 rows). Responds `201 Created` with the import in `draft` status and a `preview` shaped like [the preview above](#preview-an-import), plus:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `preview.column_stats` | array | One entry per column, measured over every row: `filled` (non-empty cells), `distinct` (different values, counted up to 1,000), and `samples` (up to three distinct values). |
+| `preview.mapping_source` | string | `saved` when this organization started an import with these exact headers before; `suggested_mapping` is then the mapping it confirmed. Otherwise `suggested`. |
+
+### Analyze an import
+
+`POST /contacts/imports/:id/analyze`
+
+Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
+
+Reads a draft under a mapping and writes nothing. `409` once the import has started.
+
+```json
+{ "mapping": [{ "index": 0, "target": "email" }], "has_header": true }
+```
+
+```json
+{
+  "rows": 1243,
+  "new": 1102,
+  "existing": 118,
+  "duplicates_in_file": 12,
+  "invalid": 11,
+  "conflicts": 0,
+  "invalid_samples": [{ "line": 57, "email": "not-an-email", "reason": "missing or invalid email" }],
+  "quality": { "malformed": 11, "disposable": 0, "role": 62, "bad_share_pct": 0.9, "flagged": false }
+}
+```
+
+Every row lands in exactly one of `new`, `existing`, `duplicates_in_file`, `invalid`, or `conflicts` (an address the caller holds as a contact in another organization). `invalid_samples` lists up to 25 of the invalid and conflicting rows. `problem`, when present, is why starting would be refused as a whole: the plan's contact limit, or too many distinct categories.
+
+### Start an import
+
+`POST /contacts/imports/:id/start`
+
+Auth: **Scope** `BULK_CONTACTS` · **Org permission** `manage_contacts`
+
+The body is the commit's [`options`](#options-fields) object as JSON. Returns the import in `queued` status. Starting an import that has already started returns it unchanged, so a retried request never runs the file twice. A cancelled import is a `409`. When `has_header` is true, the mapping is remembered for the next file with the same headers.
+
+### Get an import
+
+`GET /contacts/imports/:id`
+
+Auth: **Scope** `READ_CONTACTS` · **Org permission** `view_contacts`
+
+```json
+{
+  "id": "8d6f7f2a-5f7e-4a55-9d0b-0c3f1d2e4b6a",
+  "filename": "leads.csv",
+  "format": "csv",
+  "status": "running",
+  "has_header": true,
+  "columns": ["Email", "First", "Company"],
+  "total": 1243,
+  "processed": 500,
+  "imported": 452,
+  "updated": 30,
+  "skipped": 16,
+  "failed": 2,
+  "notes": [],
+  "created_at": "2026-06-11T10:09:40Z",
+  "updated_at": "2026-06-11T10:10:02Z",
+  "started_at": "2026-06-11T10:10:00Z"
+}
+```
+
+`processed` is the rows settled so far and always equals `imported + updated + skipped + failed`. Once finished, `finished_at` is set, `quality` and `segments_pinned` mean what they mean on the commit, `notes` carries messages about the import as a whole, `error` says why a `failed` import stopped, and `failures` lists the first 200 failed rows with `line`, `email`, `values` (the row as uploaded) and `reason`.
+
+### List imports
+
+`GET /contacts/imports`
+
+Auth: **Scope** `READ_CONTACTS` · **Org permission** `view_contacts`
+
+The organization's imports, newest first, as `data` plus `pagination`. `limit` defaults to 50 and may be up to 100; pass `pagination.next_cursor` back as `cursor` for the next page. An invalid cursor or limit is a `400`.
+
+### Cancel an import
+
+`POST /contacts/imports/:id/cancel`
+
+Auth: **Scope** `BULK_CONTACTS` · **Org permission** `manage_contacts`
+
+Stops a draft, queued, or running import and returns it. Rows already imported stay imported. Cancelling a finished import returns it unchanged.
+
+### Download failed rows
+
+`GET /contacts/imports/:id/failed.csv`
+
+Auth: **Scope** `READ_CONTACTS` · **Org permission** `view_contacts`
+
+Every failed row as uploaded, under the file's own headers, followed by `Line` and `Error` columns, so the file can be corrected and imported again. A cell that a spreadsheet would read as a formula is prefixed with `'`.
+
 ## Verification overview
 
 `GET /contacts/verification`

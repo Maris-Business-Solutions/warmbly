@@ -18,6 +18,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/cloudlink"
 	"github.com/warmbly/warmbly/internal/app/compose"
 	"github.com/warmbly/warmbly/internal/app/contact"
+	"github.com/warmbly/warmbly/internal/app/contactimport"
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/crm"
 	"github.com/warmbly/warmbly/internal/app/dangerzone"
@@ -111,6 +112,8 @@ type Handler struct {
 	EmailService     email.EmailService
 	// MailboxImportService runs mailbox imports from files and pasted lists.
 	MailboxImportService *mailboximport.Service
+	// ContactImportService runs contact file imports in the background.
+	ContactImportService *contactimport.Service
 	// DelegationService connects whole Google Workspace domains and Microsoft 365 tenants.
 	DelegationService *delegation.Service
 	// VendorConnService imports mailboxes straight from inbox vendors' APIs.
