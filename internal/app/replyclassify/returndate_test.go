@@ -122,3 +122,32 @@ func TestNextBusinessDay(t *testing.T) {
 		t.Fatalf("Tuesday + 1 business day = %s, want 2026-09-09", got.Format("2006-01-02"))
 	}
 }
+
+// The phrase is what a second reader is asked about, so it names the date the
+// parser used, as written, and never a date the parser computed.
+func TestFindReturnDatePhrase(t *testing.T) {
+	now := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name, body, back, phrase string
+	}{
+		{"a return date", "I am away and back on 2026-09-21. Thanks!", "2026-09-21", "back on 2026-09-21"},
+		{"the last day away keeps its own date", "Ich bin bis einschließlich 30. September abwesend.", "2026-10-01", "bis einschliesslich 30. september"},
+		{"a calendar week", "Ich bin bis KW 41 im Urlaub.", "2026-10-12", "bis kw 41"},
+		{"the end of a range", "Ab dem 4.9. bis zum 18.9. nicht im Büro.", "2026-09-18", "bis zum 18.9."},
+		{"a sentence-opening Bis leaves no marker", "Ich bin ab dem 14.9. wieder erreichbar. Bis dahin vertritt mich Frau X.", "2026-09-14", "ab dem 14.9."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := FindReturnDate("Abwesenheitsnotiz", tc.body, now)
+			if !ok {
+				t.Fatal("no date found")
+			}
+			if day := got.Back.Format("2006-01-02"); day != tc.back {
+				t.Fatalf("back = %s, want %s", day, tc.back)
+			}
+			if got.Phrase != tc.phrase {
+				t.Fatalf("phrase = %q, want %q", got.Phrase, tc.phrase)
+			}
+		})
+	}
+}

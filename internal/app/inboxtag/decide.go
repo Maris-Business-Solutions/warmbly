@@ -69,6 +69,11 @@ type Decision struct {
 	// in Labels; they never move relevance.
 	Custom []CustomMatch
 
+	// ReturnDateAsked marks an out-of-office reply the return-date question was
+	// read for, and ReturnDateNoul is its answer; an unasked zero is not a no.
+	ReturnDateAsked bool
+	ReturnDateNoul  float64
+
 	// ActionRequired is automated mail that needs the recipient to act.
 	ActionRequired bool
 	// KeepInInbox is automated mail a check matched, the built-in one or a
@@ -186,6 +191,12 @@ func DecideWith(answers map[string]Answer, facts Facts, custom []models.InboxTag
 		}
 	}
 	sort.Strings(d.Signals)
+	// Read of an out-of-office reply only: on anything else the phrase is not
+	// a return date, whatever the parser matched.
+	if a, ok := answers[QReturnDate]; ok && d.Kind == KindAutoReplyOOO {
+		d.ReturnDateAsked = true
+		d.ReturnDateNoul = a.Noul
+	}
 
 	// ── Scores, normalised to 0..1 ─────────────────────────────────────────
 	// The score is a position on an ordered rubric, not a magnitude. Dividing

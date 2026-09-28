@@ -39,8 +39,11 @@ type inboxTagRow struct {
 	Model            string          `json:"model"`
 	InputTokens      int             `json:"input_tokens"`
 	// Actions is what the workspace's switches let this verdict do.
-	Actions   []string `json:"actions"`
-	CreatedAt string   `json:"created_at"`
+	Actions []string `json:"actions"`
+	// ReturnDate is the out-of-office return date the model was asked to
+	// confirm (YYYY-MM-DD), null when it was not asked.
+	ReturnDate *string `json:"return_date"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 type inboxTagReviewResponse struct {
@@ -136,6 +139,11 @@ func toTagRow(r repository.InboxTagResult) inboxTagRow {
 	if len(answers) == 0 {
 		answers = json.RawMessage(`{}`)
 	}
+	var returnDate *string
+	if r.ReturnDate != nil {
+		day := r.ReturnDate.UTC().Format("2006-01-02")
+		returnDate = &day
+	}
 	return inboxTagRow{
 		ID:               r.ID.String(),
 		MessageID:        r.MessageID,
@@ -154,6 +162,7 @@ func toTagRow(r repository.InboxTagResult) inboxTagRow {
 		Answers:          answers,
 		Model:            r.Model,
 		InputTokens:      r.InputTokens,
+		ReturnDate:       returnDate,
 		CreatedAt:        r.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }

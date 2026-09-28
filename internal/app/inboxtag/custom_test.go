@@ -226,11 +226,12 @@ func (c *capturingAsker) Ask(_ context.Context, state any, q map[string]Question
 type fakeSettings struct {
 	s     models.InboxTaggingSettings
 	langs []string
+	reply models.ReplyIntentSettings
 }
 
 func (f fakeSettings) GetOutreachSettings(context.Context, uuid.UUID) (*models.AdvancedOutreachSettings, error) {
 	f.s.Languages = f.langs
-	return &models.AdvancedOutreachSettings{InboxTagging: f.s}, nil
+	return &models.AdvancedOutreachSettings{InboxTagging: f.s, ReplyIntent: f.reply}, nil
 }
 
 func TestClassifyAsksWorkspaceQuestionsInTheSameCall(t *testing.T) {

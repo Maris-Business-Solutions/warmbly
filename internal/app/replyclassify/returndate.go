@@ -24,12 +24,28 @@ const ReturnWindowDays = 92
 // without one ("back on the 8th of September") and rejects dates in the past.
 // Returns false when nothing parses with enough confidence.
 func ParseReturnDate(subject, body string, now time.Time) (time.Time, bool) {
+	r, ok := FindReturnDate(subject, body, now)
+	return r.Back, ok
+}
+
+// ReturnDate is a parsed return date and the words it was read from.
+type ReturnDate struct {
+	// Back is the first day the recipient is back, midnight UTC.
+	Back time.Time
+	// Phrase is the cue and the date as written, lower-cased with accents
+	// flattened ("bis einschliesslich 18.9."), so a reader can find it in the
+	// message without redoing the parser's arithmetic.
+	Phrase string
+}
+
+// FindReturnDate is ParseReturnDate with the phrase the date came from.
+func FindReturnDate(subject, body string, now time.Time) (ReturnDate, bool) {
 	text := normalizeForDates(subject + "\n" + StripQuoted(body))
 	if text == "" {
-		return time.Time{}, false
+		return ReturnDate{}, false
 	}
 	rs := rulesFor(nil)
-	at := func(m []int) (time.Time, bool) {
+	at := func(m []int) (ReturnDate, bool) {
 		// Only the span right after the cue is considered: an auto-reply is
 		// mostly prose, and the first date anywhere in it is usually not the
 		// one that matters.
@@ -40,10 +56,11 @@ func ParseReturnDate(subject, body string, now time.Time) (time.Time, bool) {
 			start -= len("kw")
 		}
 		tail := text[start:min(m[1]+returnCueWindow, len(text))]
-		d, kind, ok := firstDate(tail, now, rs.months, endCues[cue])
+		d, kind, end, ok := firstDate(tail, now, rs.months, endCues[cue])
 		if !ok {
-			return time.Time{}, false
+			return ReturnDate{}, false
 		}
+		phrase := strings.TrimSpace(strings.ReplaceAll(text[m[0]:start+end], sentenceMark, ""))
 		switch {
 		case kind == weekDate && endCues[cue]:
 			// "bis KW 41" and "bis KW 40/41" are away through the last week:
@@ -58,11 +75,11 @@ func ParseReturnDate(subject, body string, now time.Time) (time.Time, bool) {
 			// The cue named the last day AWAY, not the day back.
 			d = d.AddDate(0, 0, 1)
 		}
-		return d, true
+		return ReturnDate{Back: d, Phrase: phrase}, true
 	}
 	cues := rs.cue.FindAllStringIndex(text, -1)
 	for i, m := range cues {
-		d, ok := at(m)
+		r, ok := at(m)
 		if !ok {
 			continue
 		}
@@ -73,14 +90,14 @@ func ParseReturnDate(subject, body string, now time.Time) (time.Time, bool) {
 		if strings.HasPrefix(text[m[0]:m[1]], "ab ") && i+1 < len(cues) {
 			if next := cues[i+1]; next[0] < m[1]+returnCueWindow && endCues[text[next[0]:next[1]]] &&
 				!rangeBreak.MatchString(rangeNoise.ReplaceAllString(text[m[1]:next[0]], "")) {
-				if end, ok := at(next); ok && end.After(d) {
+				if end, ok := at(next); ok && end.Back.After(r.Back) {
 					return end, true
 				}
 			}
 		}
-		return d, true
+		return r, true
 	}
-	return time.Time{}, false
+	return ReturnDate{}, false
 }
 
 // Cues in the inclusive list name the last day of the absence rather than the
@@ -148,11 +165,13 @@ var (
 // than in the order the formats happen to be tried. A cue window holds prose as
 // well as the date ("until 10 September; ref 2026-10-01"), and scanning ISO
 // first would answer with the reference number's date and park the lead three
-// weeks too long. kind tells a day from a calendar week; lastWeek reads a
-// range of weeks by its last week rather than its first.
-func firstDate(span string, now time.Time, monthByName map[string]int, lastWeek bool) (time.Time, dateKind, bool) {
+// weeks too long. kind tells a day from a calendar week, and end is where the
+// date's text stops in span; lastWeek reads a range of weeks by its last week
+// rather than its first.
+func firstDate(span string, now time.Time, monthByName map[string]int, lastWeek bool) (time.Time, dateKind, int, bool) {
 	type hit struct {
 		at   int
+		end  int
 		d    time.Time
 		kind dateKind
 	}
@@ -167,7 +186,7 @@ func firstDate(span string, now time.Time, monthByName map[string]int, lastWeek 
 				if re == calendarWeek {
 					kind = weekDate
 				}
-				hits = append(hits, hit{at[i][0], d, kind})
+				hits = append(hits, hit{at[i][0], at[i][1], d, kind})
 			}
 		}
 	}
@@ -206,9 +225,9 @@ func firstDate(span string, now time.Time, monthByName map[string]int, lastWeek 
 		}
 	}
 	if best < 0 {
-		return time.Time{}, dayDate, false
+		return time.Time{}, dayDate, 0, false
 	}
-	return hits[best].d, hits[best].kind, true
+	return hits[best].d, hits[best].kind, hits[best].end, true
 }
 
 // resolveWeek is the Monday of ISO week w: this year's while that week is not

@@ -27,6 +27,9 @@ type State struct {
 	// Language names the languages the workspace says its mail is written in.
 	// It translates nothing; it only tells the reader what to expect.
 	Language string `json:"language,omitempty"`
+	// ReturnPhrase is the words an out-of-office return date was parsed from,
+	// set only when the return-date question is asked.
+	ReturnPhrase string `json:"return_phrase,omitempty"`
 }
 
 // BuildState assembles the state for one inbound message.

@@ -182,6 +182,28 @@ func ActionRequiredQuestion() Question {
 	return Question{Type: QuestionNoul, Instructions: actionRequiredInstruction}
 }
 
+// QReturnDate is asked of an out-of-office reply whose return date the parser
+// read, when the workspace holds on out-of-office. It asks about the phrase as
+// written, never a computed date: whether "bis einschliesslich 18.9." means
+// back on the 19th is the parser's arithmetic, which Jev is worst at. What the
+// model adds is whether the phrase is the end of the absence at all, or its
+// first day, a stand-in's hours, or another date near a cue.
+const QReturnDate = "return_date"
+
+const returnDateInstruction = "The phrase in `return_phrase` says when the sender will be back from their absence."
+
+// ReturnDateQuestion is that question.
+func ReturnDateQuestion() Question {
+	return Question{Type: QuestionNoul, Instructions: returnDateInstruction}
+}
+
+// ReturnDateFloor is the noul below which the parsed return date is dropped
+// for the workspace's fallback hold. It is the mirror of Yes, not Yes: the
+// parser already reached this date by rules, so an unsure answer is no
+// evidence against it, and only a model that reads the phrase as more likely
+// wrong than right by a signal's margin overrules it.
+const ReturnDateFloor = 1 - Yes
+
 // Scores are ordered rubrics. Ten levels is the API maximum; eleven is a 400.
 // The score value is used for threshold checks only, never as a magnitude to
 // do arithmetic between levels with.

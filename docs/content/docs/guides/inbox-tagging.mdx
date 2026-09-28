@@ -157,6 +157,16 @@ Two other features reuse a stored verdict rather than paying for a second judgme
 - **Campaign reply handling.** The reply classifier that drives `stop_on_reply` and the reply branches reads the stored kind and intent when one exists, so an interested reply routes as positive and a declined one as negative with the classifier's real confidence. The intent itself is also stored on the contact's progress, and a sequence can branch on it with the `reply_intent` condition (see [Campaigns](/guides/campaigns/)). Without tagging, the classifier asks TypeSafe one three-way question instead, and without a key it falls back to the platform LLM as before.
 - **The inbox agent.** A reply the verdict shows as closed (Not interested, Unsubscribe, Wrong person, Not now), a one-line acknowledgement, a legal threat or a message that needs a person to read it is not drafted, so no credits are spent answering it.
 
+## Confirming an away message's return date
+
+When an [out-of-office reply holds a lead](/guides/campaigns/#out-of-office-and-pausing-one-lead), the day it resumes comes from rules that read the return date out of the away message. Rules can pick the wrong date near a cue: `ab dem 4.9. nicht im Büro` names the first day away, not the last. So when tagging is on and the hold is on, an away message whose date the rules read is asked one more yes/no question: whether the phrase the date came from (`ab dem 4.9.`, `bis KW 41`, `until 12 September`) says when the sender will be back.
+
+The question is about the phrase as written, never a date Warmbly worked out from it. Turning `bis einschließlich 18.9.` into "back on the 19th", or a calendar week into its Monday, stays with the rules, because date arithmetic is what the model is worst at.
+
+Below `0.40` the hold uses the workspace's fallback instead of the date. That is the mirror of the `0.60` a signal needs: the rules already reached this date, so an unsure answer is no evidence against it, and only a model fairly sure the date is wrong overrules them. An unsure answer or a failed call keeps the date, as before the question existed. The answer never changes a label.
+
+An away message recognised offline costs one small call carrying only the message and the phrase, and only when the rules found a date and the workspace holds on out-of-office. When the model decides the kind, the question rides in the same call as the rest. A backfill never asks it, since it labels history and holds nobody. The review page shows the date and the answer next to the verdict, struck through when the hold used the fallback.
+
 ## When it declines to decide
 
 Every classification carries a confidence. If the message kind is below 0.70, the thread is labelled **Needs review**, no other label is applied, and the conversation stays in the inbox. If the kind is confident but the intent is below 0.70, the trusted kind and relevance remain, the uncertain intent label is omitted, and **Needs review** is added.
@@ -171,7 +181,7 @@ The campaign is what separates a reply to your outreach from someone pitching yo
 
 This matters more than it sounds. Given only a message body, the model classified one of our own outbound sends as a human reply at 0.94 confidence. The answer was reasonable for the question; the question should never have been asked. Your own sends are filtered out before anything is asked about them.
 
-Common out-of-office subject prefixes and automated sender addresses are checked offline. When one is decisive, the kind is not asked; only a notification is still asked whether it needs your action. The review page shows which verdicts were decided offline and which came from the model.
+Common out-of-office subject prefixes and automated sender addresses are checked offline. When one is decisive, the kind is not asked; only a notification is still asked whether it needs your action, and an away message whether its [return date](#confirming-an-away-messages-return-date) is the day the sender is back. The review page shows which verdicts were decided offline and which came from the model.
 
 ## Follow-ups without TypeSafe
 
@@ -227,7 +237,7 @@ Only messages stored as a notification by a verdict that never asked the action 
 ## What it costs
 
 
-One call contains every question for a message and currently uses about 1,300 input tokens on the recorded fixture set. A notification recognised offline costs one smaller call, for the action check and any of your questions asked of notifications, and nothing when neither is on. TypeSafe evaluates the questions in parallel, but each question still contributes tokens, so check its current pricing before a large backfill. Output tokens are not billed.
+One call contains every question for a message and currently uses about 1,300 input tokens on the recorded fixture set. A notification recognised offline costs one smaller call, for the action check and any of your questions asked of notifications, and nothing when neither is on. An away message recognised offline costs one small call when its return date is checked, and nothing otherwise. TypeSafe evaluates the questions in parallel, but each question still contributes tokens, so check its current pricing before a large backfill. Output tokens are not billed.
 
 A message with no Message-ID is skipped. A database claim prevents two concurrent deliveries of the same Message-ID from making duplicate calls, and an abandoned claim becomes eligible for retry after 15 minutes.
 
