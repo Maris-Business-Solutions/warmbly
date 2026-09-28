@@ -799,7 +799,7 @@ How placement is read (`WarmupPlacementEvidence` in `internal/models/warmup_deli
 
 - over verified deliveries (`warmup_received`), not over sends
 - only Google, Microsoft and Yahoo recipients judge a sender. They filter on sender reputation, which is what cold mail is judged on; a small host runs its own filter, so its spam folder is not evidence of spam and is never held against a sender, in the bands, the ramps (`majorRecipientSQL`) or the advisor. A host that junks half of everything once froze the ramp permanently and quarantined healthy mailboxes
-- the headline inbox rate (`WarmupPlacementWindow.Rate`) is taken at the same three providers, and over every host only when none of them received the mailbox's mail in the window (`scope: "all"`)
+- the headline inbox rate (`WarmupPlacementWindow.Rate`) and the daily rolling rate are taken at the same three providers only; a mailbox whose mail reached only small hosts has no rate, never one built from them
 - partner selection draws a small-host recipient whose own filter junks what it receives less often (`FilterJunkRate`, `recipientFilterPenaltyK`), never excludes it, and never reads this at the big three, where a junk verdict is the senders' reputation
 
 Use separate metrics for separate failure modes:

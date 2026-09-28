@@ -17,19 +17,21 @@ func TestPlacementBuilderRollingReadsTheLookback(t *testing.T) {
 	// Before the range: only the rolling rate may see it.
 	b.addDelivery(repository.WarmupPlacementDayRow{SenderID: sender, Date: "2026-09-05", Group: "google", Inbox: 18, Spam: 2})
 	b.addDelivery(repository.WarmupPlacementDayRow{SenderID: sender, Date: "2026-09-10", Group: "microsoft", Inbox: 4, Tabs: 1, Spam: 5, Rescued: 4})
+	// A small host counts in the day, never in the rolling rate.
+	b.addDelivery(repository.WarmupPlacementDayRow{SenderID: sender, Date: "2026-09-10", Group: "other", Spam: 10})
 
 	days := b.days()
 	if len(days) != 2 {
 		t.Fatalf("got %d days", len(days))
 	}
 	d := days[0]
-	if d.Delivered != 10 || d.Spam != 5 || d.Rescued != 4 || *d.InboxRate != 50 {
+	if d.Delivered != 20 || d.Spam != 15 || d.Rescued != 4 || *d.InboxRate != 25 {
 		t.Fatalf("day counts: %+v", d.WarmupPlacementCounts)
 	}
 	if d.RollingInboxRate == nil || *d.RollingInboxRate != 76.67 {
 		t.Fatalf("rolling rate over 30 deliveries: %v", d.RollingInboxRate)
 	}
-	if len(d.Groups) != 1 || d.Groups[0].Group != "microsoft" {
+	if len(d.Groups) != 2 || d.Groups[0].Group != "microsoft" {
 		t.Fatalf("groups: %+v", d.Groups)
 	}
 	if days[1].Delivered != 0 || days[1].InboxRate != nil {
@@ -37,7 +39,7 @@ func TestPlacementBuilderRollingReadsTheLookback(t *testing.T) {
 	}
 
 	boxes := b.mailboxes(map[uuid.UUID]string{sender: "a@example.com"}, nil)
-	if len(boxes) != 1 || boxes[0].Delivered != 10 || boxes[0].Rate.Band != models.WarmupPlacementBandNone {
+	if len(boxes) != 1 || boxes[0].Delivered != 20 || boxes[0].Rate.Band != models.WarmupPlacementBandNone {
 		t.Fatalf("mailboxes: %+v", boxes)
 	}
 }
@@ -48,11 +50,11 @@ func TestApplyWarmupPlacementCapsHealth(t *testing.T) {
 	if h.Score != 100 {
 		t.Fatalf("no reading leaves health alone: %+v", h)
 	}
-	// A rate over every host is shown, never held against the mailbox.
-	all := models.NewWarmupPlacementRate(50, 0, 50)
-	applyWarmupPlacement(&h, &all)
+	// Small hosts alone leave no headline, so nothing is held against the mailbox.
+	small := models.WarmupPlacementWindow{All: models.WarmupPlacementTally{Inbox: 50, Spam: 50}}.Rate()
+	applyWarmupPlacement(&h, &small)
 	if h.Score != 100 || h.Status != "healthy" {
-		t.Fatalf("an all-host rate moved health: %+v", h)
+		t.Fatalf("a small-host reading moved health: %+v", h)
 	}
 	major := func(inbox, spam int) models.WarmupPlacementRate {
 		return models.WarmupPlacementWindow{Major: models.WarmupPlacementTally{Inbox: inbox, Spam: spam}}.Rate()

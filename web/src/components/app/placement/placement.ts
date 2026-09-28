@@ -158,21 +158,24 @@ export function totals(days: DayView[]) {
     };
 }
 
-/** The other mail hosts left out of a major-provider rate, or null with none. */
+/** The other mail hosts left out of the major-provider rate, or null with none. */
 export function otherHostsNote(rate: PlacementRate, short = false): string | null {
-    if (rate.scope !== "major" || !rate.other_delivered || rate.other_inbox_rate == null) return null;
+    if (!rate.other_delivered || rate.other_inbox_rate == null) return null;
     if (short) return `Google, Microsoft, Yahoo · other hosts ${fmtPct(rate.other_inbox_rate)}`;
-    return `Other mail hosts: ${fmtPct(rate.other_inbox_rate)} inbox of ${fmtNum(rate.other_delivered)}, shown but not counted toward standing`;
+    return `Other mail hosts: ${fmtPct(rate.other_inbox_rate)} inbox of ${fmtNum(rate.other_delivered)}, shown but not counted`;
 }
 
 /** One line explaining a headline rate, for tooltips and captions. */
 export function rateSentence(rate: PlacementRate): string {
     const ok = rate.inbox + rate.tabs;
-    if (rate.delivered === 0) return `No warmup deliveries in the last ${rate.window_days} days.`;
-    if (rate.inbox_rate == null) {
-        const where = rate.scope === "major" ? " at Google, Microsoft and Yahoo" : "";
-        return `${rate.delivered} of the ${rate.min_sample} deliveries${where} needed before a rate is shown (last ${rate.window_days} days).`;
+    if (rate.delivered === 0) {
+        if (rate.other_delivered) {
+            return `No warmup mail reached Google, Microsoft or Yahoo in the last ${rate.window_days} days, so there is no rate yet. Other mail hosts run their own filters and are not counted.`;
+        }
+        return `No warmup deliveries in the last ${rate.window_days} days.`;
     }
-    const where = rate.scope === "major" ? " at Google, Microsoft and Yahoo" : "";
-    return `${fmtNum(ok)} of ${fmtNum(rate.delivered)} warmup emails${where} reached the inbox over the last ${rate.window_days} days.`;
+    if (rate.inbox_rate == null) {
+        return `${rate.delivered} of the ${rate.min_sample} deliveries at Google, Microsoft and Yahoo needed before a rate is shown (last ${rate.window_days} days).`;
+    }
+    return `${fmtNum(ok)} of ${fmtNum(rate.delivered)} warmup emails at Google, Microsoft and Yahoo reached the inbox over the last ${rate.window_days} days.`;
 }

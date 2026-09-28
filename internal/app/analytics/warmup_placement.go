@@ -38,8 +38,7 @@ func (s *analyticsService) placementRates(ctx context.Context, orgID uuid.UUID, 
 	return headlineRates(windows)
 }
 
-// headlineRates is each mailbox's headline, over the major providers when
-// they received its warmup mail.
+// headlineRates is each mailbox's headline, over the major providers.
 func headlineRates(windows map[uuid.UUID]models.WarmupPlacementWindow) map[uuid.UUID]models.WarmupPlacementRate {
 	out := make(map[uuid.UUID]models.WarmupPlacementRate, len(windows))
 	for id, w := range windows {
@@ -55,10 +54,9 @@ func placementWindowStart(now time.Time) time.Time {
 }
 
 // applyWarmupPlacement caps the health score at the headline inbox rate, so a
-// mailbox landing in spam at the major providers reads as degraded. An
-// all-host rate is shown, never held against the mailbox.
+// mailbox landing in spam at the major providers reads as degraded.
 func applyWarmupPlacement(health *models.AccountHealth, r *models.WarmupPlacementRate) {
-	if r == nil || r.InboxRate == nil || r.Scope != models.WarmupPlacementScopeMajor {
+	if r == nil || r.InboxRate == nil {
 		return
 	}
 	if capped := int(math.Floor(*r.InboxRate)); capped < health.Score {
@@ -174,7 +172,7 @@ type placementBuilder struct {
 	day     []models.WarmupPlacementCounts
 	groups  []map[string]*models.WarmupPlacementGroupCounts
 	senders map[uuid.UUID]*senderPlacement
-	// window holds every day's deliveries from the lookback on, for the rolling rate.
+	// window holds every day's major-provider deliveries from the lookback on, for the rolling rate.
 	window map[string][3]int
 	first  time.Time
 }
@@ -211,11 +209,13 @@ func (b *placementBuilder) sender(id uuid.UUID) *senderPlacement {
 }
 
 func (b *placementBuilder) addDelivery(r repository.WarmupPlacementDayRow) {
-	w := b.window[r.Date]
-	w[0] += r.Inbox
-	w[1] += r.Tabs
-	w[2] += r.Spam
-	b.window[r.Date] = w
+	if r.Group != models.WarmupRecipientOther {
+		w := b.window[r.Date]
+		w[0] += r.Inbox
+		w[1] += r.Tabs
+		w[2] += r.Spam
+		b.window[r.Date] = w
+	}
 
 	i, ok := b.index[r.Date]
 	if !ok {

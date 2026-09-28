@@ -178,14 +178,9 @@ func (c *WarmupPlacementCounts) Add(o WarmupPlacementCounts) {
 	c.Unconfirmed += o.Unconfirmed
 }
 
-// Scopes a headline placement rate is taken over.
-const (
-	// WarmupPlacementScopeMajor is Google, Microsoft and Yahoo recipients only.
-	WarmupPlacementScopeMajor = "major"
-	// WarmupPlacementScopeAll is every host, for a mailbox the major providers
-	// have not received enough warmup mail from in the window to rate.
-	WarmupPlacementScopeAll = "all"
-)
+// WarmupPlacementScopeMajor is the one scope a headline rate is taken over:
+// Google, Microsoft and Yahoo recipients only.
+const WarmupPlacementScopeMajor = "major"
 
 // WarmupPlacementRate is a mailbox's headline deliverability: the inbox rate
 // over the trailing window, withheld below the sample floor.
@@ -212,7 +207,7 @@ func NewWarmupPlacementRate(inbox, tabs, spam int) WarmupPlacementRate {
 	r := WarmupPlacementRate{
 		WindowDays: WarmupPlacementWindowDays,
 		MinSample:  WarmupPlacementMinSample,
-		Scope:      WarmupPlacementScopeAll,
+		Scope:      WarmupPlacementScopeMajor,
 		Inbox:      inbox,
 		Tabs:       tabs,
 		Spam:       spam,
@@ -248,22 +243,16 @@ func (w *WarmupPlacementWindow) Add(o WarmupPlacementWindow) {
 	w.All.Spam += o.All.Spam
 }
 
-// Rate is the headline over the major providers, or over every host when they
-// have not reached the sample and every host has, so a mailbox mostly warming
-// with small hosts still shows a figure.
+// Rate is the headline over the major providers only; a small host's own
+// filter says nothing about the sender, so other hosts ride beside it.
 func (w WarmupPlacementWindow) Rate() WarmupPlacementRate {
-	major, all := w.Major.Inbox+w.Major.Tabs+w.Major.Spam, w.All.Inbox+w.All.Tabs+w.All.Spam
-	if m := w.Major; major > 0 && (major >= WarmupPlacementMinSample || all < WarmupPlacementMinSample) {
-		r := NewWarmupPlacementRate(m.Inbox, m.Tabs, m.Spam)
-		r.Scope = WarmupPlacementScopeMajor
-		ok := w.All.Inbox + w.All.Tabs - m.Inbox - m.Tabs
-		if r.OtherDelivered = w.All.Inbox + w.All.Tabs + w.All.Spam - r.Delivered; r.OtherDelivered > 0 {
-			v := pct2(ok, r.OtherDelivered)
-			r.OtherInboxRate = &v
-		}
-		return r
+	m := w.Major
+	r := NewWarmupPlacementRate(m.Inbox, m.Tabs, m.Spam)
+	if r.OtherDelivered = w.All.Inbox + w.All.Tabs + w.All.Spam - r.Delivered; r.OtherDelivered > 0 {
+		v := pct2(w.All.Inbox+w.All.Tabs-m.Inbox-m.Tabs, r.OtherDelivered)
+		r.OtherInboxRate = &v
 	}
-	return NewWarmupPlacementRate(w.All.Inbox, w.All.Tabs, w.All.Spam)
+	return r
 }
 
 // WarmupPlacementGroupCounts is one recipient group's share of a day.

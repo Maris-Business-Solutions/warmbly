@@ -33,7 +33,7 @@ import {
 export function PlacementRateBadge({ rate, className }: { rate?: PlacementRate | null; className?: string }) {
     if (!rate || rate.band === "none") {
         return (
-            <span className={cn("font-mono text-[11px] text-slate-300", className)} title="No warmup deliveries in the last 7 days">
+            <span className={cn("font-mono text-[11px] text-slate-300", className)} title={rate ? rateSentence(rate) : "No warmup deliveries in the last 7 days"}>
                 —
             </span>
         );

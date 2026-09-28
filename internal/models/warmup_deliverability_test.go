@@ -62,8 +62,8 @@ func TestNewWarmupPlacementRate(t *testing.T) {
 	}
 }
 
-// The headline is taken at the major providers while any of them received
-// mail, and the other hosts ride beside it; with none it covers every host.
+// The headline is taken at the major providers only, and the other hosts ride
+// beside it however many deliveries they have.
 func TestWarmupPlacementWindowRate(t *testing.T) {
 	w := WarmupPlacementWindow{
 		Major: WarmupPlacementTally{Inbox: 18, Tabs: 2},
@@ -77,19 +77,13 @@ func TestWarmupPlacementWindowRate(t *testing.T) {
 		t.Fatalf("other hosts = %d at %v, want 20 at 50%%", r.OtherDelivered, r.OtherInboxRate)
 	}
 
+	// Small hosts alone never produce a headline, however many there are.
 	only := WarmupPlacementWindow{All: WarmupPlacementTally{Inbox: 15, Spam: 5}}.Rate()
-	if only.Scope != WarmupPlacementScopeAll || only.Delivered != 20 || only.OtherDelivered != 0 || only.OtherInboxRate != nil {
-		t.Fatalf("all-host rate = %+v, want every host and nothing beside it", only)
+	if only.InboxRate != nil || only.Band != WarmupPlacementBandNone || only.Delivered != 0 || only.OtherDelivered != 20 {
+		t.Fatalf("small-host-only rate = %+v, want no headline and 20 beside it", only)
 	}
-
-	// Three Gmail deliveries do not hide a rate over 150 at small hosts.
 	thin := WarmupPlacementWindow{Major: WarmupPlacementTally{Inbox: 3}, All: WarmupPlacementTally{Inbox: 120, Spam: 33}}.Rate()
-	if thin.Scope != WarmupPlacementScopeAll || thin.InboxRate == nil || thin.Delivered != 153 {
-		t.Fatalf("thin major rate = %+v, want the all-host figure", thin)
-	}
-	// With neither at the sample, the major count is what is being collected.
-	early := WarmupPlacementWindow{Major: WarmupPlacementTally{Inbox: 3}, All: WarmupPlacementTally{Inbox: 8}}.Rate()
-	if early.Scope != WarmupPlacementScopeMajor || early.Band != WarmupPlacementBandCollecting || early.Delivered != 3 {
-		t.Fatalf("early rate = %+v, want 3 of the major sample collecting", early)
+	if thin.InboxRate != nil || thin.Band != WarmupPlacementBandCollecting || thin.Delivered != 3 || thin.OtherDelivered != 150 {
+		t.Fatalf("thin major rate = %+v, want 3 of the major sample collecting", thin)
 	}
 }

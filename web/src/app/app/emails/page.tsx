@@ -32,7 +32,6 @@ import type { AppError } from "@/lib/api/client/normalizeError";
 import BulkWarmupDialog from "@/components/app/emails/BulkWarmupDialog";
 import BulkTagPopover from "@/components/app/emails/BulkTagPopover";
 import MailboxImportsMenu from "@/components/app/emails/import/MailboxImportsMenu";
-import MailboxSourceChip from "@/components/app/emails/MailboxSourceChip";
 import SigninMigrationBanner, { SigninRetiringChip } from "@/components/app/emails/migration/SigninMigrationBanner";
 import SigninMigrationDialog from "@/components/app/emails/migration/SigninMigrationDialog";
 import MailboxGrantDialog from "@/components/app/emails/import/grants/MailboxGrantDialog";
@@ -44,19 +43,32 @@ import mailboxDisplayStatus from "@/lib/mailboxStatus";
 import type AccountStatus from "@/lib/api/models/app/analytics/AccountStatus";
 import {
     ActivityIcon,
+    AlertTriangleIcon,
+    ArrowDownIcon,
+    ArrowUpIcon,
     CheckIcon,
+    CircleSlashIcon,
     FilterIcon,
+    FlameIcon,
     GaugeIcon,
     GlobeIcon,
     Loader2Icon,
+    MoonIcon,
     PauseIcon,
     PlayIcon,
     PlusIcon,
     RotateCcwIcon,
+    SendIcon,
     Settings2Icon,
     Trash2Icon,
+    UnplugIcon,
+    UserIcon,
     XIcon,
+    type LucideIcon,
 } from "lucide-react";
+import ProviderLogo from "@/components/app/emails/ProviderLogo";
+import { Dash, InfoHeader } from "@/components/app/contacts/cells";
+import clippedTitle from "@/lib/helper/clippedTitle";
 import { SearchInput } from "@/components/ui/field";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
 import {
@@ -93,7 +105,7 @@ const HEALTH_RANK: Record<string, number> = { healthy: 0, warning: 1, error: 2 }
 function healthTone(status?: AccountStatus): { dot: string; text: string; label: string; pulse: boolean } {
     const h = status?.health;
     if (!h) return { dot: "bg-slate-300", text: "text-slate-500", label: "—", pulse: false };
-    if (h.status === "healthy") return { dot: "bg-emerald-500", text: "text-emerald-600", label: `Healthy ${h.score}`, pulse: false };
+    if (h.status === "healthy") return { dot: "bg-emerald-500", text: "text-emerald-700", label: `Healthy ${h.score}`, pulse: false };
     if (h.status === "warning") return { dot: "bg-amber-500", text: "text-amber-600", label: `At risk ${h.score}`, pulse: true };
     return { dot: "bg-rose-500", text: "text-rose-600", label: `Issue ${h.score}`, pulse: true };
 }
@@ -291,6 +303,26 @@ export default function AddressesPage() {
             : false;
     }
 
+    // Every mailbox page is loaded, so the headers sort in the browser.
+    const [sort, setSort] = React.useState<MailboxSort | null>(null);
+    const sortBy = (col: MailboxColumn) =>
+        setSort((cur) =>
+            cur?.by === col.id ? { by: col.id, reverse: !cur.reverse } : { by: col.id, reverse: !!col.sortAsc },
+        );
+    const sortedEmails = useMemo(() => {
+        const list = emailsData.emails ?? [];
+        const col = sort && MAILBOX_COLUMNS.find((c) => c.id === sort.by);
+        if (!sort || !col?.sortValue) return list;
+        const value = col.sortValue;
+        const dir = sort.reverse ? 1 : -1;
+        return [...list].sort((a, b) => {
+            const x = value(a, statusById.get(a.id));
+            const y = value(b, statusById.get(b.id));
+            if (x === y) return 0;
+            return (x > y ? 1 : -1) * dir;
+        });
+    }, [emailsData.emails, sort, statusById]);
+
     if (!canView) {
         return <NoAccess feature="email accounts" permissionLabel="Manage mailboxes" />;
     }
@@ -415,10 +447,12 @@ export default function AddressesPage() {
                     />
                     ) : null
                 ) : (
-                    <table className="w-full text-left">
+                    // table-fixed like the Leads list: every column but Mailbox
+                    // carries a width, so one long address never widens the table.
+                    <table className="w-full table-fixed text-left">
                         <thead className="sticky top-0 bg-white z-[1]">
                             <tr className="border-b border-slate-200">
-                                <th className="pl-5 pr-2 py-2 w-9">
+                                <th className="pl-5 pr-2 py-2 w-11">
                                     <Checkbox
                                         checked={isSelectedAll()}
                                         onChange={() => {
@@ -437,20 +471,14 @@ export default function AddressesPage() {
                                         }}
                                     />
                                 </th>
-                                <th className="px-3 py-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.14em]">Account</th>
-                                <th className="px-3 py-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.14em] w-24 text-right">Warmup</th>
-                                <th
-                                    className="px-3 py-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.14em] w-16 md:w-20 text-right"
-                                    title="Share of warmup mail that reached the inbox over the last 7 days, measured in partners' mailboxes"
-                                >
-                                    Inbox
-                                </th>
-                                <th className="px-3 py-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.14em] w-10 md:w-32"><span className="hidden md:inline">Health</span></th>
-                                <th className="px-3 py-2 w-16"></th>
+                                {MAILBOX_COLUMNS.map((col) => (
+                                    <MailboxTh key={col.id} col={col} sort={sort} onSort={sortBy} />
+                                ))}
+                                <th className="px-3 py-2 w-[76px]"></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {emailsData.emails.map((box) => (
+                            {sortedEmails.map((box) => (
                                 <MailboxRow
                                     key={box.id}
                                     box={box}
@@ -663,7 +691,7 @@ function MailboxRow({
                 .filter((t): t is Tag => !!t),
         [box.tags, tags],
     );
-    const shownTags = rowTags.slice(0, 3);
+    const source = mailboxSource(box);
 
     const off = !box.warmup;
     const paused = !!box.warmup && !!box.warmup_paused_at;
@@ -738,104 +766,144 @@ function MailboxRow({
     return (
         <tr
             onClick={() => onOpen(box.id)}
-            className="border-b border-slate-200/60 hover:bg-slate-50/80 transition-colors group h-11 cursor-pointer"
+            className={`border-b border-slate-200/60 transition-colors group h-11 cursor-pointer ${checked ? "bg-sky-50/60" : "hover:bg-slate-50/80"}`}
         >
-            <td className="pl-5 pr-2">
-                <Checkbox
-                    checked={checked}
-                    onChange={onToggleSelect}
-                    onClick={(e) => e.stopPropagation()}
-                />
+            <td className="pl-5 pr-2" onClick={(e) => e.stopPropagation()}>
+                <Checkbox checked={checked} onChange={onToggleSelect} />
             </td>
-            <td className="px-3 max-w-0 md:max-w-none">
+            <td className="px-3 overflow-hidden">
                 {/* The flag is a sibling of the open-row button, not a child:
                     it has its own trigger and nesting buttons is invalid. */}
                 <div className="flex w-full min-w-0 items-center gap-2">
-                <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(box.id); }} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                    <div className="w-6 h-6 rounded-full bg-sky-100 flex items-center justify-center shrink-0">
-                        <span className="text-[9.5px] font-semibold text-sky-700">
-                            {box.email.slice(0, 2).toUpperCase()}
-                        </span>
-                    </div>
-                    <span className="text-[12.5px] font-medium text-slate-900 truncate">{box.email}</span>
-                    <MailboxSourceChip box={box} labelClassName={mailboxSource(box).kind === "host" ? "hidden lg:inline" : "hidden md:inline"} />
-                    {inCloud && (
-                        <span
-                            title={cloud?.managed ? "Signed in through Warmbly Cloud, which warms it" : cloudPaused ? "Paused in Warmbly Cloud" : "Warmed by Warmbly Cloud"}
-                            className={`inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-[9.5px] font-medium uppercase tracking-[0.08em] shrink-0 ${cloudPaused ? "bg-amber-50 text-amber-600" : "bg-sky-600 text-white"}`}
-                        >
-                            <CloudIcon className="w-2.5 h-2.5" /> Cloud
-                        </span>
-                    )}
-                    {inCampaign && (
-                        <span className="hidden sm:inline-flex items-center gap-1 h-4 px-1.5 rounded-full bg-sky-50 text-sky-600 text-[9.5px] font-medium uppercase tracking-[0.08em]">
-                            <ActivityIcon className="w-2.5 h-2.5" /> In campaign
-                        </span>
-                    )}
-                    {shownTags.map((t) => (
-                        <span
-                            key={t.id}
-                            className="hidden md:inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-[9.5px] font-medium shrink-0"
-                            style={{ backgroundColor: `${t.color}1a`, color: t.color }}
-                        >
-                            <span className="size-1.5 rounded-full" style={{ backgroundColor: t.color }} />
-                            {t.title}
-                        </span>
-                    ))}
-                    {rowTags.length > shownTags.length && (
-                        <span className="hidden md:inline-flex items-center h-4 px-1 rounded-full bg-slate-100 text-slate-500 text-[9.5px] font-medium shrink-0">
-                            +{rowTags.length - shownTags.length}
-                        </span>
-                    )}
-                </button>
-                {retiring && <SigninRetiringChip onClick={onRetiring} />}
-                <AdvisorRowFlag findings={findings} subject={box.email} />
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(box.id); }} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                        <ProviderLogo id={source.logo} size="md" title={source.title} className="shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <div className="text-[12.5px] font-medium text-slate-900 leading-tight flex items-center gap-1.5 min-w-0">
+                                <span className="truncate" {...clippedTitle}>{box.email}</span>
+                                {inCloud && (
+                                    <span
+                                        title={cloud?.managed ? "Signed in through Warmbly Cloud, which warms it" : cloudPaused ? "Paused in Warmbly Cloud" : "Warmed by Warmbly Cloud"}
+                                        className={`inline-flex items-center gap-1 h-4 px-1.5 rounded text-[10px] font-medium shrink-0 ${cloudPaused ? "bg-amber-50 text-amber-600" : "bg-sky-50 text-sky-700"}`}
+                                    >
+                                        <CloudIcon className="w-2.5 h-2.5" /> Cloud
+                                    </span>
+                                )}
+                                {rowTags.length > 0 && (
+                                    <span className="hidden md:inline-flex items-center gap-0.5 min-w-0 max-w-[40%]">
+                                        <span
+                                            className="inline-flex items-center gap-1 h-4 px-1.5 rounded text-[10px] font-medium min-w-0"
+                                            style={{ backgroundColor: `${rowTags[0].color}1a`, color: rowTags[0].color }}
+                                        >
+                                            <span className="size-1.5 rounded-full shrink-0" style={{ backgroundColor: rowTags[0].color }} />
+                                            <span className="truncate">{rowTags[0].title}</span>
+                                        </span>
+                                        {rowTags.length > 1 && (
+                                            <span
+                                                className="inline-flex items-center h-4 px-1 shrink-0 rounded text-[10px] font-medium bg-slate-100 text-slate-500"
+                                                title={rowTags.slice(1).map((t) => t.title).join(", ")}
+                                            >
+                                                +{rowTags.length - 1}
+                                            </span>
+                                        )}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-[10.5px] text-slate-400 leading-tight flex items-center gap-1 min-w-0 mt-0.5" title={source.title}>
+                                {box.name && (
+                                    <>
+                                        <UserIcon className="w-2.5 h-2.5 shrink-0" />
+                                        <span className="truncate max-w-[50%]">{box.name}</span>
+                                        {source.label && <span className="text-slate-300">·</span>}
+                                    </>
+                                )}
+                                {source.label && <span className="truncate">{source.label}</span>}
+                                {inCampaign && (
+                                    <span className="hidden sm:inline-flex items-center gap-1 shrink-0 text-sky-600">
+                                        <span className="text-slate-300">·</span>
+                                        <ActivityIcon className="w-2.5 h-2.5" /> In campaign
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </button>
+                    {retiring && <SigninRetiringChip onClick={onRetiring} />}
+                    <AdvisorRowFlag findings={findings} subject={box.email} />
                 </div>
             </td>
-            <td className={`px-3 text-[12px] tabular-nums text-right font-mono ${warmupTone}`}>
+            <td className="px-3 overflow-hidden">
+                <MailboxStatusPill box={box} status={status} warming={inCloud ? !cloudPaused : active} />
+            </td>
+            <td className="px-3 overflow-hidden hidden md:table-cell">
+                {status?.daily_usage ? (
+                    <span
+                        className={`inline-flex items-center gap-1.5 font-mono text-[12px] tabular-nums ${status.daily_usage.campaign_sent > 0 ? "text-sky-700" : "text-slate-500"}`}
+                        title={`${status.daily_usage.campaign_sent} of ${status.daily_usage.campaign_limit || box.campaign_limit} campaign emails sent today`}
+                    >
+                        <SendIcon className="w-3 h-3 shrink-0 text-sky-500" />
+                        <span>
+                            <AnimatedNumber value={status.daily_usage.campaign_sent} />
+                            <span className="text-slate-400">/{status.daily_usage.campaign_limit || box.campaign_limit}</span>
+                        </span>
+                    </span>
+                ) : (
+                    <Dash />
+                )}
+            </td>
+            <td className={`px-3 overflow-hidden font-mono text-[12px] tabular-nums ${warmupTone}`}>
                 {inCloud ? (
-                    <span className="inline-flex items-center justify-end gap-1.5">
+                    <span className="inline-flex items-center gap-1.5" title="Warmed by Warmbly Cloud">
                         <CloudIcon className="w-3 h-3 shrink-0" />
                         <span>{warmupLabel}</span>
                     </span>
                 ) : active ? (
-                    <span className="inline-flex items-center justify-end gap-1.5">
+                    <span className="inline-flex items-center gap-1.5" title={`${ws?.current_volume ?? 0} of ${ws?.target_volume ?? box.warmup_base} warmup emails sent today`}>
                         <span className="campaign-grid shrink-0" aria-hidden />
                         <span>
-                            <AnimatedNumber value={ws?.current_volume ?? 0} />/
-                            {ws?.target_volume ?? box.warmup_base}
+                            <AnimatedNumber value={ws?.current_volume ?? 0} />
+                            <span className="opacity-60">/{ws?.target_volume ?? box.warmup_base}</span>
                         </span>
                     </span>
                 ) : (
-                    warmupLabel
+                    <span className="inline-flex items-center gap-1.5 font-sans text-[11.5px] font-medium">
+                        {paused ? (
+                            <PauseIcon className="w-3 h-3 shrink-0" />
+                        ) : inCampaign ? (
+                            <ActivityIcon className="w-3 h-3 shrink-0" />
+                        ) : (
+                            <RiFireLine className="w-3 h-3 shrink-0" />
+                        )}
+                        {warmupLabel}
+                    </span>
                 )}
-            </td>
-            <td className="px-3 text-right">
-                <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onOpen(box.id, "deliverability"); }}
-                    aria-label="View warmup deliverability"
-                >
-                    <PlacementRateBadge rate={status?.warmup_placement} />
-                </button>
             </td>
             <td className="px-3">
                 <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); onOpen(box.id, "overview"); }}
-                    className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${tone.text}`}
-                    title="View mailbox health"
+                    onClick={(e) => { e.stopPropagation(); onOpen(box.id, "deliverability"); }}
+                    aria-label="View warmup deliverability"
+                    className="inline-flex items-center gap-1.5"
                 >
-                    <span className="relative flex w-1.5 h-1.5">
+                    <MailCheckIcon className="w-3 h-3 shrink-0 text-slate-400 hidden sm:block" />
+                    <PlacementRateBadge rate={status?.warmup_placement} />
+                </button>
+            </td>
+            <td className="px-3 overflow-hidden">
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onOpen(box.id, "overview"); }}
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-medium max-w-full ${tone.text}`}
+                    title={status?.health?.issues?.join("\n") || "View mailbox health"}
+                >
+                    <span className="relative flex w-1.5 h-1.5 shrink-0">
                         {tone.pulse && (
                             <span className={`absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping ${tone.dot}`} />
                         )}
                         <span className={`relative inline-flex w-1.5 h-1.5 rounded-full ${tone.dot}`} />
                     </span>
-                    <span className="uppercase tracking-[0.08em] hidden md:inline">{tone.label}</span>
+                    <span className="uppercase tracking-[0.08em] hidden md:inline truncate">{tone.label}</span>
                 </button>
             </td>
-            <td className="px-3">
+            <td className="px-3" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     <PopoverMenu align="end">
                         <PopoverMenuTrigger asChild>
@@ -957,4 +1025,161 @@ function warmupErrorMessage(e: AppError | null | undefined): string {
     }
     if (e?.code && e.message) return e.message;
     return "Couldn't update warmup";
+}
+
+/* ── columns ─────────────────────────────────────── */
+
+type MailboxColumnId = "mailbox" | "status" | "sent" | "warmup" | "inbox" | "health";
+
+interface MailboxColumn {
+    id: MailboxColumnId;
+    label: string;
+    header?: React.ReactNode;
+    // Width and breakpoint, shared by the header and the row's cell.
+    className: string;
+    align?: "right";
+    // Whether the first click sorts ascending (text) rather than descending.
+    sortAsc?: boolean;
+    sortValue?: (box: Inbox, status?: AccountStatus) => string | number;
+}
+
+interface MailboxSort {
+    by: MailboxColumnId;
+    reverse: boolean;
+}
+
+const MAILBOX_COLUMNS: MailboxColumn[] = [
+    { id: "mailbox", label: "Mailbox", className: "", sortAsc: true, sortValue: (b) => b.email.toLowerCase() },
+    {
+        id: "status",
+        label: "Status",
+        header: (
+            <>
+                <span className="sr-only">Status</span>
+                <span aria-hidden className="hidden sm:inline">Status</span>
+            </>
+        ),
+        className: "w-14 sm:w-32",
+        // Problems first, then idle, warming, sending, sending and warming.
+        sortValue: (b, s) =>
+            b.status !== "active" || s?.errors?.length
+                ? -1
+                : (s?.in_campaign ? 2 : 0) + (b.warmup && !b.warmup_paused_at ? 1 : 0),
+    },
+    {
+        id: "sent",
+        label: "Sent today",
+        header: <InfoHeader label="Sent today" title="Campaign emails sent from this mailbox today, against its daily cap." aria="How sends are counted" />,
+        className: "w-28 hidden md:table-cell",
+        sortValue: (_, s) => s?.daily_usage?.campaign_sent ?? -1,
+    },
+    {
+        id: "warmup",
+        label: "Warmup",
+        header: <InfoHeader label="Warmup" title="Warmup emails sent today, against today's ramp target." aria="How warmup is counted" />,
+        className: "w-28",
+        sortValue: (b, s) => (b.warmup && !b.warmup_paused_at ? (s?.warmup_status?.current_volume ?? 0) : -1),
+    },
+    {
+        id: "inbox",
+        label: "Inbox",
+        header: (
+            <InfoHeader
+                label="Inbox"
+                title="Share of warmup mail that reached the inbox at Google, Microsoft and Yahoo over the last 7 days. Smaller mail hosts run their own filters and are not counted."
+                aria="How the inbox rate is measured"
+            />
+        ),
+        className: "w-20 sm:w-24",
+        sortValue: (_, s) => s?.warmup_placement?.inbox_rate ?? -1,
+    },
+    {
+        id: "health",
+        label: "Health",
+        header: (
+            <>
+                <span className="sr-only">Health</span>
+                <span aria-hidden className="hidden md:inline">
+                    <InfoHeader label="Health" title="The mailbox's overall health score out of 100: connection, errors, bounces and warmup standing. Click it for the details." aria="How health is scored" />
+                </span>
+            </>
+        ),
+        className: "w-10 md:w-32",
+        sortValue: (_, s) => s?.health?.score ?? -1,
+    },
+];
+
+// A header cell; a sortable one is the sort control, like the Leads list.
+function MailboxTh({ col, sort, onSort }: { col: MailboxColumn; sort: MailboxSort | null; onSort: (col: MailboxColumn) => void }) {
+    const base = `px-3 py-2 text-[10px] font-medium text-slate-400 uppercase tracking-[0.14em] truncate ${col.className} ${col.align === "right" ? "text-right" : ""}`;
+    const content = col.header ?? col.label;
+    if (!col.sortValue) return <th className={base}>{content}</th>;
+    const active = sort?.by === col.id;
+    const Dir = sort?.reverse ? ArrowUpIcon : ArrowDownIcon;
+    return (
+        <th className={base} aria-sort={active ? (sort?.reverse ? "ascending" : "descending") : "none"}>
+            <button
+                type="button"
+                onClick={() => onSort(col)}
+                title={`Sort by ${col.label}`}
+                className={`group/th inline-flex items-center gap-1 max-w-full uppercase tracking-[0.14em] hover:text-slate-700 transition-colors ${
+                    active ? "text-slate-700" : ""
+                } ${col.align === "right" ? "flex-row-reverse" : ""}`}
+            >
+                <span className="truncate">{content}</span>
+                <Dir className={`w-3 h-3 shrink-0 ${active ? "" : "opacity-0 group-hover/th:opacity-60"}`} aria-hidden />
+            </button>
+        </th>
+    );
+}
+
+// What the mailbox is doing right now. Cold sending and warmup run side by
+// side, so both show when both are on; a problem that stops it wins.
+function MailboxStatusPill({ box, status, warming }: { box: Inbox; status?: AccountStatus; warming: boolean }) {
+    const error = status?.errors?.[0];
+    const lifecycle = status?.send_lifecycle;
+    const inCampaign = !!status?.in_campaign;
+    const resting = inCampaign && !!lifecycle && lifecycle.state !== "active";
+    const sending = inCampaign && !resting;
+
+    let problem: { label: string; text: string; Icon: LucideIcon; title: string } | null = null;
+    if (box.status === "revoked") problem = { label: "Reconnect", text: "text-rose-600", Icon: UnplugIcon, title: "Access was revoked at the provider. Reconnect the mailbox to send and warm again." };
+    else if (box.status !== "active") problem = { label: "Off", text: "text-slate-500", Icon: CircleSlashIcon, title: "Switched off: it neither sends, warms nor syncs." };
+    else if (error) problem = { label: "Error", text: "text-rose-600", Icon: AlertTriangleIcon, title: error.action_required ? `${error.title}. ${error.action_required}` : error.title };
+    if (problem) {
+        const { Icon } = problem;
+        return (
+            <span className={`inline-flex items-center gap-1.5 max-w-full text-[10.5px] font-medium uppercase tracking-[0.08em] ${problem.text}`} title={problem.title}>
+                <Icon className="w-3 h-3 shrink-0" />
+                <span className="sr-only">{problem.label}</span>
+                <span aria-hidden className="hidden sm:inline truncate">{problem.label}</span>
+            </span>
+        );
+    }
+
+    // One word; the icons beside it say which activities are on.
+    const label = sending && warming ? "Active" : sending ? "Sending" : resting ? (lifecycle?.state === "reserve" ? "Reserve" : "Resting") : warming ? "Warming" : "Idle";
+    const title = [
+        sending ? "Sending campaign emails" : resting ? `Held out of campaign sending${lifecycle?.reason ? `: ${lifecycle.reason}` : ""}` : "Not in a live campaign",
+        warming
+            ? "warming up"
+            : inCampaign
+              ? "a low-volume health-check warmup keeps running"
+              : box.warmup && box.warmup_paused_at
+                ? "warmup paused"
+                : "warmup off",
+    ].join(", ");
+    const text = sending ? "text-sky-700" : resting ? "text-violet-600" : warming ? "text-orange-600" : "text-slate-400";
+    return (
+        <span className={`inline-flex items-center gap-1.5 max-w-full text-[10.5px] font-medium uppercase tracking-[0.08em] ${text}`} title={title}>
+            <span className="inline-flex items-center gap-0.5 shrink-0">
+                {sending && <SendIcon className="w-3 h-3 text-sky-600" />}
+                {resting && <MoonIcon className="w-3 h-3 text-violet-500" />}
+                {warming && <FlameIcon className="w-3 h-3 text-orange-500" />}
+                {!sending && !resting && !warming && <CircleSlashIcon className="w-3 h-3" />}
+            </span>
+            <span className="sr-only">{label}</span>
+            <span aria-hidden className="hidden sm:inline truncate">{label}</span>
+        </span>
+    );
 }
