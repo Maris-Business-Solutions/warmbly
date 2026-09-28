@@ -81,7 +81,7 @@ type createPlacementTestRequest struct {
 	SeedIDs         []uuid.UUID `json:"seed_ids"`
 	Families        []string    `json:"families"`
 	Pace            string      `json:"pace"`
-	UseCredits      bool        `json:"use_credits"`
+	MaxCredits      int         `json:"max_credits"`
 }
 
 // CreatePlacementTest starts a test: one test, or two for a tracking
@@ -141,7 +141,7 @@ func (h *Handler) CreatePlacementTest(c *gin.Context) {
 		SeedIDs:         req.SeedIDs,
 		Families:        req.Families,
 		Pace:            req.Pace,
-		UseCredits:      req.UseCredits,
+		MaxCredits:      req.MaxCredits,
 		Origin:          models.PlacementOriginManual,
 	})
 	if xerr != nil {

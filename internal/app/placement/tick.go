@@ -89,7 +89,13 @@ func (s *service) refundUndelivered(ctx context.Context) []uuid.UUID {
 	}
 	var done []uuid.UUID
 	for _, r := range owed {
-		if _, err := s.Credits.RefundCharge(ctx, r.OrganizationID, chargeKey(r.ID), "placement_test_refund"); err != nil {
+		// Attributed like the charge, so a member's spend limit gets it back.
+		meta := models.CreditMeta{Context: models.CreditContext{Detail: "Placement test refund"}}
+		if r.CreatedBy != nil {
+			meta.ActorID = *r.CreatedBy
+		}
+		rctx := models.WithCreditMeta(ctx, meta)
+		if _, err := s.Credits.RefundCharge(rctx, r.OrganizationID, chargeKey(r.ID), "placement_test_refund"); err != nil {
 			errs.CaptureException(err)
 			continue
 		}

@@ -14676,7 +14676,7 @@
             }
           },
           "402": {
-            "description": "placement_not_entitled (no active trial or subscription), placement_quota_exceeded (the month's free tests are used and use_credits was not sent, or the test cannot be paid for), or insufficient_credits.",
+            "description": "placement_not_entitled (no active trial or subscription), placement_quota_exceeded (the month's free tests are used and max_credits is missing or below the price, or the test cannot be paid for), or insufficient_credits.",
             "content": {
               "application/json": {
                 "schema": {
@@ -39497,7 +39497,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Only with panel workspace: send to these connected seed inboxes of the workspace and no others, round-robin across their providers up to the usual seeds per test. Omit to let the test pick."
+            "description": "Only with panel workspace: send to these seed inboxes of the workspace and no others. Each must be connected and running, and each gets a copy; seeds_per_test does not cap the list, and a sender whose daily limit cannot pay for all of them is refused with placement_daily_budget. Omit to let the test pick."
           },
           "families": {
             "type": "array",
@@ -39515,10 +39515,10 @@
             "default": "spaced",
             "description": "spaced sends about 60 seconds apart; quick about 8 seconds apart, so a test sends in minutes."
           },
-          "use_credits": {
-            "type": "boolean",
-            "default": false,
-            "description": "Agrees to pay for the test in credits when the month's free tests on the instance panel are used up. Without it such a request is refused with placement_quota_exceeded, whose message names the price."
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The most credits you agree to pay when the month's free tests on the instance panel are used up. A higher price, or none sent, is refused with placement_quota_exceeded, whose message names the price, and nothing is charged."
           }
         }
       },

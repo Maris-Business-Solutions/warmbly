@@ -414,6 +414,25 @@ func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
 	if n, _, _ := credits.RefundSpend(ctx, f.org, "placement:"+uuid.NewString(), "x:refund", "placement_test_refund"); n != 0 {
 		t.Fatalf("refunded %d for a charge that never happened", n)
 	}
+	day, _, _, err := credits.SpentInWindows(ctx, f.org, since, since, since)
+	if err != nil || day != 0 {
+		t.Fatalf("SpentInWindows = %d, %v; a refunded charge counts against no spend limit", day, err)
+	}
+
+	// Monthly credits spent before a reset would have expired with it, so a
+	// refund after the reset gives back only the purchased part.
+	key2 := "placement:" + uuid.NewString()
+	if _, _, _, err := credits.Consume(ctx, f.org, 25, "placement_test", "", 0, key2); err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+	f.exec(`UPDATE credit_ledger SET month_reset_at = NOW() + INTERVAL '1 second' WHERE org_id = $1`, f.org)
+	if refunded, _, err := credits.RefundSpend(ctx, f.org, key2, key2+":refund", "placement_test_refund"); err != nil || refunded != 15 {
+		t.Fatalf("RefundSpend after a reset = %d, %v; want only the 15 purchased", refunded, err)
+	}
+	ledger, _ = credits.GetBalance(ctx, f.org)
+	if ledger.Balance != 0 || ledger.PurchasedBalance != 100 {
+		t.Fatalf("ledger = %+v; want the reset month untouched and purchased whole", ledger)
+	}
 }
 
 func containsRefund(owed []PlacementRefund, id uuid.UUID) bool {
@@ -423,4 +442,37 @@ func containsRefund(owed []PlacementRefund, id uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+func TestLivePlacementDeleteUnsentTestsTakesItsTasks(t *testing.T) {
+	f := newPlacementFixture(t)
+	ctx := context.Background()
+	test, _, tasks := f.newTest(f.seeds, time.Now().Add(time.Hour))
+	other, _, _ := f.newTest(f.seeds, time.Now().Add(time.Hour))
+
+	// Another workspace's id deletes nothing.
+	if err := f.repo.DeleteUnsentTests(ctx, f.opOrg, []uuid.UUID{test.ID}); err != nil {
+		t.Fatalf("DeleteUnsentTests: %v", err)
+	}
+	if got, _ := f.repo.GetTest(ctx, test.ID); got == nil {
+		t.Fatalf("a test was deleted through another workspace")
+	}
+	if err := f.repo.DeleteUnsentTests(ctx, f.org, []uuid.UUID{test.ID}); err != nil {
+		t.Fatalf("DeleteUnsentTests: %v", err)
+	}
+	if got, _ := f.repo.GetTest(ctx, test.ID); got != nil {
+		t.Fatalf("the test survived")
+	}
+	_, pool := liveContactDB(t)
+	ids := make([]uuid.UUID, len(tasks))
+	for i, task := range tasks {
+		ids[i] = task.ID
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM tasks WHERE id = ANY($1)`, ids).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("%d tasks survived their test (%v)", left, err)
+	}
+	if got, _ := f.repo.GetTest(ctx, other.ID); got == nil {
+		t.Fatalf("an unrelated test was deleted")
+	}
 }

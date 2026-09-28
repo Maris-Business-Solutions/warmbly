@@ -317,7 +317,7 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
             ...(chosenSeeds.length > 0 ? { seed_ids: chosenSeeds.map((m) => m.email_account_id) } : {}),
             ...(chosenFamilies.length > 0 ? { families: chosenFamilies } : {}),
             ...(draft.pace !== "spaced" ? { pace: draft.pace } : {}),
-            ...(consented ? { use_credits: true } : {}),
+            ...(consented ? { max_credits: cost.credits } : {}),
         };
         if (draft.source === "step") {
             body.campaign_id = draft.campaignId;

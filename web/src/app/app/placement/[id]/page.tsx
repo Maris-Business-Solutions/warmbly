@@ -114,9 +114,7 @@ function Detail({ test }: { test: PlacementTestDetail }) {
                         {test.pace === "quick" && <span>Quick pace</span>}
                         {test.credits_charged > 0 && (
                             <span title={test.credits_refunded_at ? "No copy was delivered, so the credits came back." : "Paid past the month's free tests."}>
-                                {test.credits_refunded_at
-                                    ? `${test.credits_charged} credits refunded`
-                                    : `Paid ${test.credits_charged} credits`}
+                                {test.credits_refunded_at ? "Credits refunded" : `Paid ${test.credits_charged} credits`}
                             </span>
                         )}
                         {test.campaign_id && (

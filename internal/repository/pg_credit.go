@@ -72,12 +72,12 @@ type CreditRepository interface {
 	// Same idempotency semantics as Consume.
 	ConsumeAtMost(ctx context.Context, orgID uuid.UUID, amount int, reason, model string, tokens int, idempotencyKey string) (consumed, balance int, replayed bool, err error)
 
-	// SpentInWindows sums debited credits since each of the three window
-	// starts (calendar day / ISO week / calendar month, all UTC).
+	// SpentInWindows sums debited credits, net of refunds, since each of the
+	// three window starts (calendar day / ISO week / calendar month, all UTC).
 	SpentInWindows(ctx context.Context, orgID uuid.UUID, dayStart, weekStart, monthStart time.Time) (day, week, month int, err error)
 
-	// MemberSpentInWindows sums the credits a specific member has debited
-	// since each window start (attributed via actor_user_id; system work is
+	// MemberSpentInWindows sums the credits a specific member has debited,
+	// net of refunds, since each window start (attributed via actor_user_id; system work is
 	// not counted).
 	MemberSpentInWindows(ctx context.Context, orgID, userID uuid.UUID, dayStart, weekStart, monthStart time.Time) (day, week, month int, err error)
 
@@ -307,9 +307,21 @@ func (r *creditRepository) RefundSpend(ctx context.Context, orgID uuid.UUID, spe
 	if spend == nil || spend.OrgID != orgID || spend.Amount >= 0 {
 		return 0, 0, tx.Commit(ctx)
 	}
-	total := -spend.Amount
-	toPurchased := min(-spend.PurchasedDelta, total)
-	toMonthly := total - toPurchased
+	// Monthly credits spent before the allowance was last reset would have
+	// expired with it, so only the purchased part comes back then.
+	var resetAt time.Time
+	if err := tx.QueryRow(ctx, `SELECT month_reset_at FROM credit_ledger WHERE org_id = $1 FOR UPDATE`, orgID).Scan(&resetAt); err != nil {
+		return 0, 0, err
+	}
+	toPurchased := min(-spend.PurchasedDelta, -spend.Amount)
+	toMonthly := -spend.Amount - toPurchased
+	if resetAt.After(spend.CreatedAt) {
+		toMonthly = 0
+	}
+	total := toMonthly + toPurchased
+	if total == 0 {
+		return 0, 0, tx.Commit(ctx)
+	}
 
 	var monthly, purchased int
 	if err := tx.QueryRow(ctx, `
@@ -401,11 +413,11 @@ func (r *creditRepository) SpentInWindows(ctx context.Context, orgID uuid.UUID, 
 	var day, week, month int
 	err := r.DB.QueryRow(ctx, `
 		SELECT
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $2), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $3), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $4), 0)
+			GREATEST(COALESCE(SUM(-amount) FILTER (WHERE created_at >= $2), 0), 0),
+			GREATEST(COALESCE(SUM(-amount) FILTER (WHERE created_at >= $3), 0), 0),
+			GREATEST(COALESCE(SUM(-amount) FILTER (WHERE created_at >= $4), 0), 0)
 		FROM credit_ledger_transactions
-		WHERE org_id = $1 AND amount < 0 AND created_at >= LEAST($2, $3, $4)
+		WHERE org_id = $1 AND (amount < 0 OR reason LIKE '%\_refund') AND created_at >= LEAST($2, $3, $4)
 	`, orgID, dayStart, weekStart, monthStart).Scan(&day, &week, &month)
 	if err != nil {
 		return 0, 0, 0, err
@@ -417,11 +429,11 @@ func (r *creditRepository) MemberSpentInWindows(ctx context.Context, orgID, user
 	var day, week, month int
 	err := r.DB.QueryRow(ctx, `
 		SELECT
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $3), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $4), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $5), 0)
+			GREATEST(COALESCE(SUM(-amount) FILTER (WHERE created_at >= $3), 0), 0),
+			GREATEST(COALESCE(SUM(-amount) FILTER (WHERE created_at >= $4), 0), 0),
+			GREATEST(COALESCE(SUM(-amount) FILTER (WHERE created_at >= $5), 0), 0)
 		FROM credit_ledger_transactions
-		WHERE org_id = $1 AND actor_user_id = $2 AND amount < 0 AND created_at >= LEAST($3, $4, $5)
+		WHERE org_id = $1 AND actor_user_id = $2 AND (amount < 0 OR reason LIKE '%\_refund') AND created_at >= LEAST($3, $4, $5)
 	`, orgID, userID, dayStart, weekStart, monthStart).Scan(&day, &week, &month)
 	if err != nil {
 		return 0, 0, 0, err

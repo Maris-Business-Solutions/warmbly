@@ -46,6 +46,7 @@ type PlacementLanding struct {
 type PlacementRefund struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
+	CreatedBy      *uuid.UUID
 	Credits        int
 }
 
@@ -155,8 +156,11 @@ type PlacementRepository interface {
 	// since a moment. A test paid in credits, or one that finished without
 	// delivering a copy, uses none.
 	CountMeteredTests(ctx context.Context, orgID uuid.UUID, since time.Time) (int, error)
-	// PendingRefunds lists finished tests paid in credits that delivered no
-	// copy and have not been refunded yet.
+	// DeleteUnsentTests removes tests of one workspace, with their pending
+	// tasks, when a request fails after writing them and before any copy left.
+	DeleteUnsentTests(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) error
+	// PendingRefunds lists tests paid in credits that finished in the last
+	// week without delivering a copy and have not been refunded yet.
 	PendingRefunds(ctx context.Context, limit int) ([]PlacementRefund, error)
 	// MarkCreditsRefunded stamps a test's refund; false when already stamped.
 	MarkCreditsRefunded(ctx context.Context, testID uuid.UUID) (bool, error)
@@ -744,12 +748,48 @@ func (r *placementRepository) CountMeteredTests(ctx context.Context, orgID uuid.
 	return n, err
 }
 
+func (r *placementRepository) DeleteUnsentTests(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var taskIDs []uuid.UUID
+	rows, err := tx.Query(ctx, `
+		SELECT pr.task_id FROM placement_results pr
+		JOIN placement_tests pt ON pt.id = pr.test_id
+		WHERE pt.organization_id = $1 AND pt.id = ANY($2) AND pr.task_id IS NOT NULL
+	`, orgID, ids)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		taskIDs = append(taskIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM placement_tests WHERE organization_id = $1 AND id = ANY($2)`, orgID, ids); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM tasks WHERE id = ANY($1) AND status = 'pending'`, taskIDs); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (r *placementRepository) PendingRefunds(ctx context.Context, limit int) ([]PlacementRefund, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT pt.id, pt.organization_id, pt.credits_charged FROM placement_tests pt
+		SELECT pt.id, pt.organization_id, pt.created_by, pt.credits_charged FROM placement_tests pt
 		WHERE pt.credits_charged > 0
 		  AND pt.credits_refunded_at IS NULL
-		  AND pt.finished_at IS NOT NULL
+		  AND pt.finished_at > NOW() - INTERVAL '7 days'
 		  AND pt.organization_id IS NOT NULL
 		  AND NOT EXISTS (
 			SELECT 1 FROM placement_results pr
@@ -765,7 +805,7 @@ func (r *placementRepository) PendingRefunds(ctx context.Context, limit int) ([]
 	var out []PlacementRefund
 	for rows.Next() {
 		var f PlacementRefund
-		if err := rows.Scan(&f.ID, &f.OrganizationID, &f.Credits); err != nil {
+		if err := rows.Scan(&f.ID, &f.OrganizationID, &f.CreatedBy, &f.Credits); err != nil {
 			return nil, err
 		}
 		out = append(out, f)

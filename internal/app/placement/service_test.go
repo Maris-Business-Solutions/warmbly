@@ -3,6 +3,7 @@ package placement
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -45,9 +46,12 @@ func (f *fakeRepo) CountMeteredTests(context.Context, uuid.UUID, time.Time) (int
 	return f.metered, nil
 }
 func (f *fakeRepo) SampleLead(context.Context, uuid.UUID) (*uuid.UUID, error) { return nil, nil }
-func (f *fakeRepo) ListSeeds(_ context.Context, scope string, org *uuid.UUID, _ bool) ([]repository.SeedAccount, error) {
+func (f *fakeRepo) ListSeeds(_ context.Context, scope string, org *uuid.UUID, activeOnly bool) ([]repository.SeedAccount, error) {
 	var out []repository.SeedAccount
 	for _, s := range f.seeds {
+		if activeOnly && (s.Status != "active" || s.WorkerID == nil) {
+			continue
+		}
 		if s.SeedScope == scope && (org == nil || (s.OrganizationID != nil && *s.OrganizationID == *org)) {
 			out = append(out, s)
 		}
@@ -67,6 +71,16 @@ func (f *fakeRepo) CreateTests(ctx context.Context, bundles []repository.Placeme
 	for _, b := range bundles {
 		_ = f.CreateTest(ctx, b.Test, b.Results, b.Tasks)
 	}
+	return nil
+}
+func (f *fakeRepo) DeleteUnsentTests(_ context.Context, _ uuid.UUID, ids []uuid.UUID) error {
+	kept := f.created[:0]
+	for _, t := range f.created {
+		if !slices.Contains(ids, t.ID) {
+			kept = append(kept, t)
+		}
+	}
+	f.created = kept
 	return nil
 }
 func (f *fakeRepo) FailProbe(_ context.Context, id uuid.UUID, _ string) error {
@@ -362,6 +376,7 @@ type fakeCredits struct {
 	balance  int
 	charges  map[string]int
 	refunded map[string]bool
+	refuse   bool
 }
 
 func (f *fakeCredits) Unmetered() bool { return false }
@@ -369,7 +384,7 @@ func (f *fakeCredits) GetBalance(context.Context, uuid.UUID) (int, *errx.Error) 
 	return f.balance, nil
 }
 func (f *fakeCredits) Charge(_ context.Context, _ uuid.UUID, amount int, _ string, key string) (int, error) {
-	if f.balance < amount {
+	if f.refuse || f.balance < amount {
 		return 0, credits.ErrInsufficientCredits
 	}
 	f.balance -= amount
@@ -447,6 +462,24 @@ func TestChosenOwnSeedsAreNotCappedBySeedsPerTest(t *testing.T) {
 	if got := len(h.repo.results[0]); got != 7 {
 		t.Fatalf("sent to %d seeds; want all 7 chosen", got)
 	}
+
+	// A day that cannot pay for every chosen seed refuses rather than drops.
+	h.repo.created, h.tasks.sentToday = nil, 44
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "placement_daily_budget" {
+		t.Fatalf("got %v; want placement_daily_budget with six sends left for seven seeds", xerr)
+	}
+
+	// A chosen seed that is not connected is named, not skipped.
+	h.tasks.sentToday = 0
+	for i := range h.repo.seeds {
+		if h.repo.seeds[i].ID == ids[0] {
+			h.repo.seeds[i].Status = "inactive"
+		}
+	}
+	_, xerr := h.svc.CreateTests(context.Background(), in)
+	if xerr == nil || xerr.Identifier != "placement_invalid_seeds" || !strings.Contains(xerr.Message, "seed0@gmail.com") {
+		t.Fatalf("got %v; want the disconnected seed named", xerr)
+	}
 }
 
 func TestCreateTestsPaysInCreditsPastTheFreeTests(t *testing.T) {
@@ -471,7 +504,7 @@ func TestCreateTestsPaysInCreditsPastTheFreeTests(t *testing.T) {
 	}
 
 	in := h.input()
-	in.UseCredits = true
+	in.MaxCredits = 1000
 	views, xerr := h.svc.CreateTests(context.Background(), in)
 	if xerr != nil {
 		t.Fatalf("CreateTests: %v", xerr)
@@ -484,7 +517,7 @@ func TestCreateTestsPaysInCreditsPastTheFreeTests(t *testing.T) {
 	h, c = newPaid(t, 100)
 	h.repo.metered = config.PlacementTestsPerMonthPaidDefault - 1
 	in = h.input()
-	in.UseCredits, in.Tracking = true, models.PlacementTrackingCompare
+	in.MaxCredits, in.Tracking = 1000, models.PlacementTrackingCompare
 	views, xerr = h.svc.CreateTests(context.Background(), in)
 	if xerr != nil {
 		t.Fatalf("CreateTests: %v", xerr)
@@ -493,17 +526,37 @@ func TestCreateTestsPaysInCreditsPastTheFreeTests(t *testing.T) {
 		t.Fatalf("charged %d and %d; want only the second half paid", views[0].CreditsCharged, views[1].CreditsCharged)
 	}
 
-	h, c = newPaid(t, price-1)
+	h, _ = newPaid(t, price-1)
 	in = h.input()
-	in.UseCredits = true
+	in.MaxCredits = 1000
 	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "insufficient_credits" {
 		t.Fatalf("got %v; want insufficient_credits", xerr)
+	}
+
+	// Agreeing to less than the price charges nothing.
+	h, c = newPaid(t, 100)
+	in = h.input()
+	in.MaxCredits = price - 1
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "placement_quota_exceeded" || len(c.charges) != 0 {
+		t.Fatalf("got %v with charges %v; want a refusal below the price", xerr, c.charges)
+	}
+
+	// A charge refused after the write takes the test back out.
+	h, _ = newPaid(t, 100)
+	h.svc.Credits = &fakeCredits{balance: 100, charges: map[string]int{}, refunded: map[string]bool{}, refuse: true}
+	in = h.input()
+	in.MaxCredits = 1000
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "insufficient_credits" {
+		t.Fatalf("got %v; want the refused charge surfaced", xerr)
+	}
+	if len(h.repo.created) != 0 {
+		t.Fatalf("%d tests left behind after a refused charge", len(h.repo.created))
 	}
 
 	// A monitor never spends credits on its own.
 	h, _ = newPaid(t, 100)
 	in = h.input()
-	in.UseCredits, in.Origin = true, models.PlacementOriginMonitor
+	in.MaxCredits, in.Origin = 1000, models.PlacementOriginMonitor
 	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "placement_quota_exceeded" {
 		t.Fatalf("got %v; want a monitor refused past the free tests", xerr)
 	}
@@ -513,7 +566,7 @@ func TestCreateTestsPaysInCreditsPastTheFreeTests(t *testing.T) {
 	h.svc.Gate = fakeGate{paid: false}
 	h.repo.metered = config.PlacementTestsPerMonthTrialDefault
 	in = h.input()
-	in.UseCredits = true
+	in.MaxCredits = 1000
 	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "placement_quota_exceeded" || len(c.charges) != 0 {
 		t.Fatalf("got %v with charges %v; want a trial refused without a charge", xerr, c.charges)
 	}
@@ -522,12 +575,12 @@ func TestCreateTestsPaysInCreditsPastTheFreeTests(t *testing.T) {
 	h, c = newPaid(t, 100)
 	h.repo.failSave = true
 	in = h.input()
-	in.UseCredits = true
+	in.MaxCredits = 1000
 	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil {
 		t.Fatalf("CreateTests succeeded with a failing write")
 	}
-	if c.balance != 100 {
-		t.Fatalf("balance %d after a failed write; want the charge refunded", c.balance)
+	if c.balance != 100 || len(c.charges) != 0 {
+		t.Fatalf("balance %d, charges %v after a failed write; want nothing charged", c.balance, c.charges)
 	}
 }
 

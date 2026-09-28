@@ -2,6 +2,7 @@
 // formatting, and the messages for every refusal the start endpoint returns.
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
+import { domainOf } from "@/lib/api/models/app/emails/MailboxSources";
 import type { DitherTone } from "@/components/ui/dither";
 import type {
     PlacementCounts,
@@ -150,11 +151,6 @@ export function placementErrorMessage(
         default:
             return { field: "general", message: buildError(err) };
     }
-}
-
-function domainOf(address: string): string {
-    const at = address.lastIndexOf("@");
-    return at >= 0 ? address.slice(at + 1).trim().toLowerCase() : "";
 }
 
 // Why a seed cannot take this test, or null when it can.

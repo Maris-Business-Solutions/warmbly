@@ -167,8 +167,9 @@ type CreateInput struct {
 	Families []string
 	// Pace is spaced (the default) or quick.
 	Pace string
-	// UseCredits agrees to pay for a test past the monthly free allowance.
-	UseCredits bool
+	// MaxCredits is the most the caller agreed to pay for a test past the
+	// monthly free allowance; a higher price is refused, never charged.
+	MaxCredits int
 	Origin     string
 	MonitorID  *uuid.UUID
 }
@@ -360,10 +361,10 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 				return nil, placementErr(errx.PaymentRequired, "placement_quota_exceeded",
 					"This workspace has used its free placement tests for the month.")
 			}
-			if !in.UseCredits {
+			if in.MaxCredits < paid*price {
 				return nil, placementErr(errx.PaymentRequired, "placement_quota_exceeded",
 					"This workspace has used its free placement tests for the month. This test costs "+
-						strconv.Itoa(paid*price)+" credits; start it again agreeing to pay them.")
+						strconv.Itoa(paid*price)+" credits; start it again agreeing to pay that many.")
 			}
 			if usage.CreditBalance != nil && *usage.CreditBalance < paid*price {
 				return nil, placementErr(errx.PaymentRequired, "insufficient_credits",
@@ -408,7 +409,12 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 			return nil, errx.InternalError()
 		}
 		if len(in.SeedIDs) > 0 {
-			if rows, xerr = chosenSeeds(rows, in.SeedIDs); xerr != nil {
+			all, err := s.Repo.ListSeeds(ctx, scope, orgFilter, false)
+			if err != nil {
+				errs.CaptureException(err)
+				return nil, errx.InternalError()
+			}
+			if rows, xerr = chosenSeeds(all, rows, in.SeedIDs); xerr != nil {
 				return nil, xerr
 			}
 		}
@@ -416,6 +422,11 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 		wanted := len(pickSeeds(rows, sender.ID, senderDomain, perTest))
 		if floor := min(wanted, config.PlacementSeedsPerTestMin); wanted > 0 && perVariant < floor {
 			return nil, budgetShort(floor)
+		}
+		// Seeds picked by hand are each promised a copy, so a day that
+		// cannot pay for all of them refuses rather than dropping some.
+		if len(in.SeedIDs) > 0 && perVariant < wanted {
+			return nil, budgetShort(wanted)
 		}
 		seeds = pickSeeds(rows, sender.ID, senderDomain, perVariant)
 	case models.PlacementPanelCloud:
@@ -445,6 +456,10 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 		}
 		cloudStart = start
 		for _, cs := range start.Seeds {
+			// A cloud that predates Families hands back every provider.
+			if len(families) > 0 && !slices.Contains(families, cs.Family) {
+				continue
+			}
 			id := cs.ID
 			seeds = append(seeds, models.PlacementSeed{RemoteSeedID: &id, Address: cs.Address, Family: cs.Family})
 		}
@@ -545,31 +560,21 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 	for i := range out {
 		bundles[i] = repository.PlacementBundle{Test: &out[i].test, Results: out[i].results, Tasks: out[i].tasks}
 	}
-	charged := make([]uuid.UUID, 0, paid)
-	refundAll := func() {
-		for _, id := range charged {
-			if _, err := s.Credits.RefundCharge(ctx, in.OrgID, chargeKey(id), "placement_test_refund"); err != nil {
-				errs.CaptureException(err)
-			}
-		}
-	}
-	if paid > 0 {
-		cctx := s.creditContext(ctx, in, sender.Email)
-		for i := range out {
-			if out[i].test.CreditsCharged == 0 {
-				continue
-			}
-			if _, err := s.Credits.Charge(cctx, in.OrgID, price, "placement_test", chargeKey(out[i].test.ID)); err != nil {
-				refundAll()
-				return nil, creditErr(err)
-			}
-			charged = append(charged, out[i].test.ID)
-		}
-	}
 	if err := s.Repo.CreateTests(ctx, bundles); err != nil {
-		refundAll()
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
+	}
+	// Charged only once the test row exists, so every charge has a record
+	// the refund pass can find. A refused charge takes the tests back out
+	// before their first copy is due.
+	if paid > 0 {
+		tests := make([]*models.PlacementTest, len(out))
+		for i := range out {
+			tests[i] = &out[i].test
+		}
+		if xerr := s.chargeTests(ctx, in, sender.Email, price, tests); xerr != nil {
+			return nil, xerr
+		}
 	}
 	views := make([]TestView, 0, len(out))
 	for i := range out {
@@ -745,6 +750,38 @@ func inFamilies(rows []repository.SeedAccount, families []string) []repository.S
 	return out
 }
 
+// chargeTests charges each paid test its price. On a refusal it refunds what
+// it already charged and deletes every test of the request, which has not
+// sent anything yet.
+func (s *service) chargeTests(ctx context.Context, in CreateInput, sender string, price int, tests []*models.PlacementTest) *errx.Error {
+	cctx := s.creditContext(ctx, in, sender)
+	var charged []uuid.UUID
+	for _, t := range tests {
+		if t.CreditsCharged == 0 {
+			continue
+		}
+		_, err := s.Credits.Charge(cctx, in.OrgID, price, "placement_test", chargeKey(t.ID))
+		if err == nil {
+			charged = append(charged, t.ID)
+			continue
+		}
+		for _, id := range charged {
+			if _, rerr := s.Credits.RefundCharge(cctx, in.OrgID, chargeKey(id), "placement_test_refund"); rerr != nil {
+				errs.CaptureException(rerr)
+			}
+		}
+		ids := make([]uuid.UUID, len(tests))
+		for i, t := range tests {
+			ids[i] = t.ID
+		}
+		if derr := s.Repo.DeleteUnsentTests(ctx, in.OrgID, ids); derr != nil {
+			errs.CaptureException(derr)
+		}
+		return creditErr(err)
+	}
+	return nil
+}
+
 // chargeKey is the ledger key of a paid test's charge; its refund derives
 // from it.
 func chargeKey(testID uuid.UUID) string { return "placement:" + testID.String() }
@@ -774,22 +811,39 @@ func creditErr(err error) *errx.Error {
 	return errx.InternalError()
 }
 
-// chosenSeeds keeps the rows named in ids, refusing any id that is not a
-// connected seed inbox of the panel.
-func chosenSeeds(rows []repository.SeedAccount, ids []uuid.UUID) ([]repository.SeedAccount, *errx.Error) {
+// chosenSeeds keeps the live rows named in ids. An id that is not a seed of
+// the panel, or one whose mailbox is not connected and on a worker, refuses
+// the request by name rather than sending to fewer seeds than were chosen.
+func chosenSeeds(all, live []repository.SeedAccount, ids []uuid.UUID) ([]repository.SeedAccount, *errx.Error) {
 	want := make(map[uuid.UUID]bool, len(ids))
 	for _, id := range ids {
 		want[id] = true
 	}
-	out := make([]repository.SeedAccount, 0, len(want))
-	for _, r := range rows {
-		if want[r.ID] {
-			out = append(out, r)
+	known := map[uuid.UUID]string{}
+	for _, r := range all {
+		known[r.ID] = r.Email
+	}
+	for id := range want {
+		if _, ok := known[id]; !ok {
+			return nil, placementErr(errx.BadRequest, "placement_invalid_seeds",
+				"Every chosen seed inbox has to be a seed inbox of this workspace.")
 		}
 	}
-	if len(out) != len(want) {
+	out := make([]repository.SeedAccount, 0, len(want))
+	for _, r := range live {
+		if want[r.ID] {
+			out = append(out, r)
+			delete(want, r.ID)
+		}
+	}
+	if len(want) > 0 {
+		names := make([]string, 0, len(want))
+		for id := range want {
+			names = append(names, known[id])
+		}
+		sort.Strings(names)
 		return nil, placementErr(errx.BadRequest, "placement_invalid_seeds",
-			"Every chosen seed inbox has to be a connected seed inbox of this workspace.")
+			strings.Join(names, ", ")+" is not connected and running right now, so it cannot take a test.")
 	}
 	return out, nil
 }

@@ -149,8 +149,8 @@ export interface CreatePlacementTestRequest {
     /** Only seeds at these provider families. */
     families?: string[];
     pace?: PlacementPace;
-    /** Agrees to pay in credits for a test past the month's free tests. */
-    use_credits?: boolean;
+    /** The most credits the caller agreed to pay for a test past the month's free tests. */
+    max_credits?: number;
 }
 
 export interface PlacementWorkspaceSeed {
