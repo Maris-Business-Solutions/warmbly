@@ -89,7 +89,7 @@ func (s *campaignService) Get(ctx context.Context, orgID, id string) (*models.Ca
 	return resp, nil
 }
 
-func (s *campaignService) Search(ctx context.Context, orgID, query, cursor, folder, status, kind, limit string) (*models.CampaignsResult, *errx.Error) {
+func (s *campaignService) Search(ctx context.Context, orgID, query, cursor, folder, status, limit string) (*models.CampaignsResult, *errx.Error) {
 	cursorId, err := paging.DecodeCursor(cursor)
 	if err != nil {
 		return nil, err
@@ -107,11 +107,8 @@ func (s *campaignService) Search(ctx context.Context, orgID, query, cursor, fold
 	default:
 		return nil, errx.New(errx.BadRequest, "invalid status filter: must be draft, active, paused, or completed")
 	}
-	if kind != "" && !models.ValidCampaignKind(kind) {
-		return nil, errx.New(errx.BadRequest, "invalid kind filter: must be sequence or one_time")
-	}
 
-	resp, xerr := s.campaignRepository.Search(ctx, orgID, query, cursorId, folderId, status, kind, limitN)
+	resp, xerr := s.campaignRepository.Search(ctx, orgID, query, cursorId, folderId, status, limitN)
 	if xerr != nil {
 		return nil, errx.InternalError()
 	}
@@ -1040,10 +1037,10 @@ func modelOrgID(orgID *uuid.UUID) string {
 // longer than this reports no finish date rather than a meaningless one.
 const estimateHorizonDays = 2 * 366
 
-// Estimate projects an audience against a sender pool. It applies the same
-// cap rule as the scheduler (the smaller of the mailbox cap and the campaign
-// limit, per mailbox, per day) but none of its pacing, so the result is the
-// earliest the last send can land, not a promise.
+// Estimate projects an audience against a sender pool. With the scheduler
+// wired it simulates the campaign day by day under the send path's clamps and
+// the warmup mail running alongside; without it, it applies only the cap rule
+// and the result is the earliest the last send can land.
 func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *models.CampaignEstimate) (*models.CampaignEstimateResult, *errx.Error) {
 	out := &models.CampaignEstimateResult{}
 
@@ -1082,6 +1079,19 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 		}
 		dailyLimit = *in.DailyLimit
 	}
+	if len(in.StepWaits) > models.CampaignEstimateStepsMax {
+		return nil, errx.New(errx.BadRequest, fmt.Sprintf("an estimate covers at most %d follow-ups", models.CampaignEstimateStepsMax))
+	}
+	for _, w := range in.StepWaits {
+		if w < 0 || w > 365 {
+			return nil, errx.New(errx.BadRequest, "step_waits must be between 0 and 365 days")
+		}
+	}
+	for _, v := range []*string{in.StartTime, in.EndTime} {
+		if v != nil && *v != "" && models.ClockMinutes(*v, -1) < 0 {
+			return nil, errx.New(errx.BadRequest, "start_time and end_time must be HH:MM")
+		}
+	}
 
 	// Same pool resolution as the scheduler: tags when given, otherwise
 	// every active mailbox in the workspace.
@@ -1097,6 +1107,24 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 		return nil, xerr
 	}
 	out.Mailboxes = len(accounts)
+	out.Steps = 1 + len(in.StepWaits)
+	out.TotalSends = out.Recipients * out.Steps
+	out.Timeline, out.Senders = []models.CampaignEstimateDay{}, []models.CampaignEstimateSender{}
+
+	days := bitmask.DefaultDays()
+	if in.Days != nil && *in.Days != 0 {
+		days = *in.Days
+	}
+	// No timezone, or an empty one, means the campaign will follow the workspace.
+	zone := s.campaignRepository.WorkspaceTimezone(ctx, orgID)
+	if in.Timezone != nil && *in.Timezone != "" && tz.Valid(*in.Timezone) {
+		zone = *in.Timezone
+	}
+	draft := &models.Campaign{OrganizationID: &orgID, DailyLimit: dailyLimit, Days: days, Timezone: zone, StartDate: in.StartDate}
+	if in.StartTime != nil && in.EndTime != nil {
+		draft.StartTime, draft.EndTime = *in.StartTime, *in.EndTime
+	}
+
 	// The pool's day under the same clamps the scheduler applies (the
 	// graduation ceiling, the workspace's risk band, a warmup health hold,
 	// domain authentication, cold rotation), so the wizard promises what the
@@ -1107,20 +1135,29 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 			errs.CaptureException(err)
 			return nil, errx.InternalError()
 		}
-		out.DailyCapacity, out.RemainingToday = capacity.Capacity, capacity.Remaining
-	} else {
-		for _, acct := range accounts {
-			lim := max(0, min(acct.CampaignLimit, dailyLimit))
-			out.DailyCapacity += lim
-			sent, err := s.taskRepo.CountCampaignEmailsSentToday(ctx, acct.ID)
-			if err != nil {
-				// A counter blip must not blank the whole estimate, but it must
-				// not flatter it either: a mailbox whose sends today are unknown
-				// contributes nothing to today and only counts from tomorrow.
-				continue
-			}
-			out.RemainingToday += max(0, lim-sent)
+		projected, err := planner.ProjectCampaign(ctx, scheduler.CampaignProjectionInput{
+			Campaign: draft, Accounts: accounts, Recipients: out.Recipients, StepWaits: in.StepWaits,
+			OrgDailyLimit: s.orgDailyLimit(ctx, orgID),
+		})
+		if err != nil {
+			errs.CaptureException(err)
+			return nil, errx.InternalError()
 		}
+		projected.DailyCapacity, projected.RemainingToday = capacity.Capacity, capacity.Remaining
+		return projected, nil
+	}
+
+	for _, acct := range accounts {
+		lim := max(0, min(acct.CampaignLimit, dailyLimit))
+		out.DailyCapacity += lim
+		sent, err := s.taskRepo.CountCampaignEmailsSentToday(ctx, acct.ID)
+		if err != nil {
+			// A counter blip must not blank the whole estimate, but it must
+			// not flatter it either: a mailbox whose sends today are unknown
+			// contributes nothing to today and only counts from tomorrow.
+			continue
+		}
+		out.RemainingToday += max(0, lim-sent)
 	}
 	if limit := s.orgDailyLimit(ctx, orgID); limit >= 0 {
 		out.DailyCapacity = min(out.DailyCapacity, limit)
@@ -1134,18 +1171,9 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 		return out, nil
 	}
 
-	// Walk calendar days from the start, spending each sending day's
-	// capacity, until the audience is covered. Today only has what the pool
+	// Without the scheduler, walk calendar days spending each sending day's
+	// capacity until the audience is covered. Today only has what the pool
 	// has not already sent.
-	days := bitmask.DefaultDays()
-	if in.Days != nil && *in.Days != 0 {
-		days = *in.Days
-	}
-	// No timezone, or an empty one, means the campaign will follow the workspace.
-	zone := s.campaignRepository.WorkspaceTimezone(ctx, orgID)
-	if in.Timezone != nil && *in.Timezone != "" && tz.Valid(*in.Timezone) {
-		zone = *in.Timezone
-	}
 	loc := time.UTC
 	if l, err := time.LoadLocation(zone); err == nil {
 		loc = l
@@ -1157,7 +1185,7 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 	}
 	startDay := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
 	startsToday := startDay.Equal(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc))
-	remaining := out.Recipients
+	remaining := out.TotalSends
 	sendingDays := 0
 	for i := 0; i < estimateHorizonDays; i++ {
 		d := startDay.AddDate(0, 0, i)

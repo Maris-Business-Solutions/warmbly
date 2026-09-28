@@ -35,7 +35,6 @@ import {
     PlayIcon,
     PlusIcon,
     RefreshCcwIcon,
-    SendIcon,
     Settings2Icon,
 } from "lucide-react";
 import {
@@ -56,7 +55,6 @@ import {
     campaignStatusBucket as statusBucket,
     campaignStatusTone as statusTone,
     isIdleCampaign,
-    isOneTimeCampaign,
 } from "@/components/app/campaigns/status";
 import {
     PopoverMenu,
@@ -69,14 +67,7 @@ import {
 } from "@/components/ui/popover-menu";
 
 type StatusFilter = "all" | "active" | "paused" | "draft" | "completed";
-type KindFilter = "all" | "sequence" | "one_time";
 type SortMode = "newest" | "oldest" | "name";
-
-const KIND_LABEL: Record<KindFilter, string> = {
-    all: "All types",
-    sequence: "Sequences",
-    one_time: "One-time emails",
-};
 
 // Per-state label + leading mark for a campaign row. "active" renders the
 // animated dot-grid loader; every other state is a 14px lucide icon so the
@@ -257,9 +248,10 @@ export default function CampaignsPage() {
     const [folder, setFolder] = useState<string>("");
     const [query, setQuery] = useState<string>("");
     const [status, setStatus] = useState<StatusFilter>("all");
-    const [kind, setKind] = useState<KindFilter>("all");
     const [sort, setSort] = useState<SortMode>("newest");
     const [newOpen, setNewOpen] = useState<boolean>(false);
+    // A draft clicked in the list reopens in the new-campaign flow.
+    const [draftId, setDraftId] = useState<string | null>(null);
     const [launchTarget, setLaunchTarget] = useState<Campaign | null>(null);
 
     async function toggleCampaign(id: string, currentStatus: string) {
@@ -302,11 +294,7 @@ export default function CampaignsPage() {
     const activeFolder = folders.find((f) => f.id === folder);
 
     const filtered = useMemo(() => {
-        const base = campaigns.filter(
-            (c) =>
-                (status === "all" || statusBucket(c.status) === status) &&
-                (kind === "all" || (c.kind ?? "sequence") === kind),
-        );
+        const base = campaigns.filter((c) => status === "all" || statusBucket(c.status) === status);
         const sorted = [...base];
         if (sort === "newest") {
             sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -316,7 +304,7 @@ export default function CampaignsPage() {
             sorted.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
         }
         return sorted;
-    }, [campaigns, status, kind, sort]);
+    }, [campaigns, status, sort]);
 
     const counts = useMemo(() => {
         const stats = { total: campaigns.length, active: 0, paused: 0, draft: 0, completed: 0 };
@@ -439,23 +427,6 @@ export default function CampaignsPage() {
                 <PopoverMenu align="end">
                     <PopoverMenuTrigger asChild>
                         <SelectButton
-                            icon={<SendIcon className="w-3.5 h-3.5" />}
-                            label={KIND_LABEL[kind]}
-                        />
-                    </PopoverMenuTrigger>
-                    <PopoverMenuContent minWidth={180}>
-                        <PopoverMenuLabel>Type</PopoverMenuLabel>
-                        {(Object.keys(KIND_LABEL) as KindFilter[]).map((k) => (
-                            <PopoverMenuItem key={k} selected={kind === k} onSelect={() => setKind(k)}>
-                                {KIND_LABEL[k]}
-                            </PopoverMenuItem>
-                        ))}
-                    </PopoverMenuContent>
-                </PopoverMenu>
-
-                <PopoverMenu align="end">
-                    <PopoverMenuTrigger asChild>
-                        <SelectButton
                             icon={<FilterIcon className="w-3.5 h-3.5" />}
                             label={
                                 sort === "newest"
@@ -544,6 +515,12 @@ export default function CampaignsPage() {
                                 <Link
                                     key={c.id}
                                     to={`/app/campaigns/${c.id}`}
+                                    onClick={(e) => {
+                                        // A modified click still opens the page, in a new tab or not.
+                                        if (cstatus !== "draft" || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                                        e.preventDefault();
+                                        setDraftId(c.id);
+                                    }}
                                     className="group h-11 px-5 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                                 >
                                     {/* Fixed-width leading slot so every row's name aligns,
@@ -557,15 +534,6 @@ export default function CampaignsPage() {
                                     <span className="font-mono text-[10.5px] text-slate-400 tabular-nums shrink-0 hidden sm:inline">
                                         {c.id.slice(0, 8)}
                                     </span>
-                                    {isOneTimeCampaign(c) && (
-                                        <span
-                                            title="One-time email: a single message, no follow-ups"
-                                            className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-medium uppercase tracking-[0.1em] shrink-0"
-                                        >
-                                            <SendIcon className="w-2.5 h-2.5" />
-                                            One-time
-                                        </span>
-                                    )}
                                     <AdvisorRowFlag findings={advisor.get(c.id)} subject={c.name} />
                                     <CampaignFolderChips campaign={c} folders={folders} />
                                     {c.description && (
@@ -616,7 +584,14 @@ export default function CampaignsPage() {
                 )}
             </PageBody>
 
-            <NewCampaignDialog open={newOpen} onClose={() => setNewOpen(false)} />
+            <NewCampaignDialog
+                open={newOpen || draftId !== null}
+                draftId={draftId}
+                onClose={() => {
+                    setNewOpen(false);
+                    setDraftId(null);
+                }}
+            />
             <LaunchCampaignDialog
                 campaign={launchTarget}
                 onClose={() => setLaunchTarget(null)}

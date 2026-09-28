@@ -265,7 +265,7 @@ export default function EditorSuggest({ editor, links = [] }: { editor: Editor; 
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.1 }}
-                    className="z-[60] w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-[0_10px_30px_-10px_rgba(15,23,42,0.25)]"
+                    className="z-[150] w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-[0_10px_30px_-10px_rgba(15,23,42,0.25)]"
                 >
                     {items.map((item, i) => {
                         const Icon = GROUP_ICON[item.group];

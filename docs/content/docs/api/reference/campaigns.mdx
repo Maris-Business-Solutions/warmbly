@@ -18,7 +18,6 @@ Search and page through the organization's campaigns. **Scope** `READ_CAMPAIGNS`
 | `q` | query | string | Free-text filter on campaign name. Optional. |
 | `folder` | query | string | Restrict to a single folder id. Optional. |
 | `status` | query | string | Status bucket filter: `draft`, `active`, `paused` (matches every paused variant), or `completed`. Any other value returns `400`. Optional. |
-| `kind` | query | string | `sequence` or `one_time`. Any other value returns `400`. Optional. |
 | `cursor` | query | string | Opaque cursor from the previous page's `pagination.next_cursor`. Optional. |
 | `limit` | query | string | Page size. Optional. |
 
@@ -36,7 +35,6 @@ A `data` plus `pagination` envelope. `next_cursor` is the campaign id to resume 
       "name": "Q3 outbound",
       "description": "",
       "status": "active",
-      "kind": "sequence",
       "stop_on_reply": true,
       "open_tracking": true,
       "link_tracking": true,
@@ -93,7 +91,7 @@ A `data` plus `pagination` envelope. `next_cursor` is the campaign id to resume 
 
 `GET /campaigns-overview`
 
-Status-bucket counts plus per-folder totals for the organization, used to drive campaign browsing UIs. `paused` sums every paused variant (`paused`, `paused_no_accounts`, `paused_trial_expired`); `one_time` counts campaigns of that kind whatever their status. The path has no campaign id, so it lives beside `/campaigns` rather than under it. **Scope** `READ_CAMPAIGNS` · **Org permission** `view_campaigns`.
+Status-bucket counts plus per-folder totals for the organization, used to drive campaign browsing UIs. `paused` sums every paused variant (`paused`, `paused_no_accounts`, `paused_trial_expired`). The path has no campaign id, so it lives beside `/campaigns` rather than under it. **Scope** `READ_CAMPAIGNS` · **Org permission** `view_campaigns`.
 
 ### Response
 
@@ -104,7 +102,6 @@ Status-bucket counts plus per-folder totals for the organization, used to drive 
   "paused": 2,
   "draft": 4,
   "completed": 3,
-  "one_time": 2,
   "folders": [
     { "folder_id": "6b9c1c8e-1f2a-4d3b-8c7e-9a0b1c2d3e4f", "total": 5 }
   ]
@@ -115,31 +112,61 @@ Status-bucket counts plus per-folder totals for the organization, used to drive 
 
 `POST /campaigns-estimate`
 
-Project an audience against a sender pool before a campaign exists: how many contacts the segments resolve to, how many mailboxes would send, the pool's daily ceiling under the campaign limit and the scheduler's own clamps (the easing-out-of-warmup ceiling, the workspace's risk band, a warmup health hold, domain authentication, cold rotation, the plan's daily allowance), and the day the last send is expected to land. Nothing is written, so it needs no `Idempotency-Key`. The dashboard's one-time email wizard shows this on its last step. **Scope** `READ_CAMPAIGNS` · **Org permission** `view_campaigns`.
+Project an audience against a sender pool before a campaign exists. The campaign is simulated day by day under the scheduler's own rules: each mailbox's cap and the campaign limit, the warmup graduation ceiling as it climbs, the workspace's risk band, health bands and holds, domain authentication, cold rotation, sending behaviour profiles, the plan's daily allowance, what other campaigns already send from the same mailboxes, and the sending window with its spacing. The warmup mail each warming mailbox keeps sending shares that spacing, so it is counted too. For a sequence, due follow-ups go out before new contacts start, and the totals assume nobody replies. Nothing is written, so it needs no `Idempotency-Key`. The dashboard's new-campaign flow shows this as its launch plan. **Scope** `READ_CAMPAIGNS` · **Org permission** `view_campaigns`.
 
 ### Request body
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `segment_ids` | string[] | yes | Segments making up the audience (at most 20). A contact in several of them is counted once. |
+| `segment_ids` | string[] | yes | Segments making up the audience (at most 20). A contact in several of them is counted once. Send `[]` to project the pool alone: its mailboxes and capacity, with no finish date. |
 | `email_tag_ids` | string[] | no | Mailbox tags that resolve the pool. Omit or send `[]` for every active mailbox in the workspace. |
-| `daily_limit` | integer | no | Per-mailbox campaign cap to apply (defaults to `50`). Each mailbox counts the smaller of this and its own cap, lowered further by any clamp the scheduler would apply today. |
+| `daily_limit` | integer | no | Per-mailbox campaign cap to apply (defaults to `50`). Each mailbox counts the smaller of this and its own cap, lowered further by any clamp the scheduler applies. |
 | `days` | integer (0-127) | no | Weekday bitmask of sending days, bit 0 = Monday. Defaults to weekdays. |
-| `timezone` | string | no | IANA timezone the days are counted in. Omit or send `""` to use the workspace timezone (UTC when none is set). |
+| `timezone` | string | no | IANA timezone the days and window are read in. Omit or send `""` to use the workspace timezone (UTC when none is set). |
 | `start_date` | string (RFC 3339) | no | When sending begins. Omit for now. |
+| `start_time` | string | no | Daily window start (`HH:MM`). Only applied together with `end_time`; omit both for an unrestricted day. |
+| `end_time` | string | no | Daily window end (`HH:MM`). |
+| `step_waits` | integer[] | no | Each follow-up's `wait_after` in days (0 to 365), in order. Omit for a single email. At most 30. |
 
 ### Response
 
-`sending_days` and `estimated_finish_at` are `null` when the audience is empty, the pool has no capacity, or the send would take longer than two years. Today only contributes what the pool has not already sent (`remaining_today`).
+`sending_days` and `estimated_finish_at` are `null` when the audience is empty, the pool has no capacity, or the send would take longer than two years. `daily_capacity` and `remaining_today` are the pool's ceiling today and what it has not already sent today. `steady_capacity` is a sending day's capacity once every mailbox has graduated from warmup, reached on `full_capacity_at` (`null` when it already has). Dates are midnight in the campaign's timezone.
+
+| Field | Description |
+| --- | --- |
+| `steps`, `total_sends` | Emails per contact, and `recipients` times `steps`. |
+| `first_touch_finish_at` | The day the last contact gets their first email. |
+| `ramping`, `held` | Mailboxes still climbing their graduation ceiling, and mailboxes that send nothing today. |
+| `warmup` | `{mailboxes, per_day}`: the warmup mail running alongside the campaign. |
+| `other_campaigns_per_day` | What the pool's mailboxes sent for other campaigns on an average day over the last week. |
+| `bottleneck` | The clamp that costs the most sends on the first full sending day: `campaign_limit`, `warmup_graduation`, `spacing`, `other_campaigns`, `health`, `held`, `workspace_risk`, `org_daily_limit` or `sending_behavior`. Empty when the mailboxes' own caps are the limit. |
+| `timeline` | Up to 120 days from the start: `date`, `sending_day`, `capacity`, `sends`, `first_emails`, `follow_ups`, `warmup`. |
+| `senders` | Up to 200 mailboxes: `id`, `email`, `provider`, `state` (`ready`, `ramping`, `throttled`, `health_hold`, `domain_auth`, `resting`, `no_worker`), `first_day_cap`, `steady_cap`, `warmup_per_day`, `full_cap_at`. |
 
 ```json
 {
   "recipients": 1000,
   "mailboxes": 4,
-  "daily_capacity": 200,
-  "remaining_today": 140,
-  "sending_days": 5,
-  "estimated_finish_at": "2026-09-09T00:00:00+02:00"
+  "daily_capacity": 80,
+  "remaining_today": 60,
+  "sending_days": 14,
+  "estimated_finish_at": "2026-10-16T00:00:00+02:00",
+  "steps": 2,
+  "total_sends": 2000,
+  "first_touch_finish_at": "2026-10-09T00:00:00+02:00",
+  "steady_capacity": 180,
+  "full_capacity_at": "2026-10-06T00:00:00+02:00",
+  "ramping": 4,
+  "held": 0,
+  "warmup": { "mailboxes": 4, "per_day": 20 },
+  "other_campaigns_per_day": 0,
+  "bottleneck": "warmup_graduation",
+  "timeline": [
+    { "date": "2026-09-28", "sending_day": true, "capacity": 60, "sends": 60, "first_emails": 60, "follow_ups": 0, "warmup": 20 }
+  ],
+  "senders": [
+    { "id": "5d0c…", "email": "anna@acme.io", "provider": "gmail", "state": "ramping", "first_day_cap": 20, "steady_cap": 45, "warmup_per_day": 5, "full_cap_at": "2026-10-06T00:00:00+02:00" }
+  ]
 }
 ```
 
@@ -155,7 +182,6 @@ Create a campaign. Only `name` is required, every other field is optional and ap
 | --- | --- | --- | --- |
 | `name` | string | yes | Campaign name. |
 | `description` | string | no | Free-text description. |
-| `kind` | string | no | `sequence` (default) or `one_time`. A one-time email accepts at most one entry in `steps` here and refuses further email steps later; it is otherwise a normal campaign. Fixed at creation. |
 | `stop_on_reply` | boolean | no | Stop sending to a contact once they reply. |
 | `open_tracking` | boolean | no | Insert the open pixel. |
 | `link_tracking` | boolean | no | Rewrite links through the tracking ticket service. Each link gets its own ticket, so clicks are attributed per link. |

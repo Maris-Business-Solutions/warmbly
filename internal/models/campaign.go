@@ -87,19 +87,6 @@ func (w *ScheduleWindows) Scan(src any) error {
 	return nil
 }
 
-// Campaign kinds. A sequence is the multi-step default; a one-time email is
-// one message to an audience with no follow-ups. Both send through the same
-// pacer and caps; the kind is fixed at creation.
-const (
-	CampaignKindSequence = "sequence"
-	CampaignKindOneTime  = "one_time"
-)
-
-// ValidCampaignKind reports whether k is a known campaign kind.
-func ValidCampaignKind(k string) bool {
-	return k == CampaignKindSequence || k == CampaignKindOneTime
-}
-
 type Campaign struct {
 	ID             uuid.UUID  `json:"id"`
 	UserID         string     `json:"user_id"`
@@ -108,7 +95,6 @@ type Campaign struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Status      string `json:"status"`
-	Kind        string `json:"kind"`
 
 	StopOnReply       bool `json:"stop_on_reply"`
 	OpenTracking      bool `json:"open_tracking"`
@@ -261,7 +247,6 @@ type CampaignsOverview struct {
 	Paused    int64                 `json:"paused"`
 	Draft     int64                 `json:"draft"`
 	Completed int64                 `json:"completed"`
-	OneTime   int64                 `json:"one_time"`
 	Folders   []CampaignFolderCount `json:"folders"`
 }
 
@@ -275,13 +260,23 @@ type CampaignEstimate struct {
 	Days        *uint8     `json:"days,omitempty"`
 	Timezone    *string    `json:"timezone,omitempty"`
 	StartDate   *time.Time `json:"start_date,omitempty"`
+	// StartTime and EndTime are the daily sending window ("HH:MM"); absent
+	// means the scheduler's default window.
+	StartTime *string `json:"start_time,omitempty"`
+	EndTime   *string `json:"end_time,omitempty"`
+	// StepWaits is each follow-up's wait_after in days, in order. Empty is a
+	// single email.
+	StepWaits []int `json:"step_waits,omitempty"`
 }
 
+// CampaignEstimateStepsMax bounds StepWaits, the follow-ups one estimate simulates.
+const CampaignEstimateStepsMax = 30
+
 // CampaignEstimateResult is the projection. DailyCapacity is the pool's
-// per-day ceiling under the campaign limit; RemainingToday subtracts what the
-// mailboxes already sent today. SendingDays is how many sending days the
-// audience needs and EstimatedFinishAt the calendar day the last send lands
-// on, both nil when the pool has no capacity.
+// per-day ceiling under the campaign limit today; RemainingToday subtracts
+// what the mailboxes already sent today. SendingDays is how many sending days
+// the audience needs and EstimatedFinishAt the calendar day the last send
+// lands on, both nil when the pool has no capacity or the horizon is passed.
 type CampaignEstimateResult struct {
 	Recipients        int        `json:"recipients"`
 	Mailboxes         int        `json:"mailboxes"`
@@ -289,6 +284,95 @@ type CampaignEstimateResult struct {
 	RemainingToday    int        `json:"remaining_today"`
 	SendingDays       *int       `json:"sending_days"`
 	EstimatedFinishAt *time.Time `json:"estimated_finish_at"`
+
+	// Steps is how many emails each contact receives; TotalSends is
+	// recipients times steps, assuming nobody replies or unsubscribes.
+	Steps      int `json:"steps"`
+	TotalSends int `json:"total_sends"`
+	// FirstTouchFinishAt is the day the last contact gets their first email.
+	FirstTouchFinishAt *time.Time `json:"first_touch_finish_at"`
+	// SteadyCapacity is the pool's sending-day capacity once every mailbox
+	// has graduated from warmup; FullCapacityAt is the first day it gets
+	// there, nil when it already has or never does inside the horizon.
+	SteadyCapacity int        `json:"steady_capacity"`
+	FullCapacityAt *time.Time `json:"full_capacity_at"`
+	// Ramping counts mailboxes still climbing their warmup graduation
+	// ceiling; Held counts mailboxes that contribute nothing today.
+	Ramping int `json:"ramping"`
+	Held    int `json:"held"`
+	// Warmup is the warmup mail the pool keeps sending alongside.
+	Warmup CampaignEstimateWarmup `json:"warmup"`
+	// OtherCampaignsPerDay is what the pool's mailboxes already send for
+	// other campaigns on an average recent day; it shares their caps.
+	OtherCampaignsPerDay int `json:"other_campaigns_per_day"`
+	// Bottleneck is the clamp that costs the most sends on the first
+	// sending day, empty when the mailboxes' own caps are the limit.
+	Bottleneck string `json:"bottleneck"`
+	// Timeline is the projection day by day from the start, at most
+	// CampaignEstimateTimelineMax days.
+	Timeline []CampaignEstimateDay `json:"timeline"`
+	// Senders is the pool mailbox by mailbox, at most CampaignEstimateSendersMax.
+	Senders []CampaignEstimateSender `json:"senders"`
+}
+
+const (
+	CampaignEstimateTimelineMax = 120
+	CampaignEstimateSendersMax  = 200
+)
+
+// Bottleneck values of a campaign estimate.
+const (
+	EstimateBottleneckCampaignLimit   = "campaign_limit"
+	EstimateBottleneckGraduation      = "warmup_graduation"
+	EstimateBottleneckSpacing         = "spacing"
+	EstimateBottleneckOtherCampaigns  = "other_campaigns"
+	EstimateBottleneckHealth          = "health"
+	EstimateBottleneckHeld            = "held"
+	EstimateBottleneckWorkspaceRisk   = "workspace_risk"
+	EstimateBottleneckOrgDailyLimit   = "org_daily_limit"
+	EstimateBottleneckSendingBehavior = "sending_behavior"
+)
+
+// Sender states of a campaign estimate.
+const (
+	EstimateSenderReady      = "ready"
+	EstimateSenderRamping    = "ramping"
+	EstimateSenderThrottled  = "throttled"
+	EstimateSenderHealthHold = "health_hold"
+	EstimateSenderDomainAuth = "domain_auth"
+	EstimateSenderResting    = "resting"
+	EstimateSenderNoWorker   = "no_worker"
+)
+
+// CampaignEstimateWarmup is the warmup traffic running beside the campaign.
+// A mailbox backing a live campaign warms at a reduced volume, and every
+// warmup email takes a slot on the same spacing clock as a campaign send.
+type CampaignEstimateWarmup struct {
+	Mailboxes int `json:"mailboxes"`
+	PerDay    int `json:"per_day"`
+}
+
+// CampaignEstimateDay is one calendar day of the projection.
+type CampaignEstimateDay struct {
+	Date        string `json:"date"`
+	SendingDay  bool   `json:"sending_day"`
+	Capacity    int    `json:"capacity"`
+	Sends       int    `json:"sends"`
+	FirstEmails int    `json:"first_emails"`
+	FollowUps   int    `json:"follow_ups"`
+	Warmup      int    `json:"warmup"`
+}
+
+// CampaignEstimateSender is one mailbox's part in the projection.
+type CampaignEstimateSender struct {
+	ID           uuid.UUID  `json:"id"`
+	Email        string     `json:"email"`
+	Provider     string     `json:"provider"`
+	State        string     `json:"state"`
+	FirstDayCap  int        `json:"first_day_cap"`
+	SteadyCap    int        `json:"steady_cap"`
+	WarmupPerDay int        `json:"warmup_per_day"`
+	FullCapAt    *time.Time `json:"full_cap_at"`
 }
 
 type CampaignFolderCount struct {
@@ -380,10 +464,6 @@ func (u *UpdateCampaign) TouchesSchedule() bool {
 type CreateCampaign struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	// Kind defaults to "sequence". A "one_time" campaign accepts a single
-	// email step here and refuses further ones later.
-	Kind *string `json:"kind,omitempty"`
-
 	// Sending rules / tracking
 	StopOnReply       *bool   `json:"stop_on_reply,omitempty"`
 	OpenTracking      *bool   `json:"open_tracking,omitempty"`

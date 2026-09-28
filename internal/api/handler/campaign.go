@@ -210,10 +210,9 @@ func (h *Handler) SearchCampaigns(c *gin.Context) {
 	cursor := c.Query("cursor")
 	folder := c.Query("folder")
 	status := c.Query("status")
-	kind := c.Query("kind")
 	limit := c.Query("limit")
 
-	resp, err := h.CampaignService.Search(c.Request.Context(), orgID.String(), query, cursor, folder, status, kind, limit)
+	resp, err := h.CampaignService.Search(c.Request.Context(), orgID.String(), query, cursor, folder, status, limit)
 	if err != nil {
 		errx.JSON(c, err)
 		return

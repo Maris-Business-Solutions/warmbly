@@ -254,7 +254,7 @@ export default function RichTextAIEdit({ editor }: { editor: Editor }) {
                         animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
                         exit={{ opacity: 0, y: 2, scale: 0.95, x: "-50%" }}
                         transition={{ type: "spring", stiffness: 500, damping: 32 }}
-                        style={{ position: "fixed", top: anchor.top - 34, left: anchor.centerX, zIndex: 60 }}
+                        style={{ position: "fixed", top: anchor.top - 34, left: anchor.centerX, zIndex: 150 }}
                         className="h-7 pl-2 pr-2.5 rounded-full border border-slate-200 bg-white shadow-[0_6px_20px_-6px_rgba(15,23,42,0.25)] inline-flex items-center gap-1.5 text-[11.5px] font-medium text-slate-700 hover:text-sky-700 hover:border-sky-300 transition-colors"
                         onMouseDown={(e) => {
                             e.preventDefault();
@@ -279,7 +279,7 @@ export default function RichTextAIEdit({ editor }: { editor: Editor }) {
                         style={{
                             position: "fixed",
                             left: popLeft,
-                            zIndex: 60,
+                            zIndex: 150,
                             ...(popAbove
                                 ? { bottom: window.innerHeight - anchor.top + 8 }
                                 : { top: anchor.bottom + 8 }),

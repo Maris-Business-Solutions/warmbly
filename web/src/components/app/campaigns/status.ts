@@ -52,7 +52,6 @@ export function campaignStatusTone(status: string): string {
 // and the detail header can all pass their own shape.
 export interface CampaignStatusSubject {
     status?: string;
-    kind?: string;
     start_date?: Date | string | null;
     idle_since?: Date | string | null;
 }
@@ -71,22 +70,7 @@ export function campaignDisplayTone(c: CampaignStatusSubject): string {
     return campaignStatusTone(c.status ?? "draft");
 }
 
-export function isOneTimeCampaign(c: Pick<CampaignStatusSubject, "kind">): boolean {
-    return c.kind === "one_time";
-}
-
-// A one-time email reads as a message, not a sequence: draft, scheduled
-// (active but waiting on its start date), sending, sent. Paused variants keep
-// their sequence wording since the reasons are the same.
 export function campaignDisplayLabel(c: CampaignStatusSubject): string {
-    const status = c.status ?? "draft";
     if (isIdleCampaign(c)) return CAMPAIGN_IDLE_LABEL;
-    if (!isOneTimeCampaign(c)) return campaignStatusLabel(status);
-    if (status === "completed") return "sent";
-    if (status === "active") {
-        const start = c.start_date ? new Date(c.start_date) : null;
-        if (start && !Number.isNaN(start.getTime()) && start.getTime() > Date.now()) return "scheduled";
-        return "sending";
-    }
-    return campaignStatusLabel(status);
+    return campaignStatusLabel(c.status ?? "draft");
 }

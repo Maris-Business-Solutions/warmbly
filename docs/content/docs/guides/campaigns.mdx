@@ -17,19 +17,35 @@ Select the workspace that owns the campaign before opening it. Creating a campai
 
 ## Create a campaign
 
-**Campaigns** > **New campaign** opens a wizard that first asks what you are sending: a **sequence** or a [one-time email](#one-time-emails). For a sequence the steps are **Basics** (name, description), **Schedule** (timezone, sending days, hours), **Sending** (mailbox tags, daily limit per mailbox, stop on reply, open and click tracking, UTM parameters, unsubscribe header), and **First email** (subject, body, optional follow-ups). Follow-ups added here are connected in order, each waiting the number of days you set after the previous step; open the Steps tab to rearrange, branch, or change the waits. Only a name is required; the first email can be skipped and written in the full editor on the Steps tab, and everything else except the campaign type can be changed later from settings. The choice between a sequence and a one-time email is fixed at creation: switching means creating a new campaign. Closing a wizard with unsaved edits asks before discarding them.
+**Campaigns** > **New campaign** opens a four-step flow. A campaign is a first email and, optionally, follow-ups that stop for anyone who replies.
 
-The campaign starts as a **draft**. Nothing sends until you start it.
+1. **Leads**: name the campaign at the top (left blank, it is named after its first list, or "Campaign" and the date; rename it any time), then pick one or more lead lists. Lists are your [segments](/guides/segments/), shown with how many leads each holds; someone on several lists is emailed once, and the total below counts each lead once. **Import new leads** takes you to Contacts to bring in a CSV and keeps the draft for when you return. Picking no list is fine: **Continue without leads** creates the campaign so you can add leads afterwards.
+2. **Emails**: the same editor as the Steps tab, with templates, **Write with AI**, variables, a preview rendered through the send engine and the content score. Add follow-ups here, each sent a number of days after the previous email (and stopping for anyone who replies, when **Stop on reply** is on). **Add the usual two follow-ups** adds two at 3 and 7 days. A follow-up with no subject replies in the same thread. The emails can also be left for the Steps tab, where you can branch them and add A/B variants.
+3. **Schedule**: start at launch or on a date, the timezone, sending days and hours, the mailbox tags to send from, and the daily limit per mailbox. Every mailbox in the pool is listed with what it can send: **Ramping up** while it is still graduating from warmup, **Reduced volume** in a watch or throttled health band, **On hold**, **DNS failing** or **Resting** when it will not send. Tracking, UTM parameters, the unsubscribe header and stop on reply are under **Tracking and replies**.
+4. **Review**: the finish date and a day-by-day chart of first emails and follow-ups against what the pool can send, what is setting the pace, and a summary with a link back to each step.
 
-## One-time emails
+While you work, a **Launch plan** beside the Leads and Schedule steps keeps the estimate current. See [How the estimate works](#how-the-estimate-works).
 
-A one-time email is a campaign with a single message and no follow-ups: an announcement, an update, a single ask to a segment. It is still a campaign underneath, so it sends through your mailbox pool with the same rotation, per-mailbox daily caps, spacing, suppression, tracking and analytics as a sequence. What changes is the flow and the wording.
+The flow ends in **Save as draft** or **Launch** (**Schedule** when it starts on a date). Launch creates the campaign, links its lists (so it keeps enrolling leads who join them later, exactly like [linking a segment](/guides/segments/#linking-a-segment-to-a-campaign)) and opens the campaign's launch dialog. That dialog runs the pre-send checks and the [launch check on your list](#the-launch-check-on-your-list) before anything sends, just like **Start** on a campaign page. Launch stays unavailable until there is an email, at least one lead and a mailbox that can send it, and for members without **Send campaigns**. Everything can be changed later.
 
-Pick **One-time email** on the wizard's first step. The steps are then **Basics**, **Email** (subject and body, both required), **Audience** (one or more [segments](/guides/segments/); every current member becomes a lead, and a contact in several of them is emailed once), **Sending** (mailbox tags, daily limit, tracking, unsubscribe header) and **Send**. The last step chooses **Send now** or **Schedule for later** with a date and time, sets the sending days and window, and shows an estimate: how many recipients the segments resolve to, how many mailboxes will send, the pool's daily ceiling, and the day the last send is expected to land. The estimate is the earliest finish under the daily caps, not a promise. A thousand contacts on one mailbox at the default cap is a multi-week send, and the wizard says so before you confirm.
+A campaign that has not launched is a **draft**, and drafts live in your campaigns list. Closing the flow with anything filled in saves it as one, and so does **Import new leads** before it takes you to Contacts. Clicking a draft in the list reopens this flow where it still needs work, with everything you chose, so you can finish the steps (Cmd or Ctrl-click opens the campaign page instead). **Discard** throws away a new campaign that was never saved, and **Delete draft** removes a saved one. A draft whose flow has branches or action steps, its own window for each day, or mailboxes picked one by one keeps those as they are; the flow shows them and sends you to the campaign's own tabs to change them.
 
-Confirming creates the campaign, links the segments (so the campaign keeps enrolling contacts who join them later, exactly like [linking a segment](/guides/segments/#linking-a-segment-to-a-campaign)), and starts it. A scheduled one waits for its date, then sends inside the window. If the start is refused, for example because the segments are empty or the list fails the [launch check](#the-launch-check-on-your-list), the email is kept as a draft and its page explains why.
+A draft's Overview tab shows what it still needs (leads, an email, senders), each linking to the tab that fixes it, with **Continue setup** to reopen the flow and a **Launch** button once it is ready. Nothing sends until the campaign launches.
 
-In the campaigns list a one-time email carries a **One-time** badge and reads **draft**, **scheduled** (started, waiting for its date), **sending** or **sent**; the **Type** filter shows only sequences or only one-time emails. The Overview tab reports opens, clicks, replies and bounces the same way it does for a sequence. Adding a second email step to a one-time email is refused: create a sequence when you want a reminder later.
+### How the estimate works
+
+The estimate simulates the campaign day by day against the mailboxes that would send it. It uses the same rules as the scheduler:
+
+- each mailbox's own cap and the campaign's daily limit
+- the warmup graduation ceiling, which starts a freshly warmed mailbox low and adds 5 a day
+- the workspace's risk band and each mailbox's health band
+- mailboxes on hold or failing domain authentication, which send nothing
+- sending behaviour profiles
+- the sending window, with the spacing between sends
+
+Warmup keeps running on every warming mailbox, reduced to 5 emails a day while it backs a live campaign, and those emails use the same spacing clock as campaign sends. The estimate counts them, so a narrow window with a long gap between sends finishes later than the caps alone suggest. Mailboxes that already send for other campaigns keep that share of their cap, judged from their last seven days.
+
+Follow-ups that are due go out before new leads start, and the total assumes nobody replies or unsubscribes, so real sequences usually finish sooner. Replies, bounces, new contacts joining a linked segment and changes to a mailbox's health all move the real finish.
 
 ## Plain text only
 

@@ -219,7 +219,7 @@ function FormLinkChipEditor({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.1 }}
-            className="z-[60] w-64 overflow-hidden rounded-lg border border-slate-200 bg-white p-2 text-left shadow-[0_10px_30px_-10px_rgba(15,23,42,0.25)]"
+            className="z-[150] w-64 overflow-hidden rounded-lg border border-slate-200 bg-white p-2 text-left shadow-[0_10px_30px_-10px_rgba(15,23,42,0.25)]"
         >
             <div className="px-0.5 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
                 Form

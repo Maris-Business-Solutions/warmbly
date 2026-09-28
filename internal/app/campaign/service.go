@@ -22,11 +22,11 @@ type CampaignService interface {
 	Create(ctx context.Context, userID string, orgID *uuid.UUID, data *models.CreateCampaign) (*models.Campaign, *errx.Error)
 	// Get loads one of orgID's campaigns; any other id is not found.
 	Get(ctx context.Context, orgID, id string) (*models.Campaign, *errx.Error)
-	Search(ctx context.Context, userID, query, cursor, folder, status, kind, limit string) (*models.CampaignsResult, *errx.Error)
+	Search(ctx context.Context, userID, query, cursor, folder, status, limit string) (*models.CampaignsResult, *errx.Error)
 	Overview(ctx context.Context, orgID string) (*models.CampaignsOverview, *errx.Error)
 	// Estimate projects how many contacts a set of segments reaches and how
 	// many sending days a mailbox pool needs under the per-mailbox caps.
-	// Read-only; the wizard shows it before a one-time email is created.
+	// Read-only; the new-campaign flow shows it as its launch plan.
 	Estimate(ctx context.Context, orgID uuid.UUID, in *models.CampaignEstimate) (*models.CampaignEstimateResult, *errx.Error)
 	// SendPlan is today's sending plan for one of orgID's campaigns: what
 	// will go out today and every limit that decided it, derived through the
