@@ -59,6 +59,19 @@ type ContactService interface {
 	// result counts plus a list of rows that failed (with reasons).
 	ImportCommit(ctx context.Context, userID string, orgID uuid.UUID, file io.Reader, filename string, opts *models.ContactImportCommit) (*models.ContactImportResult, *errx.Error)
 
+	// ValidateImportOptions runs every check an import makes before it reads a
+	// row, so a background import is refused when it is started.
+	ValidateImportOptions(ctx context.Context, userID string, orgID uuid.UUID, opts *models.ContactImportCommit) *errx.Error
+	// BuildImportPreview describes already-parsed rows for the column mapper.
+	BuildImportPreview(ctx context.Context, orgID uuid.UUID, filename, format string, rows [][]string) (*models.ContactImportPreview, *errx.Error)
+	// AnalyzeImport reports what an import of rows would do under a mapping,
+	// without writing anything.
+	AnalyzeImport(ctx context.Context, userID string, orgID uuid.UUID, rows []ImportRow, mapping []models.ContactImportColumnMapping) (*models.ContactImportAnalysis, *errx.Error)
+	// RunImport applies an import to rows chunk by chunk, settling each chunk
+	// with sink (nil to only collect the result). prior are contacts an
+	// earlier run of the same import touched, so they still join its segments.
+	RunImport(ctx context.Context, userID string, orgID uuid.UUID, rows []ImportRow, opts *models.ContactImportCommit, sink ImportSink, prior []uuid.UUID) (*models.ContactImportResult, *errx.Error)
+
 	// ListCustomFieldKeys returns the org's distinct contact custom-field keys,
 	// frequency-ranked then alphabetical, capped at 200. Powers the dashboard
 	// variable picker's real-field suggestions.

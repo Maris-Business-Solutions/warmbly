@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import type {
     ImportColumnMapping,
     ImportDedupStrategy,
+    ImportPreview,
     ImportResult,
 } from "@/lib/api/client/app/contacts/importContacts";
 
@@ -40,12 +41,20 @@ export const VERIFICATION_VOCABULARY_LABELS: Record<string, string> = {
 };
 
 export const DEDUP_OPTIONS: { id: ImportDedupStrategy; label: string; hint: string }[] = [
-    { id: "skip", label: "Skip existing", hint: "If a contact with this email exists, leave it alone." },
-    { id: "update", label: "Update existing", hint: "Merge new values onto the existing contact." },
+    {
+        id: "skip",
+        label: "Skip existing",
+        hint: "Leave their details alone. They still join the campaigns, categories and segments you pick.",
+    },
+    {
+        id: "update",
+        label: "Update existing",
+        hint: "Fill in their details from the file. Blank cells never erase what is already there.",
+    },
     {
         id: "create_duplicate",
         label: "Create duplicates",
-        hint: "Force a new contact. Falls back to update if blocked by uniqueness.",
+        hint: "Force a new contact. Falls back to update, since one address is one contact per workspace.",
     },
 ];
 
@@ -184,3 +193,66 @@ export function mappingProblem(mapping: ImportColumnMapping[]): string | null {
     }
     return null;
 }
+
+// derivePreview re-reads a preview under the other header choice, so toggling
+// "First row is header" really moves the first row between header and data.
+// Column stats are measured under the detected choice and stay approximate.
+export function derivePreview(preview: ImportPreview, hasHeader: boolean): ImportPreview {
+    if (hasHeader === preview.has_header) return preview;
+    const synth = (i: number) => `Column ${i + 1}`;
+    if (!hasHeader) {
+        // Blank header cells were named "Column N"; as data they are blank again.
+        const first = preview.columns.map((c, i) => (c === synth(i) ? "" : c));
+        return {
+            ...preview,
+            has_header: false,
+            columns: preview.columns.map((_, i) => synth(i)),
+            sample_rows: [first, ...preview.sample_rows],
+            total_rows: preview.total_rows + 1,
+        };
+    }
+    const [first = [], ...rest] = preview.sample_rows;
+    return {
+        ...preview,
+        has_header: true,
+        columns: preview.columns.map((_, i) => (first[i] ?? "").trim() || synth(i)),
+        sample_rows: rest,
+        total_rows: Math.max(0, preview.total_rows - 1),
+    };
+}
+
+// columnSamples is a few distinct values of a column, from the whole-file
+// stats when the server sent them, else from the sample rows.
+export function columnSamples(preview: ImportPreview, idx: number, n = 3): string[] {
+    const stats = preview.column_stats?.[idx];
+    if (stats && stats.samples.length > 0) return stats.samples.slice(0, n);
+    const out: string[] = [];
+    for (const row of preview.sample_rows) {
+        const v = (row[idx] ?? "").trim();
+        if (v && !out.includes(v)) out.push(v);
+        if (out.length >= n) break;
+    }
+    return out;
+}
+
+// fillRate is how full a column is over the whole file, 0..1, or null
+// when the server sent no stats.
+export function fillRate(preview: ImportPreview, idx: number): number | null {
+    const stats = preview.column_stats?.[idx];
+    if (!stats || preview.total_rows <= 0) return null;
+    return Math.min(1, stats.filled / preview.total_rows);
+}
+
+// sampleCSV is a small file with every standard column, for people starting
+// from scratch.
+export function sampleCSV(): string {
+    return [
+        "Email,First name,Last name,Company,Phone,Categories,Job title",
+        "dana@acme.com,Dana,Reyes,Acme,+1 555 0100,Prospects;Q3,Head of Growth",
+        "sam@northwind.io,Sam,Okafor,Northwind,,Prospects,Founder",
+    ].join("\n") + "\n";
+}
+
+// MAX_IMPORT_UPLOAD_BYTES mirrors the API's upload cap, so an oversized file
+// is refused before it spends a minute uploading.
+export const MAX_IMPORT_UPLOAD_BYTES = 50 * 1024 * 1024;

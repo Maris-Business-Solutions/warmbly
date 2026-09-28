@@ -37,7 +37,7 @@ Run `warmblyctl <family> --help` for subcommands and `warmblyctl <family>
 |---|---|
 | `me` | Identity and granted scopes |
 | `campaign` | list, get, create, update, delete, steps, senders, preflight, start, stop, test-email, logs, plan, pause-lead / resume-lead |
-| `contact` | list (search), get, lookup, create, update, delete, notes, timeline, import, export |
+| `contact` | list (search), get, lookup, create, update, delete, notes, timeline, import, imports, import-status, import-start, import-cancel, export |
 | `mailbox` | list, get, update, delete, auth-check, sync, skip-folders, identity, refresh-identity, behavior, verify, send, warmup-start/pause/resume/stop/status |
 | `inbox` | list, count, thread, seen, reply, compose, agent drafts, scheduled sends |
 | `analytics` | dashboard, deliverability, warmup, accounts, campaigns, usage, audit-logs |

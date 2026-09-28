@@ -118,6 +118,14 @@ The three `/campaigns/:id/leads/:contactId/…` calls hold one contact's flow in
 | POST | `/contacts/export` | `READ_CONTACTS` |
 | POST | `/contacts/import/preview` | `WRITE_CONTACTS` |
 | POST | `/contacts/import/commit` | `BULK_CONTACTS` |
+| POST | `/contacts/imports` | `WRITE_CONTACTS` |
+| GET | `/contacts/imports` | `READ_CONTACTS` |
+| GET | `/contacts/imports/:id` | `READ_CONTACTS` |
+| PATCH | `/contacts/imports/:id` | `WRITE_CONTACTS` |
+| POST | `/contacts/imports/:id/analyze` | `WRITE_CONTACTS` |
+| POST | `/contacts/imports/:id/start` | `BULK_CONTACTS` |
+| POST | `/contacts/imports/:id/cancel` | `BULK_CONTACTS` |
+| GET | `/contacts/imports/:id/failed.csv` | `READ_CONTACTS` |
 | GET | `/contacts/:id/notes` | `READ_CONTACTS` |
 | POST | `/contacts/:id/notes` | `WRITE_CONTACTS` |
 | PATCH | `/contacts/:id/notes/:noteId` | `WRITE_CONTACTS` |

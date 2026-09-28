@@ -656,6 +656,9 @@ services:
       # The other error-tracking backend. Unset means the dashboard contacts no
       # Sentry host. Point it at your own project to collect browser errors.
       WARMBLY_SENTRY_DSN: ${WARMBLY_SENTRY_DSN:-}
+      # Company logos on contacts: the browser asks DuckDuckGo for a company
+      # domain's favicon. Unset is off on a self-host; "on" turns it on.
+      WARMBLY_COMPANY_LOGOS: ${WARMBLY_COMPANY_LOGOS:-}
     depends_on:
       backend: { condition: service_healthy }
 

@@ -464,6 +464,16 @@ const (
 	MailboxImportCredentialDays     = 7
 	MailboxImportRetentionDays      = 30
 
+	// Contact import (background job): uploads still waiting on a mapping are
+	// dropped after ContactImportDraftHours, finished imports and their rows
+	// after ContactImportRetentionDays. A run renews its lease every chunk, and
+	// a workspace may hold ContactImportMaxActive drafts and runs at once.
+	ContactImportDraftHours    = 24
+	ContactImportRetentionDays = 30
+	ContactImportLeaseSeconds  = 120
+	ContactImportMaxAttempts   = 3
+	ContactImportMaxActive     = 10
+
 	// Daily creation throttles. The total caps above stop "you have
 	// 5000 campaigns on this org" — the throttles below stop "you
 	// created 1000 campaigns today on a fresh unlimited account."

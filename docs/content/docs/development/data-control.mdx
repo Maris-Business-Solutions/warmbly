@@ -128,6 +128,12 @@ A [mailbox import](/guides/mailbox-import/) keeps each row's credentials in `mai
 
 The column mappings an import saves (`mailbox_import_mappings`: which field each header of a file means, no values) are kept until the workspace is deleted, and travel in a [workspace export](/guides/workspace-export-import/). Imports themselves do not.
 
+### Contact import files
+
+A [contact import](/guides/contacts-crm/#importing) keeps every row of the uploaded file, as uploaded, in `contact_import_rows`, with what became of it (the address, whether it was imported, updated, skipped or failed, and why). Contact data is stored the same way the contacts themselves are. A file uploaded but never started is deleted 24 hours after the upload, or after it was discarded; a finished or stopped import and its rows, which feed the failed-rows download, are deleted 30 days after it finished. Both windows are fixed rather than settings, and the sweep that applies them runs every hour. The contacts an import created are ordinary contacts and are not affected.
+
+The column mappings contact imports save (`contact_import_mappings`: which field each header of a file means, no values) are kept until the workspace is deleted, and travel in a [workspace export](/guides/workspace-export-import/). Imports themselves do not.
+
 ### Mailbox sources and redirects
 
 Three things a workspace can set up alongside its mailboxes, each kept until the workspace deletes it (or the workspace itself is deleted). None has a retention window.
@@ -267,11 +273,12 @@ The `rsync` alternative works too and is sometimes simpler, as long as the stack
 
 ## Outbound calls
 
-A self-hosted Warmbly makes no outbound call of its own except the one below, which is off with a single setting. The mail host lookup is listed too: it is off on a self-host unless you turn it on.
+A self-hosted Warmbly makes no outbound call of its own except the one below, which is off with a single setting. The mail host lookup and company logos are listed too: both are off on a self-host unless you turn them on.
 
 | Call | When | Turn it off |
 |---|---|---|
 | GitHub releases API | Every 30 minutes, to tell the admin panel a newer version exists | `UPDATE_CHECK_ENABLED=false` |
+| Company logos | While the contact list is on screen, the browser (not the server) asks DuckDuckGo's favicon service (`icons.duckduckgo.com`) for the logo of each contact's company domain, once per domain. Only the domain is sent, never the address or anything else about the contact, and personal inboxes (Gmail, Outlook.com and the like) are never looked up. Without it, contacts show their initials | Off by default on a self-host; `WARMBLY_COMPANY_LOGOS=on` on the web container turns it on (it is on for Warmbly Cloud) |
 | Mail host lookup | When a [mailbox import](/guides/mailbox-import/) meets a domain whose MX records do not name a known provider, and once for each domain of a mailbox whose host is not recorded yet (one connected before hosts were recorded, or one connected by hand over SMTP and IMAP). Mozilla's Thunderbird ISPDB (`autoconfig.thunderbird.net`) is asked for the settings of that domain (or of its MX host's domain), after the domain's own autoconfig file. Only the domain name is sent, and the answer is cached for 6 hours. Without it, detection uses the domain's DNS and its own autoconfig file only | Off by default on a self-host; `MAILHOST_ISPDB=true` turns it on (it is on for Warmbly Cloud) |
 
 These are made only when a workspace uses the feature behind them, so an instance where nobody does makes none of them:

@@ -41,6 +41,16 @@ export interface ImportPreview {
     // Columns whose suggestion came from the TypeSafe judgment rather than
     // the header or the values. Absent when none did.
     inferred_columns?: number[];
+    // Every column's fill over the whole file (the background import sends it).
+    column_stats?: ImportColumnStats[];
+    // "saved" when this workspace confirmed a mapping for these exact headers before.
+    mapping_source?: "suggested" | "saved";
+}
+
+export interface ImportColumnStats {
+    filled: number;
+    distinct: number;
+    samples: string[];
 }
 
 export interface ImportCommitOptions {

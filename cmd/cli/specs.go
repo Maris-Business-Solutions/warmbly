@@ -483,6 +483,35 @@ A display-name form works too, so a raw From header can be passed straight in.`,
 				Method: http.MethodPost, Path: "/contacts/import/commit", Body: bodyRequired, Idempotent: true,
 			},
 			{
+				Name: "imports", Short: "Background imports, newest first",
+				Method: http.MethodGet, Path: "/contacts/imports", Paginate: true,
+				Flag: withPaging(),
+				Table: output.Table{Root: "data", Columns: []output.Column{
+					col("ID", "id"), col("FILE", "filename"), col("STATUS", "status"),
+					col("ROWS", "total"), col("DONE", "processed"), col("FAILED", "failed"),
+				}, Empty: "No imports yet."},
+			},
+			{
+				Name: "import-status", Short: "A background import's progress and result",
+				Method: http.MethodGet, Path: "/contacts/imports/{id}",
+				Args: []argSpec{{Name: "id", Help: "The import's id"}},
+			},
+			{
+				Name: "import-analyze", Short: "What a draft import would do under a mapping",
+				Method: http.MethodPost, Path: "/contacts/imports/{id}/analyze", Body: bodyRequired,
+				Args: []argSpec{{Name: "id", Help: "The import's id"}},
+			},
+			{
+				Name: "import-start", Short: "Start a draft import with its mapping and options",
+				Method: http.MethodPost, Path: "/contacts/imports/{id}/start", Body: bodyRequired, Idempotent: true,
+				Args: []argSpec{{Name: "id", Help: "The import's id"}},
+			},
+			{
+				Name: "import-cancel", Short: "Stop a background import; imported rows stay",
+				Method: http.MethodPost, Path: "/contacts/imports/{id}/cancel",
+				Args: []argSpec{{Name: "id", Help: "The import's id"}},
+			},
+			{
 				Name: "export", Short: "Export contacts",
 				Method: http.MethodPost, Path: "/contacts/export", Body: bodyOptional,
 			},

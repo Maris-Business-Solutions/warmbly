@@ -73,7 +73,7 @@ gives the arguments and flags. Ids are positional, not flags.
 |---|---|
 | `status` | one call for "what is happening": mailboxes needing attention, what is sending, what is unread |
 | `campaign` | list, view, create, edit, delete, steps, senders, segments, preflight, test, start, stop, logs, plan, pause-lead / resume-lead |
-| `contact` | list, view, create, edit, delete, lookup, timeline, emails, notes, import, export, verify |
+| `contact` | list, view, create, edit, delete, lookup, timeline, emails, notes, import, imports, import-status, import-start, import-cancel, export, verify |
 | `mailbox` | list, view, edit, check, sync, skip-folders, identity, refresh-identity, behavior, warmup, hold, release, send |
 | `inbox` | list, view, thread, read, reply, compose, drafts, scheduled, snooze |
 | `suppression` | the list of addresses and domains that get no campaign mail |

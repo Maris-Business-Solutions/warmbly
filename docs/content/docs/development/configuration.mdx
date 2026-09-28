@@ -588,6 +588,7 @@ Set both and every error goes to both. Each variable is read by one process, so 
 | `WARMBLY_POSTHOG_HOST` | web, admin containers, forms service | Capture host for the browser | `https://us.i.posthog.com` |
 | `WARMBLY_POSTHOG_ERROR_TRACKING` | web, admin containers, forms service | `false` reports no browser exceptions to PostHog anywhere, including the form pages the forms service stamps. Everything else the key turns on keeps running | `true` |
 | `WARMBLY_POSTHOG_SESSION_REPLAY` | web, admin containers | `false` records no sessions and keeps everything else. Form pages never record, whatever this says | `true` |
+| `WARMBLY_COMPANY_LOGOS` | web container | `on` shows a company logo on each contact whose address is on a company domain, fetched by the browser from DuckDuckGo's favicon service with only the domain sent; `off` shows initials. Unset is off on a self-host and on for Warmbly Cloud. See [outbound calls](/development/data-control/#outbound-calls) | unset |
 | `WARMBLY_SENTRY_DSN` | web, admin containers | The Sentry half of the same thing. Unset means the SDK is never fetched and no host is contacted | unset |
 | `WARMBLY_SENTRY_DSN` | forms service | Stamped into the public form page, along with the service's `APP_ENV` as the environment | unset |
 | `WARMBLY_SENTRY_ENVIRONMENT` | web, admin containers | The environment label browser events carry, whichever backend receives them. Defaults to the build mode. Form pages do not read it: the forms service stamps its own `APP_ENV` into the page instead | unset |

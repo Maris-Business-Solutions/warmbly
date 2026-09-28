@@ -1,15 +1,16 @@
-// Multi-select pickers used by the segment condition builder: campaigns,
-// segments and enum options. Same chip box + dropdown language as
-// CategoryPicker, without inline creation.
+// Multi-select pickers used by the segment condition builder and the contact
+// import: campaigns, segments and enum options. Same chip box + dropdown
+// language as CategoryPicker; segments can be created inline where offered.
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckIcon, PlusIcon, XIcon } from "lucide-react";
+import { CheckIcon, Loader2Icon, PlusIcon, XIcon } from "lucide-react";
+import toast from "react-hot-toast";
 
 import useClickOutside from "@/hooks/useClickOutside";
 import useFlipPlacement from "@/hooks/useFlipPlacement";
 import useCampaigns from "@/lib/api/hooks/app/campaigns/useCampaigns";
-import { useSegments } from "@/lib/api/hooks/app/segments";
+import { useCreateSegment, useSegments } from "@/lib/api/hooks/app/segments";
 import { cn } from "@/lib/utils";
 
 export interface PickOption {
@@ -25,6 +26,9 @@ export function MultiPicker({
     placeholder = "Pick…",
     searchable = true,
     className,
+    onCreate,
+    suggestedName,
+    createNoun = "item",
 }: {
     value: string[];
     onChange: (next: string[]) => void;
@@ -32,7 +36,15 @@ export function MultiPicker({
     placeholder?: string;
     searchable?: boolean;
     className?: string;
+    /** Creates an option from a name and resolves to its id; enables "Create". */
+    onCreate?: (name: string) => Promise<string>;
+    /** Offered as a one-click create when nothing is typed. */
+    suggestedName?: string;
+    createNoun?: string;
 }) {
+    const [creating, setCreating] = React.useState(false);
+    // Names of options created here, shown until the list refetches them.
+    const [created, setCreated] = React.useState<Record<string, string>>({});
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
     const ref = React.useRef<HTMLDivElement>(null);
@@ -41,7 +53,7 @@ export function MultiPicker({
     const placement = useFlipPlacement(triggerRef, open, 270);
 
     const byId = React.useMemo(() => new Map(options.map((o) => [o.id, o])), [options]);
-    const chips = value.map((id) => byId.get(id) ?? { id, label: "Unknown" });
+    const chips = value.map((id) => byId.get(id) ?? { id, label: created[id] ?? "Unknown" });
     const filtered = React.useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return options;
@@ -50,6 +62,28 @@ export function MultiPicker({
 
     function toggle(id: string) {
         onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+    }
+
+    const typed = query.trim();
+    const createName = typed || suggestedName?.trim() || "";
+    const nameTaken = options.some((o) => o.label.toLowerCase() === createName.toLowerCase());
+    const canCreate = !!onCreate && createName !== "" && !nameTaken;
+
+    async function create() {
+        if (!onCreate || !canCreate || creating) return;
+        setCreating(true);
+        try {
+            const id = await onCreate(createName);
+            setCreated((c) => ({ ...c, [id]: createName }));
+            onChange([...value, id]);
+            setQuery("");
+            setOpen(false);
+        } catch (err) {
+            const msg = (err as { message?: unknown } | null)?.message;
+            toast.error(typeof msg === "string" && msg ? msg : `The ${createNoun} could not be created.`);
+        } finally {
+            setCreating(false);
+        }
     }
 
     return (
@@ -114,14 +148,33 @@ export function MultiPicker({
                                 <input
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Search…"
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" && typed && filtered.length === 0) {
+                                            e.preventDefault();
+                                            void create();
+                                        }
+                                    }}
+                                    placeholder={onCreate ? `Search or name a new ${createNoun}…` : "Search…"}
                                     autoFocus
                                     className="w-full h-5 bg-transparent text-[12px] text-slate-900 placeholder:text-slate-400 outline-none"
                                 />
                             </div>
                         )}
                         <div className="max-h-56 overflow-y-auto py-1">
-                            {filtered.length === 0 && (
+                            {canCreate && (
+                                <button
+                                    type="button"
+                                    onClick={() => void create()}
+                                    disabled={creating}
+                                    className="w-full px-2.5 h-7 flex items-center gap-2 text-[12px] text-sky-700 hover:bg-sky-50 transition-colors disabled:opacity-60"
+                                >
+                                    {creating ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <PlusIcon className="w-3.5 h-3.5" />}
+                                    <span className="truncate">
+                                        New {createNoun}: <span className="font-medium">{createName}</span>
+                                    </span>
+                                </button>
+                            )}
+                            {filtered.length === 0 && !canCreate && (
                                 <div className="px-3 py-3 text-[11.5px] text-slate-400 text-center">Nothing to pick.</div>
                             )}
                             {filtered.map((o) => {
@@ -172,12 +225,20 @@ export function SegmentMultiPicker({
     value,
     onChange,
     exclude,
+    allowCreate = false,
+    suggestedName,
+    placeholder = "Pick segments…",
 }: {
     value: string[];
     onChange: (next: string[]) => void;
     exclude?: string;
+    /** Offer to create a segment with no conditions: a list of exactly who is pinned into it. */
+    allowCreate?: boolean;
+    suggestedName?: string;
+    placeholder?: string;
 }) {
     const segments = useSegments();
+    const createSegment = useCreateSegment();
     const options = React.useMemo<PickOption[]>(
         () =>
             (segments.data ?? [])
@@ -185,7 +246,17 @@ export function SegmentMultiPicker({
                 .map((s) => ({ id: s.id, label: s.name, color: s.color })),
         [segments.data, exclude],
     );
-    return <MultiPicker value={value} onChange={onChange} options={options} placeholder="Pick segments…" />;
+    return (
+        <MultiPicker
+            value={value}
+            onChange={onChange}
+            options={options}
+            placeholder={placeholder}
+            onCreate={allowCreate ? async (name) => (await createSegment.mutateAsync({ name, match: "all", conditions: [] })).id : undefined}
+            suggestedName={suggestedName}
+            createNoun="segment"
+        />
+    );
 }
 
 const ENUM_LABELS: Record<string, string> = {

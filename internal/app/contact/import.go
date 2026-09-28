@@ -19,20 +19,24 @@ import (
 	"github.com/warmbly/warmbly/internal/pkg/emailverify"
 	"github.com/warmbly/warmbly/internal/pkg/listquality"
 	"github.com/warmbly/warmbly/internal/pkg/spreadsheet"
+	"github.com/warmbly/warmbly/internal/repository"
 	"github.com/warmbly/warmbly/internal/utils"
 )
 
 // ImportPreview parses the uploaded file enough to drive the column
-// mapping UI. It does NOT persist anything. The same file is uploaded
-// a second time on commit; storing the parsed buffer between calls
-// would either pin memory or require a tmp store, neither of which is
-// worth it for the typical (small) file size.
-
+// mapping UI. It does NOT persist anything; the synchronous commit uploads the
+// same file again, and the background import keeps the rows it parsed here.
 func (s *contactService) ImportPreview(ctx context.Context, orgID uuid.UUID, r io.Reader, filename string) (*models.ContactImportPreview, *errx.Error) {
 	rows, format, xerr := parseSpreadsheet(r, filename)
 	if xerr != nil {
 		return nil, xerr
 	}
+	return s.BuildImportPreview(ctx, orgID, filename, format, rows)
+}
+
+// BuildImportPreview describes parsed rows for the mapper: headers, a sample,
+// every column's fill over the whole file, and the suggested mapping.
+func (s *contactService) BuildImportPreview(ctx context.Context, orgID uuid.UUID, filename, format string, rows [][]string) (*models.ContactImportPreview, *errx.Error) {
 	if len(rows) == 0 {
 		return nil, errx.New(errx.BadRequest, "the uploaded file is empty")
 	}
@@ -65,7 +69,47 @@ func (s *contactService) ImportPreview(ctx context.Context, orgID uuid.UUID, r i
 		SampleRows:       sample,
 		SuggestedMapping: suggested,
 		InferredColumns:  inferred,
+		ColumnStats:      columnStats(len(headers), rows[dataStart:]),
+		MappingSource:    models.ContactImportMappingSuggested,
 	}, nil
+}
+
+// columnStats measures every column over every data row: how many cells are
+// filled, how many distinct values there are, and a few of them.
+func columnStats(n int, rows [][]string) []models.ContactImportColumnStats {
+	const samples, sampleLen = 3, 80
+	out := make([]models.ContactImportColumnStats, n)
+	seen := make([]map[string]struct{}, n)
+	for i := range out {
+		out[i].Samples = []string{}
+		seen[i] = map[string]struct{}{}
+	}
+	for _, row := range rows {
+		for i := 0; i < n && i < len(row); i++ {
+			v := strings.TrimSpace(row[i])
+			if v == "" {
+				continue
+			}
+			out[i].Filled++
+			if len(seen[i]) >= models.MaxContactImportDistinctTracked {
+				continue
+			}
+			if _, dup := seen[i][v]; dup {
+				continue
+			}
+			seen[i][v] = struct{}{}
+			if len(out[i].Samples) < samples {
+				if r := []rune(v); len(r) > sampleLen {
+					v = string(r[:sampleLen]) + "…"
+				}
+				out[i].Samples = append(out[i].Samples, v)
+			}
+		}
+	}
+	for i := range out {
+		out[i].Distinct = len(seen[i])
+	}
+	return out
 }
 
 // SuggestImportMapping is the mapping every importer's preview starts from:
@@ -184,9 +228,34 @@ func (s *contactService) ValidateImportMapping(mapping []models.ContactImportCol
 	return xerr
 }
 
-// ImportCommit re-parses the file and writes the upsert. We don't share
-// state with ImportPreview on purpose — keeping the path stateless
-// makes the commit safe to retry without an opaque "session id".
+// ImportRow is one data row of an uploaded file with its 1-based line there.
+type ImportRow struct {
+	Line  int
+	Cells []string
+}
+
+// ImportSink follows an import as it runs chunk by chunk.
+type ImportSink interface {
+	// Settle records what became of every row of one applied chunk.
+	Settle(ctx context.Context, outcomes []models.ContactImportRowOutcome) error
+	// Cancelled reports whether the import should stop before its next chunk.
+	Cancelled(ctx context.Context) bool
+}
+
+// importChunkSize is how many rows are written per step; every step settles.
+const importChunkSize = 500
+
+// Reasons recorded against rows that did not import.
+const (
+	reasonInvalidEmail   = "missing or invalid email"
+	reasonElsewhere      = "you already have this address as a contact in another workspace, so it cannot be added to this one"
+	reasonAlreadyContact = "already in your contacts"
+	reasonDeleted        = "the contact was deleted while the import ran"
+)
+
+// ImportCommit parses the file and runs the import in the request. We don't
+// share state with ImportPreview on purpose: the path stays stateless, so the
+// commit is safe to retry without an opaque "session id".
 func (s *contactService) ImportCommit(
 	ctx context.Context,
 	userID string,
@@ -195,8 +264,62 @@ func (s *contactService) ImportCommit(
 	filename string,
 	opts *models.ContactImportCommit,
 ) (*models.ContactImportResult, *errx.Error) {
-	startedAt := time.Now().UTC()
+	plan, xerr := s.prepareImport(ctx, userID, orgID, opts)
+	if xerr != nil {
+		return nil, xerr
+	}
+	// A plain file import unless the caller (the Google Sheets sync) says
+	// otherwise; the file name is the detail a user recognises.
+	if opts.Source == "" {
+		opts.Source, opts.SourceDetail = models.ContactSourceImport, filename
+	}
 
+	rows, _, xerr := parseSpreadsheet(r, filename)
+	if xerr != nil {
+		return nil, xerr
+	}
+	dataStart := 0
+	if opts.HasHeader && len(rows) > 0 {
+		dataStart = 1
+	}
+	data := make([]ImportRow, 0, len(rows)-dataStart)
+	for i := dataStart; i < len(rows); i++ {
+		data = append(data, ImportRow{Line: i + 1, Cells: rows[i]})
+	}
+	return s.runImport(ctx, plan, data, nil, nil)
+}
+
+// RunImport applies a mapped import to rows in chunks, settling each chunk
+// with sink. prior lists contacts an earlier run of the same import already
+// touched, so they still join its segments.
+func (s *contactService) RunImport(ctx context.Context, userID string, orgID uuid.UUID, rows []ImportRow, opts *models.ContactImportCommit, sink ImportSink, prior []uuid.UUID) (*models.ContactImportResult, *errx.Error) {
+	plan, xerr := s.prepareImport(ctx, userID, orgID, opts)
+	if xerr != nil {
+		return nil, xerr
+	}
+	return s.runImport(ctx, plan, rows, sink, prior)
+}
+
+func (s *contactService) ValidateImportOptions(ctx context.Context, userID string, orgID uuid.UUID, opts *models.ContactImportCommit) *errx.Error {
+	_, xerr := s.prepareImport(ctx, userID, orgID, opts)
+	return xerr
+}
+
+// importPlan is an import's options, validated once before any row is read.
+type importPlan struct {
+	userID            string
+	uid               uuid.UUID
+	orgID             uuid.UUID
+	opts              *models.ContactImportCommit
+	dedup             models.ContactImportDedupStrategy
+	subscribedDefault bool
+	columns           []importColumn
+	categoryIDs       []string
+	campaignIDs       []string
+	segmentIDs        []uuid.UUID
+}
+
+func (s *contactService) prepareImport(ctx context.Context, userID string, orgID uuid.UUID, opts *models.ContactImportCommit) (*importPlan, *errx.Error) {
 	if opts == nil {
 		return nil, errx.New(errx.BadRequest, "missing import options")
 	}
@@ -207,148 +330,174 @@ func (s *contactService) ImportCommit(
 	if perr != nil {
 		return nil, errx.ErrUuid
 	}
-	// A plain file import unless the caller (the Google Sheets sync) says
-	// otherwise; the file name is the detail a user recognises.
-	if opts.Source == "" {
-		opts.Source, opts.SourceDetail = models.ContactSourceImport, filename
-	}
-
-	dedup := opts.Dedup
-	switch dedup {
+	plan := &importPlan{userID: userID, uid: uid, orgID: orgID, opts: opts, dedup: opts.Dedup, subscribedDefault: true}
+	switch plan.dedup {
 	case models.ContactImportDedupSkip,
 		models.ContactImportDedupUpdate,
 		models.ContactImportDedupCreateDuplicate:
 	case "":
-		dedup = models.ContactImportDedupSkip
+		plan.dedup = models.ContactImportDedupSkip
 	default:
-		return nil, errx.New(errx.BadRequest, "unknown dedup strategy: "+string(dedup))
+		return nil, errx.New(errx.BadRequest, "unknown dedup strategy: "+string(plan.dedup))
 	}
-
-	subscribedDefault := true
 	if opts.SubscribedDefault != nil {
-		subscribedDefault = *opts.SubscribedDefault
+		plan.subscribedDefault = *opts.SubscribedDefault
 	}
 
 	// The mapping is validated once, up front: a mistyped custom-field name
 	// is one 400 the user can act on, not the same row error 50,000 times.
-	columns, xerr := resolveMapping(opts.Mapping)
-	if xerr != nil {
+	var xerr *errx.Error
+	if plan.columns, xerr = resolveMapping(opts.Mapping); xerr != nil {
 		return nil, xerr
 	}
-
-	// Validate the category and campaign IDs up front. Ownership scoping
-	// happens later inside the repo (the INSERTs join against
-	// categories.user_id / campaigns.organization_id) so we don't need to
-	// round-trip the DB here, but they do have to be well-formed UUIDs: a
-	// blank one reaches Postgres as `'' = ANY($1::uuid[])` and fails the
-	// statement, which used to surface as every row failing to link.
-	globalCatIDs, xerr := parseIDList(opts.CategoryIDs)
-	if xerr != nil {
+	// Category and campaign ids must be well-formed: a blank one reaches
+	// Postgres as `'' = ANY($1::uuid[])` and fails the statement. Ownership is
+	// scoped later, inside the repository's organization-scoped writes.
+	if plan.categoryIDs, xerr = parseIDList(opts.CategoryIDs); xerr != nil {
 		return nil, xerr
 	}
-	globalCampaignIDs, xerr := parseIDList(opts.CampaignIDs)
-	if xerr != nil {
+	if plan.campaignIDs, xerr = parseIDList(opts.CampaignIDs); xerr != nil {
 		return nil, xerr
 	}
 	// Segment targets are resolved up front: each must exist in the org.
 	// Membership is written after the rows exist, as an include override.
-	segmentIDs, xerr := s.resolveSegmentIDs(ctx, orgID, opts.SegmentIDs, opts.SkipMissingSegments)
-	if xerr != nil {
+	if plan.segmentIDs, xerr = s.resolveSegmentIDs(ctx, orgID, opts.SegmentIDs, opts.SkipMissingSegments); xerr != nil {
 		return nil, xerr
 	}
+	return plan, nil
+}
 
-	rows, _, xerr := parseSpreadsheet(r, filename)
-	if xerr != nil {
-		return nil, xerr
-	}
-	if len(rows) == 0 {
-		return &models.ContactImportResult{
-			StartedAt: startedAt,
-			EndedAt:   time.Now().UTC(),
-		}, nil
-	}
+// pendingRow is one data row read through the mapping.
+type pendingRow struct {
+	line       int
+	raw        []string
+	contact    models.AddContact
+	categories []string // category titles read from the file
+	ok         bool
+	// dupOf is the line of an earlier row with the same address. Not an
+	// error: the row counts as skipped and its data was merged.
+	dupOf int
+	// rawEmail is the mapped address cell as written, for rows it failed.
+	rawEmail string
+	errMsg   string
+}
 
-	dataStart := 0
-	if opts.HasHeader {
-		dataStart = 1
-	}
-	data := rows[dataStart:]
-	if len(data) > models.MaxContactImportRows {
-		return nil, errx.New(errx.BadRequest,
-			fmt.Sprintf("too many rows; max %d per import", models.MaxContactImportRows))
-	}
-
-	// Build the parsed contacts up front so we can pre-check
-	// collisions in one DB round trip instead of N.
-	type pendingRow struct {
-		line       int
-		raw        []string
-		contact    models.AddContact
-		categories []string // category titles read from the file
-		ok         bool
-		// dupInFile marks a row whose address an earlier row already claimed.
-		// Not an error: it counts as skipped and its data was merged.
-		dupInFile bool
-		errMsg    string
-	}
-
-	parsed := make([]pendingRow, 0, len(data))
-	// firstByEmail points at the first pending row that claimed an address, so
-	// a file that lists the same person twice produces one contact instead of
-	// two upserts of the same row counted as two imports.
-	firstByEmail := make(map[string]int, len(data))
-	for i, row := range data {
-		line := i + dataStart + 1 // 1-based for "open in Excel and jump"
-		p := pendingRow{line: line, raw: row}
-
-		contact, cats, err := buildAddContact(row, columns, globalCampaignIDs, globalCatIDs)
+// parseRows applies the mapping to every row and collapses repeated addresses
+// onto their first row, so a file listing someone twice makes one contact.
+func (p *importPlan) parseRows(rows []ImportRow) []pendingRow {
+	parsed := make([]pendingRow, 0, len(rows))
+	firstByEmail := make(map[string]int, len(rows))
+	for _, row := range rows {
+		pr := pendingRow{line: row.Line, raw: row.Cells}
+		contact, cats, err := buildAddContact(row.Cells, p.columns, p.campaignIDs, p.categoryIDs)
 		if err != "" {
-			p.errMsg = err
-			parsed = append(parsed, p)
+			pr.rawEmail, pr.errMsg = contact.Email, err
+			parsed = append(parsed, pr)
 			continue
 		}
 		// Normalized rather than lowercased: a cell holding
-		// `Dana Reyes <dana@acme.com>` parses as an address and used to be
-		// imported whole as the recipient. The dedupe below keys on the result,
-		// so the two spellings of one address also collapse into one contact.
+		// `Dana Reyes <dana@acme.com>` parses as an address, and the dedupe
+		// keys on the result so both spellings collapse into one contact.
 		addr, ok := email.Normalize(contact.Email)
 		if !ok {
-			p.errMsg = "missing or invalid email"
-			parsed = append(parsed, p)
+			pr.rawEmail, pr.errMsg = strings.TrimSpace(contact.Email), reasonInvalidEmail
+			parsed = append(parsed, pr)
 			continue
 		}
 		contact.Email = addr
 
-		if prev, dup := firstByEmail[contact.Email]; dup {
-			// Same address twice in one file. "skip" keeps the first row;
-			// the other strategies merge the later row onto it so no data
-			// from the file is silently dropped.
-			if dedup != models.ContactImportDedupSkip {
+		if prev, dup := firstByEmail[addr]; dup {
+			// "skip" keeps the first row; the other strategies merge the later
+			// row onto it so no data from the file is silently dropped.
+			if p.dedup != models.ContactImportDedupSkip {
 				mergeAddContact(&parsed[prev].contact, contact)
 				parsed[prev].categories = appendUnique(parsed[prev].categories, cats...)
 			}
-			p.contact = contact
-			p.dupInFile = true
-			parsed = append(parsed, p)
+			pr.contact, pr.dupOf = contact, parsed[prev].line
+			parsed = append(parsed, pr)
 			continue
 		}
-		firstByEmail[contact.Email] = len(parsed)
-
-		p.contact = contact
-		p.categories = cats
-		p.ok = true
-		parsed = append(parsed, p)
+		firstByEmail[addr] = len(parsed)
+		pr.contact, pr.categories, pr.ok = contact, cats, true
+		parsed = append(parsed, pr)
 	}
+	return parsed
+}
+
+// assessRows measures the list the customer actually uploaded, malformed rows
+// included: those are exactly what this is counting. Synchronous and
+// address-only, so they learn something before verification catches up.
+func assessRows(parsed []pendingRow) listquality.Summary {
+	all := make([]string, 0, len(parsed))
+	for i := range parsed {
+		if addr := strings.TrimSpace(parsed[i].contact.Email); addr != "" {
+			all = append(all, addr)
+			continue
+		}
+		// The mapped address would not parse. That is exactly what malformed
+		// means, so it is recorded as such rather than hunting other columns
+		// for something with an @ in it, which could pick up a notes field.
+		all = append(all, unparseableAddress)
+	}
+	return listquality.Assess(all)
+}
+
+// importRecorder counts every row into exactly one bucket, so Total always
+// equals imported + updated + skipped + failed, and collects the outcomes.
+type importRecorder struct {
+	res      *models.ContactImportResult
+	outcomes []models.ContactImportRowOutcome
+}
+
+func (r *importRecorder) settle(line int, status, addr string, values []string, reason string, id *uuid.UUID) {
+	switch status {
+	case models.ContactImportRowImported:
+		r.res.Imported++
+	case models.ContactImportRowUpdated:
+		r.res.Updated++
+	case models.ContactImportRowSkipped:
+		r.res.Skipped++
+	case models.ContactImportRowFailed:
+		r.res.Failed++
+		r.note(line, addr, values, reason)
+	}
+	r.outcomes = append(r.outcomes, models.ContactImportRowOutcome{
+		Line: line, Status: status, Email: addr, Reason: reason, ContactID: id,
+	})
+}
+
+// note records a row-level message in the response without counting the row.
+func (r *importRecorder) note(line int, addr string, values []string, reason string) {
+	if len(r.res.Errors) >= models.MaxContactImportReportedErrors {
+		r.res.ErrorsTruncated = true
+		return
+	}
+	r.res.Errors = append(r.res.Errors, models.ContactImportRowError{
+		Line: line, Email: addr, Values: values, Reason: reason,
+	})
+}
+
+func (s *contactService) runImport(ctx context.Context, plan *importPlan, rows []ImportRow, sink ImportSink, prior []uuid.UUID) (*models.ContactImportResult, *errx.Error) {
+	startedAt := time.Now().UTC()
+	// A resumed run with nothing left still owes its segments the earlier rows.
+	if len(rows) == 0 && len(prior) == 0 {
+		return &models.ContactImportResult{StartedAt: startedAt, EndedAt: time.Now().UTC()}, nil
+	}
+	if len(rows) > models.MaxContactImportRows {
+		return nil, errx.New(errx.BadRequest,
+			fmt.Sprintf("too many rows; max %d per import", models.MaxContactImportRows))
+	}
+
+	parsed := plan.parseRows(rows)
 
 	// Resolve every category title the file mentions in one round trip,
 	// creating the ones the workspace doesn't have yet.
-	titleToID := map[string]uuid.UUID{}
 	var allTitles []string
 	for i := range parsed {
 		allTitles = append(allTitles, parsed[i].categories...)
 	}
 	if len(allTitles) > 0 {
-		titleToID, xerr = s.contactRepository.ResolveCategoryNames(ctx, orgID, uid, allTitles)
+		titleToID, xerr := s.contactRepository.ResolveCategoryNames(ctx, plan.orgID, plan.uid, allTitles)
 		if xerr != nil {
 			return nil, xerr
 		}
@@ -361,131 +510,31 @@ func (s *contactService) ImportCommit(
 		}
 	}
 
-	// Pre-check existing emails in one shot so we can route rows to
-	// the right path (skip / update / dup).
+	// Existing contacts are the workspace's, not the importing member's: a
+	// teammate's contact is the same person and must not be created twice.
 	emails := make([]string, 0, len(parsed))
 	for i := range parsed {
 		if parsed[i].ok {
 			emails = append(emails, parsed[i].contact.Email)
 		}
 	}
-	existing, xerr := s.contactRepository.GetByEmailsAndUser(ctx, uid, emails)
+	existing, elsewhere, xerr := s.contactRepository.ImportLookup(ctx, plan.orgID, plan.uid, emails)
 	if xerr != nil {
 		return nil, xerr
 	}
 
-	// Measure the list the customer actually uploaded, malformed rows included:
-	// those are exactly what this is counting. Synchronous and address-only, so
-	// they learn something now rather than when verification catches up.
-	allAddresses := make([]string, 0, len(parsed))
-	for i := range parsed {
-		if addr := strings.TrimSpace(parsed[i].contact.Email); addr != "" {
-			allAddresses = append(allAddresses, addr)
-			continue
-		}
-		// The mapped address would not parse. That is exactly what malformed
-		// means, so it is recorded as such rather than hunting other columns
-		// for something with an @ in it, which could pick up a notes field.
-		allAddresses = append(allAddresses, unparseableAddress)
-	}
-	quality := listquality.Assess(allAddresses)
-
+	quality := assessRows(parsed)
 	res := &models.ContactImportResult{
 		Total:     len(parsed),
 		StartedAt: startedAt,
 		Errors:    make([]models.ContactImportRowError, 0),
 		Quality:   toImportQuality(quality),
 	}
-	// warn records a row-level note without counting the row as failed, so
-	// Total always equals imported + updated + skipped + failed.
-	warn := func(line int, addr string, values []string, reason string) {
-		if len(res.Errors) >= models.MaxContactImportReportedErrors {
-			res.ErrorsTruncated = true
-			return
-		}
-		res.Errors = append(res.Errors, models.ContactImportRowError{
-			Line: line, Email: addr, Values: values, Reason: reason,
-		})
-	}
-	fail := func(line int, addr string, values []string, reason string) {
-		res.Failed++
-		warn(line, addr, values, reason)
-	}
-	// noteImport records a message about the whole import rather than one row.
-	// It goes to the front and is never dropped by the per-row cap: a file full
-	// of bad addresses must not push out the one note explaining why the rows
-	// that DID import are not in the segment they were imported into, nor bury
-	// it past the entries the dashboard renders.
-	noteImport := func(reason string) {
-		res.Errors = append([]models.ContactImportRowError{{Reason: reason}}, res.Errors...)
-		if len(res.Errors) > models.MaxContactImportReportedErrors {
-			res.Errors = res.Errors[:models.MaxContactImportReportedErrors]
-			res.ErrorsTruncated = true
-		}
-	}
-
-	// Bucket rows by target action. We send fresh inserts through
-	// contactRepository.Add in batches and fall back to per-row
-	// Update for the "update existing" path so we can compute the
-	// merged custom_fields correctly.
-	toInsert := make([]models.AddContact, 0, len(parsed))
-	toInsertLines := make([]int, 0, len(parsed))
-	toUpdate := make([]pendingRow, 0)
-	// Every contact the file touched (created, updated or skipped-but-linked)
-	// joins the import's target segments at the end.
-	touched := make([]uuid.UUID, 0, len(parsed))
-	// Existing contacts the file listed but did not change. They still have
-	// to join the campaign / categories this import targets: "skip" means
-	// "don't touch their fields", not "leave them out of the list".
-	skippedLinks := make([]linkTarget, 0)
-
-	for _, p := range parsed {
-		if !p.ok {
-			if p.dupInFile {
-				res.Skipped++
-				continue
-			}
-			fail(p.line, p.contact.Email, p.raw, p.errMsg)
-			continue
-		}
-		ex, dup := existing[p.contact.Email]
-		switch {
-		case !dup:
-			// SubscribedDefault is what a NEW contact inherits. An update must
-			// never touch the flag, or re-importing a list would resubscribe
-			// everyone who had opted out.
-			if p.contact.Subscribed == nil {
-				sub := subscribedDefault
-				p.contact.Subscribed = &sub
-			}
-			toInsert = append(toInsert, p.contact)
-			toInsertLines = append(toInsertLines, p.line)
-		case dedup == models.ContactImportDedupSkip:
-			res.Skipped++
-			touched = append(touched, ex.ID)
-			skippedLinks = append(skippedLinks, linkTarget{
-				line:       p.line,
-				email:      p.contact.Email,
-				contactID:  ex.ID.String(),
-				campaigns:  p.contact.Campaigns,
-				categories: p.contact.Categories,
-			})
-		case dedup == models.ContactImportDedupUpdate:
-			toUpdate = append(toUpdate, p)
-		case dedup == models.ContactImportDedupCreateDuplicate:
-			// We can't actually create a duplicate because of the
-			// unique (user_id, lower(email)) index. We treat this as
-			// "update" so the data isn't lost, and surface a soft
-			// warning per row. This is a deliberate, friendlier
-			// behaviour than failing the whole batch.
-			toUpdate = append(toUpdate, p)
-		}
-	}
 
 	// Ask about the plan ceiling once for the whole batch. Per chunk it would
 	// report the same plan problem 500 times, which is what the row-level
 	// error list is explicitly not for.
-	if xerr := s.checkContactLimit(ctx, userID, len(toInsert)); xerr != nil {
+	if xerr := s.checkContactLimit(ctx, plan.userID, countNew(parsed, existing, elsewhere)); xerr != nil {
 		return nil, xerr
 	}
 
@@ -494,112 +543,48 @@ func (s *contactService) ImportCommit(
 	// are not flooded by a single import.
 	ctx = WithoutCreatedEvents(ctx)
 
-	// Insert in chunks so a 50k row import doesn't blow up a single
-	// pgx batch. 500 lines up with the Search page size.
-	for start := 0; start < len(toInsert); start += 500 {
-		end := start + 500
-		if end > len(toInsert) {
-			end = len(toInsert)
+	touched := append(make([]uuid.UUID, 0, len(prior)+len(parsed)), prior...)
+	for start := 0; start < len(parsed); start += importChunkSize {
+		if sink != nil && sink.Cancelled(ctx) {
+			break
 		}
-		chunk := toInsert[start:end]
-		for i := range chunk {
-			chunk[i].Source, chunk[i].SourceDetail = opts.Source, opts.SourceDetail
-		}
-		inserted, xerr := s.Add(ctx, userID, orgID, chunk)
-		if xerr != nil {
-			// Per-row reasons are easier to act on than a "batch
-			// failed" — record each as failed with the same reason.
-			for i, p := range chunk {
-				fail(toInsertLines[start+i], p.Email, nil, xerr.Message)
-			}
-			continue
-		}
-		res.Imported += len(inserted)
-		for i := range inserted {
-			touched = append(touched, inserted[i].ID)
-		}
-	}
-
-	for _, p := range toUpdate {
-		// Find the existing contact id and merge.
-		ex := existing[p.contact.Email]
-		idStr := ex.ID.String()
-
-		update := &models.UpdateContact{
-			FirstName:  optString(p.contact.FirstName),
-			LastName:   optString(p.contact.LastName),
-			Company:    optString(p.contact.Company),
-			Phone:      optString(p.contact.Phone),
-			Subscribed: p.contact.Subscribed,
-		}
-		if len(p.contact.CustomFields) > 0 {
-			merged := make(map[string]string, len(p.contact.CustomFields))
-			for k, v := range p.contact.CustomFields {
-				merged[k] = v
-			}
-			update.CustomFields = &merged
-		}
-		if len(p.contact.Categories) > 0 {
-			update.AddCategories = p.contact.Categories
-		}
-		if _, xerr := s.contactRepository.Update(ctx, userID, idStr, orgID, update); xerr != nil {
-			fail(p.line, p.contact.Email, nil, xerr.Message)
-			continue
-		}
-		res.Updated++
-		touched = append(touched, ex.ID)
-
-		// Attach campaigns separately if the caller requested it.
-		if len(p.contact.Campaigns) > 0 {
-			if _, xerr := s.contactRepository.BulkUpdate(ctx, userID, orgID, &models.BulkEditContactsData{
-				ContactSelection: models.ContactSelection{Contacts: []string{idStr}},
-				AddCampaigns:     p.contact.Campaigns,
-			}); xerr != nil {
-				// Non-fatal: the contact was updated, only the link failed.
-				// Surface it as a row note, not as a failed row.
-				warn(p.line, p.contact.Email, nil, "contact updated but campaign link failed: "+xerr.Message)
+		end := min(start+importChunkSize, len(parsed))
+		rec := &importRecorder{res: res}
+		touched = s.applyImportChunk(ctx, plan, parsed[start:end], existing, elsewhere, rec, touched)
+		if sink != nil {
+			if err := sink.Settle(ctx, rec.outcomes); err != nil {
+				log.Error().Err(err).Str("organization_id", plan.orgID.String()).Msg("could not record contact import progress")
+				return nil, errx.InternalError()
 			}
 		}
 	}
 
-	// One BulkUpdate per distinct (campaigns, categories) set covers every
-	// skipped contact that shares it, so the common case (one campaign, one
-	// category list for the whole file) is a single statement.
-	for _, group := range groupLinks(skippedLinks) {
-		if len(group.campaigns) == 0 && len(group.categories) == 0 {
-			continue
-		}
-		if _, xerr := s.contactRepository.BulkUpdate(ctx, userID, orgID, &models.BulkEditContactsData{
-			ContactSelection: models.ContactSelection{Contacts: group.contactIDs},
-			AddCampaigns:     group.campaigns,
-			AddCategories:    group.categories,
-		}); xerr != nil {
-			// The rows that were imported are fine; only these links failed.
-			// Move the affected rows from skipped to failed rather than
-			// discarding the whole result.
-			for _, m := range group.members {
-				res.Skipped--
-				fail(m.line, m.email, nil,
-					"contact already existed but could not be added to the campaign: "+xerr.Message)
-			}
+	// noteImport records a message about the whole import rather than one row.
+	// It goes to the front and is never dropped by the per-row cap: a file full
+	// of bad addresses must not push out the one note explaining why the rows
+	// that DID import are not in the segment they were imported into.
+	noteImport := func(reason string) {
+		res.Errors = append([]models.ContactImportRowError{{Reason: reason}}, res.Errors...)
+		if len(res.Errors) > models.MaxContactImportReportedErrors {
+			res.Errors = res.Errors[:models.MaxContactImportReportedErrors]
+			res.ErrorsTruncated = true
 		}
 	}
 
 	// Segment membership last, once every touched row exists. A failed write
 	// is a note, not a failed import: the contacts themselves are in, and the
 	// result says the pin did not land so the UI does not claim it did.
-	if len(segmentIDs) > 0 && len(touched) > 0 {
+	if len(plan.segmentIDs) > 0 && len(touched) > 0 {
 		pinned, failedPins, firstReason := true, 0, ""
-		for _, segID := range segmentIDs {
-			if _, xerr := s.segmentLinker.SetMembers(ctx, orgID, segID, touched, models.SegmentMemberInclude); xerr != nil {
+		for _, segID := range plan.segmentIDs {
+			if _, xerr := s.segmentLinker.SetMembers(ctx, plan.orgID, segID, touched, models.SegmentMemberInclude); xerr != nil {
 				pinned, failedPins = false, failedPins+1
 				if firstReason == "" {
 					firstReason = xerr.Message
 				}
 			}
 		}
-		// One note for the whole pin, however many segments were targeted:
-		// the same failure repeated per segment is noise, not information.
+		// One note for the whole pin, however many segments were targeted.
 		if failedPins == 1 {
 			noteImport("imported contacts could not be added to a segment: " + firstReason)
 		} else if failedPins > 1 {
@@ -610,15 +595,252 @@ func (s *contactService) ImportCommit(
 
 	res.EndedAt = time.Now().UTC()
 
-	s.updateListQuality(ctx, orgID, quality)
+	s.updateListQuality(ctx, plan.orgID, quality)
 
-	if res.Imported > 0 || res.Updated > 0 || len(skippedLinks) > 0 {
-		s.publishContactsReload(ctx, userID, "contacts:import")
+	if len(touched) > len(prior) {
+		s.publishContactsReload(ctx, plan.userID, "contacts:import")
 		// Covers the Google Sheets sync too: it commits through this path.
-		s.wakeCampaigns(ctx, orgID, globalCampaignIDs)
-		s.syncSegmentCampaigns(ctx, orgID)
+		s.wakeCampaigns(ctx, plan.orgID, plan.campaignIDs)
+		s.syncSegmentCampaigns(ctx, plan.orgID)
 	}
 	return res, nil
+}
+
+// countNew is how many rows would create a contact.
+func countNew(parsed []pendingRow, existing map[string]uuid.UUID, elsewhere map[string]bool) int {
+	n := 0
+	for i := range parsed {
+		if !parsed[i].ok {
+			continue
+		}
+		addr := parsed[i].contact.Email
+		if _, have := existing[addr]; !have && !elsewhere[addr] {
+			n++
+		}
+	}
+	return n
+}
+
+// applyImportChunk writes one chunk: new contacts in one batch, updates in
+// one transaction, then campaign and category links grouped. It returns
+// touched with every contact the chunk created, updated or linked appended.
+func (s *contactService) applyImportChunk(
+	ctx context.Context,
+	plan *importPlan,
+	chunk []pendingRow,
+	existing map[string]uuid.UUID,
+	elsewhere map[string]bool,
+	rec *importRecorder,
+	touched []uuid.UUID,
+) []uuid.UUID {
+	var inserts, updates []pendingRow
+	var links []linkTarget
+	for _, p := range chunk {
+		addr := p.contact.Email
+		id, have := existing[addr]
+		switch {
+		case p.dupOf > 0:
+			rec.settle(p.line, models.ContactImportRowSkipped, addr, nil, fmt.Sprintf("same address as line %d", p.dupOf), nil)
+		case !p.ok:
+			rec.settle(p.line, models.ContactImportRowFailed, p.rawEmail, p.raw, p.errMsg, nil)
+		case !have && elsewhere[addr]:
+			rec.settle(p.line, models.ContactImportRowFailed, addr, p.raw, reasonElsewhere, nil)
+		case !have:
+			// SubscribedDefault is what a NEW contact inherits. An update must
+			// never touch the flag, or re-importing a list would resubscribe
+			// everyone who had opted out.
+			if p.contact.Subscribed == nil {
+				sub := plan.subscribedDefault
+				p.contact.Subscribed = &sub
+			}
+			p.contact.Source, p.contact.SourceDetail = plan.opts.Source, plan.opts.SourceDetail
+			inserts = append(inserts, p)
+		case plan.dedup == models.ContactImportDedupSkip:
+			// "Skip" means "don't touch their fields", not "leave them out of
+			// the list": they still join the import's campaigns and categories.
+			links = append(links, linkTarget{row: p, contactID: id, status: models.ContactImportRowSkipped})
+		default:
+			// create_duplicate cannot create a second row under the unique
+			// index, so it updates rather than losing the file's data.
+			updates = append(updates, p)
+		}
+	}
+
+	if len(inserts) > 0 {
+		batch := make([]models.AddContact, len(inserts))
+		for i := range inserts {
+			batch[i] = inserts[i].contact
+		}
+		created, xerr := s.contactRepository.Add(ctx, plan.userID, plan.orgID, batch)
+		if xerr != nil && len(batch) > 1 {
+			// One bad row must not fail the rows around it: retry them singly.
+			for i := range batch {
+				one, oneErr := s.contactRepository.Add(ctx, plan.userID, plan.orgID, batch[i:i+1])
+				touched = settleInsert(rec, inserts[i], one, oneErr, touched)
+			}
+		} else {
+			for i := range inserts {
+				var one []models.Contact
+				if xerr == nil && i < len(created) {
+					one = created[i : i+1]
+				}
+				touched = settleInsert(rec, inserts[i], one, xerr, touched)
+			}
+		}
+	}
+
+	if len(updates) > 0 {
+		batch := make([]repository.ContactImportUpdate, len(updates))
+		for i, p := range updates {
+			batch[i] = repository.ContactImportUpdate{ID: existing[p.contact.Email], Contact: p.contact}
+		}
+		found, xerr := s.contactRepository.ImportUpdate(ctx, plan.orgID, batch)
+		for i, p := range updates {
+			ok, rowErr := false, xerr
+			if xerr != nil && len(batch) > 1 {
+				var one []bool
+				one, rowErr = s.contactRepository.ImportUpdate(ctx, plan.orgID, batch[i:i+1])
+				ok = rowErr == nil && one[0]
+			} else if xerr == nil {
+				ok = found[i]
+			}
+			switch {
+			case rowErr != nil:
+				rec.settle(p.line, models.ContactImportRowFailed, p.contact.Email, p.raw, rowErr.Message, nil)
+			case !ok:
+				rec.settle(p.line, models.ContactImportRowFailed, p.contact.Email, p.raw, reasonDeleted, nil)
+			default:
+				links = append(links, linkTarget{row: p, contactID: batch[i].ID, status: models.ContactImportRowUpdated})
+			}
+		}
+	}
+
+	// One BulkUpdate per distinct (campaigns, categories) set, so the common
+	// case (one campaign, one category list for the whole file) is one write.
+	linkErr := make([]string, len(links))
+	for _, group := range groupLinks(links) {
+		if len(group.campaigns) == 0 && len(group.categories) == 0 {
+			continue
+		}
+		if _, xerr := s.contactRepository.BulkUpdate(ctx, plan.userID, plan.orgID, &models.BulkEditContactsData{
+			ContactSelection: models.ContactSelection{Contacts: group.contactIDs},
+			AddCampaigns:     group.campaigns,
+			AddCategories:    group.categories,
+		}); xerr != nil {
+			for _, i := range group.members {
+				linkErr[i] = xerr.Message
+			}
+		}
+	}
+	for i, t := range links {
+		id := t.contactID
+		addr := t.row.contact.Email
+		switch {
+		case t.status == models.ContactImportRowSkipped && linkErr[i] != "":
+			// The rows around it are fine; only this link failed, so the row
+			// moves from skipped to failed rather than discarding the chunk.
+			rec.settle(t.row.line, models.ContactImportRowFailed, addr, nil,
+				"contact already existed but could not be added to the campaign: "+linkErr[i], &id)
+		case t.status == models.ContactImportRowSkipped:
+			rec.settle(t.row.line, models.ContactImportRowSkipped, addr, nil, reasonAlreadyContact, &id)
+			touched = append(touched, id)
+		default:
+			rec.settle(t.row.line, models.ContactImportRowUpdated, addr, nil, "", &id)
+			touched = append(touched, id)
+			if linkErr[i] != "" {
+				// Non-fatal: the contact was updated, only the link failed.
+				rec.note(t.row.line, addr, nil, "contact updated but campaign link failed: "+linkErr[i])
+			}
+		}
+	}
+	return touched
+}
+
+// settleInsert records one row of an insert batch. created holds the row's
+// contact first; an upsert that met an existing row is an update, not a create.
+func settleInsert(rec *importRecorder, p pendingRow, created []models.Contact, xerr *errx.Error, touched []uuid.UUID) []uuid.UUID {
+	if xerr != nil || len(created) == 0 {
+		reason := "the contact could not be saved"
+		if xerr != nil {
+			reason = xerr.Message
+		}
+		rec.settle(p.line, models.ContactImportRowFailed, p.contact.Email, p.raw, reason, nil)
+		return touched
+	}
+	id := created[0].ID
+	status := models.ContactImportRowImported
+	if !created[0].IsNew {
+		status = models.ContactImportRowUpdated
+	}
+	rec.settle(p.line, status, p.contact.Email, nil, "", &id)
+	return append(touched, id)
+}
+
+// AnalyzeImport reads rows through a mapping and reports what an import would
+// do with them, without writing anything.
+func (s *contactService) AnalyzeImport(ctx context.Context, userID string, orgID uuid.UUID, rows []ImportRow, mapping []models.ContactImportColumnMapping) (*models.ContactImportAnalysis, *errx.Error) {
+	if len(mapping) == 0 {
+		return nil, errx.New(errx.BadRequest, "no column mapping provided")
+	}
+	uid, perr := uuid.Parse(userID)
+	if perr != nil {
+		return nil, errx.ErrUuid
+	}
+	columns, xerr := resolveMapping(mapping)
+	if xerr != nil {
+		return nil, xerr
+	}
+	plan := &importPlan{userID: userID, uid: uid, orgID: orgID, dedup: models.ContactImportDedupSkip, columns: columns}
+	parsed := plan.parseRows(rows)
+
+	emails := make([]string, 0, len(parsed))
+	var titles []string
+	for i := range parsed {
+		if parsed[i].ok {
+			emails = append(emails, parsed[i].contact.Email)
+			titles = append(titles, parsed[i].categories...)
+		}
+	}
+	existing, elsewhere, xerr := s.contactRepository.ImportLookup(ctx, orgID, uid, emails)
+	if xerr != nil {
+		return nil, xerr
+	}
+
+	out := &models.ContactImportAnalysis{
+		Rows:           len(parsed),
+		InvalidSamples: []models.ContactImportRowError{},
+		Quality:        toImportQuality(assessRows(parsed)),
+	}
+	sample := func(line int, addr string, reason string) {
+		if len(out.InvalidSamples) < models.MaxContactImportAnalysisSamples {
+			out.InvalidSamples = append(out.InvalidSamples, models.ContactImportRowError{Line: line, Email: addr, Reason: reason})
+		}
+	}
+	for _, p := range parsed {
+		_, have := existing[p.contact.Email]
+		switch {
+		case p.dupOf > 0:
+			out.DuplicatesInFile++
+		case !p.ok:
+			out.Invalid++
+			sample(p.line, p.rawEmail, p.errMsg)
+		case have:
+			out.Existing++
+		case elsewhere[p.contact.Email]:
+			out.Conflicts++
+			sample(p.line, p.contact.Email, reasonElsewhere)
+		default:
+			out.New++
+		}
+	}
+
+	// What would refuse the whole import is said now, not after the upload.
+	if xerr := repository.ValidateImportCategoryNames(titles); xerr != nil {
+		out.Problem = xerr.Message
+	} else if xerr := s.checkContactLimit(ctx, userID, out.New); xerr != nil {
+		out.Problem = xerr.Message
+	}
+	return out, nil
 }
 
 // ValidateSegmentTargets exposes resolveSegmentIDs' verdict without running an
@@ -672,35 +894,35 @@ func (s *contactService) resolveSegmentIDs(ctx context.Context, orgID uuid.UUID,
 }
 
 // linkTarget is an existing contact that must join the import's campaigns and
-// categories even though its own fields were left alone.
+// categories, whether or not its own fields were changed.
 type linkTarget struct {
-	line       int
-	email      string
-	contactID  string
-	campaigns  []string
-	categories []string
+	row       pendingRow
+	contactID uuid.UUID
+	status    string
 }
 
 type linkGroup struct {
 	campaigns  []string
 	categories []string
 	contactIDs []string
-	members    []linkTarget
+	// members index the targets in the slice groupLinks was given.
+	members []int
 }
 
 func groupLinks(targets []linkTarget) []linkGroup {
 	byKey := map[string]*linkGroup{}
 	order := make([]string, 0, 1)
-	for _, t := range targets {
-		key := strings.Join(t.campaigns, ",") + "|" + strings.Join(t.categories, ",")
+	for i, t := range targets {
+		campaigns, categories := t.row.contact.Campaigns, t.row.contact.Categories
+		key := strings.Join(campaigns, ",") + "|" + strings.Join(categories, ",")
 		g, ok := byKey[key]
 		if !ok {
-			g = &linkGroup{campaigns: t.campaigns, categories: t.categories}
+			g = &linkGroup{campaigns: campaigns, categories: categories}
 			byKey[key] = g
 			order = append(order, key)
 		}
-		g.contactIDs = append(g.contactIDs, t.contactID)
-		g.members = append(g.members, t)
+		g.contactIDs = append(g.contactIDs, t.contactID.String())
+		g.members = append(g.members, i)
 	}
 	out := make([]linkGroup, 0, len(order))
 	for _, key := range order {

@@ -87,6 +87,11 @@ var apiSpecs = []apiSpec{
 	{name: "contact custom-fields", summary: "The distinct custom field keys in use", method: "GET", path: "/contacts/custom-fields"},
 	{name: "contact import-preview", summary: "Preview a bulk import without writing", method: "POST", path: "/contacts/import/preview", body: bodyRequired},
 	{name: "contact import-commit", summary: "Commit a previewed bulk import", method: "POST", path: "/contacts/import/commit", body: bodyRequired},
+	{name: "contact imports", summary: "Background imports, newest first", method: "GET", path: "/contacts/imports"},
+	{name: "contact import-status", summary: "A background import's progress and result", method: "GET", path: "/contacts/imports/{id}"},
+	{name: "contact import-analyze", summary: "What a draft import would do under a mapping", method: "POST", path: "/contacts/imports/{id}/analyze", body: bodyRequired},
+	{name: "contact import-start", summary: "Start a draft import", method: "POST", path: "/contacts/imports/{id}/start", body: bodyRequired},
+	{name: "contact import-cancel", summary: "Stop a background import", method: "POST", path: "/contacts/imports/{id}/cancel"},
 	{name: "contact export", summary: "Export contacts", method: "POST", path: "/contacts/export", body: bodyOptional},
 
 	// Suppression list.

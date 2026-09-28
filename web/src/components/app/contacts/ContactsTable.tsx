@@ -75,7 +75,8 @@ import * as rowSelection from "./selection";
 import type { RowSelection } from "./selection";
 import { NewContactDialog } from "./NewContactDialog";
 import ExportDialog from "./ExportDialog";
-import ImportWizard from "./ImportWizard";
+import ImportWizard, { type ImportStep } from "./ImportWizard";
+import RunningImportChip from "./import/RunningImportChip";
 import AddFromContactsDialog from "./AddFromContactsDialog";
 import AddToSegmentMenu from "@/components/app/segments/AddToSegmentMenu";
 import SegmentEditor from "@/components/app/segments/SegmentEditor";
@@ -90,7 +91,7 @@ import type { ExportScopeContext } from "./ExportDialog";
 import useUpdateContactsBulk from "@/lib/api/hooks/app/contacts/useUpdateContactsBulk";
 import useAiMetered from "@/hooks/useAiMetered";
 import SyncSourcesPanel from "./SyncSourcesPanel";
-import { columnClass, sortOptions, type ContactColumn, type ContactRow } from "./columns";
+import { columnClass, emptyColumnIds, sortOptions, type ContactColumn, type ContactRow } from "./columns";
 import { ColumnChooser, SortMenu, type ViewSortState } from "./ViewControls";
 import { useContactView } from "./useContactView";
 import { readCachedView } from "@/lib/api/hooks/app/views/useViewPreferences";
@@ -151,7 +152,6 @@ export default function ContactsTable({
     const [bulkEdit, setBulkEdit] = React.useState<boolean>(false);
     const [newOpen, setNewOpen] = React.useState<boolean>(false);
     const [exportOpen, setExportOpen] = React.useState<boolean>(false);
-    const [importOpen, setImportOpen] = React.useState<boolean>(false);
     const [syncOpen, setSyncOpen] = React.useState<boolean>(false);
     const [fromContactsOpen, setFromContactsOpen] = React.useState<boolean>(false);
     const [fromSegmentOpen, setFromSegmentOpen] = React.useState<boolean>(false);
@@ -159,7 +159,43 @@ export default function ContactsTable({
     const [segmentPreset, setSegmentPreset] = React.useState<{ conditions: SegmentCondition[] } | null>(null);
     const navigate = useNavigate();
     // ?category=<id> pre-filters the list (the Categories tab links here).
-    const [params] = useSearchParams();
+    const [params, setParams] = useSearchParams();
+
+    // An open import lives in the URL (?import=<id>&importStep=<step>), so a
+    // reload reopens it where it was. "new" is the upload step before a draft exists.
+    const [importOpen, setImportOpen] = React.useState<boolean>(() => params.has("import"));
+    const [importId, setImportId] = React.useState<string | null>(() => {
+        const id = params.get("import");
+        return id && id !== "new" ? id : null;
+    });
+    const [importStep] = React.useState<ImportStep | undefined>(() => (params.get("importStep") as ImportStep) ?? undefined);
+    const routeImport = React.useCallback(
+        (id: string | null, step: ImportStep) => {
+            setParams(
+                (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set("import", id ?? "new");
+                    next.set("importStep", step);
+                    return next;
+                },
+                { replace: true },
+            );
+        },
+        [setParams],
+    );
+    const closeImport = React.useCallback(() => {
+        setImportOpen(false);
+        setImportId(null);
+        setParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("import");
+                next.delete("importStep");
+                return next;
+            },
+            { replace: true },
+        );
+    }, [setParams]);
 
     // The member's saved layout for this list: its columns and its sort. The
     // Leads tab and the contacts page are two views with two layouts.
@@ -212,18 +248,6 @@ export default function ContactsTable({
         appliedSortRef.current = "default";
         setSearchProps((s) => ({ ...s, sort_by: "created_at", reverse: false }));
     }
-    const viewControls = (
-        <>
-            <SortMenu sort={sortState} options={sortOptions(viewName)} customKeys={view.customKeys} onChange={changeSort} />
-            <ColumnChooser
-                visible={view.columns}
-                available={view.available}
-                customized={view.customized}
-                onChange={view.setColumns}
-                onReset={resetView}
-            />
-        </>
-    );
 
     function saveAsSegment(draft: SearchContacts) {
         const { conditions, dropped } = filtersToSegment(draft, current_campaign?.id);
@@ -384,6 +408,28 @@ export default function ContactsTable({
     const contacts = contactsData.contacts;
     const total = contactsData.data?.pages[0]?.pagination.total ?? 0;
     const rows = React.useMemo(() => contacts ?? [], [contacts]);
+
+    // Optional-data columns (phone, company, custom fields) that no contact in
+    // this list has a value for step aside instead of showing a column of dashes.
+    const emptyColumns = React.useMemo(() => emptyColumnIds(view.columns, rows), [rows, view.columns]);
+    const tableColumns = React.useMemo(
+        () => view.columns.filter((col) => !emptyColumns.has(col.id)),
+        [view.columns, emptyColumns],
+    );
+
+    const viewControls = (
+        <>
+            <SortMenu sort={sortState} options={sortOptions(viewName)} customKeys={view.customKeys} onChange={changeSort} />
+            <ColumnChooser
+                visible={view.columns}
+                empty={emptyColumns}
+                available={view.available}
+                customized={view.customized}
+                onChange={view.setColumns}
+                onReset={resetView}
+            />
+        </>
+    );
 
     // What every bulk action applies to, and how many contacts that is. In
     // select-all mode the server resolves the filter, so the count here is the
@@ -553,7 +599,7 @@ export default function ContactsTable({
             onRetry={() => contactsData.refetch()}
             isRefetching={contactsData.isFetching && !contactsData.isPending}
             contacts={rows}
-            columns={view.columns}
+            columns={tableColumns}
             sort={sortState}
             onSort={sortByColumn}
             isRowSelected={isRowSelected}
@@ -849,8 +895,11 @@ export default function ContactsTable({
                 />
                 <ImportWizard
                     open={importOpen}
-                    onClose={() => setImportOpen(false)}
+                    onClose={closeImport}
                     lockedCampaign={current_campaign}
+                    initialImportId={importId}
+                    initialStep={importStep}
+                    onRoute={routeImport}
                 />
                 <AddFromContactsDialog
                     open={fromContactsOpen}
@@ -897,6 +946,12 @@ export default function ContactsTable({
                         Add contacts
                     </TopbarAction>
                 )}
+                <RunningImportChip
+                    onOpen={(id) => {
+                        setImportId(id);
+                        setImportOpen(true);
+                    }}
+                />
                 <div className="hidden md:contents">
                     <TopbarAction
                         variant="ghost"
@@ -1062,8 +1117,11 @@ export default function ContactsTable({
             />
             <ImportWizard
                 open={importOpen}
-                onClose={() => setImportOpen(false)}
+                onClose={closeImport}
                 lockedSegment={segment}
+                initialImportId={importId}
+                initialStep={importStep}
+                onRoute={routeImport}
             />
             <SyncSourcesPanel open={syncOpen} onClose={() => setSyncOpen(false)} segment={segment} />
         </Page>

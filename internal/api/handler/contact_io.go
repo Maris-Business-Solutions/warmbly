@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -15,6 +16,15 @@ import (
 // stdlib so the call site stays readable.
 func jsonUnmarshalString(s string, v any) error {
 	return json.Unmarshal([]byte(s), v)
+}
+
+// importFileErr says why a contact upload's file could not be read.
+func importFileErr(err error) *errx.Error {
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		return errx.New(errx.BadRequest, "the file is larger than 50 MB; split it into smaller files")
+	}
+	return errx.New(errx.BadRequest, "missing 'file' form field")
 }
 
 // maxImportUploadBytes caps an upload so a malicious or accidental
@@ -112,7 +122,7 @@ func (h *Handler) ImportPreviewContacts(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImportUploadBytes)
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		errx.Handle(c, errx.New(errx.BadRequest, "missing 'file' form field"))
+		errx.Handle(c, importFileErr(err))
 		return
 	}
 	defer file.Close()
@@ -139,7 +149,7 @@ func (h *Handler) ImportCommitContacts(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImportUploadBytes)
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		errx.Handle(c, errx.New(errx.BadRequest, "missing 'file' form field"))
+		errx.Handle(c, importFileErr(err))
 		return
 	}
 	defer file.Close()

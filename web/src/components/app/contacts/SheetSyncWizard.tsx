@@ -30,7 +30,8 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { MapStep, ResultStep } from "./ImportWizard";
+import MapStep from "./import/MapStep";
+import ResultStep from "./import/ResultStep";
 import { DEDUP_OPTIONS, announceResult, describeError, mappingProblem } from "./importShared";
 import CategoryPicker from "./CategoryPicker";
 import { Label, TextInput } from "@/components/ui/field";

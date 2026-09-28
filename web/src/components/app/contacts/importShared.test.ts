@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
     customKeyOf,
     customKeyStatus,
+    derivePreview,
     foldCustomKey,
     isValidCustomKey,
     mappingProblem,
@@ -15,7 +16,7 @@ import {
     suggestCustomKey,
     targetIdentity,
 } from "./importShared";
-import type { ImportColumnMapping } from "@/lib/api/client/app/contacts/importContacts";
+import type { ImportColumnMapping, ImportPreview } from "@/lib/api/client/app/contacts/importContacts";
 
 describe("custom field names", () => {
     it("accepts what the template engine can resolve", () => {
@@ -112,5 +113,40 @@ describe("existing custom fields", () => {
         expect(targetIdentity({ index: 1, target: "categories" })).toBeNull();
         expect(targetIdentity({ index: 1, target: "ignore" })).toBeNull();
         expect(targetIdentity({ index: 1, target: "custom", custom_key: "" })).toBeNull();
+    });
+});
+
+const withHeader: ImportPreview = {
+    filename: "leads.csv",
+    format: "csv",
+    total_rows: 2,
+    columns: ["Email", "Column 2"],
+    has_header: true,
+    sample_rows: [
+        ["a@x.test", "Ada"],
+        ["b@x.test", "Bo"],
+    ],
+    suggested_mapping: [],
+};
+
+describe("derivePreview", () => {
+    it("returns the preview untouched for the detected choice", () => {
+        expect(derivePreview(withHeader, true)).toBe(withHeader);
+    });
+
+    it("turns the header row into data when the file has none", () => {
+        const got = derivePreview(withHeader, false);
+        expect(got.columns).toEqual(["Column 1", "Column 2"]);
+        // A header cell that was blank is blank again as data.
+        expect(got.sample_rows[0]).toEqual(["Email", ""]);
+        expect(got.total_rows).toBe(3);
+    });
+
+    it("promotes the first data row to the header", () => {
+        const noHeader: ImportPreview = { ...withHeader, columns: ["Column 1", "Column 2"], has_header: false };
+        const got = derivePreview(noHeader, true);
+        expect(got.columns).toEqual(["a@x.test", "Ada"]);
+        expect(got.sample_rows).toEqual([["b@x.test", "Bo"]]);
+        expect(got.total_rows).toBe(1);
     });
 });

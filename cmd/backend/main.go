@@ -45,6 +45,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/cloudlink"
 	"github.com/warmbly/warmbly/internal/app/compose"
 	"github.com/warmbly/warmbly/internal/app/contact"
+	"github.com/warmbly/warmbly/internal/app/contactimport"
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/creditwatch"
 	"github.com/warmbly/warmbly/internal/app/crm"
@@ -175,6 +176,7 @@ func main() {
 	var userService user.UserService
 	var emailService email.EmailService
 	var mailboxImportService *mailboximport.Service
+	var contactImportService *contactimport.Service
 	var delegationService *delegation.Service
 	var vendorConnService *vendorconn.Service
 	var sendingDomainService *sendingdomain.Service
@@ -1940,6 +1942,16 @@ func main() {
 			}
 		}
 		go jobs.NewDeliveryEvidenceJob(verificationEvidence, 15*time.Minute, 2000).Start(ctx)
+		if contactService != nil {
+			contactImportService = contactimport.NewService(contactimport.Deps{
+				Repo:      repository.NewContactImportRepository(primaryDB),
+				Contacts:  contactService,
+				Publisher: streamingPublisher,
+				// New addresses are checked right away rather than on the next tick.
+				Kicked: emailVerifyService.Kick,
+			})
+			go contactImportService.Run(ctx)
+		}
 		emailVerifyService.SetVerdictHook(func(ctx context.Context, orgID uuid.UUID) {
 			if campaignService != nil {
 				campaignService.ResumeVerificationPaused(ctx, orgID)
@@ -2123,6 +2135,7 @@ func main() {
 		UserService:          userService,
 		EmailService:         emailService,
 		MailboxImportService: mailboxImportService,
+		ContactImportService: contactImportService,
 		DelegationService:    delegationService,
 		VendorConnService:    vendorConnService,
 		SendingDomainService: sendingDomainService,
