@@ -248,7 +248,11 @@ export default function ImportWizard({ open, onClose, lockedCampaign, lockedSegm
             savedRef.current = body;
             return;
         }
-        if (body === savedRef.current) return;
+        if (body === savedRef.current) {
+            // An edit undone before it was sent: the server already has this.
+            setSaveState((s) => (s === "saving" ? "saved" : s));
+            return;
+        }
         setSaveState("saving");
         const timer = window.setTimeout(() => {
             saveContactImportDraft(draft.id, draftOptions)

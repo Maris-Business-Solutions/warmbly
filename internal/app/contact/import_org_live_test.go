@@ -240,3 +240,32 @@ func TestLiveAnalyzeImportBuckets(t *testing.T) {
 		t.Fatalf("invalid samples=%+v", got.InvalidSamples)
 	}
 }
+
+// An update is held to the size a new contact is, and the row that breaks it
+// fails alone.
+func TestLiveImportOversizedUpdateFailsAlone(t *testing.T) {
+	f := newImportFixture(t)
+	f.insertContact(t, f.user, f.org, "big@update.test", "Big")
+	f.insertContact(t, f.user, f.org, "fine@update.test", "Fine")
+	csv := fmt.Sprintf("Email,Notes\nbig@update.test,%s\nfine@update.test,follow up\n", strings.Repeat("x", 11000))
+
+	res, msg := f.commit(t, csv, &models.ContactImportCommit{
+		Mapping:   []models.ContactImportColumnMapping{col(0, models.ContactImportTargetEmail), customCol(1, "Notes")},
+		Dedup:     models.ContactImportDedupUpdate,
+		HasHeader: true,
+	})
+	if msg != "" {
+		t.Fatalf("import rejected: %s", msg)
+	}
+	if res.Updated != 1 || res.Failed != 1 {
+		t.Fatalf("updated=%d failed=%d (want 1 and 1)", res.Updated, res.Failed)
+	}
+	var notes string
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT COALESCE(custom_fields ->> 'Notes', '') FROM contacts WHERE organization_id = $1 AND email = 'big@update.test'`, f.org).Scan(&notes); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if notes != "" {
+		t.Fatalf("the oversized value was stored (%d bytes)", len(notes))
+	}
+}

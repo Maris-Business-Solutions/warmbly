@@ -29,7 +29,7 @@ export default function ResultStep({
         if (!result.errors || result.errors.length === 0) return;
         const rows = [["line", "email", "reason"]];
         for (const e of result.errors) {
-            rows.push([String(e.line), e.email ?? "", e.reason.replace(/\r?\n/g, " ")]);
+            rows.push([String(e.line), csvSafe(e.email ?? ""), csvSafe(e.reason.replace(/\r?\n/g, " "))]);
         }
         const csv = rows
             .map((r) =>
@@ -148,6 +148,11 @@ export default function ResultStep({
             )}
         </div>
     );
+}
+
+// csvSafe keeps a spreadsheet from reading an uploaded value as a formula.
+function csvSafe(v: string): string {
+    return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
 }
 
 function durationText(start: string | Date, end: string | Date): string {

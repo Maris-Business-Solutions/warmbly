@@ -475,7 +475,7 @@ The commit above runs inside the request, which suits small files and scripts. F
 3. `POST /contacts/imports/:id/start` queues it.
 4. `GET /contacts/imports/:id` reports progress until `status` is `completed`, `failed`, or `cancelled`. Dashboard sockets also receive `CONTACT_IMPORT_PROGRESS` as it moves; see [realtime](/api/realtime/).
 
-A draft that is never started is deleted after 24 hours, and a finished import, with its stored rows, after 30 days. A workspace may hold 10 drafts and running imports at once; creating another is a `409`.
+A draft keeps its preview and whatever mapping and options were last saved to it, so a client can resume it. A draft that is never started is deleted after 24 hours, and a finished import, with its stored rows, after 30 days. A workspace may hold 10 drafts and running imports at once; creating another is a `409`.
 
 ### Create an import
 
@@ -489,6 +489,14 @@ Send the file as `multipart/form-data` with a `file` field (max 50 MB, 50,000 ro
 | --- | --- | --- |
 | `preview.column_stats` | array | One entry per column, measured over every row: `filled` (non-empty cells), `distinct` (different values, counted up to 1,000), and `samples` (up to three distinct values). |
 | `preview.mapping_source` | string | `saved` when this organization started an import with these exact headers before; `suggested_mapping` is then the mapping it confirmed. Otherwise `suggested`. |
+
+### Save a draft
+
+`PATCH /contacts/imports/:id`
+
+Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
+
+Stores a draft's in-progress mapping and options (the same body as [start](#start-an-import)) without checking them, so a client can autosave and pick the draft up again later; `GET` returns them in `options`, with the draft's `preview`. They are checked when the import is started. Returns the import; `409` once it has started. Saving the same body again is harmless.
 
 ### Analyze an import
 

@@ -263,9 +263,12 @@ func Run(
 
 	r.Use(cors.New(corsConfig))
 
-	// Limit request body size to 10MB to prevent OOM
+	// Limit request body size to 10MB to prevent OOM. The contact file uploads
+	// apply their own, larger cap in the handler before reading.
 	r.Use(func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
+		if !largeUploadRoute(c.Request) {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
+		}
 		c.Next()
 	})
 
@@ -1844,4 +1847,17 @@ func Run(
 	r.POST("/webhook/stripe", h.HandleStripeWebhook)
 
 	return r
+}
+
+// largeUploadRoute reports the routes whose handlers cap the body themselves
+// (maxImportUploadBytes), so the global cap does not cut them short.
+func largeUploadRoute(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	switch r.URL.Path {
+	case "/v1/contacts/imports", "/v1/contacts/import/preview", "/v1/contacts/import/commit":
+		return true
+	}
+	return false
 }

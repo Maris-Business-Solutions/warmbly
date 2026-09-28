@@ -3321,6 +3321,12 @@ func (r *contactRepository) ImportUpdate(ctx context.Context, orgID uuid.UUID, r
 		if xerr != nil {
 			return nil, xerr
 		}
+		// The same bound Add holds a new contact to.
+		if data, err := json.Marshal(c); err != nil {
+			return nil, errx.ErrContactSerialize
+		} else if len(data) > config.MaxContactSize {
+			return nil, errx.ErrContactSize
+		}
 		v, xerr := verificationFromRequest(c.VerificationStatus, c.VerificationProvider)
 		if xerr != nil {
 			return nil, xerr

@@ -22,8 +22,10 @@ export default function CompanyLogo({
         setLoaded(false);
     }, [domain]);
     if (!src) return <>{fallback}</>;
+    // Invisible rather than display:none until it arrives: a lazy image that is
+    // not laid out is never fetched, and would leave the fallback up for good.
     return (
-        <>
+        <span className="relative inline-flex items-center justify-center shrink-0">
             {!loaded && fallback}
             <img
                 src={src}
@@ -37,8 +39,8 @@ export default function CompanyLogo({
                     markLogoFailed(domain);
                     setBroken(true);
                 }}
-                className={`${className ?? ""} ${loaded ? "" : "hidden"}`}
+                className={`${className ?? ""} ${loaded ? "" : "absolute inset-0 m-auto opacity-0 pointer-events-none"}`}
             />
-        </>
+        </span>
     );
 }

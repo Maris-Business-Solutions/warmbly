@@ -29,7 +29,7 @@ func (h *Handler) CreateContactImport(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImportUploadBytes)
 	file, header, ferr := c.Request.FormFile("file")
 	if ferr != nil {
-		errx.Handle(c, errx.New(errx.BadRequest, "missing 'file' form field"))
+		errx.Handle(c, importFileErr(ferr))
 		return
 	}
 	defer file.Close()
@@ -54,7 +54,7 @@ func (h *Handler) ListContactImports(c *gin.Context) {
 		errx.Handle(c, xerr)
 		return
 	}
-	if limit > 100 {
+	if limit < 1 || limit > 100 {
 		errx.Handle(c, errx.ErrLimit)
 		return
 	}
