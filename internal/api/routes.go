@@ -809,7 +809,9 @@ func Run(
 
 				// Resolve a sender address to a contact (unibox CRM panel).
 				// Registered before /:id so the fixed path wins over the catch-all.
-				contacts.GET("/lookup", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.LookupContactByEmail)
+				// A thread_id reads the unibox, so it needs unibox access as well.
+				contacts.GET("/lookup", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts),
+					m.RequireAccessWithQuery("thread_id", models.PermAccessUnibox, models.APIPermReadUnibox), h.LookupContactByEmail)
 
 				// Distinct custom-field keys across the org's contacts, for the
 				// dashboard variable picker. Fixed path, so before /:id.

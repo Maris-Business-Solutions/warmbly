@@ -331,17 +331,22 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
   const subject = messages[0]?.subject || "(no subject)";
   const mailbox = accounts.find((a) => a.id === messages[0]?.account_id);
 
-  // The external party of the thread = the first message address that isn't
-  // our own mailbox. Headers arrive in all three shapes lib/helper/emailAddress
+  // The external party of the thread = the first sender that isn't one of
+  // the workspace's mailboxes, else (nobody has written back yet) the first
+  // such recipient. Headers arrive in all three shapes lib/helper/emailAddress
   // parses; reduce to the bare address so the comparison + the lookup work.
   const mailboxEmail = mailbox?.email?.toLowerCase();
+  const ownAddresses = new Set(accounts.map((a) => a.email?.toLowerCase()).filter(Boolean));
+  if (mailboxEmail) ownAddresses.add(mailboxEmail);
+  const isExternal = (addr: string) => {
+    const e = bareEmail(addr);
+    return !!e && !ownAddresses.has(e.toLowerCase());
+  };
+  const externalFrom = messages.map((m) => m.from).find(isExternal);
   const contactFrom =
-    messages
-      .map((m) => m.from)
-      .find((f) => {
-        const e = bareEmail(f);
-        return e && e.toLowerCase() !== mailboxEmail;
-      }) ?? (messages[0]?.from ?? "");
+    externalFrom ??
+    messages.flatMap((m) => m.recipients ?? [m.to]).find(isExternal) ??
+    (messages[0]?.from ?? "");
   const contactEmail = bareEmail(contactFrom);
   // Display name from the From header, so an "Add as contact" from the
   // panel does not create a nameless row. Empty when the header is bare.
@@ -685,7 +690,10 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
         <ContactContextPanel
           email={contactEmail}
           name={contactName}
-          mailboxId={mailbox?.id}
+          mailboxId={mailbox?.id ?? messages[0]?.account_id}
+          threadId={threadId}
+          threadMailboxId={emailId}
+          wroteBack={!!externalFrom}
           onClose={() => setCrmOpen(false)}
         />
       )}

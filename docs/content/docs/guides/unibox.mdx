@@ -21,6 +21,8 @@ How wide the list can get depends on the window: the thread always keeps enough 
 
 On a screen narrower than 1024px the contact panel is an overlay rather than a column, so it always starts closed there. Below 768px the list and the thread take turns on the full screen instead of sitting side by side.
 
+The contact panel shows the person on the other side of the conversation: the first sender who is not one of the workspace's mailboxes. It finds their contact by address first. When that address is not a contact but the conversation answers one of your campaign emails (people often reply from an alias, a second domain or a colleague's account), the panel shows the lead that campaign wrote to, with a **Replied from** line naming the address the reply actually came from. Only when neither matches does it offer **Add as contact**.
+
 ## Keyboard
 
 The conversation list takes the keyboard, so a triage pass never needs the mouse. Press `?` anywhere in Warmbly for the full list; these are the ones that act on the inbox.

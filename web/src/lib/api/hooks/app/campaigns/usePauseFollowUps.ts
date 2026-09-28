@@ -2,6 +2,7 @@ import React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePermission } from "@/hooks/usePermission";
 import useContactByEmail from "@/lib/api/hooks/app/contacts/useContactByEmail";
+import type { ContactLookupThread } from "@/lib/api/client/app/contacts/lookupContact";
 import useContactCampaignStates from "@/lib/api/hooks/app/contacts/useContactCampaignStates";
 import { pauseCampaignLead } from "@/lib/api/client/app/campaigns/leadHold";
 import listContactCampaignStates from "@/lib/api/client/app/contacts/listContactCampaignStates";
@@ -14,11 +15,11 @@ export interface FollowUpTargets {
 }
 
 // A reply recipient's campaigns with a step still to send, and a pause for them; empty without MANAGE_CAMPAIGNS.
-export default function usePauseFollowUps(email: string | undefined) {
+export default function usePauseFollowUps(email: string | undefined, thread?: ContactLookupThread) {
     const allowed = usePermission("MANAGE_CAMPAIGNS");
     const queryClient = useQueryClient();
-    const lookup = useContactByEmail(email, allowed);
-    const contactId = lookup.data?.id ?? "";
+    const lookup = useContactByEmail(email, allowed, thread);
+    const contactId = lookup.data?.contact?.id ?? "";
     const statesQ = useContactCampaignStates(contactId, allowed);
 
     const targets = React.useMemo<FollowUpTargets>(

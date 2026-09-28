@@ -102,7 +102,7 @@ The three `/campaigns/:id/leads/:contactId/…` calls hold one contact's flow in
 |--------|------|----------------|
 | POST | `/contacts/search` | `READ_CONTACTS` |
 | GET | `/contacts/custom-fields` | `READ_CONTACTS` |
-| GET | `/contacts/lookup` | `READ_CONTACTS` |
+| GET | `/contacts/lookup` | `READ_CONTACTS` (plus `READ_UNIBOX` with `thread_id`) |
 | POST | `/contacts` | `WRITE_CONTACTS` |
 | DELETE | `/contacts` | `BULK_CONTACTS` |
 | PATCH | `/contacts` | `BULK_CONTACTS` |

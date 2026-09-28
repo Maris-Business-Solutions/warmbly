@@ -45,7 +45,7 @@ func (h *Handler) GetContact(c *gin.Context) {
 // LookupContactByEmail resolves a sender address to a contact in the caller's
 // organization, for the unibox CRM panel. Returns {"contact": null} with 200
 // when no contact matches, so an unknown sender renders a clean empty state
-// rather than a 404.
+// rather than a 404. thread_id resolves a sender from an alias to the lead.
 func (h *Handler) LookupContactByEmail(c *gin.Context) {
 	email := strings.TrimSpace(c.Query("email"))
 	// Senders often arrive as "Display Name <addr@example.com>" (the unibox
@@ -56,20 +56,35 @@ func (h *Handler) LookupContactByEmail(c *gin.Context) {
 			email = strings.TrimSpace(email[i+1 : i+j])
 		}
 	}
-	if email == "" {
-		errx.Handle(c, errx.New(errx.BadRequest, "email is required"))
+	threadID := strings.TrimSpace(c.Query("thread_id"))
+	if email == "" && threadID == "" {
+		errx.Handle(c, errx.New(errx.BadRequest, "email or thread_id is required"))
 		return
+	}
+	var accountID *uuid.UUID
+	if v := strings.TrimSpace(c.Query("account_id")); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			errx.Handle(c, errx.ErrUuid)
+			return
+		}
+		if !middleware.APIKeyAllowsEmailAccount(c, id) {
+			errx.Handle(c, errx.New(errx.Forbidden, "email account is not allowed for this API key"))
+			return
+		}
+		accountID = &id
 	}
 
 	orgID := middleware.GetOrganizationID(c)
 
-	contact, xerr := h.ContactService.GetByEmail(c.Request.Context(), orgID, email)
+	thread := models.ContactLookupThread{ID: threadID, AccountID: accountID, AllowedAccounts: middleware.GetAPIKeyAllowedEmailAccounts(c)}
+	res, xerr := h.ContactService.LookupSender(c.Request.Context(), orgID, email, thread)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"contact": contact})
+	c.JSON(http.StatusOK, res)
 }
 
 // ListContactEmails returns one row per email we sent (or tried to

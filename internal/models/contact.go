@@ -900,3 +900,29 @@ type BulkEditContactsData struct {
 	// than are worth serializing back. Never part of the request body.
 	SkipRows bool `json:"-"`
 }
+
+// ContactLookupMatch says how a unibox sender resolved to a contact.
+type ContactLookupMatch string
+
+const (
+	// ContactLookupMatchEmail: the sender's address is the contact's.
+	ContactLookupMatchEmail ContactLookupMatch = "email"
+	// ContactLookupMatchThread: the thread answers a campaign send to the
+	// contact, and the reply came from another address.
+	ContactLookupMatchThread ContactLookupMatch = "thread"
+)
+
+// ContactLookupThread is the unibox thread a sender wrote in. AllowedAccounts
+// is an API key's mailbox allowlist; empty means every mailbox.
+type ContactLookupThread struct {
+	ID              string
+	AccountID       *uuid.UUID
+	AllowedAccounts []uuid.UUID
+}
+
+// ContactLookup is the answer to GET /contacts/lookup; Contact is nil when
+// nothing matched.
+type ContactLookup struct {
+	Contact *Contact           `json:"contact"`
+	Match   ContactLookupMatch `json:"match,omitempty"`
+}

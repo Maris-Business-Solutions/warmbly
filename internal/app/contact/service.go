@@ -87,6 +87,9 @@ type ContactService interface {
 	// non-error outcome used by the unibox CRM panel.
 	GetByEmail(ctx context.Context, orgID *uuid.UUID, email string) (*models.Contact, *errx.Error)
 
+	// LookupSender matches the address first, then the thread's campaign send.
+	LookupSender(ctx context.Context, orgID *uuid.UUID, email string, thread models.ContactLookupThread) (*models.ContactLookup, *errx.Error)
+
 	// ListSentEmails enumerates every send (or attempted send) we made
 	// to the contact, newest first.
 	ListSentEmails(ctx context.Context, orgID, contactID uuid.UUID, limit int, beforeSentAt *time.Time, beforeTaskID *uuid.UUID) (*models.ContactSentEmailsResult, *errx.Error)
