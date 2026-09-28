@@ -792,7 +792,7 @@ function MailboxRow({
                             {shownTags.map((t) => (
                                 <span
                                     key={t.id}
-                                    className="hidden md:inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-[9.5px] font-medium shrink-0"
+                                    className="hidden lg:inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-[9.5px] font-medium shrink-0"
                                     style={{ backgroundColor: `${t.color}1a`, color: t.color }}
                                 >
                                     <span className="size-1.5 rounded-full" style={{ backgroundColor: t.color }} />
@@ -800,7 +800,7 @@ function MailboxRow({
                                 </span>
                             ))}
                             {rowTags.length > shownTags.length && (
-                                <span className="hidden md:inline-flex items-center h-4 px-1 rounded-full bg-slate-100 text-slate-500 text-[9.5px] font-medium shrink-0">
+                                <span className="hidden lg:inline-flex items-center h-4 px-1 rounded-full bg-slate-100 text-slate-500 text-[9.5px] font-medium shrink-0">
                                     +{rowTags.length - shownTags.length}
                                 </span>
                             )}

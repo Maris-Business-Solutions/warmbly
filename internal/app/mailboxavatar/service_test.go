@@ -155,3 +155,25 @@ func TestRefreshKeepsThePhotoWhenTheGrantCannotBeAsked(t *testing.T) {
 		t.Fatalf("an unanswerable grant cleared the photo: %q", repo.url[id])
 	}
 }
+
+type fakeVendor struct{ pics map[string]string }
+
+func (v fakeVendor) Pictures(context.Context, uuid.UUID, uuid.UUID) (map[string]string, error) {
+	return v.pics, nil
+}
+
+// A vendor with no picture does not turn an unanswered grant into "no photo".
+func TestRefreshKeepsThePhotoWhenTheGrantFailsAndTheVendorHasNone(t *testing.T) {
+	ctx := context.Background()
+	repo, st := newFakeRepo(), newStore(t)
+	org, id, grant, conn := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if err := New(repo, st, nil, nil).Save(ctx, org, id, pngPhoto(t, color.White)); err != nil {
+		t.Fatal(err)
+	}
+	kept := repo.url[id]
+	c := repository.MailboxAvatarCandidate{ID: id, OrganizationID: org, AvatarURL: kept, DomainGrantID: &grant, VendorConnectionID: &conn, VendorMailboxID: "mb-1"}
+	New(repo, st, fakeGrant{err: errors.New("grant inactive")}, fakeVendor{pics: map[string]string{}}).refresh(ctx, c, map[uuid.UUID]map[string]string{})
+	if repo.url[id] != kept {
+		t.Fatalf("an unanswered grant with an empty vendor cleared the photo: %q", repo.url[id])
+	}
+}

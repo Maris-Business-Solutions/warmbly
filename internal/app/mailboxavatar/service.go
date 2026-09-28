@@ -195,18 +195,17 @@ func (s *Service) refresh(ctx context.Context, c repository.MailboxAvatarCandida
 
 // fetch reads the photo from the grant first, then the vendor; nil, nil when neither has one.
 func (s *Service) fetch(ctx context.Context, c repository.MailboxAvatarCandidate, pictures map[uuid.UUID]map[string]string) ([]byte, error) {
+	// A grant that could not answer keeps what is stored unless the vendor has a photo instead.
+	var grantErr error
 	if c.DomainGrantID != nil && s.grants != nil {
 		data, err := s.grants.MailboxPhoto(ctx, c.ID)
-		// A grant that answered "no photo" defers to the vendor; one that could not answer keeps what is stored.
-		if err != nil && c.VendorConnectionID == nil {
-			return nil, err
-		}
 		if err == nil && data != nil {
 			return data, nil
 		}
+		grantErr = err
 	}
 	if c.VendorConnectionID == nil || c.VendorMailboxID == "" || s.vendors == nil {
-		return nil, nil
+		return nil, grantErr
 	}
 	pics, ok := pictures[*c.VendorConnectionID]
 	if !ok {
@@ -219,7 +218,7 @@ func (s *Service) fetch(ctx context.Context, c repository.MailboxAvatarCandidate
 	if u := pics[c.VendorMailboxID]; u != "" {
 		return s.download(ctx, u)
 	}
-	return nil, nil
+	return nil, grantErr
 }
 
 // download reads a vendor-published picture: an inline data URL, or HTTPS through the SSRF-hardened client.
