@@ -101,6 +101,15 @@ type CreditService interface {
 	// sentinel errors the handler maps; any other error is an internal failure.
 	Consume(ctx context.Context, orgID uuid.UUID, amount int, reason, model string, tokens int, idempotencyKey string) (int, error)
 
+	// Charge debits a flat price for something that is not an AI call (a
+	// placement test): the org's spend limits apply, the AI generation caps
+	// do not. Same sentinels and idempotency as Consume.
+	Charge(ctx context.Context, orgID uuid.UUID, amount int, reason, idempotencyKey string) (int, error)
+
+	// RefundCharge gives back what a Charge under chargeKey debited, to the
+	// pools it came from, once. Returns the credits given back.
+	RefundCharge(ctx context.Context, orgID uuid.UUID, chargeKey, reason string) (int, error)
+
 	// Grant adds credits to an org's monthly pool (e.g. a provider-failure
 	// refund). Returns the resulting combined balance.
 	Grant(ctx context.Context, orgID uuid.UUID, amount int, reason string) (int, *errx.Error)
@@ -329,6 +338,37 @@ func (s *creditService) Consume(ctx context.Context, orgID uuid.UUID, amount int
 		s.notifyMonitor(orgID, bal)
 	}
 	return bal, nil
+}
+
+func (s *creditService) Charge(ctx context.Context, orgID uuid.UUID, amount int, reason, idempotencyKey string) (int, error) {
+	if s.selfHost {
+		return selfHostBalance, nil
+	}
+	if amount <= 0 {
+		return 0, errors.New("credit amount must be positive")
+	}
+	if err := s.checkSpendLimits(ctx, orgID, amount); err != nil {
+		return 0, err
+	}
+	bal, _, replayed, err := s.repo.Consume(ctx, orgID, amount, reason, "", 0, idempotencyKey)
+	if errors.Is(err, repository.ErrInsufficientCredits) {
+		return 0, ErrInsufficientCredits
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !replayed {
+		s.notifyMonitor(orgID, bal)
+	}
+	return bal, nil
+}
+
+func (s *creditService) RefundCharge(ctx context.Context, orgID uuid.UUID, chargeKey, reason string) (int, error) {
+	if s.selfHost {
+		return 0, nil
+	}
+	refunded, _, err := s.repo.RefundSpend(ctx, orgID, chargeKey, chargeKey+":refund", reason)
+	return refunded, err
 }
 
 func (s *creditService) SettleUsage(ctx context.Context, orgID uuid.UUID, alreadyCharged int, model string, tokens int, reason, idempotencyKey string) (int, error) {

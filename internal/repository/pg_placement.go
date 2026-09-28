@@ -42,6 +42,13 @@ type PlacementLanding struct {
 }
 
 // PlacementFinished is a test that just resolved its last probe.
+// PlacementRefund is a paid test owed its credits back.
+type PlacementRefund struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	Credits        int
+}
+
 type PlacementFinished struct {
 	ID             uuid.UUID
 	OrganizationID *uuid.UUID
@@ -144,9 +151,15 @@ type PlacementRepository interface {
 	// what would stop each from becoming a seed.
 	ListOrgMailboxes(ctx context.Context, orgID uuid.UUID) ([]SeedAccount, map[uuid.UUID]string, error)
 
-	// CountMeteredTests counts a workspace's tests on the metered panels
-	// since a moment.
+	// CountMeteredTests counts a workspace's free tests on the metered panels
+	// since a moment. A test paid in credits, or one that finished without
+	// delivering a copy, uses none.
 	CountMeteredTests(ctx context.Context, orgID uuid.UUID, since time.Time) (int, error)
+	// PendingRefunds lists finished tests paid in credits that delivered no
+	// copy and have not been refunded yet.
+	PendingRefunds(ctx context.Context, limit int) ([]PlacementRefund, error)
+	// MarkCreditsRefunded stamps a test's refund; false when already stamped.
+	MarkCreditsRefunded(ctx context.Context, testID uuid.UUID) (bool, error)
 	CountRunning(ctx context.Context, orgID uuid.UUID) (int, error)
 	// SenderBusy reports whether a sender still has probes waiting to leave.
 	SenderBusy(ctx context.Context, senderID uuid.UUID) (bool, error)
@@ -187,13 +200,15 @@ func NewPlacementRepository(db *db.DB) PlacementRepository {
 
 const placementTestCols = `id, organization_id, sender_account_id, sender_email, created_by, campaign_id,
 	sequence_id, contact_id, monitor_id, subject, body_plain, body_html, open_tracking, link_tracking,
-	compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, created_at, finished_at`
+	compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged,
+	credits_refunded_at, created_at, finished_at`
 
 func scanPlacementTest(row pgx.Row) (*models.PlacementTest, error) {
 	var t models.PlacementTest
 	err := row.Scan(&t.ID, &t.OrganizationID, &t.SenderAccountID, &t.SenderEmail, &t.CreatedBy, &t.CampaignID,
 		&t.SequenceID, &t.ContactID, &t.MonitorID, &t.Subject, &t.BodyPlain, &t.BodyHTML, &t.OpenTracking, &t.LinkTracking,
-		&t.CompareGroupID, &t.Origin, &t.Panel, &t.Status, &t.Error, &t.RemoteInstanceID, &t.RemoteTestID, &t.CreatedAt, &t.FinishedAt)
+		&t.CompareGroupID, &t.Origin, &t.Panel, &t.Status, &t.Error, &t.RemoteInstanceID, &t.RemoteTestID, &t.Pace, &t.CreditsCharged,
+		&t.CreditsRefundedAt, &t.CreatedAt, &t.FinishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -226,15 +241,19 @@ func (r *placementRepository) CreateTests(ctx context.Context, bundles []Placeme
 
 	for _, b := range bundles {
 		t := b.Test
+		pace := t.Pace
+		if pace == "" {
+			pace = models.PlacementPaceSpaced
+		}
 		err = tx.QueryRow(ctx, `
 			INSERT INTO placement_tests (id, organization_id, sender_account_id, sender_email, created_by, campaign_id,
 				sequence_id, contact_id, monitor_id, subject, body_plain, body_html, open_tracking, link_tracking,
-				compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW())
+				compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW())
 			RETURNING created_at
 		`, t.ID, t.OrganizationID, t.SenderAccountID, t.SenderEmail, t.CreatedBy, t.CampaignID,
 			t.SequenceID, t.ContactID, t.MonitorID, t.Subject, t.BodyPlain, t.BodyHTML, t.OpenTracking, t.LinkTracking,
-			t.CompareGroupID, t.Origin, t.Panel, t.Status, t.Error, t.RemoteInstanceID, t.RemoteTestID).Scan(&t.CreatedAt)
+			t.CompareGroupID, t.Origin, t.Panel, t.Status, t.Error, t.RemoteInstanceID, t.RemoteTestID, pace, t.CreditsCharged).Scan(&t.CreatedAt)
 		if err != nil {
 			return err
 		}
@@ -711,13 +730,58 @@ func (r *placementRepository) ListOrgMailboxes(ctx context.Context, orgID uuid.U
 func (r *placementRepository) CountMeteredTests(ctx context.Context, orgID uuid.UUID, since time.Time) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx, `
-		SELECT COUNT(*) FROM placement_tests
-		WHERE organization_id = $1
-		  AND panel IN ('instance', 'cloud')
-		  AND origin IN ('manual', 'monitor', 'remote')
-		  AND created_at >= $2
+		SELECT COUNT(*) FROM placement_tests pt
+		WHERE pt.organization_id = $1
+		  AND pt.panel IN ('instance', 'cloud')
+		  AND pt.origin IN ('manual', 'monitor', 'remote')
+		  AND pt.credits_charged = 0
+		  AND pt.created_at >= $2
+		  AND (pt.finished_at IS NULL OR EXISTS (
+			SELECT 1 FROM placement_results pr
+			WHERE pr.test_id = pt.id AND pr.folder IN ('inbox', 'promotions', 'other', 'spam', 'missing')
+		  ))
 	`, orgID, since).Scan(&n)
 	return n, err
+}
+
+func (r *placementRepository) PendingRefunds(ctx context.Context, limit int) ([]PlacementRefund, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT pt.id, pt.organization_id, pt.credits_charged FROM placement_tests pt
+		WHERE pt.credits_charged > 0
+		  AND pt.credits_refunded_at IS NULL
+		  AND pt.finished_at IS NOT NULL
+		  AND pt.organization_id IS NOT NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM placement_results pr
+			WHERE pr.test_id = pt.id AND pr.folder IN ('inbox', 'promotions', 'other', 'spam', 'missing')
+		  )
+		ORDER BY pt.finished_at
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PlacementRefund
+	for rows.Next() {
+		var f PlacementRefund
+		if err := rows.Scan(&f.ID, &f.OrganizationID, &f.Credits); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+func (r *placementRepository) MarkCreditsRefunded(ctx context.Context, testID uuid.UUID) (bool, error) {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE placement_tests SET credits_refunded_at = NOW()
+		WHERE id = $1 AND credits_charged > 0 AND credits_refunded_at IS NULL
+	`, testID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 func (r *placementRepository) CountRunning(ctx context.Context, orgID uuid.UUID) (int, error) {

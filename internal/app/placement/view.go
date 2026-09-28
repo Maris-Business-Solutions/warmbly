@@ -160,13 +160,23 @@ func (s *service) usage(ctx context.Context, orgID uuid.UUID) (models.PlacementU
 		return u, nil
 	}
 	pol := s.policy(ctx)
-	limit := pol.TestsPerMonthTrial
+	limit, paid := pol.TestsPerMonthTrial, false
 	if s.Gate != nil {
-		if paid, _ := s.Gate.IsPaidOrganization(ctx, orgID); paid {
+		if paid, _ = s.Gate.IsPaidOrganization(ctx, orgID); paid {
 			limit = pol.TestsPerMonthPaid
 		}
 	}
 	u.Limit = &limit
+	// Credits come with a paid plan, so a trial past its free tests waits.
+	if paid && s.Credits != nil && !s.Credits.Unmetered() {
+		if u.CreditsPerTest = pol.CreditPrice(); u.CreditsPerTest > 0 {
+			bal, xerr := s.Credits.GetBalance(ctx, orgID)
+			if xerr != nil {
+				return u, xerr
+			}
+			u.CreditBalance = &bal
+		}
+	}
 	return u, nil
 }
 

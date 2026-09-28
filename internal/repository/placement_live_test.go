@@ -334,3 +334,93 @@ func TestLivePlacementMonitorRoundTrip(t *testing.T) {
 	}
 	f.exec(`DELETE FROM campaigns WHERE id = $1`, campaignID)
 }
+
+func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
+	f := newPlacementFixture(t)
+	handle, pool := liveContactDB(t)
+	requireSchemaVersion(t, pool, 223)
+	ctx := context.Background()
+	credits := NewCreditRepository(handle)
+	f.exec(`INSERT INTO credit_ledger (org_id, balance, purchased_balance) VALUES ($1, 10, 100)`, f.org)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM credit_ledger_transactions WHERE org_id = $1`, f.org)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM credit_ledger WHERE org_id = $1`, f.org)
+	})
+
+	test, _, _ := f.newTest(f.seeds, time.Now().Add(time.Hour))
+	key := "placement:" + test.ID.String()
+	if _, _, _, err := credits.Consume(ctx, f.org, 25, "placement_test", "", 0, key); err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+	f.exec(`UPDATE placement_tests SET credits_charged = 25 WHERE id = $1`, test.ID)
+
+	since := time.Now().Add(-time.Hour)
+	if n, err := f.repo.CountMeteredTests(ctx, f.org, since); err != nil || n != 0 {
+		t.Fatalf("CountMeteredTests = %d, %v; a paid test uses no free test", n, err)
+	}
+	if owed, _ := f.repo.PendingRefunds(ctx, 1000); containsRefund(owed, test.ID) {
+		t.Fatalf("a running test is owed a refund")
+	}
+
+	// Cancelled before any copy left: nothing was delivered, so it is owed.
+	if ok, err := f.repo.CancelTest(ctx, f.org, test.ID); err != nil || !ok {
+		t.Fatalf("CancelTest = %v, %v", ok, err)
+	}
+	if _, err := f.repo.FinishTests(ctx); err != nil {
+		t.Fatalf("FinishTests: %v", err)
+	}
+	// A free test that ended without a copy leaving uses no free test.
+	free, _, _ := f.newTest(f.seeds, time.Now().Add(time.Hour))
+	if n, _ := f.repo.CountMeteredTests(ctx, f.org, since); n != 1 {
+		t.Fatalf("CountMeteredTests = %d; want the running free test counted", n)
+	}
+	if ok, err := f.repo.CancelTest(ctx, f.org, free.ID); err != nil || !ok {
+		t.Fatalf("CancelTest = %v, %v", ok, err)
+	}
+	if _, err := f.repo.FinishTests(ctx); err != nil {
+		t.Fatalf("FinishTests: %v", err)
+	}
+	if n, _ := f.repo.CountMeteredTests(ctx, f.org, since); n != 0 {
+		t.Fatalf("CountMeteredTests = %d; a test that delivered nothing uses no free test", n)
+	}
+	if owed, _ := f.repo.PendingRefunds(ctx, 1000); containsRefund(owed, free.ID) {
+		t.Fatalf("a free test is owed a refund")
+	}
+
+	owed, err := f.repo.PendingRefunds(ctx, 1000)
+	if err != nil || !containsRefund(owed, test.ID) {
+		t.Fatalf("PendingRefunds = %v, %v; want the cancelled paid test", owed, err)
+	}
+
+	for range 2 {
+		refunded, _, err := credits.RefundSpend(ctx, f.org, key, key+":refund", "placement_test_refund")
+		if err != nil || refunded != 25 {
+			t.Fatalf("RefundSpend = %d, %v; want 25 every time and applied once", refunded, err)
+		}
+	}
+	ledger, err := credits.GetBalance(ctx, f.org)
+	if err != nil || ledger.Balance != 10 || ledger.PurchasedBalance != 100 {
+		t.Fatalf("ledger = %+v, %v; want 10 monthly and 100 purchased back", ledger, err)
+	}
+	if ok, err := f.repo.MarkCreditsRefunded(ctx, test.ID); err != nil || !ok {
+		t.Fatalf("MarkCreditsRefunded = %v, %v", ok, err)
+	}
+	if ok, _ := f.repo.MarkCreditsRefunded(ctx, test.ID); ok {
+		t.Fatalf("a refund was stamped twice")
+	}
+	if owed, _ := f.repo.PendingRefunds(ctx, 1000); containsRefund(owed, test.ID) {
+		t.Fatalf("a refunded test is still owed")
+	}
+	if n, _, _ := credits.RefundSpend(ctx, f.org, "placement:"+uuid.NewString(), "x:refund", "placement_test_refund"); n != 0 {
+		t.Fatalf("refunded %d for a charge that never happened", n)
+	}
+}
+
+func containsRefund(owed []PlacementRefund, id uuid.UUID) bool {
+	for _, r := range owed {
+		if r.ID == id {
+			return true
+		}
+	}
+	return false
+}

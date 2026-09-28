@@ -64,6 +64,11 @@ func (s *service) RemoteStart(ctx context.Context, inst *models.PoolLinkInstance
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
 	}
+	families, xerr := normalizeFamilies(req.Families)
+	if xerr != nil {
+		return nil, xerr
+	}
+	rows = inFamilies(rows, families)
 	limit := s.policy(ctx).SeedsPerTest
 	if req.MaxSeeds > 0 {
 		limit = min(limit, req.MaxSeeds)

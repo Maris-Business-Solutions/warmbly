@@ -14656,7 +14656,7 @@
             }
           },
           "400": {
-            "description": "Invalid body, panel or tracking; a sequence_id without campaign_id; no subject or body; or placement_invalid_tracking.",
+            "description": "Invalid body, panel or tracking; a sequence_id without campaign_id; seed_ids without panel workspace; no subject or body; placement_invalid_tracking; or placement_invalid_seeds.",
             "content": {
               "application/json": {
                 "schema": {
@@ -14676,7 +14676,7 @@
             }
           },
           "402": {
-            "description": "placement_not_entitled (no active trial or subscription) or placement_quota_exceeded (monthly allowance used).",
+            "description": "placement_not_entitled (no active trial or subscription), placement_quota_exceeded (the month's free tests are used and use_credits was not sent, or the test cannot be paid for), or insufficient_credits.",
             "content": {
               "application/json": {
                 "schema": {
@@ -14716,7 +14716,7 @@
             }
           },
           "429": {
-            "description": "placement_too_many_running (3 tests in flight per workspace), or rate limited.",
+            "description": "placement_too_many_running (3 tests in flight per workspace), usage_cap_exceeded (a paid test past a credit spend limit), or rate limited.",
             "content": {
               "application/json": {
                 "schema": {
@@ -39052,7 +39052,7 @@
       },
       "PlacementUsage": {
         "type": "object",
-        "description": "Metered tests this calendar month (UTC).",
+        "description": "Free tests used this calendar month (UTC). A test paid in credits, or one that finished without delivering a copy, is not counted.",
         "properties": {
           "used": {
             "type": "integer"
@@ -39063,6 +39063,17 @@
               "null"
             ],
             "description": "Null when the instance does not meter tests (self-hosted)."
+          },
+          "credits_per_test": {
+            "type": "integer",
+            "description": "What a test on the instance panel costs in credits once the free tests are used up; 0 when tests cannot be paid for."
+          },
+          "credit_balance": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The workspace's spendable credits, null when credits are off."
           },
           "period_start": {
             "type": "string",
@@ -39289,6 +39300,25 @@
             "type": "string",
             "description": "Why a test failed. Absent otherwise."
           },
+          "pace": {
+            "type": "string",
+            "enum": [
+              "spaced",
+              "quick"
+            ]
+          },
+          "credits_charged": {
+            "type": "integer",
+            "description": "Credits the test cost past the month's free tests; 0 for a free test."
+          },
+          "credits_refunded_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a paid test that delivered no copy got its credits back."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -39460,6 +39490,35 @@
               "cloud"
             ],
             "default": "instance"
+          },
+          "seed_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Only with panel workspace: send to these connected seed inboxes of the workspace and no others, round-robin across their providers up to the usual seeds per test. Omit to let the test pick."
+          },
+          "families": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only seeds at these provider families, as the overview's panels[].families[].family lists them. The way to narrow a test on the instance and cloud panels, whose addresses are masked."
+          },
+          "pace": {
+            "type": "string",
+            "enum": [
+              "spaced",
+              "quick"
+            ],
+            "default": "spaced",
+            "description": "spaced sends about 60 seconds apart; quick about 8 seconds apart, so a test sends in minutes."
+          },
+          "use_credits": {
+            "type": "boolean",
+            "default": false,
+            "description": "Agrees to pay for the test in credits when the month's free tests on the instance panel are used up. Without it such a request is refused with placement_quota_exceeded, whose message names the price."
           }
         }
       },

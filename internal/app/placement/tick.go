@@ -65,8 +65,41 @@ func (s *service) Tick(ctx context.Context) error {
 		}
 	}
 
+	for _, id := range s.refundUndelivered(ctx) {
+		if t, err := s.Repo.GetTest(ctx, id); err == nil && t != nil {
+			s.publish(ctx, t)
+		}
+	}
+
 	s.runMonitors(ctx)
 	return nil
+}
+
+// refundUndelivered gives a paid test that delivered no copy its credits
+// back. The ledger refund is keyed, so a pass that dies between the two
+// writes repeats the stamp and never the refund.
+func (s *service) refundUndelivered(ctx context.Context) []uuid.UUID {
+	if s.Credits == nil {
+		return nil
+	}
+	owed, err := s.Repo.PendingRefunds(ctx, 100)
+	if err != nil {
+		errs.CaptureException(err)
+		return nil
+	}
+	var done []uuid.UUID
+	for _, r := range owed {
+		if _, err := s.Credits.RefundCharge(ctx, r.OrganizationID, chargeKey(r.ID), "placement_test_refund"); err != nil {
+			errs.CaptureException(err)
+			continue
+		}
+		if ok, err := s.Repo.MarkCreditsRefunded(ctx, r.ID); err != nil {
+			errs.CaptureException(err)
+		} else if ok {
+			done = append(done, r.ID)
+		}
+	}
+	return done
 }
 
 // onFinished tells whoever started a test where it landed, and checks a

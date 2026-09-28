@@ -6,6 +6,7 @@ import type { TemplateScoreIssue } from "../campaigns/TemplateScore";
 
 export type PlacementPanel = "instance" | "workspace" | "cloud";
 export type PlacementTracking = "campaign" | "on" | "off" | "compare";
+export type PlacementPace = "spaced" | "quick";
 export type PlacementTestStatus = "running" | "completed" | "cancelled" | "failed";
 export type PlacementOrigin = "manual" | "monitor" | "admin" | "remote";
 export type PlacementFolder = "pending" | "inbox" | "promotions" | "other" | "spam" | "missing" | "failed" | "cancelled";
@@ -29,8 +30,12 @@ export interface PlacementPanelInfo {
 
 export interface PlacementUsage {
     used: number;
-    /** null = unmetered. */
+    /** Free tests used this month; null limit = unmetered. */
     limit: number | null;
+    /** Price of a test past the free ones, 0 when tests cannot be paid for. */
+    credits_per_test: number;
+    /** Spendable credits, null when credits are off. */
+    credit_balance: number | null;
     period_start: Date;
     period_end: Date;
 }
@@ -89,6 +94,11 @@ export interface PlacementTest {
     panel: PlacementPanel;
     status: PlacementTestStatus;
     error?: string;
+    pace: PlacementPace;
+    /** Credits this test cost past the month's free tests; 0 when it was free. */
+    credits_charged: number;
+    /** Set once a paid test that delivered nothing got its credits back. */
+    credits_refunded_at: Date | null;
     created_at: Date;
     finished_at: Date | null;
     summary: PlacementCounts;
@@ -134,6 +144,13 @@ export interface CreatePlacementTestRequest {
     body_plain?: string;
     tracking?: PlacementTracking;
     panel?: PlacementPanel;
+    /** Only on the workspace panel: send to these seed inboxes and no others. */
+    seed_ids?: string[];
+    /** Only seeds at these provider families. */
+    families?: string[];
+    pace?: PlacementPace;
+    /** Agrees to pay in credits for a test past the month's free tests. */
+    use_credits?: boolean;
 }
 
 export interface PlacementWorkspaceSeed {

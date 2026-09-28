@@ -113,6 +113,14 @@ const (
 	PlacementTrackingCompare = "compare"
 )
 
+// Pacing of a test's copies from one sender.
+const (
+	// PlacementPaceSpaced sends at the instance's spacing, about a minute apart.
+	PlacementPaceSpaced = "spaced"
+	// PlacementPaceQuick sends a few seconds apart, for a result in minutes.
+	PlacementPaceQuick = "quick"
+)
+
 // PlacementTest is one run: a template sent from one sender to a seed panel.
 type PlacementTest struct {
 	ID              uuid.UUID  `json:"id"`
@@ -138,8 +146,13 @@ type PlacementTest struct {
 	// linked instance; RemoteTestID on the instance's copy, naming the cloud's.
 	RemoteInstanceID *uuid.UUID `json:"-"`
 	RemoteTestID     *uuid.UUID `json:"-"`
-	CreatedAt        time.Time  `json:"created_at"`
-	FinishedAt       *time.Time `json:"finished_at"`
+	Pace             string     `json:"pace"`
+	// CreditsCharged is what the test cost past the monthly free allowance;
+	// CreditsRefundedAt is set once a test that delivered nothing gave it back.
+	CreditsCharged    int        `json:"credits_charged"`
+	CreditsRefundedAt *time.Time `json:"credits_refunded_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	FinishedAt        *time.Time `json:"finished_at"`
 }
 
 // Tracked reports whether the test's copies carry any tracking.
@@ -268,9 +281,14 @@ type PlacementPanelInfo struct {
 type PlacementUsage struct {
 	Used int `json:"used"`
 	// Limit is nil when the instance does not meter tests (self-hosted).
-	Limit       *int      `json:"limit"`
-	PeriodStart time.Time `json:"period_start"`
-	PeriodEnd   time.Time `json:"period_end"`
+	Limit *int `json:"limit"`
+	// CreditsPerTest is what a test past the free allowance costs in credits,
+	// zero when tests cannot be paid for; CreditBalance is the workspace's
+	// spendable balance, nil when credits are off.
+	CreditsPerTest int       `json:"credits_per_test"`
+	CreditBalance  *int      `json:"credit_balance"`
+	PeriodStart    time.Time `json:"period_start"`
+	PeriodEnd      time.Time `json:"period_end"`
 }
 
 // Remaining is how many metered tests are left, -1 when unmetered.
@@ -327,6 +345,8 @@ type PlacementCloudStartRequest struct {
 	// MaxSeeds is how many seeds the sender's day can pay for; zero means the
 	// cloud's own cap.
 	MaxSeeds int `json:"max_seeds,omitempty"`
+	// Families keeps only seeds hosted by these providers; empty is all.
+	Families []string `json:"families,omitempty"`
 }
 
 // PlacementCloudSeed is one cloud seed a linked instance sends a copy to.

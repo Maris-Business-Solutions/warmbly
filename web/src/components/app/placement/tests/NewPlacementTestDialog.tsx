@@ -6,7 +6,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
     AlertCircleIcon,
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Label, SearchInput, TextInput } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     PopoverMenu,
     PopoverMenuContent,
@@ -36,6 +37,7 @@ import { VARIABLES, htmlToPlain } from "@/components/app/campaigns/sequences/ema
 import { contactLabel } from "@/components/app/campaigns/sequences/previewContext";
 import { LINK_VARIABLES } from "@/lib/templateVars";
 import { useConfirm } from "@/hooks/context/confirm";
+import { usePermission } from "@/hooks/usePermission";
 import useDebouncedValue from "@/hooks/useDebouncedValue";
 import useCampaigns from "@/lib/api/hooks/app/campaigns/useCampaigns";
 import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
@@ -46,15 +48,21 @@ import { useCreatePlacementTest, usePlacementOverview, usePlacementSeeds } from 
 import {
     PANEL_LABEL,
     type CreatePlacementTestRequest,
+    type PlacementPace,
     type PlacementPanel,
+    type PlacementPanelFamily,
     type PlacementTracking,
 } from "@/lib/api/models/app/placement/Placement";
 import type Contact from "@/lib/api/models/app/contacts/Contact";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import { cn } from "@/lib/utils";
-import { placementErrorMessage, type PlacementErrorField } from "./placementTests";
+import { placementErrorMessage, seedBlocker, testCost, type PlacementErrorField } from "./placementTests";
+import SeedChooser from "./SeedChooser";
 
 type Source = "step" | "custom";
+
+// Mirrors config.PlacementQuickSpacingSeconds.
+const QUICK_SPACING_SECONDS = 8;
 
 interface Draft {
     senderId: string;
@@ -68,6 +76,13 @@ interface Draft {
     contact: Contact | null;
     tracking: PlacementTracking;
     panel: PlacementPanel;
+    // Own seed inboxes to send to; empty means the usual pick.
+    seedIds: string[];
+    // Provider families on a shared panel; empty means every provider.
+    families: string[];
+    pace: PlacementPace;
+    // The credit price the user agreed to pay; a different price needs asking again.
+    payConsent: number | null;
 }
 
 export interface NewPlacementTestPrefill {
@@ -89,13 +104,17 @@ function emptyDraft(prefill?: NewPlacementTestPrefill): Draft {
         contact: null,
         tracking: fromStep ? "campaign" : "off",
         panel: "instance",
+        seedIds: [],
+        families: [],
+        pace: "spaced",
+        payConsent: null,
     };
 }
 
 // What the user typed or picked, for the discard prompt. The sender and panel
 // defaults the dialog fills in itself do not count.
 function draftKey(d: Draft): string {
-    return JSON.stringify([d.source, d.campaignId, d.stepId, d.subject, d.bodyHtml, d.contact?.id ?? "", d.tracking]);
+    return JSON.stringify([d.source, d.campaignId, d.stepId, d.subject, d.bodyHtml, d.contact?.id ?? "", d.tracking, d.seedIds, d.families, d.pace]);
 }
 
 function newKey(): string {
@@ -126,6 +145,7 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
     const overview = usePlacementOverview();
     const seeds = usePlacementSeeds();
     const create = useCreatePlacementTest();
+    const canBuy = usePermission("MANAGE_BILLING");
 
     const [draft, setDraft] = React.useState<Draft>(() => emptyDraft(prefill));
     const initialKey = React.useRef(draftKey(emptyDraft(prefill)));
@@ -196,14 +216,32 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
 
     const compare = draft.tracking === "compare";
     const seedsPerTest = overview.data?.seeds_per_test ?? 0;
-    const perTest = panel ? Math.min(panel.seeds, seedsPerTest || panel.seeds) : 0;
+    const ownSeeds = React.useMemo(() => (seeds.data ?? []).filter((m) => m.seed), [seeds.data]);
+    const chosenSeeds =
+        draft.panel === "workspace"
+            ? ownSeeds.filter((m) => draft.seedIds.includes(m.email_account_id) && !seedBlocker(m, sender?.email))
+            : [];
+    const panelFamilies = React.useMemo(() => panel?.families ?? [], [panel]);
+    const chosenFamilies =
+        draft.panel === "workspace" ? [] : draft.families.filter((f) => panelFamilies.some((p) => p.family === f));
+    const familySeeds = chosenFamilies.length
+        ? panelFamilies.filter((p) => chosenFamilies.includes(p.family)).reduce((n, p) => n + p.seeds, 0)
+        : (panel?.seeds ?? 0);
+    // Seeds chosen by hand all get a copy; otherwise a test takes up to the instance's cap.
+    const perTest = !panel ? 0 : chosenSeeds.length > 0 ? chosenSeeds.length : Math.min(familySeeds, seedsPerTest || familySeeds);
     const copies = perTest * (compare ? 2 : 1);
-    const spacing = overview.data?.spacing_seconds ?? 60;
-    const minutes = Math.max(1, Math.round((copies * spacing) / 60));
+    const baseSpacing = overview.data?.spacing_seconds ?? 60;
+    const spacing = draft.pace === "quick" ? Math.min(baseSpacing, QUICK_SPACING_SECONDS) : baseSpacing;
+    const sendSeconds = copies * spacing;
+    const sendTime = sendSeconds < 90 ? "under 2 minutes" : `about ${Math.round(sendSeconds / 60)} minutes`;
     const usage = overview.data?.usage;
     const testsNeeded = compare ? 2 : 1;
+    // The instance panel's free tests run out into credits; the cloud's allowance is the cloud's.
+    const cost = testCost(usage, draft.panel === "instance" && !!panel?.metered, testsNeeded);
+    const consented = cost.paid > 0 && draft.payConsent === cost.credits;
+    const freeLeft = usage?.limit != null ? Math.max(0, usage.limit - usage.used) : null;
     const overQuota =
-        !!panel?.metered && usage?.limit != null && usage.used + testsNeeded > usage.limit;
+        draft.panel === "cloud" && !!panel?.metered && usage?.limit != null && usage.used + testsNeeded > usage.limit;
 
     // Why the form cannot be sent yet, shown in the footer instead of a
     // silently disabled button.
@@ -227,6 +265,16 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                     ? panel.panel === "workspace"
                         ? "You have no seed inboxes yet. Mark one on the Seed inboxes tab of Placement tests."
                         : "This panel has no seed inboxes yet."
+                    : draft.panel === "workspace" && draft.seedIds.length > 0 && chosenSeeds.length === 0
+                      ? "None of the seed inboxes you chose can take a test from this sender. Choose others, or clear the choice."
+                    : chosenFamilies.length > 0 && familySeeds === 0
+                      ? "This panel has no seeds at the providers you chose."
+                    : cost.paid > 0 && !cost.payable
+                      ? "This month's free tests are used up. Your own seed inboxes are never counted."
+                    : cost.paid > 0 && !cost.canPay
+                      ? `This test costs ${cost.credits} credits and the workspace has ${usage?.credit_balance ?? 0}. Top up under Settings > Billing.`
+                    : cost.paid > 0 && !consented
+                      ? `This month's free tests are used up. Tick the box to pay ${cost.credits} credits for this test.`
                     : overQuota
                       ? `This month's tests are used up${compare && usage && usage.limit != null && usage.used < usage.limit ? " (a comparison counts as 2)" : ""}. Your own seed inboxes are never counted.`
                       : null;
@@ -266,6 +314,10 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
             tracking: draft.tracking,
             panel: draft.panel,
             ...(draft.contact ? { contact_id: draft.contact.id } : {}),
+            ...(chosenSeeds.length > 0 ? { seed_ids: chosenSeeds.map((m) => m.email_account_id) } : {}),
+            ...(chosenFamilies.length > 0 ? { families: chosenFamilies } : {}),
+            ...(draft.pace !== "spaced" ? { pace: draft.pace } : {}),
+            ...(consented ? { use_credits: true } : {}),
         };
         if (draft.source === "step") {
             body.campaign_id = draft.campaignId;
@@ -281,7 +333,7 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
             onClose();
             if (tests[0]) navigate(`/app/placement/${tests[0].id}`);
         } catch (err) {
-            setError(placementErrorMessage(err as AppError, { resetsOn: usage?.period_end, panel: draft.panel }));
+            setError(placementErrorMessage(err as AppError, { resetsOn: usage?.period_end, panel: draft.panel, chosen: chosenSeeds.length > 0 }));
         }
     }
 
@@ -473,6 +525,21 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                         {fieldError("tracking")}
                     </section>
 
+                    {/* Pace */}
+                    <section>
+                        <span className="block mb-2 text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">Pace</span>
+                        <OptionSelect<PlacementPace>
+                            value={draft.pace}
+                            onChange={(v) => patch({ pace: v })}
+                            cols={2}
+                            aria-label="Pace"
+                            options={[
+                                { value: "spaced", label: "Spaced", hint: "About a minute between copies, the way a campaign sends." },
+                                { value: "quick", label: "Quick", hint: "A few seconds apart, so results come in within minutes." },
+                            ]}
+                        />
+                    </section>
+
                     {/* Panel */}
                     <section>
                         <span className="block mb-2 text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">Seed panel</span>
@@ -534,6 +601,22 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                                 })}
                             </div>
                         )}
+                        {draft.panel !== "workspace" && panel?.available && panelFamilies.length > 1 && (
+                            <FamilyChips
+                                families={panelFamilies}
+                                value={chosenFamilies}
+                                onChange={(families) => patch({ families })}
+                            />
+                        )}
+                        {draft.panel === "workspace" && panel?.available && ownSeeds.length > 0 && (
+                            <SeedChooser
+                                seeds={ownSeeds}
+                                senderEmail={sender?.email}
+                                perTest={seedsPerTest}
+                                value={draft.seedIds}
+                                onChange={(seedIds) => patch({ seedIds })}
+                            />
+                        )}
                         {fieldError("panel")}
                     </section>
 
@@ -542,8 +625,46 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                         <div className="rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[11.5px] leading-relaxed text-slate-600">
                             Sends up to <b className="font-medium text-slate-900">{copies}</b> email{copies === 1 ? "" : "s"} from{" "}
                             <b className="font-medium text-slate-900">{sender.email}</b>, one every ~{spacing} seconds, counted
-                            against its daily limit, and fewer when the mailbox has less than that left today. Sending takes about {minutes} minute{minutes === 1 ? "" : "s"}; a copy
+                            against its daily limit, and fewer when the mailbox has less than that left today. Sending takes {sendTime}; a copy
                             not seen within 2 hours counts as never arrived. Seeds on the sender&apos;s own domain are skipped.
+                            {draft.panel === "instance" && freeLeft != null && cost.paid === 0 && (
+                                <>
+                                    {" "}
+                                    Uses {testsNeeded === 1 ? "one" : "two"} of the {freeLeft} free test{freeLeft === 1 ? "" : "s"} left this month.
+                                </>
+                            )}
+                        </div>
+                    )}
+                    {sender && panel?.available && cost.paid > 0 && cost.payable && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2.5 text-[11.5px] leading-relaxed text-slate-700">
+                            <p>
+                                {cost.paid < testsNeeded
+                                    ? "One free test is left this month, so the second half of this comparison"
+                                    : "This month's free tests are used up, so this test"}{" "}
+                                costs <b className="font-medium text-slate-900">{cost.credits} credits</b>. The workspace has{" "}
+                                {usage?.credit_balance ?? 0}. A test that delivers no copy gets its credits back.
+                            </p>
+                            {cost.canPay ? (
+                                <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                                    <Checkbox
+                                        tone="slate"
+                                        checked={consented}
+                                        onChange={(e) => patch({ payConsent: e.target.checked ? cost.credits : null })}
+                                    />
+                                    <span className="text-[12px] text-slate-900">Pay {cost.credits} credits for this test</span>
+                                </label>
+                            ) : canBuy ? (
+                                <Link
+                                    to="/app/settings/billing/ai-credits"
+                                    target="_blank"
+                                    rel="noopener"
+                                    className="mt-2 inline-flex text-[12px] font-medium text-sky-700 hover:underline"
+                                >
+                                    Top up credits in a new tab
+                                </Link>
+                            ) : (
+                                <p className="mt-2 text-[12px] text-slate-600">Ask someone with the Manage billing permission to top up.</p>
+                            )}
                         </div>
                     )}
                 </div>
@@ -576,10 +697,53 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                     >
                         {pending ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <PlayIcon className="w-3.5 h-3.5" />}
                         {compare ? "Start comparison" : "Start test"}
+                        {cost.paid > 0 && cost.payable && <span className="opacity-80">· {cost.credits} credits</span>}
                     </button>
                 </div>
             </motion.div>
         </motion.div>
+    );
+}
+
+// The shared panels' provider families; nothing picked tests every provider.
+function FamilyChips({
+    families,
+    value,
+    onChange,
+}: {
+    families: PlacementPanelFamily[];
+    value: string[];
+    onChange: (families: string[]) => void;
+}) {
+    const chip = (active: boolean) =>
+        cn(
+            "h-6 px-2 rounded-md border text-[11px] font-medium inline-flex items-center gap-1 transition-colors",
+            active ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+        );
+    return (
+        <div className="mt-2">
+            <span className="block mb-1.5 text-[11px] text-slate-500">Providers</span>
+            <div className="flex flex-wrap gap-1">
+                <button type="button" aria-pressed={value.length === 0} onClick={() => onChange([])} className={chip(value.length === 0)}>
+                    All
+                </button>
+                {families.map((f) => {
+                    const active = value.includes(f.family);
+                    return (
+                        <button
+                            key={f.family}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => onChange(active ? value.filter((v) => v !== f.family) : [...value, f.family])}
+                            className={chip(active)}
+                        >
+                            {f.label}
+                            <span className="font-mono tabular-nums text-slate-400">{f.seeds}</span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
     );
 }
 

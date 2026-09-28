@@ -2,13 +2,17 @@ package placement
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/instancesettings"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -29,6 +33,7 @@ type fakeRepo struct {
 	results  [][]models.PlacementResult
 	tasks    [][]repository.Task
 	failures []uuid.UUID
+	failSave bool
 }
 
 func (f *fakeRepo) SeedScope(_ context.Context, id uuid.UUID) (string, error) {
@@ -56,6 +61,9 @@ func (f *fakeRepo) CreateTest(_ context.Context, t *models.PlacementTest, result
 	return nil
 }
 func (f *fakeRepo) CreateTests(ctx context.Context, bundles []repository.PlacementBundle) error {
+	if f.failSave {
+		return errors.New("write failed")
+	}
 	for _, b := range bundles {
 		_ = f.CreateTest(ctx, b.Test, b.Results, b.Tasks)
 	}
@@ -297,4 +305,237 @@ func TestCreateTestsShrinksToTheSendersDayAndRefusesBelowTheFloor(t *testing.T) 
 	if len(h.repo.created) != 0 {
 		t.Fatalf("a refused comparison wrote %d tests", len(h.repo.created))
 	}
+}
+
+func TestCreateTestsSendsOnlyToTheChosenSeeds(t *testing.T) {
+	h := newHarness(t)
+	worker := uuid.New()
+	own := func(addr, host string) repository.SeedAccount {
+		return repository.SeedAccount{ID: uuid.New(), OrganizationID: &h.org, Email: addr, Provider: "smtp_imap",
+			MailHost: host, Status: "active", WorkerID: &worker, SeedScope: models.SeedScopeWorkspace}
+	}
+	gmail, outlook, yahoo, onDomain := own("me@gmail.com", "gmail"), own("me@outlook.com", "outlook"), own("me@yahoo.com", "yahoo"), own("seed@acme.test", "google_workspace")
+	h.repo.seeds = append(h.repo.seeds, gmail, outlook, yahoo, onDomain)
+
+	in := h.input()
+	in.Panel = models.PlacementPanelWorkspace
+	in.SeedIDs = []uuid.UUID{gmail.ID, yahoo.ID, gmail.ID}
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr != nil {
+		t.Fatalf("CreateTests: %v", xerr)
+	}
+	got := map[string]bool{}
+	for _, r := range h.repo.results[0] {
+		got[r.SeedAddress] = true
+	}
+	if len(h.repo.results[0]) != 2 || !got["me@gmail.com"] || !got["me@yahoo.com"] {
+		t.Fatalf("sent to %v; want exactly the two chosen seeds", got)
+	}
+
+	refused := []struct {
+		name   string
+		panel  string
+		ids    []uuid.UUID
+		wantID string
+	}{
+		{"another workspace's seed", models.PlacementPanelWorkspace, []uuid.UUID{gmail.ID, h.repo.seeds[0].ID}, "placement_invalid_seeds"},
+		{"not a seed at all", models.PlacementPanelWorkspace, []uuid.UUID{h.sender}, "placement_invalid_seeds"},
+		{"only the sender's domain", models.PlacementPanelWorkspace, []uuid.UUID{onDomain.ID}, "placement_no_seeds"},
+		{"instance panel", models.PlacementPanelInstance, []uuid.UUID{gmail.ID}, ""},
+	}
+	for _, c := range refused {
+		t.Run(c.name, func(t *testing.T) {
+			h.repo.created = nil
+			in := h.input()
+			in.Panel, in.SeedIDs = c.panel, c.ids
+			_, xerr := h.svc.CreateTests(context.Background(), in)
+			if xerr == nil || xerr.Identifier != c.wantID {
+				t.Fatalf("got %v; want a refusal %q", xerr, c.wantID)
+			}
+			if len(h.repo.created) != 0 {
+				t.Fatalf("a refused test wrote %d tests", len(h.repo.created))
+			}
+		})
+	}
+}
+
+type fakeCredits struct {
+	balance  int
+	charges  map[string]int
+	refunded map[string]bool
+}
+
+func (f *fakeCredits) Unmetered() bool { return false }
+func (f *fakeCredits) GetBalance(context.Context, uuid.UUID) (int, *errx.Error) {
+	return f.balance, nil
+}
+func (f *fakeCredits) Charge(_ context.Context, _ uuid.UUID, amount int, _ string, key string) (int, error) {
+	if f.balance < amount {
+		return 0, credits.ErrInsufficientCredits
+	}
+	f.balance -= amount
+	f.charges[key] = amount
+	return f.balance, nil
+}
+func (f *fakeCredits) RefundCharge(_ context.Context, _ uuid.UUID, key, _ string) (int, error) {
+	if f.refunded[key] {
+		return 0, nil
+	}
+	f.refunded[key] = true
+	f.balance += f.charges[key]
+	return f.charges[key], nil
+}
+
+func TestCreateTestsQuickPaceSendsSecondsApart(t *testing.T) {
+	h := newHarness(t)
+	in := h.input()
+	in.Pace = models.PlacementPaceQuick
+	views, xerr := h.svc.CreateTests(context.Background(), in)
+	if xerr != nil {
+		t.Fatalf("CreateTests: %v", xerr)
+	}
+	if views[0].Pace != models.PlacementPaceQuick {
+		t.Fatalf("pace = %q; want quick", views[0].Pace)
+	}
+	tasks := h.repo.tasks[0]
+	for i := 1; i < len(tasks); i++ {
+		if gap := tasks[i].ScheduledAt.Sub(*tasks[i-1].ScheduledAt); gap <= 0 || gap > 11*time.Second {
+			t.Fatalf("gap %d = %v; want a few seconds", i, gap)
+		}
+	}
+	in.Pace = "burst"
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil {
+		t.Fatalf("an unknown pace was accepted")
+	}
+}
+
+func TestCreateTestsKeepsOnlyTheChosenProviders(t *testing.T) {
+	h := newHarness(t)
+	in := h.input()
+	in.Families = []string{" Yahoo ", "microsoft365"}
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr != nil {
+		t.Fatalf("CreateTests: %v", xerr)
+	}
+	for _, r := range h.repo.results[0] {
+		if r.Family != "yahoo" && r.Family != "microsoft365" {
+			t.Fatalf("sent to %s at %s; want only the chosen providers", r.SeedAddress, r.Family)
+		}
+	}
+	if len(h.repo.results[0]) != 2 {
+		t.Fatalf("sent %d copies; want the two seeds at those providers", len(h.repo.results[0]))
+	}
+	in.Families = []string{"icloud"}
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "placement_no_seeds" {
+		t.Fatalf("got %v; want placement_no_seeds for a provider the panel lacks", xerr)
+	}
+}
+
+func TestChosenOwnSeedsAreNotCappedBySeedsPerTest(t *testing.T) {
+	h := newHarness(t) // four seeds per test
+	worker := uuid.New()
+	var ids []uuid.UUID
+	for i := range 7 {
+		s := repository.SeedAccount{ID: uuid.New(), OrganizationID: &h.org, Email: "seed" + strconv.Itoa(i) + "@gmail.com",
+			Provider: "smtp_imap", MailHost: "gmail", Status: "active", WorkerID: &worker, SeedScope: models.SeedScopeWorkspace}
+		h.repo.seeds = append(h.repo.seeds, s)
+		ids = append(ids, s.ID)
+	}
+	in := h.input()
+	in.Panel, in.SeedIDs = models.PlacementPanelWorkspace, ids
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr != nil {
+		t.Fatalf("CreateTests: %v", xerr)
+	}
+	if got := len(h.repo.results[0]); got != 7 {
+		t.Fatalf("sent to %d seeds; want all 7 chosen", got)
+	}
+}
+
+func TestCreateTestsPaysInCreditsPastTheFreeTests(t *testing.T) {
+	newPaid := func(t *testing.T, balance int) (*harness, *fakeCredits) {
+		h := newHarness(t)
+		t.Setenv("DEPLOYMENT_MODE", "cloud")
+		h.svc.Gate = fakeGate{paid: true}
+		h.repo.metered = config.PlacementTestsPerMonthPaidDefault // the free tests are used
+		c := &fakeCredits{balance: balance, charges: map[string]int{}, refunded: map[string]bool{}}
+		h.svc.Credits = c
+		return h, c
+	}
+	price := config.PlacementCreditsPerTestDefault
+
+	h, c := newPaid(t, 100)
+	_, xerr := h.svc.CreateTests(context.Background(), h.input())
+	if xerr == nil || xerr.Identifier != "placement_quota_exceeded" || !strings.Contains(xerr.Message, strconv.Itoa(price)+" credits") {
+		t.Fatalf("got %v; want a refusal naming the price", xerr)
+	}
+	if len(c.charges) != 0 || len(h.repo.created) != 0 {
+		t.Fatalf("a refused test charged %v and wrote %d tests", c.charges, len(h.repo.created))
+	}
+
+	in := h.input()
+	in.UseCredits = true
+	views, xerr := h.svc.CreateTests(context.Background(), in)
+	if xerr != nil {
+		t.Fatalf("CreateTests: %v", xerr)
+	}
+	if views[0].CreditsCharged != price || c.balance != 100-price || c.charges[chargeKey(views[0].ID)] != price {
+		t.Fatalf("charged %d, balance %d; want %d charged under the test's key", views[0].CreditsCharged, c.balance, price)
+	}
+
+	// A comparison with one free test left pays for its second half only.
+	h, c = newPaid(t, 100)
+	h.repo.metered = config.PlacementTestsPerMonthPaidDefault - 1
+	in = h.input()
+	in.UseCredits, in.Tracking = true, models.PlacementTrackingCompare
+	views, xerr = h.svc.CreateTests(context.Background(), in)
+	if xerr != nil {
+		t.Fatalf("CreateTests: %v", xerr)
+	}
+	if views[0].CreditsCharged != 0 || views[1].CreditsCharged != price || len(c.charges) != 1 {
+		t.Fatalf("charged %d and %d; want only the second half paid", views[0].CreditsCharged, views[1].CreditsCharged)
+	}
+
+	h, c = newPaid(t, price-1)
+	in = h.input()
+	in.UseCredits = true
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "insufficient_credits" {
+		t.Fatalf("got %v; want insufficient_credits", xerr)
+	}
+
+	// A monitor never spends credits on its own.
+	h, _ = newPaid(t, 100)
+	in = h.input()
+	in.UseCredits, in.Origin = true, models.PlacementOriginMonitor
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "placement_quota_exceeded" {
+		t.Fatalf("got %v; want a monitor refused past the free tests", xerr)
+	}
+
+	// A trial has no credits to pay with, so it waits for next month.
+	h, c = newPaid(t, 100)
+	h.svc.Gate = fakeGate{paid: false}
+	h.repo.metered = config.PlacementTestsPerMonthTrialDefault
+	in = h.input()
+	in.UseCredits = true
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil || xerr.Identifier != "placement_quota_exceeded" || len(c.charges) != 0 {
+		t.Fatalf("got %v with charges %v; want a trial refused without a charge", xerr, c.charges)
+	}
+
+	// Nothing written means nothing charged.
+	h, c = newPaid(t, 100)
+	h.repo.failSave = true
+	in = h.input()
+	in.UseCredits = true
+	if _, xerr := h.svc.CreateTests(context.Background(), in); xerr == nil {
+		t.Fatalf("CreateTests succeeded with a failing write")
+	}
+	if c.balance != 100 {
+		t.Fatalf("balance %d after a failed write; want the charge refunded", c.balance)
+	}
+}
+
+type fakeGate struct{ paid bool }
+
+func (g fakeGate) CanSendCampaignEmail(context.Context, uuid.UUID) (bool, *errx.Error) {
+	return true, nil
+}
+func (g fakeGate) IsPaidOrganization(context.Context, uuid.UUID) (bool, *errx.Error) {
+	return g.paid, nil
 }

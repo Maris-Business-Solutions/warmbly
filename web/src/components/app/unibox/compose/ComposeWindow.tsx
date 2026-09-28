@@ -52,6 +52,7 @@ import AIDraftBar, { useAIDraft } from "@/components/app/ai/AIDraftBar";
 import TextareaAIEdit from "@/components/app/ai/TextareaAIEdit";
 import TextareaAICaret from "@/components/app/ai/TextareaAICaret";
 import ContactRecipientField from "./ContactRecipientField";
+import SeedRecipientsButton from "./SeedRecipientsButton";
 import MailboxPicker from "./MailboxPicker";
 import ComposeHistoryPanel from "./ComposeHistoryPanel";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
@@ -572,28 +573,27 @@ function ComposeWindowInner({
                             placeholder="Search contacts or type an email"
                             autoFocus={!prefillTo}
                         />
-                        {(!showCc || !showBcc) && (
-                            <div className="ml-auto flex items-center gap-0.5 shrink-0 self-start pt-px">
-                                {!showCc && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowCc(true)}
-                                        className="h-5 px-1 rounded text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
-                                    >
-                                        Cc
-                                    </button>
-                                )}
-                                {!showBcc && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowBcc(true)}
-                                        className="h-5 px-1 rounded text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
-                                    >
-                                        Bcc
-                                    </button>
-                                )}
-                            </div>
-                        )}
+                        <div className="ml-auto flex items-center gap-0.5 shrink-0 self-start pt-px">
+                            <SeedRecipientsButton value={to} onChange={setTo} />
+                            {!showCc && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCc(true)}
+                                    className="h-5 px-1 rounded text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
+                                >
+                                    Cc
+                                </button>
+                            )}
+                            {!showBcc && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBcc(true)}
+                                    className="h-5 px-1 rounded text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
+                                >
+                                    Bcc
+                                </button>
+                            )}
+                        </div>
                     </ComposeRow>
 
                     {showCc && (

@@ -193,18 +193,18 @@ const PLACEMENT_FIELDS = [
     {
         key: "testsTrial",
         setting: "tests_per_month_trial",
-        label: "Tests per month on trial",
+        label: "Free tests per month on trial",
         min: 1,
         max: 100000,
-        help: "How many tests a workspace without a paid plan may run on the metered panels each calendar month.",
+        help: "How many free tests a workspace without a paid plan may run on the metered panels each calendar month. A trial has no credits, so it waits for next month after these.",
     },
     {
         key: "testsPaid",
         setting: "tests_per_month_paid",
-        label: "Tests per month on paid plans",
+        label: "Free tests per month on paid plans",
         min: 1,
         max: 100000,
-        help: "The same allowance for a workspace with an active subscription.",
+        help: "The same free allowance for a workspace with an active subscription. Past it, a test on the instance panel costs credits.",
     },
     {
         key: "seedsPerTest",
@@ -220,7 +220,15 @@ const PLACEMENT_FIELDS = [
         label: "Spacing between copies (seconds)",
         min: 5,
         max: 600,
-        help: "The gap between two copies from one mailbox, jittered, so a test never leaves as a burst.",
+        help: "The gap between two copies from one mailbox, jittered, so a test never leaves as a burst. A test someone starts as quick uses the smaller of this and 8 seconds.",
+    },
+    {
+        key: "creditsPerTest",
+        setting: "credits_per_test",
+        label: "Credits per paid test",
+        min: 0,
+        max: 10000,
+        help: "What a test costs in credits once a workspace has used its free tests for the month. The workspace agrees to the price before each paid test, and a test that delivers no copy is refunded. 0 turns paid tests off, so a workspace waits for next month instead. Only a hosted (DEPLOYMENT_MODE=cloud) instance charges.",
     },
 ] as const;
 
@@ -232,6 +240,7 @@ const PLACEMENT_DEFAULTS: InstanceSettings["placement"] = {
     tests_per_month_paid: 40,
     seeds_per_test: 20,
     spacing_seconds: 60,
+    credits_per_test: 25,
 };
 
 interface FormState {
@@ -275,6 +284,7 @@ function toForm(s: InstanceSettings): FormState {
             testsPaid: String(placement.tests_per_month_paid),
             seedsPerTest: String(placement.seeds_per_test),
             spacingSeconds: String(placement.spacing_seconds),
+            creditsPerTest: String(placement.credits_per_test ?? PLACEMENT_DEFAULTS.credits_per_test),
         },
         enforceDomainAuth: s.deliverability.enforce_domain_auth,
         authGraceHours: String(s.deliverability.auth_grace_hours),
@@ -452,6 +462,7 @@ export function SettingsTab({ onDirtyChange, onSwitchTab }: SettingsTabProps) {
                 tests_per_month_paid: Number(form.placement.testsPaid),
                 seeds_per_test: Number(form.placement.seedsPerTest),
                 spacing_seconds: Number(form.placement.spacingSeconds),
+                credits_per_test: Number(form.placement.creditsPerTest),
             },
         });
     }

@@ -761,10 +761,11 @@ var Tables = []Table{
 	},
 	{
 		// The results travel as a record. The link to a cloud-run test and the
-		// seeds on the source instance's panel do not.
+		// seeds on the source instance's panel do not, and neither does a
+		// credit charge, whose ledger stays behind.
 		Name: "placement_tests", Group: models.OrgDataGroupEvents,
 		Scope:         scopeOrg,
-		ResetOnImport: []string{"remote_instance_id", "remote_test_id"},
+		ResetOnImport: []string{"remote_instance_id", "remote_test_id", "credits_charged", "credits_refunded_at"},
 	},
 	{
 		Name: "placement_results", Group: models.OrgDataGroupEvents,

@@ -59,6 +59,11 @@ type CreditRepository interface {
 	// webhook retries safe.
 	ResetMonthly(ctx context.Context, orgID uuid.UUID, allowance int, idempotencyKey string) (*models.CreditLedger, error)
 
+	// RefundSpend gives back the debit recorded under spendKey, to the pools
+	// it drew from, so purchased credits stay purchased. refundKey makes it
+	// happen once. Zero when there is no such debit.
+	RefundSpend(ctx context.Context, orgID uuid.UUID, spendKey, refundKey, reason string) (refunded, balance int, err error)
+
 	// ConsumeAtMost debits up to `amount` credits, draining whatever the org
 	// still has (possibly zero) instead of failing on a low balance. Used to
 	// settle metered usage AFTER an AI result was already delivered: the
@@ -277,6 +282,50 @@ func (r *creditRepository) Consume(ctx context.Context, orgID uuid.UUID, amount 
 		return 0, nil, false, err
 	}
 	return newMonthly + newPurchased, txn, false, nil
+}
+
+func (r *creditRepository) RefundSpend(ctx context.Context, orgID uuid.UUID, spendKey, refundKey, reason string) (int, int, error) {
+	spendKey, refundKey = scopeKey(orgID, spendKey), scopeKey(orgID, refundKey)
+	if spendKey == "" || refundKey == "" {
+		return 0, 0, errors.New("refund needs both keys")
+	}
+	tx, err := r.DB.Begin(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	if existing, err := replayByKey(ctx, tx, refundKey); err != nil {
+		return 0, 0, err
+	} else if existing != nil {
+		return existing.Amount, existing.BalanceAfter + existing.PurchasedBalanceAfter, tx.Commit(ctx)
+	}
+	spend, err := replayByKey(ctx, tx, spendKey)
+	if err != nil {
+		return 0, 0, err
+	}
+	if spend == nil || spend.OrgID != orgID || spend.Amount >= 0 {
+		return 0, 0, tx.Commit(ctx)
+	}
+	total := -spend.Amount
+	toPurchased := min(-spend.PurchasedDelta, total)
+	toMonthly := total - toPurchased
+
+	var monthly, purchased int
+	if err := tx.QueryRow(ctx, `
+		UPDATE credit_ledger SET balance = balance + $2, purchased_balance = purchased_balance + $3, updated_at = now()
+		WHERE org_id = $1
+		RETURNING balance, purchased_balance
+	`, orgID, toMonthly, toPurchased).Scan(&monthly, &purchased); err != nil {
+		return 0, 0, err
+	}
+	if _, err := insertTxn(ctx, tx, orgID, total, reason, "", 0, monthly, toPurchased, purchased, refundKey); err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	return total, monthly + purchased, nil
 }
 
 func (r *creditRepository) ConsumeAtMost(ctx context.Context, orgID uuid.UUID, amount int, reason, model string, tokens int, idempotencyKey string) (int, int, bool, error) {
