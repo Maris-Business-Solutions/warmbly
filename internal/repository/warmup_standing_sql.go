@@ -14,7 +14,8 @@ func warmupStandingRankSQL(col string) string {
 
 // warmupStandingSQL is a mailbox's worst warmup standing, at most one row:
 // its local pool row, or the standing Warmbly Cloud last reported for a
-// mailbox it warms (which has no local pool row). Every read that gates or
+// mailbox it warms (which has no local pool row). A hold past its end ranks
+// below any live standing, so it cannot mask one. Every read that gates or
 // shows warmup health goes through it, so a cloud verdict holds here too.
 // Columns: health_state, blocked_until, last_health_score,
 // last_health_reason, last_health_evaluated_at.
@@ -34,7 +35,8 @@ func warmupStandingSQL(accountExpr string) string {
 		         WHERE clm.email_account_id = ` + accountExpr + `
 		           AND clm.health_state IS NOT NULL
 		       ) st
-		 ORDER BY ` + warmupStandingRankSQL("st.health_state") + ` DESC,
+		 ORDER BY COALESCE(st.health_state IN ('quarantined', 'blocked') AND st.blocked_until <= NOW(), false) ASC,
+		          ` + warmupStandingRankSQL("st.health_state") + ` DESC,
 		          (st.health_state = 'blocked' AND st.blocked_until IS NULL) DESC,
 		          st.blocked_until DESC NULLS LAST
 		 LIMIT 1`

@@ -219,3 +219,25 @@ func TestLiveCloudLinkStandingEdgeCases(t *testing.T) {
 		t.Fatalf("review block carried as %+v", h)
 	}
 }
+
+func TestLiveCloudLinkStandingExpiredHoldDoesNotMaskALiveOne(t *testing.T) {
+	f := newPoolLinkFixture(t)
+	ctx := context.Background()
+	links := NewCloudLinkRepository(f.pool, nil)
+	if err := f.warmup.MoveToPool(ctx, models.WarmupPoolFreeID, f.sender, "sender_receiver"); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour)
+	if _, err := f.pool.Exec(ctx, `UPDATE warmup_pool_participants SET health_state = 'quarantined', blocked_until = $2 WHERE email_account_id = $1`, f.sender, past); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := links.Enroll(ctx, f.sender, f.sender, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{State: "throttled"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if state, _, _ := f.warmup.GetHealthState(ctx, f.sender); state != models.WarmupHealthThrottled {
+		t.Fatalf("an ended quarantine masked the live throttle: %s", state)
+	}
+}
