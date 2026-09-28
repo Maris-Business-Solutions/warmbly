@@ -185,14 +185,20 @@ export default function OverviewTab({ onChangePlan, onWarmupPlan }: { onChangePl
                                     sub={periodEnd ? relativeDays(periodEnd) : onFreeTier ? "no subscription" : ""}
                                 />
                                 {access.warmupOnly ? (
-                                    <Stat label="Mailboxes" value="Unlimited" sub="in the premium pool" />
+                                    <Stat
+                                        label="Mailboxes"
+                                        value={mailboxes?.allowance != null ? mailboxes.allowance.toLocaleString() : "Unlimited"}
+                                        sub="in the premium pool"
+                                    />
                                 ) : (
                                     <Stat
                                         label="Daily sends"
                                         value={
                                             limits?.daily_campaign_limit != null
                                                 ? limits.daily_campaign_limit.toLocaleString()
-                                                : plan.sendsPerDay === Number.POSITIVE_INFINITY
+                                                : orgLimits.data
+                                                  ? "Unlimited"
+                                                  : plan.sendsPerDay === Number.POSITIVE_INFINITY
                                                   ? "Custom"
                                                   : plan.sendsPerDay.toLocaleString()
                                         }
@@ -486,11 +492,10 @@ function mailboxHint(a: OrganizationLimits["mailboxes"] | undefined): string {
     }
 }
 
-// Stripe charges the plan's yearly price on a yearly subscription; the period
-// length stands in when the price id is not on the row.
+// Yearly when Stripe charges the plan's yearly price, else by period length (a rotated price or a granted plan).
 function isYearly(sub: Subscription | undefined, periodEnd: Date | null): boolean {
     const yearlyId = sub?.plan?.stripe_price_id_yearly;
-    if (yearlyId && sub?.stripe_price_id) return sub.stripe_price_id === yearlyId;
+    if (yearlyId && sub?.stripe_price_id === yearlyId) return true;
     const start = sub?.current_period_start ? new Date(sub.current_period_start as unknown as string) : null;
     return !!start && !!periodEnd && periodEnd.getTime() - start.getTime() > 62 * 86_400_000;
 }

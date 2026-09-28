@@ -9,6 +9,7 @@ export default interface Subscription {
     // Nested plan summary as the API returns it (the old flat plan_name field
     // never existed on the wire).
     plan?: {
+        id?: string
         name: string
         price?: number
         price_yearly?: number | null

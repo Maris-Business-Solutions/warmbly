@@ -116,6 +116,9 @@ export const PLAN_CATALOG: Record<PlanID, PlanDef> = {
     },
 };
 
+// The Warmup plan's server id (models.WarmupPlanID); matched by id so a renamed plan stays warmup-only.
+export const WARMUP_PLAN_ID = "00000000-0000-0000-0000-000000000002";
+
 export const PAID_PLANS: PlanID[] = ["starter", "grow", "business", "enterprise"];
 
 // What the premium pool does for deliverability. Each line rests on a rule

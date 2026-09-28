@@ -307,9 +307,7 @@ func (s *featureGateService) GetSubscriptionStatus(ctx context.Context, orgID uu
 	return status, nil
 }
 
-// GetStorageLimitBytes returns the org's attachment storage quota. Orgs on a
-// plan that sends get the larger pool; everyone else (trial, the Warmup plan
-// or no subscription) gets the free allowance so they can still attach files.
+// GetStorageLimitBytes returns the attachment quota: the larger pool only on a plan that sends.
 func (s *featureGateService) GetStorageLimitBytes(ctx context.Context, orgID uuid.UUID) (int64, *errx.Error) {
 	if s.selfHost {
 		return PaidStorageBytes, nil

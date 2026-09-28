@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/config"
 )
 
 type Duration string
@@ -240,20 +241,18 @@ func (s *Subscription) ManagedExpired() bool {
 	return !time.Now().Before(*s.ManagedUntil)
 }
 
-// WarmupPlanID is the $15 Warmup plan: the premium pool and no mailbox cap,
-// and nothing else. It is seeded under this id by migration 000108.
-var WarmupPlanID = uuid.MustParse("00000000-0000-0000-0000-000000000002")
+// WarmupPlanID is the Warmup plan: the premium pool and no mailbox cap, nothing else.
+var WarmupPlanID = uuid.MustParse(config.PoolLinkPlanID)
 
-// IsWarmupOnly reports whether the plan in force is the Warmup plan, which
-// pays for warming and not for sending, the inbox, the CRM or AI.
+// IsWarmupOnly reports the Warmup plan in force; a Stripe subscription to any other plan outranks a Warmup grant.
 func (s *Subscription) IsWarmupOnly() bool {
-	return s != nil && s.HasPaidSubscription() && s.EffectivePlanID() == WarmupPlanID
+	if s == nil || !s.HasPaidSubscription() || s.EffectivePlanID() != WarmupPlanID {
+		return false
+	}
+	return !(s.StripeSubscriptionID != nil && s.Status.IsActive() && s.PlanID != WarmupPlanID)
 }
 
-// HasProductPlan reports whether the workspace pays for the product itself:
-// sending, the unified inbox, contacts, AI and integrations. Every paid plan
-// but the Warmup plan does. The premium pool and the mailbox cap follow
-// HasPaidSubscription instead, because the Warmup plan buys exactly those.
+// HasProductPlan reports a paid plan that includes sending, the inbox, AI and integrations: every one but the Warmup plan.
 func (s *Subscription) HasProductPlan() bool {
 	return s != nil && s.HasPaidSubscription() && !s.IsWarmupOnly()
 }

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -19,12 +18,6 @@ func (stubPlans) GetByID(context.Context, uuid.UUID) (*models.Plan, error) { ret
 func paidSub(planID uuid.UUID) *models.Subscription {
 	id := "sub_test"
 	return &models.Subscription{PlanID: planID, StripeSubscriptionID: &id, Status: models.SubscriptionStatusActive}
-}
-
-func TestWarmupPlanIDMatchesThePoolLinkPlan(t *testing.T) {
-	if models.WarmupPlanID.String() != config.PoolLinkPlanID {
-		t.Fatalf("models.WarmupPlanID %s and config.PoolLinkPlanID %s name different plans", models.WarmupPlanID, config.PoolLinkPlanID)
-	}
 }
 
 // The Warmup plan buys the premium pool and an uncapped mailbox count, and
@@ -91,6 +84,16 @@ func TestGrantedWarmupPlanIsWarmupOnly(t *testing.T) {
 	if !sub.IsWarmupOnly() || sub.HasProductPlan() || !sub.HasPaidSubscription() {
 		t.Errorf("granted Warmup plan: warmupOnly=%v product=%v paid=%v, want true false true",
 			sub.IsWarmupOnly(), sub.HasProductPlan(), sub.HasPaidSubscription())
+	}
+}
+
+// A Warmup grant must not hide a Starter subscription the workspace pays Stripe for.
+func TestStripeSendingPlanOutranksAWarmupGrant(t *testing.T) {
+	granted := time.Now().Add(-time.Hour)
+	sub := paidSub(uuid.New())
+	sub.ManagedAt, sub.ManagedPlanID = &granted, &models.WarmupPlanID
+	if sub.IsWarmupOnly() || !sub.HasProductPlan() {
+		t.Errorf("Stripe sending plan under a Warmup grant: warmupOnly=%v product=%v, want false true", sub.IsWarmupOnly(), sub.HasProductPlan())
 	}
 }
 
