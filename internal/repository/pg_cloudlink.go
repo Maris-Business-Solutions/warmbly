@@ -33,8 +33,10 @@ type CloudLinkRepository interface {
 	IsEnrolled(ctx context.Context, accountID uuid.UUID) (bool, error)
 
 	// SetStanding records the warmup standing the cloud reported and returns
-	// the state it replaced ("" when none was recorded yet).
-	SetStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo) (models.WarmupHealthState, error)
+	// the state it replaced ("" when none was recorded yet). initial writes
+	// only a mailbox with no standing yet, leaving changes to the sync, which
+	// reports them.
+	SetStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo, initial bool) (models.WarmupHealthState, error)
 	// CarryStanding raises a mailbox's local pool row to a cloud quarantine or
 	// block still in force, so leaving the cloud does not lift it.
 	CarryStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo) error
@@ -217,7 +219,7 @@ func scanCloudLinkMailbox(row pgx.Row) (*models.CloudLinkMailbox, error) {
 	return &m, nil
 }
 
-func (r *cloudLinkRepository) SetStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo) (models.WarmupHealthState, error) {
+func (r *cloudLinkRepository) SetStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo, initial bool) (models.WarmupHealthState, error) {
 	// The locked read makes a concurrent writer see this write's state as its
 	// previous one, so a transition is reported once across consumers.
 	query := `
@@ -237,10 +239,11 @@ func (r *cloudLinkRepository) SetStanding(ctx context.Context, accountID uuid.UU
 		       health_synced_at = NOW()
 		  FROM prev
 		 WHERE c.email_account_id = prev.email_account_id
+		   AND (NOT $8 OR prev.health_state IS NULL)
 		RETURNING COALESCE(prev.health_state, '')
 	`
 	var prev string
-	err := r.db.QueryRow(ctx, query, accountID, h.State, h.PoolType, h.Reason, h.Score, h.BlockedUntil, h.EvaluatedAt).Scan(&prev)
+	err := r.db.QueryRow(ctx, query, accountID, h.State, h.PoolType, h.Reason, h.Score, h.BlockedUntil, h.EvaluatedAt, initial).Scan(&prev)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
@@ -262,7 +265,10 @@ func (r *cloudLinkRepository) CarryStanding(ctx context.Context, accountID uuid.
 		       last_health_score = $5,
 		       last_health_evaluated_at = NOW()
 		 WHERE p.email_account_id = $1
-		   AND ` + warmupStandingRankSQL("p.health_state::text") + ` < ` + warmupStandingRankSQL("$2::text") + `
+		   AND (` + warmupStandingRankSQL("p.health_state::text") + ` < ` + warmupStandingRankSQL("$2::text") + `
+		        OR (` + warmupStandingRankSQL("p.health_state::text") + ` = ` + warmupStandingRankSQL("$2::text") + `
+		            AND p.blocked_until IS NOT NULL
+		            AND ($3::timestamptz IS NULL OR $3::timestamptz > p.blocked_until)))
 	`
 	if _, err := r.db.Exec(ctx, query, accountID, h.State, h.BlockedUntil, h.Reason, h.Score); err != nil {
 		db.CaptureError(err, query, []any{accountID}, "exec")

@@ -24,11 +24,12 @@ func knownHealthState(state string) bool {
 
 // recordStanding stores what the cloud reported. An absent standing leaves
 // the recorded one in place: a cloud that could not read it has not lifted it.
-func (s *service) recordStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo) (models.WarmupHealthState, bool) {
+// initial records only a first standing; a change is the sync's to report.
+func (s *service) recordStanding(ctx context.Context, accountID uuid.UUID, h *models.WarmupHealthInfo, initial bool) (models.WarmupHealthState, bool) {
 	if h == nil || !knownHealthState(h.State) {
 		return "", false
 	}
-	prev, err := s.repo.SetStanding(ctx, accountID, h)
+	prev, err := s.repo.SetStanding(ctx, accountID, h, initial)
 	if err != nil {
 		log.Warn().Err(err).Str("account_id", accountID.String()).Msg("cloud link: warmup standing could not be recorded")
 		return "", false
@@ -40,10 +41,20 @@ func (s *service) recordStanding(ctx context.Context, accountID uuid.UUID, h *mo
 // row a mailbox rejoins when it leaves the cloud.
 func (s *service) carryStanding(ctx context.Context, m models.CloudLinkMailbox) {
 	h := m.Standing
-	if h == nil || h.BlockedUntil == nil || !h.BlockedUntil.After(time.Now()) {
+	if h == nil {
 		return
 	}
-	if st := models.WarmupHealthState(h.State); st != models.WarmupHealthQuarantined && st != models.WarmupHealthBlocked {
+	switch models.WarmupHealthState(h.State) {
+	case models.WarmupHealthBlocked:
+		// A block with no end requires review; it carries as one.
+		if h.BlockedUntil != nil && !h.BlockedUntil.After(time.Now()) {
+			return
+		}
+	case models.WarmupHealthQuarantined:
+		if h.BlockedUntil == nil || !h.BlockedUntil.After(time.Now()) {
+			return
+		}
+	default:
 		return
 	}
 	if err := s.repo.CarryStanding(ctx, m.EmailAccountID, h); err != nil {
@@ -73,8 +84,19 @@ func (s *service) SyncStanding(ctx context.Context) ([]models.CloudLinkStandingC
 	var changes []models.CloudLinkStandingChange
 	for _, m := range enrolled {
 		h := byRemote[m.RemoteID]
-		prev, ok := s.recordStanding(ctx, m.EmailAccountID, h)
-		if !ok || prev == "" || prev == models.WarmupHealthState(h.State) {
+		if h == nil || sameStanding(m.Standing, h) {
+			continue
+		}
+		prev, ok := s.recordStanding(ctx, m.EmailAccountID, h, false)
+		if !ok {
+			continue
+		}
+		// A first reading is measured against the unrestricted mailbox this
+		// instance saw until now, so a hold it starts enforcing is announced.
+		if prev == "" {
+			prev = models.WarmupHealthHealthy
+		}
+		if prev == models.WarmupHealthState(h.State) {
 			continue
 		}
 		changes = append(changes, models.CloudLinkStandingChange{
@@ -110,4 +132,20 @@ func (s *service) fetchStanding(ctx context.Context, l *models.CloudLink) (map[u
 		out[states[i].RemoteID] = states[i].Health
 	}
 	return out, nil
+}
+
+// sameStanding skips the write when the cloud reports what is already recorded.
+func sameStanding(cur, next *models.WarmupHealthInfo) bool {
+	if cur == nil || next == nil {
+		return false
+	}
+	return cur.State == next.State && cur.Reason == next.Reason && cur.PoolType == next.PoolType &&
+		cur.Score == next.Score && sameTime(cur.BlockedUntil, next.BlockedUntil)
+}
+
+func sameTime(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }

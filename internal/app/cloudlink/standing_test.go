@@ -28,7 +28,7 @@ func (r *standingRepo) List(context.Context) ([]models.CloudLinkMailbox, error) 
 	return r.enrolled, nil
 }
 
-func (r *standingRepo) SetStanding(_ context.Context, id uuid.UUID, h *models.WarmupHealthInfo) (models.WarmupHealthState, error) {
+func (r *standingRepo) SetStanding(_ context.Context, id uuid.UUID, h *models.WarmupHealthInfo, _ bool) (models.WarmupHealthState, error) {
 	prev := r.current[id]
 	r.current[id] = models.WarmupHealthState(h.State)
 	return prev, nil
@@ -102,5 +102,24 @@ func TestSyncStandingFallsBackOnAnOlderCloud(t *testing.T) {
 	}
 	if repo.current[account] != models.WarmupHealthBlocked {
 		t.Fatalf("recorded %q, want blocked", repo.current[account])
+	}
+}
+
+func TestSyncStandingAnnouncesAHoldItStartsEnforcing(t *testing.T) {
+	var remote uuid.UUID
+	svc, repo, account := newStandingFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]models.PoolLinkMailboxStanding{{RemoteID: remote, Health: &models.WarmupHealthInfo{State: "quarantined"}}})
+	})
+	remote = account
+	changes, xerr := svc.SyncStanding(context.Background())
+	if xerr != nil || len(changes) != 1 || changes[0].Previous != models.WarmupHealthHealthy || changes[0].Current != models.WarmupHealthQuarantined {
+		t.Fatalf("first reading = %+v, %v", changes, xerr)
+	}
+
+	// What is already recorded is not written again.
+	repo.enrolled[0].Standing = &models.WarmupHealthInfo{State: "quarantined"}
+	repo.current[account] = ""
+	if changes, _ := svc.SyncStanding(context.Background()); len(changes) != 0 || repo.current[account] != "" {
+		t.Fatalf("an unchanged standing was rewritten: %+v", changes)
 	}
 }

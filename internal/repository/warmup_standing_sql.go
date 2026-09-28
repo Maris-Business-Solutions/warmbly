@@ -34,6 +34,8 @@ func warmupStandingSQL(accountExpr string) string {
 		         WHERE clm.email_account_id = ` + accountExpr + `
 		           AND clm.health_state IS NOT NULL
 		       ) st
-		 ORDER BY ` + warmupStandingRankSQL("st.health_state") + ` DESC
+		 ORDER BY ` + warmupStandingRankSQL("st.health_state") + ` DESC,
+		          (st.health_state = 'blocked' AND st.blocked_until IS NULL) DESC,
+		          st.blocked_until DESC NULLS LAST
 		 LIMIT 1`
 }

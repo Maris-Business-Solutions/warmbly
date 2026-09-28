@@ -35,37 +35,11 @@ func (s *JobsService) resolveWarmupHealthState(ctx context.Context, accountID uu
 		return "", false
 	}
 
-	var (
-		worst models.WarmupHealthState
-		found bool
-	)
-	for _, poolType := range []string{"premium", "free"} {
-		health, err := s.WarmupRepo.GetParticipantHealth(ctx, accountID, poolType)
-		if err != nil || health == nil {
-			continue
-		}
-		if !found || warmupHealthRank(health.HealthState) < warmupHealthRank(worst) {
-			worst = health.HealthState
-			found = true
-		}
+	// The mailbox's standing, including one Warmbly Cloud reported for a
+	// mailbox it warms, so a local event cannot reset a cloud hold's band.
+	state, _, err := s.WarmupRepo.GetHealthState(ctx, accountID)
+	if err != nil {
+		return "", false
 	}
-
-	return worst, found
-}
-
-func warmupHealthRank(state models.WarmupHealthState) int {
-	switch state {
-	case models.WarmupHealthBlocked:
-		return 0
-	case models.WarmupHealthQuarantined:
-		return 1
-	case models.WarmupHealthThrottled:
-		return 2
-	case models.WarmupHealthWatch:
-		return 3
-	case models.WarmupHealthHealthy:
-		return 4
-	default:
-		return 5
-	}
+	return state, true
 }

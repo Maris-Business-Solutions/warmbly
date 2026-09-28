@@ -496,7 +496,7 @@ func (s *service) Enroll(ctx context.Context, orgID, accountID uuid.UUID) (*mode
 		return nil, errx.InternalError()
 	}
 	s.syncLocalPool(ctx, acc.ID)
-	s.recordStanding(ctx, acc.ID, state.Health)
+	s.recordStanding(ctx, acc.ID, state.Health, true)
 	return s.row(ctx, orgID, accountID)
 }
 
@@ -525,6 +525,9 @@ func (s *service) Unenroll(ctx context.Context, orgID, accountID uuid.UUID) *err
 		if xerr := s.clientFor(l).do(ctx, http.MethodDelete, "/instance/mailboxes/"+m.RemoteID.String(), nil, nil); xerr != nil && xerr.Identifier != "pool_link_mailbox_not_found" {
 			if _, rerr := s.repo.Enroll(ctx, accountID, m.RemoteID, false); rerr != nil {
 				log.Error().Str("account_id", accountID.String()).Msg("cloud link: cloud unenroll failed and the local row could not be restored")
+			} else if m.Standing != nil {
+				// The restored row keeps the hold it had.
+				s.recordStanding(ctx, accountID, m.Standing, true)
 			}
 			return xerr
 		}
@@ -591,6 +594,6 @@ func (s *service) SetLifecycle(ctx context.Context, orgID, accountID uuid.UUID, 
 	if xerr := s.clientFor(l).do(ctx, http.MethodPatch, "/instance/mailboxes/"+m.RemoteID.String(), models.PoolLinkMailboxPatch{Lifecycle: action}, &state); xerr != nil {
 		return nil, xerr
 	}
-	s.recordStanding(ctx, accountID, state.Health)
+	s.recordStanding(ctx, accountID, state.Health, true)
 	return s.row(ctx, orgID, accountID)
 }

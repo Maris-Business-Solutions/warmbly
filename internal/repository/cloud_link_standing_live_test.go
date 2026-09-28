@@ -28,7 +28,7 @@ func TestLiveCloudLinkStandingGatesTheInstance(t *testing.T) {
 	until := time.Now().Add(72 * time.Hour).UTC().Truncate(time.Second)
 	prev, err := links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{
 		State: string(models.WarmupHealthQuarantined), PoolType: "premium", Reason: "complaints", Score: 60, BlockedUntil: &until,
-	})
+	}, true)
 	if err != nil {
 		t.Fatalf("SetStanding: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestLiveCloudLinkStandingGatesTheInstance(t *testing.T) {
 		t.Fatalf("GetWorkerEmails: %v", err)
 	}
 
-	prev, err = links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{State: string(models.WarmupHealthHealthy)})
+	prev, err = links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{State: string(models.WarmupHealthHealthy)}, false)
 	if err != nil || prev != models.WarmupHealthQuarantined {
 		t.Fatalf("recovery replaced %q (%v), want quarantined", prev, err)
 	}
@@ -162,5 +162,60 @@ func TestLivePoolLinkListStandingReportsTheHeldStanding(t *testing.T) {
 	}
 	if h := read(); h.State != string(models.WarmupHealthQuarantined) || h.BlockedUntil == nil {
 		t.Fatalf("ledger standing = %+v", h)
+	}
+}
+
+func TestLiveCloudLinkStandingEdgeCases(t *testing.T) {
+	f := newPoolLinkFixture(t)
+	ctx := context.Background()
+	links := NewCloudLinkRepository(f.pool, nil)
+	if _, err := links.Enroll(ctx, f.sender, f.sender, false); err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+
+	// An initial write lands once; after that a change is the sync's.
+	if _, err := links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{State: "watch"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{State: "healthy"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if state, _, _ := f.warmup.GetHealthState(ctx, f.sender); state != models.WarmupHealthWatch {
+		t.Fatalf("an initial write replaced a recorded standing: %s", state)
+	}
+
+	// A review-required cloud block outranks a dated local one of the same state.
+	if err := f.warmup.MoveToPool(ctx, models.WarmupPoolFreeID, f.sender, "sender_receiver"); err != nil {
+		t.Fatal(err)
+	}
+	soon := time.Now().Add(24 * time.Hour)
+	if _, err := f.warmup.UpdateParticipantHealth(ctx, f.sender, models.WarmupHealthBlocked, &soon, "local", 80); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := links.SetStanding(ctx, f.sender, &models.WarmupHealthInfo{State: "blocked"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if state, until, _ := f.warmup.GetHealthState(ctx, f.sender); state != models.WarmupHealthBlocked || until != nil {
+		t.Fatalf("tie resolved to %s until %v, want the review-required block", state, until)
+	}
+
+	// Carrying keeps the later end at equal severity, and carries a review block.
+	later := time.Now().Add(10 * 24 * time.Hour)
+	if _, err := f.pool.Exec(ctx, `UPDATE warmup_pool_participants SET health_state = 'quarantined', blocked_until = $2 WHERE email_account_id = $1`, f.sender, soon); err != nil {
+		t.Fatal(err)
+	}
+	if err := links.CarryStanding(ctx, f.sender, &models.WarmupHealthInfo{State: "quarantined", BlockedUntil: &later}); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := f.warmup.GetParticipantHealthForAccount(ctx, f.sender)
+	if h == nil || h.BlockedUntil == nil || h.BlockedUntil.Before(later.Add(-time.Second)) {
+		t.Fatalf("equal-severity carry kept %+v, want the later end", h)
+	}
+	if err := links.CarryStanding(ctx, f.sender, &models.WarmupHealthInfo{State: "blocked"}); err != nil {
+		t.Fatal(err)
+	}
+	h, _ = f.warmup.GetParticipantHealthForAccount(ctx, f.sender)
+	if h == nil || h.HealthState != models.WarmupHealthBlocked || h.BlockedUntil != nil {
+		t.Fatalf("review block carried as %+v", h)
 	}
 }

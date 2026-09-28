@@ -29,9 +29,8 @@ func (s *JobsService) StartCloudStandingSync(ctx context.Context, interval time.
 		defer cancel()
 		changes, xerr := syncer.SyncStanding(runCtx)
 		if xerr != nil {
-			// An unreachable cloud keeps the last recorded standing in force.
-			log.Warn().Str("code", xerr.Identifier).Str("error", xerr.Message).Msg("cloud standing sync: cloud not read")
-			return nil
+			// The last recorded standing stays in force; the failed run shows on the job panel.
+			return xerr
 		}
 		for _, c := range changes {
 			s.markRiskBandFromWarmupHealth(runCtx, c.EmailAccountID, &models.WarmupParticipantHealth{HealthState: c.Current})
