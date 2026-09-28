@@ -271,6 +271,19 @@ func (h *Handler) RequireAccess(orgPerm models.OrganizationPermission, apiPerm u
 	}
 }
 
+// RequireAccessWithQuery applies RequireAccess only when the request carries
+// the named query parameter.
+func (h *Handler) RequireAccessWithQuery(param string, orgPerm models.OrganizationPermission, apiPerm uint64) gin.HandlerFunc {
+	gate := h.RequireAccess(orgPerm, apiPerm)
+	return func(c *gin.Context) {
+		if strings.TrimSpace(c.Query(param)) == "" {
+			c.Next()
+			return
+		}
+		gate(c)
+	}
+}
+
 // RequireAnyAccess is like RequireAccess but a JWT caller passes if they hold
 // ANY of the listed organization permissions (the API-key path is unchanged: it
 // checks the single apiPerm). Use on read routes reachable by multiple roles —

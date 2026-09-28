@@ -290,7 +290,12 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
     const candidatesQ = useComposeCandidates(primary, wantCandidates);
 
     // Holds the recipient's follow-ups once a reply is accepted; a forward goes to someone else.
-    const followUps = usePauseFollowUps(mode === "reply" && primary ? primary : undefined);
+    // The thread's lead stands in only for the person who wrote the message being answered.
+    const answeringSender = !!primary && primary.toLowerCase() === bareEmail(replyTo.from ?? "").toLowerCase();
+    const followUps = usePauseFollowUps(
+        mode === "reply" && primary ? primary : undefined,
+        answeringSender ? { threadId } : undefined,
+    );
     const [followUpPause, setFollowUpPause] = React.useState<FollowUpPause | null>(null);
     // Unticked rather than ticked, so a campaign that appears later is included.
     const [followUpSkip, setFollowUpSkip] = React.useState<string[]>([]);

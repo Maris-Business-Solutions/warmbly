@@ -8188,7 +8188,7 @@
         ],
         "operationId": "contacts_lookup",
         "summary": "Look up a contact by email",
-        "description": "Resolves a sender address to a contact. Returns 200 with {\"contact\": null} when nothing matches. A display-name wrapped address (`Name <addr@example.com>`) is accepted and unwrapped. Scope `READ_CONTACTS`.",
+        "description": "Resolves a sender address to a contact. Returns 200 with {\"contact\": null} when nothing matches. A display-name wrapped address (`Name <addr@example.com>`) is accepted and unwrapped. With `thread_id`, a sender whose address is not a contact resolves to the lead of the campaign send the thread answers; `match` says which one answered. Scope `READ_CONTACTS`, plus `READ_UNIBOX` with `thread_id`.",
         "security": [
           {
             "bearerAuth": []
@@ -8198,10 +8198,29 @@
           {
             "name": "email",
             "in": "query",
-            "required": true,
-            "description": "The email address to resolve.",
+            "required": false,
+            "description": "The email address to resolve. Required unless thread_id is given.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "thread_id",
+            "in": "query",
+            "required": false,
+            "description": "A unibox thread id. Used when the address is not a contact.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "description": "The mailbox holding the thread, to limit the thread match to it.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],
@@ -8217,7 +8236,7 @@
             }
           },
           "400": {
-            "description": "Missing or malformed email.",
+            "description": "Missing email and thread_id, or a malformed account_id.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8237,7 +8256,7 @@
             }
           },
           "403": {
-            "description": "API key lacks READ_CONTACTS or caller lacks view_contacts.",
+            "description": "API key lacks READ_CONTACTS (or READ_UNIBOX with thread_id), caller lacks view_contacts (or access_unibox), or account_id is outside the key's email account allowlist.",
             "content": {
               "application/json": {
                 "schema": {
@@ -31336,6 +31355,14 @@
                 "$ref": "#/components/schemas/Contact"
               }
             ]
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "email",
+              "thread"
+            ],
+            "description": "What resolved the contact: the sender's address, or the campaign send the thread answers. Absent when contact is null."
           }
         }
       },

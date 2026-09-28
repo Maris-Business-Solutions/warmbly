@@ -15,11 +15,13 @@ import {
     CheckIcon,
     ChevronDownIcon,
     CircleDollarSignIcon,
+    CornerDownRightIcon,
     ExternalLinkIcon,
     Loader2Icon,
     MailWarningIcon,
     MegaphoneIcon,
     PlusIcon,
+    RefreshCwIcon,
     StickyNoteIcon,
     UserIcon,
     UserXIcon,
@@ -91,6 +93,9 @@ export default function ContactContextPanel({
     email,
     name: fromName,
     mailboxId,
+    threadId,
+    threadMailboxId,
+    wroteBack,
     onClose,
 }: {
     email?: string;
@@ -98,10 +103,17 @@ export default function ContactContextPanel({
     // sender as a contact.
     name?: string;
     mailboxId?: string;
+    // The conversation, so a reply from an alias still finds the campaign's lead.
+    threadId?: string;
+    // Set only when the thread itself is scoped to one mailbox.
+    threadMailboxId?: string;
+    // The email is a sender in the thread, not only a recipient.
+    wroteBack?: boolean;
     onClose?: () => void;
 }) {
-    const lookup = useContactByEmail(email);
-    const contact = lookup.data ?? null;
+    const lookup = useContactByEmail(email, true, { threadId, mailboxId: threadMailboxId });
+    const contact = lookup.data?.contact ?? null;
+    const repliedFromOther = !!wroteBack && lookup.data?.match === "thread";
     const contactId = contact?.id;
     const [meetingOpen, setMeetingOpen] = React.useState(false);
 
@@ -152,6 +164,20 @@ export default function ContactContextPanel({
                         <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
                         Resolving contact…
                     </div>
+                ) : lookup.isError && !lookup.data ? (
+                    <div className="px-4 py-8 text-center">
+                        <p className="text-[12px] font-medium text-slate-700 mb-0.5">Couldn't load this contact</p>
+                        {email && <p className="text-[11px] text-slate-400 break-all mb-3">{email}</p>}
+                        <button
+                            type="button"
+                            onClick={() => void lookup.refetch()}
+                            disabled={lookup.isFetching}
+                            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-slate-200 hover:border-slate-300 text-[11.5px] text-slate-700 hover:text-slate-900 transition-colors disabled:opacity-60"
+                        >
+                            <RefreshCwIcon className={`w-3 h-3 ${lookup.isFetching ? "animate-spin" : ""}`} />
+                            Try again
+                        </button>
+                    </div>
                 ) : !contact ? (
                     <NotAContact email={email} name={fromName} />
                 ) : (
@@ -170,6 +196,17 @@ export default function ContactContextPanel({
                                     )}
                                 </div>
                             </div>
+                            {repliedFromOther && email && (
+                                <div
+                                    className="mt-2 flex items-start gap-1.5 text-[10.5px] text-slate-500 leading-snug"
+                                    title="The reply came from another address than the one this campaign emailed."
+                                >
+                                    <CornerDownRightIcon className="w-3 h-3 text-slate-400 mt-px shrink-0" />
+                                    <span className="min-w-0 break-all">
+                                        Replied from {email}
+                                    </span>
+                                </div>
+                            )}
                             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                                 {contact.subscribed ? (
                                     <Badge tone="emerald" icon={<CheckIcon className="w-2.5 h-2.5" />}>Subscribed</Badge>

@@ -139,3 +139,42 @@ func TestRequireAccessAPIKeyPath(t *testing.T) {
 		})
 	}
 }
+
+// The unibox gate on /contacts/lookup applies only when thread_id is present.
+func TestRequireAccessWithQueryOnlyGatesWithTheParam(t *testing.T) {
+	h := &Handler{}
+	tests := []struct {
+		name       string
+		url        string
+		granted    uint64
+		wantStatus int
+	}{
+		{"no param, no unibox scope", "/x?email=a@b.test", models.APIPermReadContacts, http.StatusOK},
+		{"param, no unibox scope", "/x?thread_id=t1", models.APIPermReadContacts, http.StatusForbidden},
+		{"blank param", "/x?thread_id=%20", models.APIPermReadContacts, http.StatusOK},
+		{"param, unibox scope", "/x?thread_id=t1", models.APIPermReadContacts | models.APIPermReadUnibox, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := gin.New()
+			r.Use(func(c *gin.Context) {
+				c.Set(AuthTypeKey, AuthTypeAPIKey)
+				c.Set(APIKeyPermissionsKey, tt.granted)
+				c.Next()
+			})
+			calls := 0
+			r.GET("/x", h.RequireAccessWithQuery("thread_id", models.PermAccessUnibox, models.APIPermReadUnibox), func(c *gin.Context) {
+				calls++
+				c.JSON(http.StatusOK, gin.H{})
+			})
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, tt.url, nil))
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+			if want := map[bool]int{true: 1, false: 0}[tt.wantStatus == http.StatusOK]; calls != want {
+				t.Errorf("handler ran %d times, want %d", calls, want)
+			}
+		})
+	}
+}

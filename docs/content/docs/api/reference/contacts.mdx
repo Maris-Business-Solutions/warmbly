@@ -643,11 +643,15 @@ For `verify`, `verifier` names who runs the checks (`builtin`, `millionverifier`
 
 Resolves a sender address to a contact in your organization. Returns `200` with `{"contact": null}` when nothing matches, so unknown senders render a clean empty state rather than a `404`. A display-name wrapped address (`Name <addr@example.com>`) is accepted and unwrapped.
 
-Auth: **Scope** `READ_CONTACTS` · **Org permission** `view_contacts`
+Pass `thread_id` to resolve a reply the way the unibox does. The address is tried first; when it is not a contact, the thread's campaign send answers instead, so a reply from an alias or a forwarded address resolves to the lead the campaign emailed. `match` says which one answered: `email` or `thread`. It is absent when `contact` is `null`. The thread is read only in the mailboxes an API key's email account allowlist permits, and an `account_id` outside it returns `403`.
+
+Auth: **Scope** `READ_CONTACTS` · **Org permission** `view_contacts`. With `thread_id`, also **Scope** `READ_UNIBOX` · **Org permission** `access_unibox`.
 
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
-| `email` | query | string | The email address to resolve (required). |
+| `email` | query | string | The email address to resolve. Required unless `thread_id` is given. |
+| `thread_id` | query | string | Optional. A unibox thread id (`thread_id` on a unibox message). |
+| `account_id` | query | UUID | Optional. The mailbox holding the thread, to limit the thread match to it. A malformed id returns `400`. |
 
 ### Response
 
@@ -667,7 +671,8 @@ Auth: **Scope** `READ_CONTACTS` · **Org permission** `view_contacts`
     "esp_provider": "gmail",
     "updated_at": "2026-06-10T12:00:00Z",
     "created_at": "2026-05-01T09:30:00Z"
-  }
+  },
+  "match": "email"
 }
 ```
 

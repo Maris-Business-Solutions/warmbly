@@ -249,6 +249,31 @@ func (s *contactService) GetByEmail(ctx context.Context, orgID *uuid.UUID, email
 	return s.contactRepository.GetByEmailAndOrganization(ctx, *orgID, email)
 }
 
+func (s *contactService) LookupSender(ctx context.Context, orgID *uuid.UUID, email string, thread models.ContactLookupThread) (*models.ContactLookup, *errx.Error) {
+	out := &models.ContactLookup{}
+	if orgID == nil {
+		return out, nil
+	}
+	if strings.TrimSpace(email) != "" {
+		contact, xerr := s.contactRepository.GetByEmailAndOrganization(ctx, *orgID, email)
+		if xerr != nil {
+			return nil, xerr
+		}
+		if contact != nil {
+			out.Contact, out.Match = contact, models.ContactLookupMatchEmail
+			return out, nil
+		}
+	}
+	contact, xerr := s.contactRepository.GetByThreadAndOrganization(ctx, *orgID, thread)
+	if xerr != nil {
+		return nil, xerr
+	}
+	if contact != nil {
+		out.Contact, out.Match = contact, models.ContactLookupMatchThread
+	}
+	return out, nil
+}
+
 func (s *contactService) ListSentEmails(ctx context.Context, orgID, contactID uuid.UUID, limit int, beforeSentAt *time.Time, beforeTaskID *uuid.UUID) (*models.ContactSentEmailsResult, *errx.Error) {
 	return s.contactRepository.ListSentEmails(ctx, orgID, contactID, limit, beforeSentAt, beforeTaskID)
 }

@@ -29,6 +29,8 @@ type ContactRepository interface {
 	Add(ctx context.Context, userID string, orgID uuid.UUID, contacts []models.AddContact) ([]models.Contact, *errx.Error)
 	GetByID(ctx context.Context, contactID uuid.UUID) (*models.Contact, *errx.Error)
 	GetByEmailAndOrganization(ctx context.Context, organizationID uuid.UUID, email string) (*models.Contact, *errx.Error)
+	// GetByThreadAndOrganization is the lead of the campaign send a unibox thread answers; (nil, nil) when none.
+	GetByThreadAndOrganization(ctx context.Context, organizationID uuid.UUID, thread models.ContactLookupThread) (*models.Contact, *errx.Error)
 	// GetByIDsAndOrganization fetches the org's contacts for a set of IDs. Used
 	// by the synchronous "push to CRM" action so a member can only push contacts
 	// that belong to their organization. Foreign/missing IDs are omitted.
@@ -1014,20 +1016,13 @@ func (r *contactRepository) VerificationCounts(ctx context.Context, orgID uuid.U
 	return c, nil
 }
 
-func (r *contactRepository) GetByEmailAndOrganization(ctx context.Context, organizationID uuid.UUID, email string) (*models.Contact, *errx.Error) {
-	query := `
-		SELECT
-			c.id, c.first_name, c.last_name, c.email, c.company, c.phone,
-			c.custom_fields, c.subscribed, c.updated_at, c.created_at
-		FROM contacts c
-		WHERE c.organization_id = $1
-		  AND LOWER(c.email) = LOWER($2)
-		ORDER BY c.updated_at DESC
-		LIMIT 1
-	`
+// lookupContactColumns and scanLookupContact are the payload both sender lookups return.
+const lookupContactColumns = `c.id, c.first_name, c.last_name, c.email, c.company, c.phone,
+			c.custom_fields, c.subscribed, c.updated_at, c.created_at`
 
+func (r *contactRepository) scanLookupContact(ctx context.Context, query string, args ...any) (*models.Contact, *errx.Error) {
 	var contact models.Contact
-	err := r.DB.QueryRow(ctx, query, organizationID, strings.TrimSpace(email)).Scan(
+	err := r.DB.QueryRow(ctx, query, args...).Scan(
 		&contact.ID, &contact.FirstName, &contact.LastName, &contact.Email,
 		&contact.Company, &contact.Phone, &contact.CustomFields, &contact.Subscribed,
 		&contact.UpdatedAt, &contact.CreatedAt,
@@ -1036,12 +1031,74 @@ func (r *contactRepository) GetByEmailAndOrganization(ctx context.Context, organ
 		if err == pgx.ErrNoRows {
 			return nil, nil
 		}
-		db.CaptureError(err, query, []any{organizationID, email}, "queryrow")
+		db.CaptureError(err, query, args, "queryrow")
 		return nil, errx.InternalError()
 	}
 	contact.Campaigns = []models.MiniCampaign{}
 	contact.Categories = []models.MiniCategory{}
 	return &contact, nil
+}
+
+func (r *contactRepository) GetByEmailAndOrganization(ctx context.Context, organizationID uuid.UUID, email string) (*models.Contact, *errx.Error) {
+	query := `
+		SELECT ` + lookupContactColumns + `
+		FROM contacts c
+		WHERE c.organization_id = $1
+		  AND LOWER(c.email) = LOWER($2)
+		ORDER BY c.updated_at DESC
+		LIMIT 1
+	`
+	return r.scanLookupContact(ctx, query, organizationID, strings.TrimSpace(email))
+}
+
+func (r *contactRepository) GetByThreadAndOrganization(ctx context.Context, organizationID uuid.UUID, thread models.ContactLookupThread) (*models.Contact, *errx.Error) {
+	threadID := strings.TrimSpace(thread.ID)
+	if threadID == "" {
+		return nil, nil
+	}
+	allowed := thread.AllowedAccounts
+	if allowed == nil {
+		allowed = []uuid.UUID{}
+	}
+	// A Message-ID may name a send from any workspace mailbox; the Gmail thread handle only one holding the thread.
+	query := `
+		WITH msgs AS (
+			SELECT ue.email_id, ue.message_id, ue.in_reply_to
+			FROM unibox_emails ue
+			JOIN email_accounts ea ON ea.id = ue.email_id
+			WHERE ea.organization_id = $1 AND ue.thread_id = $2
+			  AND ($3::uuid IS NULL OR ue.email_id = $3)
+			  AND (cardinality($4::uuid[]) = 0 OR ue.email_id = ANY($4))
+		),
+		ids AS (
+			SELECT DISTINCT x FROM (
+				SELECT BTRIM(message_id, '<> ') AS x FROM msgs
+				UNION ALL
+				SELECT BTRIM(ref, '<> ') FROM msgs, unnest(COALESCE(msgs.in_reply_to, '{}')) AS ref
+			) raw
+			WHERE x <> ''
+		),
+		matched AS (
+			SELECT t.id, 0 AS rank, t.created_at
+			FROM tasks t
+			WHERE t.task_type = 'campaign' AND t.message_id <> ''
+			  AND t.message_id IN (SELECT x FROM ids UNION ALL SELECT '<' || x || '>' FROM ids)
+			  AND t.email_account_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
+			UNION ALL
+			SELECT t.id, 1 AS rank, t.created_at
+			FROM tasks t
+			WHERE t.task_type = 'campaign' AND t.thread_id = $2
+			  AND t.email_account_id IN (SELECT email_id FROM msgs)
+		)
+		SELECT ` + lookupContactColumns + `
+		FROM matched m
+		JOIN campaign_tasks ct ON ct.task_id = m.id
+		JOIN contacts c ON c.id = ct.contact_id
+		WHERE c.organization_id = $1
+		ORDER BY m.rank, m.created_at DESC
+		LIMIT 1
+	`
+	return r.scanLookupContact(ctx, query, organizationID, threadID, thread.AccountID, allowed)
 }
 
 func (r *contactRepository) OwnerUserID(ctx context.Context, organizationID, contactID uuid.UUID) (*uuid.UUID, error) {
