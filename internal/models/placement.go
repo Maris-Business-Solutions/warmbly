@@ -147,12 +147,14 @@ type PlacementTest struct {
 	RemoteInstanceID *uuid.UUID `json:"-"`
 	RemoteTestID     *uuid.UUID `json:"-"`
 	Pace             string     `json:"pace"`
-	// CreditsCharged is what the test cost past the monthly free allowance;
-	// CreditsRefundedAt is set once a test that delivered nothing gave it back.
-	CreditsCharged    int        `json:"credits_charged"`
-	CreditsRefundedAt *time.Time `json:"credits_refunded_at"`
-	CreatedAt         time.Time  `json:"created_at"`
-	FinishedAt        *time.Time `json:"finished_at"`
+	// CreditsCharged is what the test cost past the monthly free allowance.
+	// A paid test is settled once it finishes: CreditsRefunded is what came
+	// back because no copy was delivered, CreditsSettledAt when that was decided.
+	CreditsCharged   int        `json:"credits_charged"`
+	CreditsRefunded  int        `json:"credits_refunded"`
+	CreditsSettledAt *time.Time `json:"credits_settled_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	FinishedAt       *time.Time `json:"finished_at"`
 }
 
 // Tracked reports whether the test's copies carry any tracking.

@@ -101,7 +101,8 @@ export function testCost(usage: PlacementOverview["usage"] | undefined, metered:
     const paid = Math.max(0, tests - free);
     const credits = paid * usage.credits_per_test;
     const payable = paid === 0 || usage.credits_per_test > 0;
-    const canPay = paid === 0 || (payable && usage.credit_balance != null && usage.credit_balance >= credits);
+    // An unknown balance is left to the server, which refuses what cannot be paid.
+    const canPay = paid === 0 || (payable && (usage.credit_balance == null || usage.credit_balance >= credits));
     return { paid, credits, payable, canPay };
 }
 
@@ -127,7 +128,12 @@ export function placementErrorMessage(
         case "placement_sender_unavailable":
             return { field: "sender", message: "This mailbox cannot send a test: it is not connected, or it is a seed inbox itself." };
         case "placement_daily_budget":
-            return { field: "sender", message: "This mailbox has too little of today's sending limit left for a useful test. Pick another mailbox or try again tomorrow." };
+            return {
+                field: "sender",
+                message: ctx.chosen
+                    ? `${err.message} Choose fewer seed inboxes, pick another mailbox, or try again tomorrow.`
+                    : "This mailbox has too little of today's sending limit left for a useful test. Pick another mailbox or try again tomorrow.",
+            };
         case "placement_no_seeds":
             return {
                 field: "panel",
@@ -143,7 +149,7 @@ export function placementErrorMessage(
         case "usage_cap_exceeded":
             return { field: "panel", message: "This test would go past the workspace's credit spend limit. An admin can raise it under Settings > Billing." };
         case "placement_invalid_seeds":
-            return { field: "panel", message: "A seed inbox you chose is no longer a connected seed. Choose again." };
+            return { field: "panel", message: err.message || "A seed inbox you chose is no longer a connected seed. Choose again." };
         case "placement_panel_unavailable":
             return { field: "panel", message: "The Warmbly Cloud panel needs this instance linked to Warmbly Cloud." };
         case "placement_invalid_tracking":

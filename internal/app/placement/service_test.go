@@ -592,3 +592,43 @@ func (g fakeGate) CanSendCampaignEmail(context.Context, uuid.UUID) (bool, *errx.
 func (g fakeGate) IsPaidOrganization(context.Context, uuid.UUID) (bool, *errx.Error) {
 	return g.paid, nil
 }
+
+type settleRepo struct {
+	*fakeRepo
+	open    []repository.PlacementSettle
+	settled map[uuid.UUID]int
+}
+
+func (r *settleRepo) UnsettledPaidTests(context.Context, int) ([]repository.PlacementSettle, error) {
+	return r.open, nil
+}
+func (r *settleRepo) SettleCredits(_ context.Context, id uuid.UUID, refunded int) (bool, error) {
+	if _, done := r.settled[id]; done {
+		return false, nil
+	}
+	r.settled[id] = refunded
+	return true, nil
+}
+
+func TestSettleCreditsRefundsOnlyWhatDeliveredNothing(t *testing.T) {
+	h := newHarness(t)
+	org := uuid.New()
+	delivered, empty := uuid.New(), uuid.New()
+	repo := &settleRepo{fakeRepo: h.repo, settled: map[uuid.UUID]int{}, open: []repository.PlacementSettle{
+		{ID: delivered, OrganizationID: org, Credits: 25, Delivered: true},
+		{ID: empty, OrganizationID: org, Credits: 25},
+	}}
+	c := &fakeCredits{charges: map[string]int{chargeKey(delivered): 25, chargeKey(empty): 25}, refunded: map[string]bool{}}
+	h.svc.Repo, h.svc.Credits = repo, c
+
+	got := h.svc.settleCredits(context.Background())
+	if len(got) != 1 || got[0] != empty {
+		t.Fatalf("refunded %v; want only the test that delivered nothing", got)
+	}
+	if repo.settled[delivered] != 0 || repo.settled[empty] != 25 || c.refunded[chargeKey(delivered)] {
+		t.Fatalf("settled %v, refunded %v; want the delivered test kept and the empty one refunded 25", repo.settled, c.refunded)
+	}
+	if again := h.svc.settleCredits(context.Background()); len(again) != 0 || c.balance != 25 {
+		t.Fatalf("a second pass refunded %v (balance %d); want nothing more", again, c.balance)
+	}
+}

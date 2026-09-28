@@ -65,7 +65,7 @@ func (s *service) Tick(ctx context.Context) error {
 		}
 	}
 
-	for _, id := range s.refundUndelivered(ctx) {
+	for _, id := range s.settleCredits(ctx) {
 		if t, err := s.Repo.GetTest(ctx, id); err == nil && t != nil {
 			s.publish(ctx, t)
 		}
@@ -75,37 +75,40 @@ func (s *service) Tick(ctx context.Context) error {
 	return nil
 }
 
-// refundUndelivered gives a paid test that delivered no copy its credits
-// back. The ledger refund is keyed, so a pass that dies between the two
-// writes repeats the stamp and never the refund.
-func (s *service) refundUndelivered(ctx context.Context) []uuid.UUID {
+// settleCredits decides every finished paid test once: one that delivered
+// no copy gets its credits back, one that delivered keeps the charge. The
+// ledger refund is keyed, so a pass that dies before the stamp repeats the
+// stamp and never the refund.
+func (s *service) settleCredits(ctx context.Context) []uuid.UUID {
 	if s.Credits == nil {
 		return nil
 	}
-	owed, err := s.Repo.PendingRefunds(ctx, 100)
+	open, err := s.Repo.UnsettledPaidTests(ctx, 100)
 	if err != nil {
 		errs.CaptureException(err)
 		return nil
 	}
-	var done []uuid.UUID
-	for _, r := range owed {
-		// Attributed like the charge, so a member's spend limit gets it back.
-		meta := models.CreditMeta{Context: models.CreditContext{Detail: "Placement test refund"}}
-		if r.CreatedBy != nil {
-			meta.ActorID = *r.CreatedBy
+	var refunded []uuid.UUID
+	for _, r := range open {
+		back := 0
+		if !r.Delivered {
+			// Attributed like the charge, so it reads as the same member's.
+			meta := models.CreditMeta{Context: models.CreditContext{Detail: "Placement test refund"}}
+			if r.CreatedBy != nil {
+				meta.ActorID = *r.CreatedBy
+			}
+			if back, err = s.Credits.RefundCharge(models.WithCreditMeta(ctx, meta), r.OrganizationID, chargeKey(r.ID), "placement_test_refund"); err != nil {
+				errs.CaptureException(err)
+				continue
+			}
 		}
-		rctx := models.WithCreditMeta(ctx, meta)
-		if _, err := s.Credits.RefundCharge(rctx, r.OrganizationID, chargeKey(r.ID), "placement_test_refund"); err != nil {
+		if ok, err := s.Repo.SettleCredits(ctx, r.ID, back); err != nil {
 			errs.CaptureException(err)
-			continue
-		}
-		if ok, err := s.Repo.MarkCreditsRefunded(ctx, r.ID); err != nil {
-			errs.CaptureException(err)
-		} else if ok {
-			done = append(done, r.ID)
+		} else if ok && !r.Delivered {
+			refunded = append(refunded, r.ID)
 		}
 	}
-	return done
+	return refunded
 }
 
 // onFinished tells whoever started a test where it landed, and checks a

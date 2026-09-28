@@ -42,12 +42,15 @@ type PlacementLanding struct {
 }
 
 // PlacementFinished is a test that just resolved its last probe.
-// PlacementRefund is a paid test owed its credits back.
-type PlacementRefund struct {
+// PlacementSettle is a finished paid test whose charge is not decided yet.
+type PlacementSettle struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
 	CreatedBy      *uuid.UUID
 	Credits        int
+	// Delivered is whether any copy got a verdict; a test that delivered
+	// nothing is refunded.
+	Delivered bool
 }
 
 type PlacementFinished struct {
@@ -159,11 +162,12 @@ type PlacementRepository interface {
 	// DeleteUnsentTests removes tests of one workspace, with their pending
 	// tasks, when a request fails after writing them and before any copy left.
 	DeleteUnsentTests(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) error
-	// PendingRefunds lists tests paid in credits that finished in the last
-	// week without delivering a copy and have not been refunded yet.
-	PendingRefunds(ctx context.Context, limit int) ([]PlacementRefund, error)
-	// MarkCreditsRefunded stamps a test's refund; false when already stamped.
-	MarkCreditsRefunded(ctx context.Context, testID uuid.UUID) (bool, error)
+	// UnsettledPaidTests lists finished tests paid in credits whose charge
+	// has not been settled yet, oldest first.
+	UnsettledPaidTests(ctx context.Context, limit int) ([]PlacementSettle, error)
+	// SettleCredits records a paid test's settlement and what was refunded;
+	// false when it was already settled.
+	SettleCredits(ctx context.Context, testID uuid.UUID, refunded int) (bool, error)
 	CountRunning(ctx context.Context, orgID uuid.UUID) (int, error)
 	// SenderBusy reports whether a sender still has probes waiting to leave.
 	SenderBusy(ctx context.Context, senderID uuid.UUID) (bool, error)
@@ -205,14 +209,14 @@ func NewPlacementRepository(db *db.DB) PlacementRepository {
 const placementTestCols = `id, organization_id, sender_account_id, sender_email, created_by, campaign_id,
 	sequence_id, contact_id, monitor_id, subject, body_plain, body_html, open_tracking, link_tracking,
 	compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged,
-	credits_refunded_at, created_at, finished_at`
+	credits_refunded, credits_settled_at, created_at, finished_at`
 
 func scanPlacementTest(row pgx.Row) (*models.PlacementTest, error) {
 	var t models.PlacementTest
 	err := row.Scan(&t.ID, &t.OrganizationID, &t.SenderAccountID, &t.SenderEmail, &t.CreatedBy, &t.CampaignID,
 		&t.SequenceID, &t.ContactID, &t.MonitorID, &t.Subject, &t.BodyPlain, &t.BodyHTML, &t.OpenTracking, &t.LinkTracking,
 		&t.CompareGroupID, &t.Origin, &t.Panel, &t.Status, &t.Error, &t.RemoteInstanceID, &t.RemoteTestID, &t.Pace, &t.CreditsCharged,
-		&t.CreditsRefundedAt, &t.CreatedAt, &t.FinishedAt)
+		&t.CreditsRefunded, &t.CreditsSettledAt, &t.CreatedAt, &t.FinishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -784,17 +788,18 @@ func (r *placementRepository) DeleteUnsentTests(ctx context.Context, orgID uuid.
 	return tx.Commit(ctx)
 }
 
-func (r *placementRepository) PendingRefunds(ctx context.Context, limit int) ([]PlacementRefund, error) {
+func (r *placementRepository) UnsettledPaidTests(ctx context.Context, limit int) ([]PlacementSettle, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT pt.id, pt.organization_id, pt.created_by, pt.credits_charged FROM placement_tests pt
+		SELECT pt.id, pt.organization_id, pt.created_by, pt.credits_charged,
+			EXISTS (
+				SELECT 1 FROM placement_results pr
+				WHERE pr.test_id = pt.id AND pr.folder IN ('inbox', 'promotions', 'other', 'spam', 'missing')
+			)
+		FROM placement_tests pt
 		WHERE pt.credits_charged > 0
-		  AND pt.credits_refunded_at IS NULL
-		  AND pt.finished_at > NOW() - INTERVAL '7 days'
+		  AND pt.credits_settled_at IS NULL
+		  AND pt.finished_at IS NOT NULL
 		  AND pt.organization_id IS NOT NULL
-		  AND NOT EXISTS (
-			SELECT 1 FROM placement_results pr
-			WHERE pr.test_id = pt.id AND pr.folder IN ('inbox', 'promotions', 'other', 'spam', 'missing')
-		  )
 		ORDER BY pt.finished_at
 		LIMIT $1
 	`, limit)
@@ -802,10 +807,10 @@ func (r *placementRepository) PendingRefunds(ctx context.Context, limit int) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	var out []PlacementRefund
+	var out []PlacementSettle
 	for rows.Next() {
-		var f PlacementRefund
-		if err := rows.Scan(&f.ID, &f.OrganizationID, &f.CreatedBy, &f.Credits); err != nil {
+		var f PlacementSettle
+		if err := rows.Scan(&f.ID, &f.OrganizationID, &f.CreatedBy, &f.Credits, &f.Delivered); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -813,11 +818,11 @@ func (r *placementRepository) PendingRefunds(ctx context.Context, limit int) ([]
 	return out, rows.Err()
 }
 
-func (r *placementRepository) MarkCreditsRefunded(ctx context.Context, testID uuid.UUID) (bool, error) {
+func (r *placementRepository) SettleCredits(ctx context.Context, testID uuid.UUID, refunded int) (bool, error) {
 	tag, err := r.db.Exec(ctx, `
-		UPDATE placement_tests SET credits_refunded_at = NOW()
-		WHERE id = $1 AND credits_charged > 0 AND credits_refunded_at IS NULL
-	`, testID)
+		UPDATE placement_tests SET credits_settled_at = NOW(), credits_refunded = $2
+		WHERE id = $1 AND credits_charged > 0 AND credits_settled_at IS NULL
+	`, testID, refunded)
 	if err != nil {
 		return false, err
 	}

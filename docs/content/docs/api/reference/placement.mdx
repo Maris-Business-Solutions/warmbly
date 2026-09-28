@@ -132,7 +132,8 @@ Auth: **Scope** `SEND_CAMPAIGNS` · **Org permission** `send_campaigns`
       "status": "running",
       "pace": "spaced",
       "credits_charged": 0,
-      "credits_refunded_at": null,
+      "credits_refunded": 0,
+      "credits_settled_at": null,
       "created_at": "2026-09-25T14:00:00Z",
       "finished_at": null,
       "summary": {
@@ -204,7 +205,8 @@ Each test carries the fields shown under [start a test](#start-a-test); the exam
 | `origin` | `manual` (started by a person or a key), `monitor` (a campaign's placement monitor), `admin` (an operator) or `remote` |
 | `pace` | `spaced` or `quick` |
 | `credits_charged` | Credits the test cost past the month's free tests, `0` for a free test |
-| `credits_refunded_at` | When a paid test that delivered no copy got its credits back, otherwise `null` |
+| `credits_refunded` | Credits a paid test that delivered no copy got back. Monthly credits whose allowance has reset since the charge are not returned, so this can be less than `credits_charged` |
+| `credits_settled_at` | When a paid test's charge was settled after it finished: refunded if it delivered nothing, kept otherwise. `null` for a free test and until then |
 | `summary` | Counts over every copy. `delivered` is `inbox + promotions + other + spam + missing`: every copy that left the sender and got a verdict |
 | `summary.*_rate` | Fractions from `0` to `1` of `delivered`, `null` until something is delivered. `tabs_rate` covers `promotions` and `other` |
 | `families` | The same counts per provider family |

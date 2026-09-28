@@ -97,8 +97,10 @@ export interface PlacementTest {
     pace: PlacementPace;
     /** Credits this test cost past the month's free tests; 0 when it was free. */
     credits_charged: number;
-    /** Set once a paid test that delivered nothing got its credits back. */
-    credits_refunded_at: Date | null;
+    /** Credits a paid test that delivered nothing got back. */
+    credits_refunded: number;
+    /** When a paid test's charge was settled (refunded or kept), null until it finishes. */
+    credits_settled_at: Date | null;
     created_at: Date;
     finished_at: Date | null;
     summary: PlacementCounts;

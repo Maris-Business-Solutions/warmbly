@@ -641,8 +641,8 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                                 {cost.paid < testsNeeded
                                     ? "One free test is left this month, so the second half of this comparison"
                                     : "This month's free tests are used up, so this test"}{" "}
-                                costs <b className="font-medium text-slate-900">{cost.credits} credits</b>. The workspace has{" "}
-                                {usage?.credit_balance ?? 0}. A test that delivers no copy gets its credits back.
+                                costs <b className="font-medium text-slate-900">{cost.credits} credits</b>.
+                                {usage?.credit_balance != null && ` The workspace has ${usage.credit_balance}.`} A test that delivers no copy gets its credits back.
                             </p>
                             {cost.canPay ? (
                                 <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">

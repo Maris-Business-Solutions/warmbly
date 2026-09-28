@@ -765,8 +765,12 @@ func (s *service) chargeTests(ctx context.Context, in CreateInput, sender string
 			charged = append(charged, t.ID)
 			continue
 		}
-		for _, id := range charged {
-			if _, rerr := s.Credits.RefundCharge(cctx, in.OrgID, chargeKey(id), "placement_test_refund"); rerr != nil {
+		// The failed key too: an error can arrive after the debit committed,
+		// and a refund of a charge that never happened gives back nothing.
+		// Cleanup outlives the request, which is often why the charge failed.
+		cleanup := context.WithoutCancel(cctx)
+		for _, id := range append(charged, t.ID) {
+			if _, rerr := s.Credits.RefundCharge(cleanup, in.OrgID, chargeKey(id), "placement_test_refund"); rerr != nil {
 				errs.CaptureException(rerr)
 			}
 		}
@@ -774,7 +778,7 @@ func (s *service) chargeTests(ctx context.Context, in CreateInput, sender string
 		for i, t := range tests {
 			ids[i] = t.ID
 		}
-		if derr := s.Repo.DeleteUnsentTests(ctx, in.OrgID, ids); derr != nil {
+		if derr := s.Repo.DeleteUnsentTests(cleanup, in.OrgID, ids); derr != nil {
 			errs.CaptureException(derr)
 		}
 		return creditErr(err)

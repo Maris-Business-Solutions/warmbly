@@ -338,7 +338,7 @@ func TestLivePlacementMonitorRoundTrip(t *testing.T) {
 func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
 	f := newPlacementFixture(t)
 	handle, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 223)
+	requireSchemaVersion(t, pool, 224)
 	ctx := context.Background()
 	credits := NewCreditRepository(handle)
 	f.exec(`INSERT INTO credit_ledger (org_id, balance, purchased_balance) VALUES ($1, 10, 100)`, f.org)
@@ -358,8 +358,8 @@ func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
 	if n, err := f.repo.CountMeteredTests(ctx, f.org, since); err != nil || n != 0 {
 		t.Fatalf("CountMeteredTests = %d, %v; a paid test uses no free test", n, err)
 	}
-	if owed, _ := f.repo.PendingRefunds(ctx, 1000); containsRefund(owed, test.ID) {
-		t.Fatalf("a running test is owed a refund")
+	if open, _ := f.repo.UnsettledPaidTests(ctx, 1000); findSettle(open, test.ID) != nil {
+		t.Fatalf("a running test is up for settling")
 	}
 
 	// Cancelled before any copy left: nothing was delivered, so it is owed.
@@ -383,13 +383,13 @@ func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
 	if n, _ := f.repo.CountMeteredTests(ctx, f.org, since); n != 0 {
 		t.Fatalf("CountMeteredTests = %d; a test that delivered nothing uses no free test", n)
 	}
-	if owed, _ := f.repo.PendingRefunds(ctx, 1000); containsRefund(owed, free.ID) {
-		t.Fatalf("a free test is owed a refund")
+	if open, _ := f.repo.UnsettledPaidTests(ctx, 1000); findSettle(open, free.ID) != nil {
+		t.Fatalf("a free test is up for settling")
 	}
 
-	owed, err := f.repo.PendingRefunds(ctx, 1000)
-	if err != nil || !containsRefund(owed, test.ID) {
-		t.Fatalf("PendingRefunds = %v, %v; want the cancelled paid test", owed, err)
+	open, err := f.repo.UnsettledPaidTests(ctx, 1000)
+	if got := findSettle(open, test.ID); err != nil || got == nil || got.Delivered {
+		t.Fatalf("UnsettledPaidTests = %v, %v; want the cancelled paid test, undelivered", open, err)
 	}
 
 	for range 2 {
@@ -402,14 +402,17 @@ func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
 	if err != nil || ledger.Balance != 10 || ledger.PurchasedBalance != 100 {
 		t.Fatalf("ledger = %+v, %v; want 10 monthly and 100 purchased back", ledger, err)
 	}
-	if ok, err := f.repo.MarkCreditsRefunded(ctx, test.ID); err != nil || !ok {
-		t.Fatalf("MarkCreditsRefunded = %v, %v", ok, err)
+	if ok, err := f.repo.SettleCredits(ctx, test.ID, 25); err != nil || !ok {
+		t.Fatalf("SettleCredits = %v, %v", ok, err)
 	}
-	if ok, _ := f.repo.MarkCreditsRefunded(ctx, test.ID); ok {
-		t.Fatalf("a refund was stamped twice")
+	if ok, _ := f.repo.SettleCredits(ctx, test.ID, 25); ok {
+		t.Fatalf("a test was settled twice")
 	}
-	if owed, _ := f.repo.PendingRefunds(ctx, 1000); containsRefund(owed, test.ID) {
-		t.Fatalf("a refunded test is still owed")
+	if open, _ := f.repo.UnsettledPaidTests(ctx, 1000); findSettle(open, test.ID) != nil {
+		t.Fatalf("a settled test is still open")
+	}
+	if got, _ := f.repo.GetTest(ctx, test.ID); got == nil || got.CreditsRefunded != 25 || got.CreditsSettledAt == nil {
+		t.Fatalf("test = %+v; want 25 refunded and a settle time", got)
 	}
 	if n, _, _ := credits.RefundSpend(ctx, f.org, "placement:"+uuid.NewString(), "x:refund", "placement_test_refund"); n != 0 {
 		t.Fatalf("refunded %d for a charge that never happened", n)
@@ -417,6 +420,10 @@ func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
 	day, _, _, err := credits.SpentInWindows(ctx, f.org, since, since, since)
 	if err != nil || day != 0 {
 		t.Fatalf("SpentInWindows = %d, %v; a refunded charge counts against no spend limit", day, err)
+	}
+	// A refund nets against its own charge, never against a later window's.
+	if day, _, _, _ := credits.SpentInWindows(ctx, f.org, time.Now().Add(time.Minute), since, since); day != 0 {
+		t.Fatalf("a window after the refunded charge reads %d", day)
 	}
 
 	// Monthly credits spent before a reset would have expired with it, so a
@@ -429,19 +436,23 @@ func TestLivePlacementPaidTestRefundsToThePoolsItDrewFrom(t *testing.T) {
 	if refunded, _, err := credits.RefundSpend(ctx, f.org, key2, key2+":refund", "placement_test_refund"); err != nil || refunded != 15 {
 		t.Fatalf("RefundSpend after a reset = %d, %v; want only the 15 purchased", refunded, err)
 	}
+	// The 10 monthly credits that expired stay spent in the window.
+	if day, _, _, _ := credits.SpentInWindows(ctx, f.org, since, since, since); day != 10 {
+		t.Fatalf("SpentInWindows = %d; want the 10 that did not come back", day)
+	}
 	ledger, _ = credits.GetBalance(ctx, f.org)
 	if ledger.Balance != 0 || ledger.PurchasedBalance != 100 {
 		t.Fatalf("ledger = %+v; want the reset month untouched and purchased whole", ledger)
 	}
 }
 
-func containsRefund(owed []PlacementRefund, id uuid.UUID) bool {
-	for _, r := range owed {
-		if r.ID == id {
-			return true
+func findSettle(open []PlacementSettle, id uuid.UUID) *PlacementSettle {
+	for i := range open {
+		if open[i].ID == id {
+			return &open[i]
 		}
 	}
-	return false
+	return nil
 }
 
 func TestLivePlacementDeleteUnsentTestsTakesItsTasks(t *testing.T) {

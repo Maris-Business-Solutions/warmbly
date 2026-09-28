@@ -39311,13 +39311,17 @@
             "type": "integer",
             "description": "Credits the test cost past the month's free tests; 0 for a free test."
           },
-          "credits_refunded_at": {
+          "credits_refunded": {
+            "type": "integer",
+            "description": "Credits a paid test that delivered no copy got back; can be less than credits_charged when the monthly allowance reset since the charge."
+          },
+          "credits_settled_at": {
             "type": [
               "string",
               "null"
             ],
             "format": "date-time",
-            "description": "When a paid test that delivered no copy got its credits back."
+            "description": "When a paid test's charge was settled after it finished: refunded if it delivered nothing, kept otherwise."
           },
           "created_at": {
             "type": "string",

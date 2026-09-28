@@ -765,7 +765,7 @@ var Tables = []Table{
 		// credit charge, whose ledger stays behind.
 		Name: "placement_tests", Group: models.OrgDataGroupEvents,
 		Scope:         scopeOrg,
-		ResetOnImport: []string{"remote_instance_id", "remote_test_id", "credits_charged", "credits_refunded_at"},
+		ResetOnImport: []string{"remote_instance_id", "remote_test_id", "credits_charged", "credits_refunded", "credits_settled_at"},
 	},
 	{
 		Name: "placement_results", Group: models.OrgDataGroupEvents,
