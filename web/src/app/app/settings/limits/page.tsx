@@ -15,6 +15,7 @@ import listLimitRequests from "@/lib/api/client/app/organizations/listLimitReque
 import submitLimitRequest from "@/lib/api/client/app/organizations/submitLimitRequest";
 import cancelLimitRequest from "@/lib/api/client/app/organizations/cancelLimitRequest";
 import useBrand from "@/hooks/useBrand";
+import useFeatureAccess from "@/hooks/useFeatureAccess";
 import useOrganizationLimits from "@/lib/api/hooks/app/organizations/useOrganizationLimits";
 import type OrganizationLimits from "@/lib/api/models/app/organizations/OrganizationLimits";
 import type {
@@ -81,6 +82,8 @@ export default function LimitsSettingsPage() {
 
     const limitsQuery = useOrganizationLimits();
     const limits = limitsQuery.data;
+    // Free and the Warmup plan do not send, so only the mailbox allowance applies; the server refuses the rest.
+    const sends = !useFeatureAccess().locked;
 
     // An unmetered resource has nothing to raise, so it is not offered.
     const unlimited = useMemo(
@@ -88,8 +91,11 @@ export default function LimitsSettingsPage() {
         [limits],
     );
     const requestable = useMemo(
-        () => FIELD_OPTIONS.filter((o) => !unlimited.some((u) => u.value === o.value)),
-        [unlimited],
+        () =>
+            FIELD_OPTIONS.filter(
+                (o) => !unlimited.some((u) => u.value === o.value) && (sends || o.value === "max_email_accounts"),
+            ),
+        [unlimited, sends],
     );
 
     const [chosen, setChosen] = useState<LimitField | null>(null);
@@ -182,6 +188,16 @@ export default function LimitsSettingsPage() {
                                 .
                             </>
                         )}
+                    </p>
+                )}
+                {!sends && (
+                    <p className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
+                        This workspace warms mailboxes and does not send, so sending, contact, campaign and seat limits do
+                        not apply yet. They come with a{" "}
+                        <Link to="/app/settings/billing" className="font-medium underline hover:text-slate-900">
+                            plan that sends
+                        </Link>
+                        .
                     </p>
                 )}
                 {limitsQuery.isPending ? (

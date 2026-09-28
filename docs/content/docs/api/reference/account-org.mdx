@@ -1578,6 +1578,8 @@ Auth: Session only (not available to API keys). Requires a selected organization
 
 Submits a request to raise one of the organization's limits. The current effective value is captured server-side at submission time. Returns `201 Created`.
 
+A workspace without a plan that sends (a free workspace, or one on the Warmup plan) can only request `max_email_accounts`; any other field returns `400 bad_request`, because none of those limits applies until the workspace sends.
+
 Auth: Session only (not available to API keys).
 
 | Parameter | In | Type | Description |

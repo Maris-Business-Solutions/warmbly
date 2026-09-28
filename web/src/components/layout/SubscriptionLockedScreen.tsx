@@ -10,12 +10,15 @@ import { ArrowRightIcon, CheckIcon, CloudIcon, InboxIcon, SparklesIcon } from "l
 import { getPlan } from "@/lib/plans";
 import { useAppStore } from "@/stores";
 import { useUpgradeDialog } from "@/hooks/context/upgrade";
+import useFeatureAccess from "@/hooks/useFeatureAccess";
 
 const SELF_HOST_DOCS = "https://docs.warmbly.com/development/deployment-guide/";
 
 export default function SubscriptionLockedScreen({ feature }: { feature: string }) {
     const isOwner = useAppStore((s) => s.currentOrganization?.role === "owner");
     const upgradeDialog = useUpgradeDialog();
+    // The Warmup plan pays for warming only, so it meets the same locks.
+    const warmupOnly = useFeatureAccess().warmupOnly;
     const starter = getPlan("starter");
     const openPlans = () =>
         upgradeDialog.open({
@@ -43,13 +46,15 @@ export default function SubscriptionLockedScreen({ feature }: { feature: string 
             >
                 <div className="px-7 pt-8 pb-6 md:px-10 md:pt-10 text-center">
                     <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-sky-50 text-sky-700 text-[11px] font-medium">
-                        <SparklesIcon className="w-3 h-3" /> Free workspace
+                        <SparklesIcon className="w-3 h-3" /> {warmupOnly ? "Warmup plan" : "Free workspace"}
                     </span>
                     <h1 className="mt-4 text-[26px] md:text-[34px] font-semibold tracking-[-0.03em] leading-[1.08] text-slate-900">
                         {feature} unlocks with a plan.
                     </h1>
                     <p className="mt-3 text-[14px] text-slate-500 leading-relaxed max-w-xl mx-auto">
-                        Your workspace is free forever for warming mailboxes. Pick a plan when you are ready to send from it.
+                        {warmupOnly
+                            ? "Your Warmup plan covers warming your mailboxes. Sending needs a plan that includes it, and every one of those keeps the premium pool."
+                            : "Your workspace is free forever for warming mailboxes. Pick a plan when you are ready to send from it."}
                     </p>
                 </div>
 
@@ -57,8 +62,12 @@ export default function SubscriptionLockedScreen({ feature }: { feature: string 
                     <Path
                         icon={InboxIcon}
                         eyebrow="Included"
-                        title="Warm up to 10 mailboxes"
-                        body="Connect mailboxes and they warm in the Warmbly pool at no cost, with replies and spam rescue handled for you."
+                        title={warmupOnly ? "Every mailbox in the premium pool" : "Warm up to 10 mailboxes"}
+                        body={
+                            warmupOnly
+                                ? "Connect as many mailboxes as you like and they warm in the premium pool, with replies and spam rescue handled for you."
+                                : "Connect mailboxes and they warm in the Warmbly pool at no cost, with replies and spam rescue handled for you."
+                        }
                         cta="Go to mailboxes"
                         to="/app/emails"
                     />

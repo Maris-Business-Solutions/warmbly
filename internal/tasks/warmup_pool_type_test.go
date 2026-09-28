@@ -27,7 +27,7 @@ type poolTypeGate struct {
 	paid map[uuid.UUID]bool
 }
 
-func (g *poolTypeGate) IsPaidOrganization(_ context.Context, orgID uuid.UUID) (bool, *errx.Error) {
+func (g *poolTypeGate) HasPremiumWarmup(_ context.Context, orgID uuid.UUID) (bool, *errx.Error) {
 	return g.paid[orgID], nil
 }
 

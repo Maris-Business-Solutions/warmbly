@@ -870,7 +870,7 @@ func (s *tasksService) resolveWarmupPoolType(ctx context.Context, account *Email
 		return account.WarmupPoolType
 	}
 	if s.featureGate != nil {
-		isPaid, xerr := s.featureGate.IsPaidOrganization(ctx, *account.OrganizationID)
+		isPaid, xerr := s.featureGate.HasPremiumWarmup(ctx, *account.OrganizationID)
 		if xerr == nil && !isPaid {
 			return "free"
 		}

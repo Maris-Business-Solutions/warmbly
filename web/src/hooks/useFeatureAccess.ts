@@ -3,6 +3,7 @@
 // Plan ladder lifted from warmbly-web/src/pages/pricing.astro:
 //
 //   free       → no active subscription
+//   warmup     → $15/mo, premium pool and no mailbox cap; no sending
 //   starter    → $29/mo, 150 sends/day
 //   grow       → $89/mo, 3k sends/day
 //   business   → $329/mo, 15k sends/day + isolated sending   (featured)
@@ -38,10 +39,14 @@ export interface FeatureAccess {
     /** False on a deployment running without a billing provider: every gate
      *  below is open and billing/referral surfaces do not apply. */
     billing: boolean;
-    /** Active subscription on any paid tier. */
+    /** Active subscription on any paid tier, the Warmup plan included. */
     paid: boolean;
-    /** Hosted workspace without a subscription: only mailboxes, the Warmbly
-     *  Cloud link and settings are open; everything else waits for a plan. */
+    /** On the Warmup plan: the premium pool and no mailbox cap, nothing else.
+     *  Every surface a free workspace cannot use stays locked. */
+    warmupOnly: boolean;
+    /** Hosted workspace without a plan that sends (free, or the Warmup plan):
+     *  only mailboxes, the Warmbly Cloud link and settings are open; everything
+     *  else waits for a plan. */
     locked: boolean;
     /** Unified inbox — free trial and Starter+. */
     hasInbox: boolean;
@@ -86,6 +91,7 @@ export default function useFeatureAccess(): FeatureAccess {
             plan: "enterprise",
             billing: false,
             paid: true,
+            warmupOnly: false,
             locked: false,
             hasInbox: true,
             hasAdvanced: true,
@@ -116,6 +122,10 @@ export default function useFeatureAccess(): FeatureAccess {
     const orgImpliesPaid =
         sub.isPending && !!currentOrg?.plan && currentOrg.plan.toLowerCase() !== "free";
     const isPaid = subSaysPaid || managed || orgImpliesPaid;
+    // The Warmup plan is paid, but pays for warming only; the server refuses
+    // sending, the inbox and AI to it exactly as it does to a free workspace.
+    const warmupOnly = isPaid && plan === "warmup";
+    const productPaid = isPaid && !warmupOnly;
 
     return {
         loading: sub.isPending || authConfig.isLoading,
@@ -123,18 +133,19 @@ export default function useFeatureAccess(): FeatureAccess {
         plan,
         billing: true,
         paid: isPaid,
-        locked: !sub.isPending && !authConfig.isLoading && !isPaid,
-        // Unified inbox is included on the free trial and on every paid tier,
-        // so gate it on having an active/trialing subscription (isPaid) rather
-        // than the plan-name → catalog map, which doesn't recognise server plan
-        // names like "Pro" / "Free Trial" and would wrongly lock paid orgs.
-        hasInbox: isPaid,
-        hasAdvanced: isPaid && isAtLeast(plan, "business"),
-        hasIsolatedSending: isPaid && isAtLeast(plan, "business"),
+        warmupOnly,
+        locked: !sub.isPending && !authConfig.isLoading && !productPaid,
+        // Unified inbox is included on every plan that sends, so gate it on
+        // the subscription (productPaid) rather than the plan-name → catalog
+        // map, which doesn't recognise server plan names like "Pro" / "Free
+        // Trial" and would wrongly lock paid orgs.
+        hasInbox: productPaid,
+        hasAdvanced: productPaid && isAtLeast(plan, "business"),
+        hasIsolatedSending: productPaid && isAtLeast(plan, "business"),
         hasRealtime: true,
-        hasBulkOps: isPaid && isAtLeast(plan, "starter"),
-        hasTeam: isPaid && isAtLeast(plan, "starter"),
-        hasWebhooks: isPaid && isAtLeast(plan, "business"),
+        hasBulkOps: productPaid && isAtLeast(plan, "starter"),
+        hasTeam: productPaid && isAtLeast(plan, "starter"),
+        hasWebhooks: productPaid && isAtLeast(plan, "business"),
         isOwner,
         canManage,
     };

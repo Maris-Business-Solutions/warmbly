@@ -240,10 +240,27 @@ func (s *Subscription) ManagedExpired() bool {
 	return !time.Now().Before(*s.ManagedUntil)
 }
 
+// WarmupPlanID is the $15 Warmup plan: the premium pool and no mailbox cap,
+// and nothing else. It is seeded under this id by migration 000108.
+var WarmupPlanID = uuid.MustParse("00000000-0000-0000-0000-000000000002")
+
+// IsWarmupOnly reports whether the plan in force is the Warmup plan, which
+// pays for warming and not for sending, the inbox, the CRM or AI.
+func (s *Subscription) IsWarmupOnly() bool {
+	return s != nil && s.HasPaidSubscription() && s.EffectivePlanID() == WarmupPlanID
+}
+
+// HasProductPlan reports whether the workspace pays for the product itself:
+// sending, the unified inbox, contacts, AI and integrations. Every paid plan
+// but the Warmup plan does. The premium pool and the mailbox cap follow
+// HasPaidSubscription instead, because the Warmup plan buys exactly those.
+func (s *Subscription) HasProductPlan() bool {
+	return s != nil && s.HasPaidSubscription() && !s.IsWarmupOnly()
+}
+
 // CanSendEmails returns true if user can send campaign emails
 func (s *Subscription) CanSendEmails() bool {
-	// Active paid subscription
-	if s.HasPaidSubscription() {
+	if s.HasProductPlan() {
 		return true
 	}
 	// In free trial
@@ -263,7 +280,7 @@ func (s *Subscription) CanUseWarmup() bool {
 // Same trial allowance as warmup so a free-trial user can interact with
 // their connected mailbox while evaluating Warmbly.
 func (s *Subscription) CanUseUnibox() bool {
-	return s.HasPaidSubscription() || s.IsInFreeTrial()
+	return s.HasProductPlan() || s.IsInFreeTrial()
 }
 
 // FreeWorkspaceMailboxLimit caps the mailboxes an unsubscribed workspace may

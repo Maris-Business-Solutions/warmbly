@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/app/dailythrottle"
+	"github.com/warmbly/warmbly/internal/app/feature"
 	"github.com/warmbly/warmbly/internal/app/tz"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
@@ -1450,14 +1451,60 @@ func (s *organizationService) GetEffectiveLimits(ctx context.Context, orgID uuid
 		planLimits = *plan
 	}
 
+	daily, err := s.dailySendLimit(ctx, orgID, ovDaily, planLimits.DailyCampaignLimit)
+	if err != nil {
+		return nil, err
+	}
+
 	return &models.OrganizationLimits{
 		MaxCampaigns:       resolve(ovMaxCampaigns, planLimits.MaxCampaigns, config.HardCapCampaignsTotal),
 		MaxActiveCampaigns: resolve(ovMaxActive, planLimits.MaxActiveCampaigns, config.HardCapCampaignsActive),
 		MaxTeamMembers:     resolve(ovMaxMembers, planLimits.MaxTeamMembers, config.HardCapTeamMembers),
 		MaxEmailAccounts:   mailboxes.Allowance,
 		MaxContacts:        resolve(ovMaxContacts, planLimits.MaxContacts, config.HardCapContacts),
-		DailyCampaignLimit: resolve(ovDaily, planLimits.DailyCampaignLimit, config.HardCapDailyCampaignSends),
+		DailyCampaignLimit: daily,
 	}, nil
+}
+
+// dailySendLimit mirrors the sender's gate (feature.GetDailyEmailLimit): a
+// workspace without a plan that sends, the Warmup plan included, gets the
+// trial allowance while a trial runs and nothing after it, whatever an
+// override or the product cap says.
+func (s *organizationService) dailySendLimit(ctx context.Context, orgID uuid.UUID, override int, plan *int) (*int, *errx.Error) {
+	sub, sends, xerr := s.sendingPlan(ctx, orgID)
+	if xerr != nil {
+		return nil, xerr
+	}
+	if !sends {
+		v := 0
+		if sub != nil && sub.IsInFreeTrial() {
+			v = feature.FreeTierDailyEmailLimit
+		}
+		return &v, nil
+	}
+	v := config.HardCapDailyCampaignSends
+	switch {
+	case override > 0:
+		v = override
+	case plan != nil:
+		v = *plan
+	}
+	return &v, nil
+}
+
+// sendingPlan reports whether the workspace is on a plan that sends. With no
+// billing provider every workspace is; otherwise the Warmup plan and a free
+// workspace are not.
+func (s *organizationService) sendingPlan(ctx context.Context, orgID uuid.UUID) (*models.Subscription, bool, *errx.Error) {
+	if config.BillingProvider() == "none" {
+		return nil, true, nil
+	}
+	sub, err := s.subRepo.GetByOrganizationID(ctx, orgID)
+	if err != nil {
+		errs.CaptureException(err)
+		return nil, false, errx.New(errx.Internal, "failed to get subscription")
+	}
+	return sub, sub.HasProductPlan(), nil
 }
 
 // WebhookDispatchLimit derives the org's per-minute webhook/integration fan-out
@@ -1551,6 +1598,15 @@ func (s *organizationService) SubmitLimitIncreaseRequest(ctx context.Context, or
 	}
 	if req.Field == "max_email_accounts" && effective.MaxEmailAccounts == nil {
 		return nil, errx.New(errx.BadRequest, "this workspace already holds unlimited mailboxes")
+	}
+	// Only the mailbox allowance applies to a workspace that does not send;
+	// an approved override on anything else would change nothing.
+	if req.Field != "max_email_accounts" {
+		if _, sends, xerr := s.sendingPlan(ctx, orgID); xerr != nil {
+			return nil, xerr
+		} else if !sends {
+			return nil, errx.New(errx.BadRequest, "this workspace's plan does not include sending; choose a plan that does to raise this limit")
+		}
 	}
 	current := limitFieldEffective(req.Field, effective)
 	if req.Requested <= current {

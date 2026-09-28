@@ -547,7 +547,7 @@ func (s *emailService) resolveWarmupPoolType(ctx context.Context, account *model
 		return account.WarmupPoolType
 	}
 	if s.featureGate != nil {
-		isPaid, err := s.featureGate.IsPaidOrganization(ctx, *account.OrganizationID)
+		isPaid, err := s.featureGate.HasPremiumWarmup(ctx, *account.OrganizationID)
 		if err == nil && !isPaid {
 			return "free"
 		}
