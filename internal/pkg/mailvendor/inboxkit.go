@@ -77,6 +77,8 @@ type inboxKitList struct {
 		Platform   string `json:"platform"`
 		Status     string `json:"status"`
 		IsAdmin    bool   `json:"is_admin"`
+		// ProfilePicture is read when the listing carries it; InboxKit documents it on writes.
+		ProfilePicture string `json:"profile_picture"`
 	} `json:"mailboxes"`
 	Pages       int `json:"pages"`
 	CurrentPage int `json:"current_page"`
@@ -128,6 +130,7 @@ func (c *inboxKit) List(ctx context.Context) ([]Mailbox, error) {
 					LastName:  m.LastName,
 					Domain:    m.DomainName,
 					Provider:  normalizeProvider(m.Platform),
+					Picture:   m.ProfilePicture,
 					Status:    m.Status,
 					Workspace: ws.Name,
 					Admin:     m.IsAdmin,

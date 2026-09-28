@@ -27210,6 +27210,10 @@
               "oauth",
               "delegated"
             ]
+          },
+          "avatar_url": {
+            "type": "string",
+            "description": "The mailbox's own profile photo, read from a Microsoft connect, an administrator grant, or the inbox vendor it was imported from. Empty when none can be read, which includes every Google mailbox signed in on its own and every SMTP mailbox."
           }
         },
         "required": [

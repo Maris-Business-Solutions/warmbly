@@ -32,11 +32,13 @@ import type { AppError } from "@/lib/api/client/normalizeError";
 import BulkWarmupDialog from "@/components/app/emails/BulkWarmupDialog";
 import BulkTagPopover from "@/components/app/emails/BulkTagPopover";
 import MailboxImportsMenu from "@/components/app/emails/import/MailboxImportsMenu";
+import MailboxSourceChip from "@/components/app/emails/MailboxSourceChip";
+import ProviderLogo from "@/components/app/emails/ProviderLogo";
 import SigninMigrationBanner, { SigninRetiringChip } from "@/components/app/emails/migration/SigninMigrationBanner";
 import SigninMigrationDialog from "@/components/app/emails/migration/SigninMigrationDialog";
 import MailboxGrantDialog from "@/components/app/emails/import/grants/MailboxGrantDialog";
 import { useSigninMigration } from "@/lib/api/hooks/app/emails/useMailboxGrants";
-import { mailboxSource } from "@/lib/mailboxSource";
+import { mailboxBrand, mailboxSource } from "@/lib/mailboxSource";
 import type Tag from "@/lib/api/models/app/Tag";
 import type Inbox from "@/lib/api/models/app/emails/Inbox";
 import mailboxDisplayStatus from "@/lib/mailboxStatus";
@@ -62,13 +64,10 @@ import {
     Settings2Icon,
     Trash2Icon,
     UnplugIcon,
-    UserIcon,
     XIcon,
     type LucideIcon,
 } from "lucide-react";
-import ProviderLogo from "@/components/app/emails/ProviderLogo";
 import { Dash, InfoHeader } from "@/components/app/contacts/cells";
-import clippedTitle from "@/lib/helper/clippedTitle";
 import { SearchInput } from "@/components/ui/field";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
 import {
@@ -691,7 +690,9 @@ function MailboxRow({
                 .filter((t): t is Tag => !!t),
         [box.tags, tags],
     );
+    const shownTags = rowTags.slice(0, 3);
     const source = mailboxSource(box);
+    const brand = mailboxBrand(box);
 
     const off = !box.warmup;
     const paused = !!box.warmup && !!box.warmup_paused_at;
@@ -775,59 +776,55 @@ function MailboxRow({
                 {/* The flag is a sibling of the open-row button, not a child:
                     it has its own trigger and nesting buttons is invalid. */}
                 <div className="flex w-full min-w-0 items-center gap-2">
-                    <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(box.id); }} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                        <ProviderLogo id={source.logo} size="md" title={source.title} className="shrink-0" />
-                        <div className="flex-1 min-w-0">
-                            <div className="text-[12.5px] font-medium text-slate-900 leading-tight flex items-center gap-1.5 min-w-0">
-                                <span className="truncate" {...clippedTitle}>{box.email}</span>
-                                {inCloud && (
-                                    <span
-                                        title={cloud?.managed ? "Signed in through Warmbly Cloud, which warms it" : cloudPaused ? "Paused in Warmbly Cloud" : "Warmed by Warmbly Cloud"}
-                                        className={`inline-flex items-center gap-1 h-4 px-1.5 rounded text-[10px] font-medium shrink-0 ${cloudPaused ? "bg-amber-50 text-amber-600" : "bg-sky-50 text-sky-700"}`}
-                                    >
-                                        <CloudIcon className="w-2.5 h-2.5" /> Cloud
-                                    </span>
-                                )}
-                                {rowTags.length > 0 && (
-                                    <span className="hidden md:inline-flex items-center gap-0.5 min-w-0 max-w-[40%]">
-                                        <span
-                                            className="inline-flex items-center gap-1 h-4 px-1.5 rounded text-[10px] font-medium min-w-0"
-                                            style={{ backgroundColor: `${rowTags[0].color}1a`, color: rowTags[0].color }}
-                                        >
-                                            <span className="size-1.5 rounded-full shrink-0" style={{ backgroundColor: rowTags[0].color }} />
-                                            <span className="truncate">{rowTags[0].title}</span>
-                                        </span>
-                                        {rowTags.length > 1 && (
-                                            <span
-                                                className="inline-flex items-center h-4 px-1 shrink-0 rounded text-[10px] font-medium bg-slate-100 text-slate-500"
-                                                title={rowTags.slice(1).map((t) => t.title).join(", ")}
-                                            >
-                                                +{rowTags.length - 1}
-                                            </span>
-                                        )}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="text-[10.5px] text-slate-400 leading-tight flex items-center gap-1 min-w-0 mt-0.5" title={source.title}>
-                                {box.name && (
-                                    <>
-                                        <UserIcon className="w-2.5 h-2.5 shrink-0" />
-                                        <span className="truncate max-w-[50%]">{box.name}</span>
-                                        {source.label && <span className="text-slate-300">·</span>}
-                                    </>
-                                )}
-                                {source.label && <span className="truncate">{source.label}</span>}
-                                {inCampaign && (
-                                    <span className="hidden sm:inline-flex items-center gap-1 shrink-0 text-sky-600">
-                                        <span className="text-slate-300">·</span>
-                                        <ActivityIcon className="w-2.5 h-2.5" /> In campaign
-                                    </span>
-                                )}
-                            </div>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(box.id); }} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                    <ProviderLogo id={brand} size="md" title={source.title || source.label} className="rounded-full shrink-0" />
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 leading-tight">
+                            <span className="text-[12.5px] font-medium text-slate-900 truncate">{box.email}</span>
+                            {inCloud && (
+                                <span
+                                    title={cloud?.managed ? "Signed in through Warmbly Cloud, which warms it" : cloudPaused ? "Paused in Warmbly Cloud" : "Warmed by Warmbly Cloud"}
+                                    className={`inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-[9.5px] font-medium uppercase tracking-[0.08em] shrink-0 ${cloudPaused ? "bg-amber-50 text-amber-600" : "bg-sky-600 text-white"}`}
+                                >
+                                    <CloudIcon className="w-2.5 h-2.5" /> Cloud
+                                </span>
+                            )}
+                            {shownTags.map((t) => (
+                                <span
+                                    key={t.id}
+                                    className="hidden md:inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-[9.5px] font-medium shrink-0"
+                                    style={{ backgroundColor: `${t.color}1a`, color: t.color }}
+                                >
+                                    <span className="size-1.5 rounded-full" style={{ backgroundColor: t.color }} />
+                                    {t.title}
+                                </span>
+                            ))}
+                            {rowTags.length > shownTags.length && (
+                                <span className="hidden md:inline-flex items-center h-4 px-1 rounded-full bg-slate-100 text-slate-500 text-[9.5px] font-medium shrink-0">
+                                    +{rowTags.length - shownTags.length}
+                                </span>
+                            )}
                         </div>
-                    </button>
-                    {retiring && <SigninRetiringChip onClick={onRetiring} />}
-                    <AdvisorRowFlag findings={findings} subject={box.email} />
+                        {/* Who it sends as, and how it connects: the vendor or grant chip, else the host. */}
+                        <div className="mt-0.5 flex items-center gap-1.5 min-w-0 text-[11px] text-slate-400 leading-tight">
+                            {box.name && <span className="truncate text-slate-500">{box.name}</span>}
+                            {box.name && <span className="text-slate-300">·</span>}
+                            {source.kind !== "host" ? (
+                                <MailboxSourceChip box={box} labelClassName="inline" />
+                            ) : (
+                                <span className="truncate" title={source.title}>{source.label}</span>
+                            )}
+                            {inCampaign && (
+                                <span className="hidden sm:inline-flex items-center gap-1 shrink-0 text-sky-600">
+                                    <span className="text-slate-300">·</span>
+                                    <ActivityIcon className="w-2.5 h-2.5" /> In campaign
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </button>
+                {retiring && <SigninRetiringChip onClick={onRetiring} />}
+                <AdvisorRowFlag findings={findings} subject={box.email} />
                 </div>
             </td>
             <td className="px-3 overflow-hidden">
@@ -894,13 +891,8 @@ function MailboxRow({
                     className={`inline-flex items-center gap-1.5 text-[11px] font-medium max-w-full ${tone.text}`}
                     title={status?.health?.issues?.join("\n") || "View mailbox health"}
                 >
-                    <span className="relative flex w-1.5 h-1.5 shrink-0">
-                        {tone.pulse && (
-                            <span className={`absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping ${tone.dot}`} />
-                        )}
-                        <span className={`relative inline-flex w-1.5 h-1.5 rounded-full ${tone.dot}`} />
-                    </span>
-                    <span className="uppercase tracking-[0.08em] hidden md:inline truncate">{tone.label}</span>
+                    <span className={`inline-flex w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`} />
+                    <span className={`uppercase tracking-[0.08em] hidden md:inline truncate ${tone.pulse ? "text-shimmer" : ""}`}>{tone.label}</span>
                 </button>
             </td>
             <td className="px-3" onClick={(e) => e.stopPropagation()}>
@@ -1059,7 +1051,7 @@ const MAILBOX_COLUMNS: MailboxColumn[] = [
                 <span aria-hidden className="hidden sm:inline">Status</span>
             </>
         ),
-        className: "w-14 sm:w-32",
+        className: "w-16 sm:w-32",
         // Problems first, then idle, warming, sending, sending and warming.
         sortValue: (b, s) =>
             b.status !== "active" || s?.errors?.length
@@ -1179,7 +1171,7 @@ function MailboxStatusPill({ box, status, warming }: { box: Inbox; status?: Acco
                 {!sending && !resting && !warming && <CircleSlashIcon className="w-3 h-3" />}
             </span>
             <span className="sr-only">{label}</span>
-            <span aria-hidden className="hidden sm:inline truncate">{label}</span>
+            <span aria-hidden className={`hidden sm:inline truncate ${sending || warming ? "text-shimmer" : ""}`}>{label}</span>
         </span>
     );
 }

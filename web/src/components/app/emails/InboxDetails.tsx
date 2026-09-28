@@ -437,13 +437,26 @@ function Detail({ mailbox, onClose, initialTab = "overview", canWarmup = true }:
     };
 
     const initials = mailbox.email.slice(0, 2).toUpperCase();
+    // A photo that stops loading falls back to the letters.
+    const [avatarFailed, setAvatarFailed] = React.useState(false);
+    React.useEffect(() => setAvatarFailed(false), [mailbox.avatar_url]);
 
     return (
         <>
             {/* Header */}
             <div className="shrink-0 px-5 h-14 flex items-center gap-3 border-b border-slate-200">
                 <div className="relative w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center text-[11px] font-semibold shrink-0">
-                    {initials}
+                    {mailbox.avatar_url && !avatarFailed ? (
+                        <img
+                            src={mailbox.avatar_url}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                            onError={() => setAvatarFailed(true)}
+                            className="w-8 h-8 rounded-lg object-cover"
+                        />
+                    ) : (
+                        initials
+                    )}
                     <ProviderLogo
                         id={mailbox.mail_host || mailbox.provider}
                         size="xs"

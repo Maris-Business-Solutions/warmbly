@@ -70,6 +70,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/instancesettings"
 	"github.com/warmbly/warmbly/internal/app/integration"
 	"github.com/warmbly/warmbly/internal/app/leadsync"
+	"github.com/warmbly/warmbly/internal/app/mailboxavatar"
 	"github.com/warmbly/warmbly/internal/app/mailboximport"
 	"github.com/warmbly/warmbly/internal/app/mcp"
 	"github.com/warmbly/warmbly/internal/app/nativeactions"
@@ -1747,6 +1748,12 @@ func main() {
 			},
 		})
 		emailService.WireImportSignin(mailboxImportService)
+		// Mailbox profile photos: read through grants and vendors here, and at a Microsoft connect.
+		if s3ForHandler != nil {
+			mailboxAvatars := mailboxavatar.New(repository.NewMailboxAvatarRepository(primaryDB), s3ForHandler, delegationService, vendorConnService)
+			emailService.WireAvatars(mailboxAvatars)
+			go mailboxAvatars.Start(ctx)
+		}
 		vendorConnService.SetImporter(mailboxImportService)
 		sendingDomainService.WireVendors(vendorConnService)
 		go vendorConnService.StartReconnect(ctx)

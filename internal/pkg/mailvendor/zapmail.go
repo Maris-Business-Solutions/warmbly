@@ -115,6 +115,8 @@ type zapmailMailbox struct {
 	AppPassword *string `json:"appPassword"`
 	Status      string  `json:"status"`
 	Domain      string  `json:"domain"`
+	// ProfilePicture is null until one is set on the mailbox.
+	ProfilePicture *string `json:"profilePicture"`
 }
 
 func (m zapmailMailbox) credentials() Credentials {
@@ -180,6 +182,7 @@ func (c *zapmail) List(ctx context.Context) ([]Mailbox, error) {
 							LastName:  m.LastName,
 							Domain:    firstNonEmpty(m.Domain, d.Domain),
 							Provider:  normalizeProvider(provider),
+							Picture:   deref(m.ProfilePicture),
 							Status:    m.Status,
 							Workspace: ws.Name,
 						})
@@ -443,4 +446,11 @@ func (c *zapmail) UpsertDNSRecord(ctx context.Context, d Domain, r DNSRecord) er
 		}
 	}
 	return nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

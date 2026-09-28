@@ -36,8 +36,8 @@ var publicBlobExtensions = map[string]bool{
 	".webp": true,
 }
 
-// avatarKinds mirrors the two avatar owners the product writes.
-var avatarKinds = map[string]bool{"users": true, "organizations": true}
+// avatarKinds mirrors the avatar owners the product writes.
+var avatarKinds = map[string]bool{"users": true, "organizations": true, "mailboxes": true}
 
 // blobKeyScope carries what restoreBlobs needs to judge a key: the workspace
 // being written to, and the campaigns that workspace owns after the rows have
@@ -124,7 +124,7 @@ func (s blobKeyScope) allows(key string) bool {
 		return err == nil
 
 	case "avatars/":
-		// avatars/{users,organizations}/<name>.<ext>. Also public.
+		// avatars/{users,organizations,mailboxes}/<name>.<ext>. Also public.
 		return len(parts) == 3 && avatarKinds[parts[1]] && publicImageName(parts[2])
 
 	case "attachments/":
