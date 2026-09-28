@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/config"
 )
 
 type Duration string
@@ -240,10 +241,25 @@ func (s *Subscription) ManagedExpired() bool {
 	return !time.Now().Before(*s.ManagedUntil)
 }
 
+// WarmupPlanID is the Warmup plan: the premium pool and no mailbox cap, nothing else.
+var WarmupPlanID = uuid.MustParse(config.PoolLinkPlanID)
+
+// IsWarmupOnly reports the Warmup plan in force; a Stripe subscription to any other plan outranks a Warmup grant.
+func (s *Subscription) IsWarmupOnly() bool {
+	if s == nil || !s.HasPaidSubscription() || s.EffectivePlanID() != WarmupPlanID {
+		return false
+	}
+	return !(s.StripeSubscriptionID != nil && s.Status.IsActive() && s.PlanID != WarmupPlanID)
+}
+
+// HasProductPlan reports a paid plan that includes sending, the inbox, AI and integrations: every one but the Warmup plan.
+func (s *Subscription) HasProductPlan() bool {
+	return s != nil && s.HasPaidSubscription() && !s.IsWarmupOnly()
+}
+
 // CanSendEmails returns true if user can send campaign emails
 func (s *Subscription) CanSendEmails() bool {
-	// Active paid subscription
-	if s.HasPaidSubscription() {
+	if s.HasProductPlan() {
 		return true
 	}
 	// In free trial
@@ -263,7 +279,7 @@ func (s *Subscription) CanUseWarmup() bool {
 // Same trial allowance as warmup so a free-trial user can interact with
 // their connected mailbox while evaluating Warmbly.
 func (s *Subscription) CanUseUnibox() bool {
-	return s.HasPaidSubscription() || s.IsInFreeTrial()
+	return s.HasProductPlan() || s.IsInFreeTrial()
 }
 
 // FreeWorkspaceMailboxLimit caps the mailboxes an unsubscribed workspace may

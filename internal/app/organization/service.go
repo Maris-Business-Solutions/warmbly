@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/app/dailythrottle"
+	"github.com/warmbly/warmbly/internal/app/feature"
 	"github.com/warmbly/warmbly/internal/app/tz"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
@@ -176,6 +177,8 @@ type organizationService struct {
 	// a 400 naming the problem rather than a foreign-key violation.
 	planRepo repository.PlanRepository
 	throttle dailythrottle.Service
+	// gate is the sender's own entitlement check, so reported limits match what is enforced.
+	gate feature.FeatureGateService
 	// authPolicy is wired after construction, because the policy is loaded
 	// alongside the mail transport and not available at this call site.
 	authPolicy *config.AuthPolicy
@@ -256,12 +259,19 @@ func NewService(
 	planRepo repository.PlanRepository,
 	throttle dailythrottle.Service,
 ) OrganizationService {
+	gate := feature.NewService(subRepo, planRepo)
+	if g, ok := gate.(interface {
+		WireLimitOverrides(feature.LimitOverrideReader)
+	}); ok {
+		g.WireLimitOverrides(orgRepo)
+	}
 	return &organizationService{
 		orgRepo:  orgRepo,
 		subRepo:  subRepo,
 		planRepo: planRepo,
 		userRepo: userRepo,
 		throttle: throttle,
+		gate:     gate,
 	}
 }
 
@@ -1406,10 +1416,10 @@ func (s *organizationService) SetLimitOverrides(ctx context.Context, orgID uuid.
 //  2. plan != nil   → use plan column
 //  3. otherwise     → fall back to the product-level hard cap
 //
-// Every field but mailboxes is never nil: an "unlimited" plan is bounded by
-// the product hard caps in config/constants.go. Mailboxes follow
-// MailboxAllowance instead, where nil really means unlimited. Admins can
-// raise individual caps per-org by writing an override.
+// Every field but mailboxes and daily sends is never nil: an "unlimited" plan
+// is bounded by the product hard caps in config/constants.go. Mailboxes follow
+// MailboxAllowance and daily sends follow the sender's gate, where nil really
+// means unlimited. Admins can raise individual caps per-org by writing an override.
 func (s *organizationService) GetEffectiveLimits(ctx context.Context, orgID uuid.UUID) (*models.OrganizationLimits, *errx.Error) {
 	plan, err := s.GetOrganizationLimits(ctx, orgID)
 	if err != nil {
@@ -1436,18 +1446,22 @@ func (s *organizationService) GetEffectiveLimits(ctx context.Context, orgID uuid
 		return &v
 	}
 
-	var ovMaxCampaigns, ovMaxActive, ovMaxMembers, ovMaxContacts, ovDaily int
+	var ovMaxCampaigns, ovMaxActive, ovMaxMembers, ovMaxContacts int
 	if override != nil {
 		ovMaxCampaigns = override.MaxCampaigns
 		ovMaxActive = override.MaxActiveCampaigns
 		ovMaxMembers = override.MaxTeamMembers
 		ovMaxContacts = override.MaxContacts
-		ovDaily = override.DailyCampaignLimit
 	}
 
 	var planLimits models.OrganizationLimits
 	if plan != nil {
 		planLimits = *plan
+	}
+
+	daily, err := s.dailySendLimit(ctx, orgID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &models.OrganizationLimits{
@@ -1456,8 +1470,24 @@ func (s *organizationService) GetEffectiveLimits(ctx context.Context, orgID uuid
 		MaxTeamMembers:     resolve(ovMaxMembers, planLimits.MaxTeamMembers, config.HardCapTeamMembers),
 		MaxEmailAccounts:   mailboxes.Allowance,
 		MaxContacts:        resolve(ovMaxContacts, planLimits.MaxContacts, config.HardCapContacts),
-		DailyCampaignLimit: resolve(ovDaily, planLimits.DailyCampaignLimit, config.HardCapDailyCampaignSends),
+		DailyCampaignLimit: daily,
 	}, nil
+}
+
+// dailySendLimit is the cap the sender enforces (feature.GetDailyEmailLimit), nil when it is unlimited.
+func (s *organizationService) dailySendLimit(ctx context.Context, orgID uuid.UUID) (*int, *errx.Error) {
+	if s.gate == nil {
+		v := config.HardCapDailyCampaignSends
+		return &v, nil
+	}
+	n, xerr := s.gate.GetDailyEmailLimit(ctx, orgID)
+	if xerr != nil {
+		return nil, xerr
+	}
+	if n < 0 {
+		return nil, nil
+	}
+	return &n, nil
 }
 
 // WebhookDispatchLimit derives the org's per-minute webhook/integration fan-out
@@ -1551,6 +1581,18 @@ func (s *organizationService) SubmitLimitIncreaseRequest(ctx context.Context, or
 	}
 	if req.Field == "max_email_accounts" && effective.MaxEmailAccounts == nil {
 		return nil, errx.New(errx.BadRequest, "this workspace already holds unlimited mailboxes")
+	}
+	// An override on an uncapped limit would impose a cap, not raise one.
+	if req.Field == "daily_campaign_limit" && effective.DailyCampaignLimit == nil {
+		return nil, errx.New(errx.BadRequest, "this workspace's daily sends are already unlimited")
+	}
+	// Only the mailbox allowance applies to a workspace that does not send.
+	if req.Field != "max_email_accounts" && s.gate != nil {
+		if sends, xerr := s.gate.IsPaidOrganization(ctx, orgID); xerr != nil {
+			return nil, xerr
+		} else if !sends {
+			return nil, errx.New(errx.BadRequest, "this workspace's plan does not include sending; choose a plan that does to raise this limit")
+		}
 	}
 	current := limitFieldEffective(req.Field, effective)
 	if req.Requested <= current {

@@ -1,0 +1,115 @@
+package feature
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/repository"
+)
+
+type stubPlans struct{ repository.PlanRepository }
+
+func (stubPlans) GetByID(context.Context, uuid.UUID) (*models.Plan, error) { return nil, nil }
+
+func paidSub(planID uuid.UUID) *models.Subscription {
+	id := "sub_test"
+	return &models.Subscription{PlanID: planID, StripeSubscriptionID: &id, Status: models.SubscriptionStatusActive}
+}
+
+// The Warmup plan buys the premium pool and an uncapped mailbox count, and
+// every product gate answers it the way it answers a free workspace.
+func TestWarmupPlanUnlocksWarmingAndNothingElse(t *testing.T) {
+	ctx := context.Background()
+	org := uuid.New()
+	g := &featureGateService{subRepo: stubSubs{sub: paidSub(models.WarmupPlanID)}, planRepo: stubPlans{}}
+	must := noError(t)
+
+	if ok, _ := g.HasPremiumWarmup(ctx, org); !ok {
+		t.Error("the Warmup plan must warm in the premium pool")
+	}
+	if ok, _ := g.CanAddInbox(ctx, org, models.FreeWorkspaceMailboxLimit+50); !ok {
+		t.Error("the Warmup plan must not cap mailboxes")
+	}
+
+	for name, ok := range map[string]bool{
+		"IsPaidOrganization":     must(g.IsPaidOrganization(ctx, org)),
+		"CanSendCampaignEmail":   must(g.CanSendCampaignEmail(ctx, org)),
+		"CanUseUnibox":           must(g.CanUseUnibox(ctx, org)),
+		"CanUseWritingAssistant": must(g.CanUseWritingAssistant(ctx, org)),
+		"CanUseInboxAgent":       must(g.CanUseInboxAgent(ctx, org)),
+	} {
+		if ok {
+			t.Errorf("%s = true on the Warmup plan, want false", name)
+		}
+	}
+
+	if n, _ := g.GetDailyEmailLimit(ctx, org); n != 0 {
+		t.Errorf("daily send limit = %d on the Warmup plan, want 0", n)
+	}
+	if n, _ := g.GetStorageLimitBytes(ctx, org); n != FreeTierStorageBytes {
+		t.Errorf("storage = %d on the Warmup plan, want the free allowance %d", n, FreeTierStorageBytes)
+	}
+	if st, _ := g.GetSubscriptionStatus(ctx, org); st.IsPaidSubscriber || st.DailyEmailLimit != 0 {
+		t.Errorf("status reports paid=%v daily=%d on the Warmup plan, want false and 0", st.IsPaidSubscriber, st.DailyEmailLimit)
+	}
+}
+
+// A plan that sends keeps every gate, so the split does not cost anyone.
+func TestSendingPlanKeepsProductAndPremiumPool(t *testing.T) {
+	ctx := context.Background()
+	org := uuid.New()
+	g := &featureGateService{subRepo: stubSubs{sub: paidSub(uuid.New())}}
+	must := noError(t)
+
+	for name, ok := range map[string]bool{
+		"IsPaidOrganization":   must(g.IsPaidOrganization(ctx, org)),
+		"HasPremiumWarmup":     must(g.HasPremiumWarmup(ctx, org)),
+		"CanSendCampaignEmail": must(g.CanSendCampaignEmail(ctx, org)),
+		"CanUseUnibox":         must(g.CanUseUnibox(ctx, org)),
+	} {
+		if !ok {
+			t.Errorf("%s = false on a sending plan, want true", name)
+		}
+	}
+}
+
+// A grant of the Warmup plan is warmup-only too: entitlements follow the plan in force.
+func TestGrantedWarmupPlanIsWarmupOnly(t *testing.T) {
+	granted := time.Now().Add(-time.Hour)
+	sub := &models.Subscription{PlanID: uuid.New(), ManagedAt: &granted, ManagedPlanID: &models.WarmupPlanID}
+	if !sub.IsWarmupOnly() || sub.HasProductPlan() || !sub.HasPaidSubscription() {
+		t.Errorf("granted Warmup plan: warmupOnly=%v product=%v paid=%v, want true false true",
+			sub.IsWarmupOnly(), sub.HasProductPlan(), sub.HasPaidSubscription())
+	}
+}
+
+// A Warmup grant must not hide a Starter subscription the workspace pays Stripe for.
+func TestStripeSendingPlanOutranksAWarmupGrant(t *testing.T) {
+	granted := time.Now().Add(-time.Hour)
+	sub := paidSub(uuid.New())
+	sub.ManagedAt, sub.ManagedPlanID = &granted, &models.WarmupPlanID
+	if sub.IsWarmupOnly() || !sub.HasProductPlan() {
+		t.Errorf("Stripe sending plan under a Warmup grant: warmupOnly=%v product=%v, want false true", sub.IsWarmupOnly(), sub.HasProductPlan())
+	}
+}
+
+func TestNoSubscriptionHasNoPremiumPool(t *testing.T) {
+	g := &featureGateService{subRepo: stubSubs{sub: nil}}
+	if ok, xerr := g.HasPremiumWarmup(context.Background(), uuid.New()); xerr != nil || ok {
+		t.Errorf("HasPremiumWarmup = %v (err %v) with no subscription, want false", ok, xerr)
+	}
+}
+
+func noError(t *testing.T) func(bool, *errx.Error) bool {
+	return func(ok bool, xerr *errx.Error) bool {
+		t.Helper()
+		if xerr != nil {
+			t.Fatalf("unexpected error: %v", xerr)
+		}
+		return ok
+	}
+}
