@@ -12,7 +12,7 @@ import (
 
 func (c *Client) handleError(err error) *errx.MailError {
 	if errors.Is(err, errSyncViewMoved) {
-		// The folder walk re-baselines it next pass; the session is fine.
+		// Handled like a folder gone mid-walk: the next pass re-baselines it.
 		return errx.ErrMailResourceNotFound
 	}
 	var imapErr *imap.Error

@@ -94,3 +94,49 @@ func TestWarmupFilingLandsWhileTheSyncWalksFolders(t *testing.T) {
 		t.Fatalf("Warmbly holds %d messages (err %v), want %d", count, err, n)
 	}
 }
+
+// A folder recreated under the sync must fail every later step, not only the
+// first: forgetting the view would send the rest of the batch to whatever
+// folder a warmup action selected.
+func TestSyncStepsRefuseARecreatedFolderUntilReselected(t *testing.T) {
+	c := testServer(t, imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapMove: {}}, "Archive")
+	if err := c.Connect(); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	appendMessage(t, c, "INBOX", "<w1@test>")
+	appendMessage(t, c, "INBOX", "<w2@test>")
+	appendMessage(t, c, "Archive", "<a1@test>")
+
+	if _, err := c.SelectForSync("Archive"); err != nil {
+		t.Fatalf("select Archive: %v", err)
+	}
+	c.lifecycle.RLock()
+	for _, step := range []func() error{
+		func() error { return c.client.Unselect().Wait() },
+		func() error { return c.client.Delete("Archive").Wait() },
+		func() error { return c.client.Create("Archive", nil).Wait() },
+	} {
+		if err := step(); err != nil {
+			c.lifecycle.RUnlock()
+			t.Fatalf("recreate Archive: %v", err)
+		}
+	}
+	c.lifecycle.RUnlock()
+	appendMessage(t, c, "Archive", "<new@test>")
+
+	for i := range 2 {
+		if _, err := c.MoveToFolder(context.Background(), "INBOX", "Warmbly", uint32(i+1)); err != nil {
+			t.Fatalf("file warmup: %v", err)
+		}
+		fetched, err := c.FetchEnvelopes(context.Background(), []imap.UID{1, 2})
+		if err == nil {
+			t.Fatalf("step %d read %d messages from a folder whose UIDs it no longer holds", i+1, len(fetched))
+		}
+	}
+	if _, err := c.SelectForSync("Archive"); err != nil {
+		t.Fatalf("reselect Archive: %v", err)
+	}
+	if fetched, err := c.FetchEnvelopes(context.Background(), []imap.UID{1}); err != nil || len(fetched) != 1 || fetched[0].Email.MessageID != "new@test" {
+		t.Fatalf("after an explicit select the sync reads the new folder: %v %v", fetched, err)
+	}
+}

@@ -39,13 +39,10 @@ type Client struct {
 
 	client *imapclient.Client
 
-	// mu serializes every command that reads or changes the selected mailbox:
-	// each sync step and each warmup action holds it, so neither ever runs
-	// against a folder the other selected. Held per step, never for a pass.
+	// mu is held by every sync step and warmup action, each for one step, so neither runs against the other's selected folder.
 	mu sync.Mutex
 
-	// syncView is the view the sync pass last selected, re-opened by each sync
-	// step when a warmup action left another mailbox selected. Guarded by mu.
+	// syncView is the sync pass's selected folder, re-opened by each sync step after a warmup action; guarded by mu.
 	syncView *selection
 
 	// sentMailboxName caches the resolved Sent folder for this connection.
@@ -300,17 +297,6 @@ func (c *Client) oauth2Auth() *errx.MailError {
 	return nil
 }
 
-func (c *Client) Mailbox(mailbox string, uidvali, opts *imap.SelectOptions) error {
-	c.lifecycle.RLock()
-	defer c.lifecycle.RUnlock()
-	defer c.begin()()
-	if _, err := c.selectMailbox(mailbox, opts); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // selectMailbox is the single SELECT funnel: every path that changes the
 // selected mailbox goes through it so ReleaseMailbox knows whether there is
 // one to release. A failed SELECT leaves the session with no mailbox
@@ -393,21 +379,22 @@ func (c *Client) SelectForSyncState(mailbox string) (Selected, *errx.MailError) 
 	}, nil
 }
 
-// errSyncViewMoved is a sync step that re-opened its folder and found a new
-// UIDVALIDITY: the UIDs it was handed are void, and the next pass re-baselines.
+// errSyncViewMoved voids the step's UIDs; the next pass re-baselines the folder.
 var errSyncViewMoved = errors.New("imap: folder UIDVALIDITY changed while the sync pass had it open")
 
-// selectForSyncLocked opens mailbox read-only (CONDSTORE only where the server
-// has it; asking one without it is a BAD) and records it as the view every
-// later sync step reads. mu and the lifecycle read lock are held.
+// selectForSyncLocked opens mailbox as every sync step reads it and records the view; mu and lifecycle are held.
 func (c *Client) selectForSyncLocked(mailbox string) (*imap.SelectData, error) {
-	data, err := c.selectMailbox(mailbox, &imap.SelectOptions{ReadOnly: true, CondStore: c.condStore.Load()})
+	data, err := c.examineLocked(mailbox)
 	c.syncView = c.selection.Load()
 	return data, err
 }
 
-// resumeSync is resumeSyncLocked for a step that takes the lifecycle read lock
-// per command rather than for its whole run. mu is held.
+// examineLocked is the sync's read-only SELECT; CONDSTORE only where advertised, or a strict server answers BAD.
+func (c *Client) examineLocked(mailbox string) (*imap.SelectData, error) {
+	return c.selectMailbox(mailbox, &imap.SelectOptions{ReadOnly: true, CondStore: c.condStore.Load()})
+}
+
+// resumeSync is resumeSyncLocked taking its own lifecycle read lock; mu is held.
 func (c *Client) resumeSync() error {
 	c.lifecycle.RLock()
 	defer c.lifecycle.RUnlock()
@@ -415,22 +402,20 @@ func (c *Client) resumeSync() error {
 	return c.resumeSyncLocked()
 }
 
-// resumeSyncLocked re-opens the sync pass's view when a warmup action left
-// another mailbox selected, so a sync step never reads, and a warmup MOVE
-// never lands in, the wrong folder. mu and the lifecycle read lock are held.
+// resumeSyncLocked re-opens the sync's folder when another is selected; a failure keeps the view, so every later step retries it.
 func (c *Client) resumeSyncLocked() error {
 	want := c.syncView
 	if want == nil || c.selection.Load() == want {
 		return nil
 	}
-	data, err := c.selectForSyncLocked(want.name)
+	data, err := c.examineLocked(want.name)
 	if err != nil {
 		return err
 	}
 	if data.UIDValidity != want.uidValidity {
-		c.syncView = nil
 		return errSyncViewMoved
 	}
+	c.syncView = c.selection.Load()
 	return nil
 }
 
@@ -447,7 +432,7 @@ func (c *Client) ReleaseMailbox() {
 	c.lifecycle.RLock()
 	defer c.lifecycle.RUnlock()
 
-	// The pass is between folders, so there is no view for a step to resume.
+	// Between folders: no view for a step to resume.
 	c.syncView = nil
 	if c.client == nil || !c.selected.Load() || !c.client.Caps().Has(imap.CapUnselect) {
 		return
