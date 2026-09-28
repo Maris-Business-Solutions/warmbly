@@ -206,3 +206,24 @@ func TestReturnDateDoubted(t *testing.T) {
 		}
 	}
 }
+
+// A message synced with no body is read by the hold from its snippet, so the
+// tagger asks about the date in the snippet and shows the model that text.
+func TestReturnDateReadsTheSnippetLikeTheHold(t *testing.T) {
+	asker := &capturingAsker{resp: Response{Answers: map[string]Answer{QReturnDate: {Noul: 0.1}}}}
+	repo := &fakeRepo{}
+	svc := newService(t, asker, repo)
+	svc.WireSettings(holdingSettings(true))
+	m, day := awayMessage()
+	m.Snippet, m.BodyText = m.BodyText, ""
+
+	if _, err := svc.Classify(context.Background(), m); err != nil {
+		t.Fatalf("classify: %v", err)
+	}
+	if asker.state.Body == "" || asker.state.ReturnPhrase == "" {
+		t.Fatalf("state = %+v, want the snippet and its phrase", asker.state)
+	}
+	if !ReturnDateDoubted(repo.saved[0], day) {
+		t.Fatal("the answer about the snippet's date was not stored for the hold")
+	}
+}

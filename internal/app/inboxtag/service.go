@@ -145,8 +145,11 @@ type Message struct {
 	ThreadID       string
 	Subject        string
 	BodyText       string
-	FromAddr       string
-	Headers        map[string][]string
+	// Snippet stands in for an empty BodyText where the out-of-office hold
+	// reads a return date, so the tagger asks about the same words.
+	Snippet  string
+	FromAddr string
+	Headers  map[string][]string
 	// InReplyTo names the message this one answers.
 	InReplyTo []string
 	// PreviousMessage is our last outbound in this thread, so a bare "yes" has
@@ -208,7 +211,8 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 		// 4. Send every question, the workspace's own included, in one request
 		// to avoid repeated state ingest.
 		questions := QuestionsFor(custom, ws.actionRequired)
-		if confirm {
+		// A phrase found only in the snippet is not in the body this call reads.
+		if confirm && strings.TrimSpace(m.BodyText) != "" {
 			state.ReturnPhrase = back.Phrase
 			questions[QReturnDate] = ReturnDateQuestion()
 		}
@@ -220,12 +224,10 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 	case facts.DeterministicKind == KindAutoReplyOOO && confirm:
 		// Known to be an away message, so only its date is asked, over the
 		// message alone: our previous send holds dates of its own.
-		resp, err = s.asker.Ask(ctx, State{
-			Subject:      state.Subject,
-			Body:         state.Body,
-			Language:     LanguageHint(ws.languages),
-			ReturnPhrase: back.Phrase,
-		}, map[string]Question{QReturnDate: ReturnDateQuestion()})
+		ooo := BuildState(m.Subject, m.holdBody(), "", "", ws.languages...)
+		ooo.Language = LanguageHint(ws.languages)
+		ooo.ReturnPhrase = back.Phrase
+		resp, err = s.asker.Ask(ctx, ooo, map[string]Question{QReturnDate: ReturnDateQuestion()})
 		if err != nil {
 			// The parser's date stands, as it did before the question existed.
 			log.Warn().Err(err).Str("message_id", m.MessageID).Msg("inbox tagging: return date not confirmed; parsed date stands")
@@ -442,6 +444,7 @@ func MessageFrom(orgID, userID uuid.UUID, msg *models.EmailMessageStoreData, hea
 		ThreadID:        msg.ThreadID,
 		Subject:         msg.Subject,
 		BodyText:        msg.BodyText,
+		Snippet:         msg.Snippet,
 		FromAddr:        from,
 		Headers:         headers,
 		InReplyTo:       msg.InReplyTo,

@@ -2,6 +2,7 @@ package inboxtag
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/warmbly/warmbly/internal/app/replyclassify"
@@ -23,7 +24,16 @@ func returnDateToConfirm(m Message, ws workspaceSettings, deterministicKind stri
 	if deterministicKind != "" && deterministicKind != KindAutoReplyOOO {
 		return replyclassify.ReturnDate{}, false
 	}
-	return replyclassify.FindReturnDate(m.Subject, m.BodyText, now)
+	return replyclassify.FindReturnDate(m.Subject, m.holdBody(), now)
+}
+
+// holdBody is the text the out-of-office hold reads its date from: the body,
+// else the snippet, as holdForOutOfOffice does.
+func (m Message) holdBody() string {
+	if strings.TrimSpace(m.BodyText) != "" {
+		return m.BodyText
+	}
+	return m.Snippet
 }
 
 // ReturnDateDoubted reports a stored verdict whose model read the phrase behind
