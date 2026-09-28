@@ -102,6 +102,11 @@ type Service interface {
 	// GetBanStatus returns the user-facing warmup standing for a mailbox.
 	GetBanStatus(ctx context.Context, userID, accountID uuid.UUID) (*models.WarmupBanStatus, *errx.Error)
 
+	// PublishHealthTransition fans a transition decided elsewhere (Warmbly
+	// Cloud, for a mailbox it warms) out to realtime and webhooks, exactly as
+	// a local one.
+	PublishHealthTransition(ctx context.Context, accountID uuid.UUID, oldState, newState models.WarmupHealthState, reason string)
+
 	// Scheduled health evaluation
 	EvaluateAllParticipants(ctx context.Context) (evaluated int, stateChanges int, err *errx.Error)
 	GetPoolHealthSummary(ctx context.Context) (*models.WarmupPoolHealthSummary, *errx.Error)
@@ -155,6 +160,10 @@ func (s *service) WireRealtime(r HealthRealtimePublisher, emailRepo repository.E
 	if s.emailRepo == nil {
 		s.emailRepo = emailRepo
 	}
+}
+
+func (s *service) PublishHealthTransition(ctx context.Context, accountID uuid.UUID, oldState, newState models.WarmupHealthState, reason string) {
+	s.dispatchHealthEvent(ctx, accountID, oldState, newState, reason)
 }
 
 // dispatchHealthEvent fans a health-state transition out to (1) the owning

@@ -529,6 +529,10 @@ func main() {
 	go jobsService.StartIncomingReplyRepair(ctx)
 	go jobsService.StartReplyOptOutRecheck(ctx)
 
+	// Mirrors Warmbly Cloud's warmup verdicts onto the mailboxes it warms, so
+	// a cloud quarantine pauses their campaigns here too. No-op when unlinked.
+	go jobsService.StartCloudStandingSync(ctx, 5*time.Minute)
+
 	// Start dead worker detection (every 5 minutes)
 	go jobsService.StartDeadWorkerDetection(ctx, 5*time.Minute)
 

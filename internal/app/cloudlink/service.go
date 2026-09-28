@@ -118,6 +118,10 @@ type Service interface {
 	VerifyWarmupToken(ctx context.Context, accountID uuid.UUID, token string) (bool, error)
 	// IsCloudWarmupDelivery is the same check for warmup mail whose verify header did not survive.
 	IsCloudWarmupDelivery(ctx context.Context, accountID uuid.UUID, sender, messageID, subject string) (bool, error)
+	// SyncStanding records the warmup standing the cloud reports for every
+	// enrolled mailbox, so this instance's send gates hold the same verdict,
+	// and returns the transitions it saw.
+	SyncStanding(ctx context.Context) ([]models.CloudLinkStandingChange, *errx.Error)
 	// IsCloudWarmupThreadReply asks by ancestry: whether what a tokenless
 	// message answers is a turn of one of the cloud's warmup conversations.
 	IsCloudWarmupThreadReply(ctx context.Context, accountID uuid.UUID, messageID string, inReplyTo []string) (bool, error)
@@ -309,10 +313,10 @@ func (s *service) Disconnect(ctx context.Context) *errx.Error {
 	if err != nil {
 		return errx.InternalError()
 	}
-	var released []uuid.UUID
+	var released []models.CloudLinkMailbox
 	for _, m := range rows {
 		if !m.Managed {
-			released = append(released, m.EmailAccountID)
+			released = append(released, m)
 			continue
 		}
 		if s.emailSvc == nil {
@@ -330,8 +334,9 @@ func (s *service) Disconnect(ctx context.Context) *errx.Error {
 		return errx.InternalError()
 	}
 	// The mailboxes the cloud was warming rejoin this instance's pool.
-	for _, id := range released {
-		s.syncLocalPool(ctx, id)
+	for _, m := range released {
+		s.syncLocalPool(ctx, m.EmailAccountID)
+		s.carryStanding(ctx, m)
 	}
 	return nil
 }
@@ -383,6 +388,10 @@ func (s *service) ListMailboxes(ctx context.Context, orgID uuid.UUID) ([]models.
 			row.EnrolledAt = &at
 			row.Managed = e.Managed
 			row.Cloud = cloudByRemote[e.RemoteID]
+			// The recorded standing covers a mailbox the cloud holds out of its pool.
+			if row.Cloud != nil && row.Cloud.Health == nil && e.Standing != nil {
+				row.Cloud.Health = e.Standing
+			}
 		}
 		rows = append(rows, row)
 	}
@@ -487,6 +496,7 @@ func (s *service) Enroll(ctx context.Context, orgID, accountID uuid.UUID) (*mode
 		return nil, errx.InternalError()
 	}
 	s.syncLocalPool(ctx, acc.ID)
+	s.recordStanding(ctx, acc.ID, state.Health)
 	return s.row(ctx, orgID, accountID)
 }
 
@@ -520,6 +530,7 @@ func (s *service) Unenroll(ctx context.Context, orgID, accountID uuid.UUID) *err
 		}
 	}
 	s.syncLocalPool(ctx, accountID)
+	s.carryStanding(ctx, *m)
 	return nil
 }
 
@@ -580,5 +591,6 @@ func (s *service) SetLifecycle(ctx context.Context, orgID, accountID uuid.UUID, 
 	if xerr := s.clientFor(l).do(ctx, http.MethodPatch, "/instance/mailboxes/"+m.RemoteID.String(), models.PoolLinkMailboxPatch{Lifecycle: action}, &state); xerr != nil {
 		return nil, xerr
 	}
+	s.recordStanding(ctx, accountID, state.Health)
 	return s.row(ctx, orgID, accountID)
 }

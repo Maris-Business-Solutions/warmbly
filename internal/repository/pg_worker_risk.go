@@ -62,8 +62,8 @@ func (r *workerRepository) ListRiskCandidates(ctx context.Context, limit int) ([
 	if limit <= 0 {
 		limit = 500
 	}
-	// Health lives on warmup_pool_participants, one row per mailbox. The CASE
-	// rank keeps the worst state winning if that ever stops being true.
+	// Health is the mailbox's standing: its pool row, or what Warmbly Cloud
+	// reported for a mailbox it warms.
 	rows, err := r.db.Query(ctx, `
 		SELECT
 			ea.id,
@@ -74,19 +74,7 @@ func (r *workerRepository) ListRiskCandidates(ctx context.Context, limit int) ([
 			ea.worker_id,
 			ea.risk_evaluated_at
 		FROM email_accounts ea
-		LEFT JOIN LATERAL (
-			SELECT health_state
-			FROM warmup_pool_participants
-			WHERE email_account_id = ea.id
-			ORDER BY CASE health_state
-				WHEN 'blocked' THEN 0
-				WHEN 'quarantined' THEN 1
-				WHEN 'throttled' THEN 2
-				WHEN 'watch' THEN 3
-				WHEN 'healthy' THEN 4
-				ELSE 5
-			END
-			LIMIT 1
+		LEFT JOIN LATERAL (`+warmupStandingSQL("ea.id")+`
 		) wh ON true
 		WHERE ea.status = 'active'
 		LIMIT $1

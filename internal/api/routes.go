@@ -1503,6 +1503,7 @@ func Run(
 				poolLinkInstance.GET("", h.PoolLinkInstanceInfo)
 				poolLinkInstance.DELETE("", h.PoolLinkInstanceDisconnect)
 				poolLinkInstance.GET("/mailboxes", h.PoolLinkInstanceMailboxes)
+				poolLinkInstance.GET("/standing", h.PoolLinkInstanceStanding)
 				poolLinkInstance.POST("/mailboxes", h.PoolLinkEnroll)
 				poolLinkInstance.GET("/mailboxes/:remoteId", h.PoolLinkGetMailbox)
 				poolLinkInstance.PATCH("/mailboxes/:remoteId", h.PoolLinkPatchMailbox)

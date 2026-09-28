@@ -221,6 +221,20 @@ func (h *Handler) PoolLinkInstanceMailboxes(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
+func (h *Handler) PoolLinkInstanceStanding(c *gin.Context) {
+	inst := middleware.GetPoolLinkInstance(c)
+	if inst == nil {
+		errx.JSON(c, errx.ErrUnauthorized)
+		return
+	}
+	list, xerr := h.PoolLinkService.ListStanding(c.Request.Context(), inst)
+	if xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
 func (h *Handler) PoolLinkEnroll(c *gin.Context) {
 	inst := middleware.GetPoolLinkInstance(c)
 	if inst == nil {

@@ -321,8 +321,9 @@ func warmupHealthState(h *models.WarmupHealthInfo) models.WarmupHealthState {
 const warmupDiversityWindow = 7 * 24 * time.Hour
 
 // buildWarmupHealth looks up the mailbox's warmup-pool health (premium pool
-// first) and maps it into the API shape. Returns nil when the mailbox is not
-// in a pool or the lookup fails — health surfacing must never break status.
+// first), or the standing Warmbly Cloud reported, and maps it into the API
+// shape. Returns nil when there is neither or the lookup fails; health
+// surfacing must never break status.
 func (s *analyticsService) buildWarmupHealth(ctx context.Context, accountID uuid.UUID) *models.WarmupHealthInfo {
 	if s.warmupRepo == nil {
 		return nil
@@ -351,6 +352,10 @@ func (s *analyticsService) buildWarmupHealth(ctx context.Context, accountID uuid
 			info.Senders7d = d.Senders
 		}
 		return info
+	}
+	// A mailbox Warmbly Cloud warms has no pool row here; its standing is the cloud's.
+	if cloud, err := s.warmupRepo.GetCloudStanding(ctx, accountID); err == nil && cloud != nil {
+		return cloud
 	}
 	return nil
 }
