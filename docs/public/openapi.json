@@ -39685,10 +39685,9 @@
           "scope": {
             "type": "string",
             "enum": [
-              "major",
-              "all"
+              "major"
             ],
-            "description": "major: taken over Google, Microsoft and Yahoo recipients only. all: every host, when those three have not reached min_sample in the window and every host has."
+            "description": "Always major: the rate is taken over Google, Microsoft and Yahoo recipients only."
           },
           "delivered": {
             "type": "integer"
@@ -39720,14 +39719,14 @@
           },
           "other_delivered": {
             "type": "integer",
-            "description": "Deliveries at other mail hosts, left out of a major-scope rate; 0 on an all-scope rate."
+            "description": "Deliveries at other mail hosts, left out of the rate."
           },
           "other_inbox_rate": {
             "type": [
               "number",
               "null"
             ],
-            "description": "Inbox rate at those other hosts, shown beside the rate and never judged; null with none."
+            "description": "Inbox rate at those other hosts, shown beside the rate and never counted; null with none."
           }
         }
       },

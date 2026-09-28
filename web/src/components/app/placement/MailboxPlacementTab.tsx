@@ -180,12 +180,11 @@ export default function MailboxPlacementTab({ mailboxId, poolHealth }: { mailbox
                 <Eyebrow>How this is measured</Eyebrow>
                 <ul className="mt-2 space-y-1.5 text-[11.5px] text-slate-500 leading-relaxed">
                     <li>Each warmup email is found in the partner's mailbox and recorded where it arrived: the inbox, a Gmail category tab, or spam. Nothing is estimated.</li>
-                    <li>The inbox rate counts category tabs as inbox, over a trailing {rate.window_days} days, and appears once {rate.min_sample} deliveries are in. It is taken at Google, Microsoft and Yahoo, and over every host instead when those three have fewer than {rate.min_sample} deliveries and every host together has that many. Below 90% is worth watching; below 80% means the mailbox needs attention.</li>
+                    <li>The inbox rate counts category tabs as inbox, over a trailing {rate.window_days} days, and appears once {rate.min_sample} deliveries are in. It is taken at Google, Microsoft and Yahoo only, the providers that filter on sender reputation. Below 90% is worth watching; below 80% means the mailbox needs attention.</li>
                     <li>Rescued counts spam placements the partner's mailbox was told to move back to the inbox, which is the signal providers learn from; the move is requested, not confirmed back. Unconfirmed mail has not been seen in the partner's mailbox a day after it was sent.</li>
                     <li>
-                        The mailbox's standing is always judged at Google, Microsoft and Yahoo, the providers that filter on sender reputation, even when
-                        the inbox rate above is taken over every host. Other mail hosts run their own filters, so what lands in their spam folders is shown
-                        in the breakdown and never held against this mailbox. Spam at the major providers only slows sending down; it never removes the
+                        The mailbox's standing is judged at the same three providers. Other mail hosts run their own filters, so what lands in their
+                        spam folders is shown in the breakdown and never counted in the rate or held against this mailbox. Spam at the major providers only slows sending down; it never removes the
                         mailbox from warmup.
                     </li>
                     <li>Days are UTC. This covers warmup mail only, not campaign sends.</li>
