@@ -67,7 +67,11 @@ export default function PlacementPage() {
                 subtitle={overview.data ? usageLabel(overview.data) : undefined}
             >
                 {exhausted && (
-                    <span className="hidden md:inline text-[11px] text-slate-400">Your own seed inboxes are never counted.</span>
+                    <span className="hidden md:inline text-[11px] text-slate-400">
+                        {usage.credits_per_test > 0
+                            ? `More tests cost ${usage.credits_per_test} credits each. Your own seed inboxes are always free.`
+                            : "Your own seed inboxes are never counted."}
+                    </span>
                 )}
                 <TopbarAction icon={<PlusIcon className="w-3.5 h-3.5" />} onClick={openNew}>
                     New test

@@ -69,15 +69,19 @@ func (h *Handler) GetPlacementOverview(c *gin.Context) {
 }
 
 type createPlacementTestRequest struct {
-	SenderAccountID string `json:"sender_account_id"`
-	CampaignID      string `json:"campaign_id"`
-	SequenceID      string `json:"sequence_id"`
-	ContactID       string `json:"contact_id"`
-	Subject         string `json:"subject"`
-	BodyHTML        string `json:"body_html"`
-	BodyPlain       string `json:"body_plain"`
-	Tracking        string `json:"tracking"`
-	Panel           string `json:"panel"`
+	SenderAccountID string      `json:"sender_account_id"`
+	CampaignID      string      `json:"campaign_id"`
+	SequenceID      string      `json:"sequence_id"`
+	ContactID       string      `json:"contact_id"`
+	Subject         string      `json:"subject"`
+	BodyHTML        string      `json:"body_html"`
+	BodyPlain       string      `json:"body_plain"`
+	Tracking        string      `json:"tracking"`
+	Panel           string      `json:"panel"`
+	SeedIDs         []uuid.UUID `json:"seed_ids"`
+	Families        []string    `json:"families"`
+	Pace            string      `json:"pace"`
+	MaxCredits      int         `json:"max_credits"`
 }
 
 // CreatePlacementTest starts a test: one test, or two for a tracking
@@ -134,6 +138,10 @@ func (h *Handler) CreatePlacementTest(c *gin.Context) {
 		BodyPlain:       req.BodyPlain,
 		Tracking:        req.Tracking,
 		Panel:           req.Panel,
+		SeedIDs:         req.SeedIDs,
+		Families:        req.Families,
+		Pace:            req.Pace,
+		MaxCredits:      req.MaxCredits,
 		Origin:          models.PlacementOriginManual,
 	})
 	if xerr != nil {

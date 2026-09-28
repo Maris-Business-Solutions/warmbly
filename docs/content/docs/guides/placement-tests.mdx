@@ -39,7 +39,14 @@ The test also runs the same [content check](/guides/campaigns/#content-checks) t
 
 ### Sent one at a time from the real mailbox
 
-Copies go out one by one, each as its own send from the mailbox you chose, through the worker that mailbox normally sends from. They are spaced about 60 seconds apart by default, varied by up to a third either way, and alternate between providers so no single provider sees a burst. A test with 20 seeds takes around 20 minutes to send.
+Copies go out one by one, each as its own send from the mailbox you chose, through the worker that mailbox normally sends from, and alternate between providers so no single provider sees a burst. How far apart they go is the test's pace:
+
+| Pace | Gap between copies | A 20-seed test sends in |
+|------|--------------------|-------------------------|
+| **Spaced** (default) | About 60 seconds, the way a campaign sends | Around 20 minutes |
+| **Quick** | About 8 seconds | Under 3 minutes |
+
+Both vary each gap by up to a third either way, and the operator can change the spaced gap; a quick test uses the smaller of the two. Quick is for when you want an answer now, for example after fixing a DNS record. Results appear as each seed syncs the copy, usually within minutes of it being sent. Scheduled tests from a [monitor](#campaign-placement-monitors) always run spaced.
 
 The sending mailbox's own copy of each probe is kept out of your unibox.
 
@@ -69,6 +76,16 @@ Each test uses up to 20 seeds by default (the operator can change this). They ar
 - **The sending mailbox itself.**
 
 If nothing is left after that, the test is refused with `placement_no_seeds` and nothing is sent.
+
+### Testing only some providers
+
+On the shared and Warmbly Cloud panels, the **Providers** chips under the panel narrow a test to the providers you pick, for example only Outlook.com and Microsoft 365 when that is where replies dried up. The test then picks its seeds from those providers alone, still round-robin and still without showing their addresses. Leave **All** selected to cover every provider the panel has.
+
+### Choosing which of your seeds get a copy
+
+On **Your seed inboxes**, you can pick the seeds a test goes to instead of letting Warmbly spread it across providers, for example only the Gmail and Outlook.com seeds you are about to open and check by hand. The chooser under the panel lists your seed inboxes with their provider, and a chip per provider selects all of that provider's seeds at once. Choose none and the test picks as usual.
+
+Every seed you choose gets a copy: the usual seeds-per-test cap does not apply to seeds you picked by hand. When the sending mailbox has too little of its daily limit left for all of them, the test is refused with the numbers rather than quietly skipping some. Seeds on the sender's domain are greyed out and skipped, and a seed that is not connected cannot be chosen. Choosing individual seeds is only possible on your own panel, because addresses on the shared and Warmbly Cloud panels are masked; there you pick providers instead.
 
 ## Your own seed inboxes
 
@@ -114,18 +131,25 @@ A comparison sends each seed both versions back to back, in a random order per s
 
 A mailbox runs one test at a time: until every copy of a test has been sent, another test from the same mailbox is refused with `placement_sender_busy`.
 
-### Monthly allowance
+### Free tests and credits
 
-On the hosted product, tests on the instance panel count against a monthly allowance:
+On the hosted product, every workspace gets free tests on the shared panel each month:
 
-| Workspace | Tests per month |
-|-----------|-----------------|
-| On a free trial | `3` |
-| On a paid plan | `40` |
+| Workspace | Free tests per month | After that |
+|-----------|----------------------|------------|
+| On a free trial | `3` | Wait for next month, or upgrade |
+| On a paid plan | `40` | `25` [credits](/guides/ai-credits/) per test |
 
-These are the defaults, and the operator can change them. The month is the calendar month in UTC. A tracking comparison counts as two tests, and a monitor's scheduled tests count like any other. The placement tests page shows how many you have used. A workspace with no active trial or subscription cannot start a test (`placement_not_entitled`), and one that has used its allowance is refused with `placement_quota_exceeded` until the next month.
+These are the defaults, and the operator can change both numbers. The month is the calendar month in UTC. A tracking comparison counts as two tests. The placement tests page shows how many free tests you have used, and the new-test dialog says which free test a test uses.
 
-Tests on your own seed inboxes are never counted. A self-hosted instance does not meter its own panel at all. Tests on Warmbly Cloud's panel count against the allowance of the Warmbly Cloud workspace the instance is linked to.
+**A paid test never starts without you agreeing to its price.** Once the free tests are used up, the dialog shows what the test costs and your balance, and you tick **Pay 25 credits for this test** before it can start; the button repeats the price. Through the API the same agreement is `max_credits`, the most you agree to pay; a price above it (because the last free test went to a teammate in the meantime, say) is refused with `placement_quota_exceeded`, naming the price, and nothing is charged. Credits are drawn like any other spend, monthly allowance first and top-ups after, and your [spend limits](/guides/ai-credits/#usage-and-spend-controls) apply. The charge is logged as **Placement test** in the credits history.
+
+- **A test that delivers nothing is refunded.** When no copy of a paid test left the sender (the worker was offline, or you cancelled before the first copy went out), its credits go back to the pools they came from, logged as **Placement test refund**, and they stop counting against your spend limits. Monthly credits whose allowance has reset since the charge are not returned, because they would have expired with it. A free test that ended that way does not use up a free test either.
+- **A comparison with one free test left** uses the free test for one half and pays for the other.
+- **Monitors never spend credits.** A monitor's scheduled test uses the free tests like any other, and once they are gone it records why and tries again a day later.
+- **A trial cannot pay.** Credits are part of a paid plan, so a trial waits for the next month.
+
+Tests on your own seed inboxes are never counted and never cost credits. A self-hosted instance does not meter its own panel at all. Tests on Warmbly Cloud's panel use the free tests of the Warmbly Cloud workspace the instance is linked to; paying for more with credits is not offered there.
 
 ## Campaign placement monitors
 
@@ -171,14 +195,14 @@ Both open the test. Change them under **Settings > Notifications**; see [notific
 |-------|-------|
 | Tests running at once per workspace | `3` (a comparison counts as two) |
 | Tests sending from one mailbox at once | `1` |
-| Seeds per test | up to `40` by default, at most `100` (operator setting) |
+| Seeds per test | up to `20` by default, at most `100` (operator setting). Seeds you chose by hand all get a copy, up to `50` |
 | Your own seed inboxes | `50` per workspace |
 | Time for a copy to arrive | `120` minutes after it was sent |
 | Monitor interval | `1` to `30` days |
 
 ## Moving a workspace
 
-Placement tests and their results travel in a [workspace export](/guides/workspace-export-import/) as a record, under Delivery events, and campaign placement monitors travel with the campaigns. Which mailboxes are seed inboxes does not travel, so mark them again on the destination. A test that is still sending leaves its unsent copies behind.
+Placement tests and their results travel in a [workspace export](/guides/workspace-export-import/) as a record, under Delivery events (without what a paid test cost, since credits do not travel), and campaign placement monitors travel with the campaigns. Which mailboxes are seed inboxes does not travel, so mark them again on the destination. A test that is still sending leaves its unsent copies behind.
 
 ## Related guides
 

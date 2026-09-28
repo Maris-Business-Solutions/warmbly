@@ -59,6 +59,11 @@ type CreditRepository interface {
 	// webhook retries safe.
 	ResetMonthly(ctx context.Context, orgID uuid.UUID, allowance int, idempotencyKey string) (*models.CreditLedger, error)
 
+	// RefundSpend gives back the debit recorded under spendKey, to the pools
+	// it drew from, so purchased credits stay purchased. refundKey makes it
+	// happen once. Zero when there is no such debit.
+	RefundSpend(ctx context.Context, orgID uuid.UUID, spendKey, refundKey, reason string) (refunded, balance int, err error)
+
 	// ConsumeAtMost debits up to `amount` credits, draining whatever the org
 	// still has (possibly zero) instead of failing on a low balance. Used to
 	// settle metered usage AFTER an AI result was already delivered: the
@@ -67,12 +72,12 @@ type CreditRepository interface {
 	// Same idempotency semantics as Consume.
 	ConsumeAtMost(ctx context.Context, orgID uuid.UUID, amount int, reason, model string, tokens int, idempotencyKey string) (consumed, balance int, replayed bool, err error)
 
-	// SpentInWindows sums debited credits since each of the three window
-	// starts (calendar day / ISO week / calendar month, all UTC).
+	// SpentInWindows sums debited credits, net of refunds, since each of the
+	// three window starts (calendar day / ISO week / calendar month, all UTC).
 	SpentInWindows(ctx context.Context, orgID uuid.UUID, dayStart, weekStart, monthStart time.Time) (day, week, month int, err error)
 
-	// MemberSpentInWindows sums the credits a specific member has debited
-	// since each window start (attributed via actor_user_id; system work is
+	// MemberSpentInWindows sums the credits a specific member has debited,
+	// net of refunds, since each window start (attributed via actor_user_id; system work is
 	// not counted).
 	MemberSpentInWindows(ctx context.Context, orgID, userID uuid.UUID, dayStart, weekStart, monthStart time.Time) (day, week, month int, err error)
 
@@ -279,6 +284,62 @@ func (r *creditRepository) Consume(ctx context.Context, orgID uuid.UUID, amount 
 	return newMonthly + newPurchased, txn, false, nil
 }
 
+func (r *creditRepository) RefundSpend(ctx context.Context, orgID uuid.UUID, spendKey, refundKey, reason string) (int, int, error) {
+	spendKey, refundKey = scopeKey(orgID, spendKey), scopeKey(orgID, refundKey)
+	if spendKey == "" || refundKey == "" {
+		return 0, 0, errors.New("refund needs both keys")
+	}
+	tx, err := r.DB.Begin(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	if existing, err := replayByKey(ctx, tx, refundKey); err != nil {
+		return 0, 0, err
+	} else if existing != nil {
+		return existing.Amount, existing.BalanceAfter + existing.PurchasedBalanceAfter, tx.Commit(ctx)
+	}
+	spend, err := replayByKey(ctx, tx, spendKey)
+	if err != nil {
+		return 0, 0, err
+	}
+	if spend == nil || spend.OrgID != orgID || spend.Amount >= 0 {
+		return 0, 0, tx.Commit(ctx)
+	}
+	// Monthly credits spent before the allowance was last reset would have
+	// expired with it, so only the purchased part comes back then.
+	var resetAt time.Time
+	if err := tx.QueryRow(ctx, `SELECT month_reset_at FROM credit_ledger WHERE org_id = $1 FOR UPDATE`, orgID).Scan(&resetAt); err != nil {
+		return 0, 0, err
+	}
+	toPurchased := min(-spend.PurchasedDelta, -spend.Amount)
+	toMonthly := -spend.Amount - toPurchased
+	if resetAt.After(spend.CreatedAt) {
+		toMonthly = 0
+	}
+	total := toMonthly + toPurchased
+	if total == 0 {
+		return 0, 0, tx.Commit(ctx)
+	}
+
+	var monthly, purchased int
+	if err := tx.QueryRow(ctx, `
+		UPDATE credit_ledger SET balance = balance + $2, purchased_balance = purchased_balance + $3, updated_at = now()
+		WHERE org_id = $1
+		RETURNING balance, purchased_balance
+	`, orgID, toMonthly, toPurchased).Scan(&monthly, &purchased); err != nil {
+		return 0, 0, err
+	}
+	if _, err := insertTxn(ctx, tx, orgID, total, reason, "", 0, monthly, toPurchased, purchased, refundKey); err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	return total, monthly + purchased, nil
+}
+
 func (r *creditRepository) ConsumeAtMost(ctx context.Context, orgID uuid.UUID, amount int, reason, model string, tokens int, idempotencyKey string) (int, int, bool, error) {
 	if amount <= 0 {
 		return 0, 0, false, errors.New("consume amount must be positive")
@@ -348,15 +409,24 @@ func (r *creditRepository) ConsumeAtMost(ctx context.Context, orgID uuid.UUID, a
 	return take, newMonthly + newPurchased, false, nil
 }
 
+// A keyed refund names its charge (RefundSpend writes "<charge key>:refund"),
+// so a spend window nets a refund against the charge it returns, in the
+// window the charge fell in, however much later the refund came.
+const (
+	refundOf = `LEFT JOIN credit_ledger_transactions rf
+		ON d.idempotency_key IS NOT NULL AND rf.idempotency_key = d.idempotency_key || ':refund'`
+	netSpend = `GREATEST(-d.amount - COALESCE(rf.amount, 0), 0)`
+)
+
 func (r *creditRepository) SpentInWindows(ctx context.Context, orgID uuid.UUID, dayStart, weekStart, monthStart time.Time) (int, int, int, error) {
 	var day, week, month int
 	err := r.DB.QueryRow(ctx, `
 		SELECT
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $2), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $3), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $4), 0)
-		FROM credit_ledger_transactions
-		WHERE org_id = $1 AND amount < 0 AND created_at >= LEAST($2, $3, $4)
+			COALESCE(SUM(`+netSpend+`) FILTER (WHERE d.created_at >= $2), 0),
+			COALESCE(SUM(`+netSpend+`) FILTER (WHERE d.created_at >= $3), 0),
+			COALESCE(SUM(`+netSpend+`) FILTER (WHERE d.created_at >= $4), 0)
+		FROM credit_ledger_transactions d `+refundOf+`
+		WHERE d.org_id = $1 AND d.amount < 0 AND d.created_at >= LEAST($2, $3, $4)
 	`, orgID, dayStart, weekStart, monthStart).Scan(&day, &week, &month)
 	if err != nil {
 		return 0, 0, 0, err
@@ -368,11 +438,11 @@ func (r *creditRepository) MemberSpentInWindows(ctx context.Context, orgID, user
 	var day, week, month int
 	err := r.DB.QueryRow(ctx, `
 		SELECT
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $3), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $4), 0),
-			COALESCE(SUM(-amount) FILTER (WHERE created_at >= $5), 0)
-		FROM credit_ledger_transactions
-		WHERE org_id = $1 AND actor_user_id = $2 AND amount < 0 AND created_at >= LEAST($3, $4, $5)
+			COALESCE(SUM(`+netSpend+`) FILTER (WHERE d.created_at >= $3), 0),
+			COALESCE(SUM(`+netSpend+`) FILTER (WHERE d.created_at >= $4), 0),
+			COALESCE(SUM(`+netSpend+`) FILTER (WHERE d.created_at >= $5), 0)
+		FROM credit_ledger_transactions d `+refundOf+`
+		WHERE d.org_id = $1 AND d.actor_user_id = $2 AND d.amount < 0 AND d.created_at >= LEAST($3, $4, $5)
 	`, orgID, userID, dayStart, weekStart, monthStart).Scan(&day, &week, &month)
 	if err != nil {
 		return 0, 0, 0, err

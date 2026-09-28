@@ -199,15 +199,28 @@ type Placement struct {
 	SeedsPerTest int `json:"seeds_per_test"`
 	// SpacingSeconds is the gap between two probes from one sender.
 	SpacingSeconds int `json:"spacing_seconds"`
+	// CreditsPerTest is what a test past the monthly allowance costs in
+	// credits. Zero turns paid tests off; nil is the compiled default.
+	CreditsPerTest *int `json:"credits_per_test"`
+}
+
+// CreditPrice is the resolved price of a paid test, zero when off.
+func (p Placement) CreditPrice() int {
+	if p.CreditsPerTest == nil {
+		return config.PlacementCreditsPerTestDefault
+	}
+	return *p.CreditsPerTest
 }
 
 // DefaultPlacement is the compiled placement test allowance and pacing.
 func DefaultPlacement() Placement {
+	price := config.PlacementCreditsPerTestDefault
 	return Placement{
 		TestsPerMonthTrial: config.PlacementTestsPerMonthTrialDefault,
 		TestsPerMonthPaid:  config.PlacementTestsPerMonthPaidDefault,
 		SeedsPerTest:       config.PlacementSeedsPerTestDefault,
 		SpacingSeconds:     config.PlacementSpacingSecondsDefault,
+		CreditsPerTest:     &price,
 	}
 }
 
@@ -230,6 +243,16 @@ func (p *Placement) Normalize() {
 		p.SpacingSeconds = config.PlacementSpacingSecondsDefault
 	}
 	p.SpacingSeconds = max(config.PlacementSpacingSecondsMin, min(p.SpacingSeconds, config.PlacementSpacingSecondsMax))
+	v := config.PlacementCreditsPerTestDefault
+	if p.CreditsPerTest != nil {
+		v = max(0, min(*p.CreditsPerTest, config.PlacementCreditsPerTestMax))
+	}
+	p.CreditsPerTest = &v
+}
+
+// QuickSpacing is the gap between two probes of a quick test.
+func (p Placement) QuickSpacing() time.Duration {
+	return time.Duration(min(p.SpacingSeconds, config.PlacementQuickSpacingSeconds)) * time.Second
 }
 
 // Spacing is the gap between two probes as a duration.
@@ -429,6 +452,7 @@ type Patch struct {
 		TestsPerMonthPaid  *int `json:"tests_per_month_paid"`
 		SeedsPerTest       *int `json:"seeds_per_test"`
 		SpacingSeconds     *int `json:"spacing_seconds"`
+		CreditsPerTest     *int `json:"credits_per_test"`
 	} `json:"placement"`
 	// Channels replaces the whole list when present. A channel that comes back
 	// with a masked target or secret keeps the stored value, so the admin panel
@@ -523,6 +547,10 @@ func (p Patch) Apply(doc Document) Document {
 		}
 		if p.Placement.SpacingSeconds != nil {
 			doc.Placement.SpacingSeconds = *p.Placement.SpacingSeconds
+		}
+		if p.Placement.CreditsPerTest != nil {
+			v := *p.Placement.CreditsPerTest
+			doc.Placement.CreditsPerTest = &v
 		}
 	}
 	if p.Notifications != nil && p.Notifications.Channels != nil {

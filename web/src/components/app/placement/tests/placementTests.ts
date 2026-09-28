@@ -2,6 +2,7 @@
 // formatting, and the messages for every refusal the start endpoint returns.
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
+import { domainOf } from "@/lib/api/models/app/emails/MailboxSources";
 import type { DitherTone } from "@/components/ui/dither";
 import type {
     PlacementCounts,
@@ -10,6 +11,7 @@ import type {
     PlacementPanel,
     PlacementTest,
     PlacementTestStatus,
+    PlacementWorkspaceSeed,
 } from "@/lib/api/models/app/placement/Placement";
 
 export interface FolderStyle {
@@ -88,7 +90,20 @@ export function usageLabel(o: PlacementOverview | undefined): string {
     if (!o) return "";
     const { used, limit } = o.usage;
     if (limit == null) return "Unlimited";
-    return `${used} of ${limit} test${limit === 1 ? "" : "s"} this month`;
+    return `${used} of ${limit} free test${limit === 1 ? "" : "s"} used this month`;
+}
+
+// What starting `tests` more would cost: how many are free and how many are
+// paid in credits, and whether the workspace can pay.
+export function testCost(usage: PlacementOverview["usage"] | undefined, metered: boolean, tests: number) {
+    if (!usage || !metered || usage.limit == null) return { paid: 0, credits: 0, payable: true, canPay: true };
+    const free = Math.max(0, usage.limit - usage.used);
+    const paid = Math.max(0, tests - free);
+    const credits = paid * usage.credits_per_test;
+    const payable = paid === 0 || usage.credits_per_test > 0;
+    // An unknown balance is left to the server, which refuses what cannot be paid.
+    const canPay = paid === 0 || (payable && (usage.credit_balance == null || usage.credit_balance >= credits));
+    return { paid, credits, payable, canPay };
 }
 
 // Which part of the new-test form a refusal is about, so it shows beside it.
@@ -96,7 +111,7 @@ export type PlacementErrorField = "sender" | "source" | "tracking" | "panel" | "
 
 export function placementErrorMessage(
     err: AppError,
-    ctx: { resetsOn?: Date | null; panel?: PlacementPanel } = {},
+    ctx: { resetsOn?: Date | null; panel?: PlacementPanel; chosen?: boolean } = {},
 ): { field: PlacementErrorField; message: string } {
     switch (err?.code) {
         case "placement_not_entitled":
@@ -104,7 +119,7 @@ export function placementErrorMessage(
         case "placement_quota_exceeded":
             return {
                 field: "panel",
-                message: `This month's placement tests are used up${ctx.resetsOn ? ` until ${fmtDay(ctx.resetsOn)}` : ""}. Tests on your own seed inboxes are never counted.`,
+                message: `This month's free placement tests are used up${ctx.resetsOn ? ` until ${fmtDay(ctx.resetsOn)}` : ""}. Tests on your own seed inboxes are never counted.`,
             };
         case "placement_too_many_running":
             return { field: "general", message: "Three tests are already running in this workspace. Wait for one to finish, or cancel one." };
@@ -113,15 +128,28 @@ export function placementErrorMessage(
         case "placement_sender_unavailable":
             return { field: "sender", message: "This mailbox cannot send a test: it is not connected, or it is a seed inbox itself." };
         case "placement_daily_budget":
-            return { field: "sender", message: "This mailbox has too little of today's sending limit left for a useful test. Pick another mailbox or try again tomorrow." };
+            return {
+                field: "sender",
+                message: ctx.chosen
+                    ? `${err.message} Choose fewer seed inboxes, pick another mailbox, or try again tomorrow.`
+                    : "This mailbox has too little of today's sending limit left for a useful test. Pick another mailbox or try again tomorrow.",
+            };
         case "placement_no_seeds":
             return {
                 field: "panel",
                 message:
-                    ctx.panel === "workspace"
-                        ? "None of your seed inboxes can take this test. Add a seed inbox on a different domain than the sender."
-                        : "This panel has no seed inbox this mailbox can reach. Seeds on the sender's own domain are always skipped.",
+                    ctx.panel !== "workspace"
+                        ? "This panel has no seed inbox this mailbox can reach. Seeds on the sender's own domain are always skipped."
+                        : ctx.chosen
+                          ? "Every seed inbox you chose is on the sender's own domain. Choose others, or another sender."
+                          : "None of your seed inboxes can take this test. Add a seed inbox on a different domain than the sender.",
             };
+        case "insufficient_credits":
+            return { field: "panel", message: "The workspace does not have enough credits for this test. Top up under Settings > Billing." };
+        case "usage_cap_exceeded":
+            return { field: "panel", message: "This test would go past the workspace's credit spend limit. An admin can raise it under Settings > Billing." };
+        case "placement_invalid_seeds":
+            return { field: "panel", message: err.message || "A seed inbox you chose is no longer a connected seed. Choose again." };
         case "placement_panel_unavailable":
             return { field: "panel", message: "The Warmbly Cloud panel needs this instance linked to Warmbly Cloud." };
         case "placement_invalid_tracking":
@@ -129,4 +157,11 @@ export function placementErrorMessage(
         default:
             return { field: "general", message: buildError(err) };
     }
+}
+
+// Why a seed cannot take this test, or null when it can.
+export function seedBlocker(seed: PlacementWorkspaceSeed, senderEmail: string | undefined): string | null {
+    if (seed.status !== "active") return "Not connected";
+    if (senderEmail && domainOf(seed.email) === domainOf(senderEmail)) return "Sender's domain";
+    return null;
 }

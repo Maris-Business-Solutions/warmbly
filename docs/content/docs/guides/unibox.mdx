@@ -223,6 +223,8 @@ The window title bar carries **Full screen**, which lifts the same composer to t
 
 **To** searches contacts as you type and accepts raw addresses. Suppressed recipients (bounced, complained, unsubscribed) are flagged before you write a word, and the send is blocked.
 
+**Seeds**, beside Cc and Bcc, adds your workspace's own [seed inboxes](/guides/placement-tests/#your-own-seed-inboxes) to To, for a quick look by hand at where a message lands. Tick seeds one by one, a whole provider at once, or all of them; the picker remembers your last choice in this browser. It appears once the workspace has a seed inbox and you have the **View campaigns** permission. This sends one message addressed to every seed you add, so each seed sees the others. For a separate copy per seed and a verdict read back automatically, run a [placement test](/guides/placement-tests/#choosing-which-of-your-seeds-get-a-copy) on the seeds you choose.
+
 ### Auto mailbox selection
 
 **From** defaults to **Auto**, scoring every active mailbox in the current workspace for the recipient: an existing conversation with them wins first (contacts should keep hearing from one address), then the most remaining daily budget, with domain auth health as the tiebreaker.

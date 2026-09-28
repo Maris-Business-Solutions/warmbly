@@ -42,6 +42,17 @@ type PlacementLanding struct {
 }
 
 // PlacementFinished is a test that just resolved its last probe.
+// PlacementSettle is a finished paid test whose charge is not decided yet.
+type PlacementSettle struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	CreatedBy      *uuid.UUID
+	Credits        int
+	// Delivered is whether any copy got a verdict; a test that delivered
+	// nothing is refunded.
+	Delivered bool
+}
+
 type PlacementFinished struct {
 	ID             uuid.UUID
 	OrganizationID *uuid.UUID
@@ -144,9 +155,19 @@ type PlacementRepository interface {
 	// what would stop each from becoming a seed.
 	ListOrgMailboxes(ctx context.Context, orgID uuid.UUID) ([]SeedAccount, map[uuid.UUID]string, error)
 
-	// CountMeteredTests counts a workspace's tests on the metered panels
-	// since a moment.
+	// CountMeteredTests counts a workspace's free tests on the metered panels
+	// since a moment. A test paid in credits, or one that finished without
+	// delivering a copy, uses none.
 	CountMeteredTests(ctx context.Context, orgID uuid.UUID, since time.Time) (int, error)
+	// DeleteUnsentTests removes tests of one workspace, with their pending
+	// tasks, when a request fails after writing them and before any copy left.
+	DeleteUnsentTests(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) error
+	// UnsettledPaidTests lists finished tests paid in credits whose charge
+	// has not been settled yet, oldest first.
+	UnsettledPaidTests(ctx context.Context, limit int) ([]PlacementSettle, error)
+	// SettleCredits records a paid test's settlement and what was refunded;
+	// false when it was already settled.
+	SettleCredits(ctx context.Context, testID uuid.UUID, refunded int) (bool, error)
 	CountRunning(ctx context.Context, orgID uuid.UUID) (int, error)
 	// SenderBusy reports whether a sender still has probes waiting to leave.
 	SenderBusy(ctx context.Context, senderID uuid.UUID) (bool, error)
@@ -187,13 +208,15 @@ func NewPlacementRepository(db *db.DB) PlacementRepository {
 
 const placementTestCols = `id, organization_id, sender_account_id, sender_email, created_by, campaign_id,
 	sequence_id, contact_id, monitor_id, subject, body_plain, body_html, open_tracking, link_tracking,
-	compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, created_at, finished_at`
+	compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged,
+	credits_refunded, credits_settled_at, created_at, finished_at`
 
 func scanPlacementTest(row pgx.Row) (*models.PlacementTest, error) {
 	var t models.PlacementTest
 	err := row.Scan(&t.ID, &t.OrganizationID, &t.SenderAccountID, &t.SenderEmail, &t.CreatedBy, &t.CampaignID,
 		&t.SequenceID, &t.ContactID, &t.MonitorID, &t.Subject, &t.BodyPlain, &t.BodyHTML, &t.OpenTracking, &t.LinkTracking,
-		&t.CompareGroupID, &t.Origin, &t.Panel, &t.Status, &t.Error, &t.RemoteInstanceID, &t.RemoteTestID, &t.CreatedAt, &t.FinishedAt)
+		&t.CompareGroupID, &t.Origin, &t.Panel, &t.Status, &t.Error, &t.RemoteInstanceID, &t.RemoteTestID, &t.Pace, &t.CreditsCharged,
+		&t.CreditsRefunded, &t.CreditsSettledAt, &t.CreatedAt, &t.FinishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -226,15 +249,19 @@ func (r *placementRepository) CreateTests(ctx context.Context, bundles []Placeme
 
 	for _, b := range bundles {
 		t := b.Test
+		pace := t.Pace
+		if pace == "" {
+			pace = models.PlacementPaceSpaced
+		}
 		err = tx.QueryRow(ctx, `
 			INSERT INTO placement_tests (id, organization_id, sender_account_id, sender_email, created_by, campaign_id,
 				sequence_id, contact_id, monitor_id, subject, body_plain, body_html, open_tracking, link_tracking,
-				compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW())
+				compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW())
 			RETURNING created_at
 		`, t.ID, t.OrganizationID, t.SenderAccountID, t.SenderEmail, t.CreatedBy, t.CampaignID,
 			t.SequenceID, t.ContactID, t.MonitorID, t.Subject, t.BodyPlain, t.BodyHTML, t.OpenTracking, t.LinkTracking,
-			t.CompareGroupID, t.Origin, t.Panel, t.Status, t.Error, t.RemoteInstanceID, t.RemoteTestID).Scan(&t.CreatedAt)
+			t.CompareGroupID, t.Origin, t.Panel, t.Status, t.Error, t.RemoteInstanceID, t.RemoteTestID, pace, t.CreditsCharged).Scan(&t.CreatedAt)
 		if err != nil {
 			return err
 		}
@@ -711,13 +738,95 @@ func (r *placementRepository) ListOrgMailboxes(ctx context.Context, orgID uuid.U
 func (r *placementRepository) CountMeteredTests(ctx context.Context, orgID uuid.UUID, since time.Time) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx, `
-		SELECT COUNT(*) FROM placement_tests
-		WHERE organization_id = $1
-		  AND panel IN ('instance', 'cloud')
-		  AND origin IN ('manual', 'monitor', 'remote')
-		  AND created_at >= $2
+		SELECT COUNT(*) FROM placement_tests pt
+		WHERE pt.organization_id = $1
+		  AND pt.panel IN ('instance', 'cloud')
+		  AND pt.origin IN ('manual', 'monitor', 'remote')
+		  AND pt.credits_charged = 0
+		  AND pt.created_at >= $2
+		  AND (pt.finished_at IS NULL OR EXISTS (
+			SELECT 1 FROM placement_results pr
+			WHERE pr.test_id = pt.id AND pr.folder IN ('inbox', 'promotions', 'other', 'spam', 'missing')
+		  ))
 	`, orgID, since).Scan(&n)
 	return n, err
+}
+
+func (r *placementRepository) DeleteUnsentTests(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var taskIDs []uuid.UUID
+	rows, err := tx.Query(ctx, `
+		SELECT pr.task_id FROM placement_results pr
+		JOIN placement_tests pt ON pt.id = pr.test_id
+		WHERE pt.organization_id = $1 AND pt.id = ANY($2) AND pr.task_id IS NOT NULL
+	`, orgID, ids)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		taskIDs = append(taskIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM placement_tests WHERE organization_id = $1 AND id = ANY($2)`, orgID, ids); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM tasks WHERE id = ANY($1) AND status = 'pending'`, taskIDs); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *placementRepository) UnsettledPaidTests(ctx context.Context, limit int) ([]PlacementSettle, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT pt.id, pt.organization_id, pt.created_by, pt.credits_charged,
+			EXISTS (
+				SELECT 1 FROM placement_results pr
+				WHERE pr.test_id = pt.id AND pr.folder IN ('inbox', 'promotions', 'other', 'spam', 'missing')
+			)
+		FROM placement_tests pt
+		WHERE pt.credits_charged > 0
+		  AND pt.credits_settled_at IS NULL
+		  AND pt.finished_at IS NOT NULL
+		  AND pt.organization_id IS NOT NULL
+		ORDER BY pt.finished_at
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PlacementSettle
+	for rows.Next() {
+		var f PlacementSettle
+		if err := rows.Scan(&f.ID, &f.OrganizationID, &f.CreatedBy, &f.Credits, &f.Delivered); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+func (r *placementRepository) SettleCredits(ctx context.Context, testID uuid.UUID, refunded int) (bool, error) {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE placement_tests SET credits_settled_at = NOW(), credits_refunded = $2
+		WHERE id = $1 AND credits_charged > 0 AND credits_settled_at IS NULL
+	`, testID, refunded)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 func (r *placementRepository) CountRunning(ctx context.Context, orgID uuid.UUID) (int, error) {

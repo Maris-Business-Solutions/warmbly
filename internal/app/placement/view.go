@@ -160,13 +160,25 @@ func (s *service) usage(ctx context.Context, orgID uuid.UUID) (models.PlacementU
 		return u, nil
 	}
 	pol := s.policy(ctx)
-	limit := pol.TestsPerMonthTrial
+	limit, paid := pol.TestsPerMonthTrial, false
 	if s.Gate != nil {
-		if paid, _ := s.Gate.IsPaidOrganization(ctx, orgID); paid {
+		if paid, _ = s.Gate.IsPaidOrganization(ctx, orgID); paid {
 			limit = pol.TestsPerMonthPaid
 		}
 	}
 	u.Limit = &limit
+	// Credits come with a paid plan, so a trial past its free tests waits.
+	if paid && s.Credits != nil && !s.Credits.Unmetered() {
+		// An unreadable balance leaves it unknown; the charge itself still
+		// refuses what the workspace cannot pay.
+		if u.CreditsPerTest = pol.CreditPrice(); u.CreditsPerTest > 0 {
+			if bal, xerr := s.Credits.GetBalance(ctx, orgID); xerr == nil {
+				u.CreditBalance = &bal
+			} else {
+				errs.CaptureException(xerr)
+			}
+		}
+	}
 	return u, nil
 }
 

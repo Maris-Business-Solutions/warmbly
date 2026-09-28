@@ -153,12 +153,15 @@ export interface InstanceSettings {
     };
     // Inbox placement tests. The monthly allowances count tests on the
     // instance and cloud panels only, and a self-hosted instance does not
-    // meter at all. Zero or negative on write resolves to the default.
+    // meter at all. Zero or negative on write resolves to the default, except
+    // credits_per_test, where zero turns paid tests off.
     placement: {
         tests_per_month_trial: number;
         tests_per_month_paid: number;
         seeds_per_test: number;
         spacing_seconds: number;
+        /** Credits a test past the monthly allowance costs; 0 turns paid tests off. */
+        credits_per_test: number;
     };
     // Operator notification channels. Targets and secrets are redacted on
     // read: a chat webhook URL is a bearer credential, so the server returns a

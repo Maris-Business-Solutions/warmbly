@@ -28,7 +28,7 @@ All errors follow this structure:
 |------|-------|-------------|
 | 400 | Bad Request | Invalid request syntax or parameters, or a quota that would be passed (`storage_limit_reached`) |
 | 401 | Unauthorized | Missing or invalid authentication |
-| 402 | Payment Required | Out of AI credits (`insufficient_credits`), or no placement tests left this month (`placement_quota_exceeded`, `placement_not_entitled`) |
+| 402 | Payment Required | Out of credits (`insufficient_credits`), or no free placement tests left this month (`placement_quota_exceeded`, `placement_not_entitled`) |
 | 403 | Forbidden | Authenticated but lacks permission, or the workspace's mailbox allowance is full (`mailbox_allowance_reached`) |
 | 404 | Not Found | Resource doesn't exist |
 | 409 | Conflict | Resource already exists |
@@ -234,13 +234,14 @@ The [inbox placement test](/guides/placement-tests/) routes (`/placement/*` and 
 | `code` | Status | Meaning |
 |--------|--------|---------|
 | `placement_not_entitled` | 402 | The workspace has no active trial or subscription, so it cannot start a test. Only the hosted product answers this |
-| `placement_quota_exceeded` | 402 | The workspace has used its monthly allowance of tests on the instance panel, or the linked Warmbly Cloud workspace has used its allowance on Warmbly Cloud's panel. A tracking comparison needs two. Tests on the workspace's own seed inboxes are never counted |
+| `placement_quota_exceeded` | 402 | The workspace has used its free tests for the month on the instance panel, or the linked Warmbly Cloud workspace has used its free tests on Warmbly Cloud's panel. A tracking comparison needs two. On the instance panel of a paid workspace the `message` names the price in credits: send `max_credits` of at least that much to pay it. Monitors and trials cannot pay, and wait for the next month. Tests on the workspace's own seed inboxes are never counted |
 | `placement_too_many_running` | 429 | The workspace already has `3` tests running, counting each half of a tracking comparison. Wait for one to finish |
 | `placement_sender_busy` | 409 | The sending mailbox still has copies of another test waiting to be sent. One test sends from a mailbox at a time |
 | `placement_sender_unavailable` | 409 | The sending mailbox is not connected and active, or it is itself a seed inbox, which receives tests and cannot send one |
-| `placement_daily_budget` | 409 | The mailbox has too little of its daily limit left today for a useful test (at least five seeds per test, ten for a comparison). A test that fits otherwise is sized down to what is left rather than refused. The `message` gives both numbers |
+| `placement_daily_budget` | 409 | The mailbox has too little of its daily limit left today for a useful test (at least five seeds per test, ten for a comparison), or for every seed chosen with `seed_ids`. A test that fits otherwise is sized down to what is left rather than refused. The `message` gives both numbers |
 | `placement_no_seeds` | 409 | The panel has no seed inbox the test could use: none were added, none is connected, or every one is on the sender's own domain, which is always skipped |
 | `placement_panel_unavailable` | 409 | `panel` is `cloud` on an instance that is not linked to Warmbly Cloud |
+| `placement_invalid_seeds` | 400 | `seed_ids` names a mailbox that is not a seed inbox of the workspace, or one that is not connected and running right now; the `message` names it |
 | `placement_invalid_tracking` | 400 | `tracking` is `on` or `compare` for a campaign that sends plain text, which carries no tracking |
 | `placement_not_running` | 409 | `POST /placement/tests/:id/cancel` on a test that has already finished or been cancelled |
 | `placement_seed_unavailable` | 409 | The mailbox cannot be marked as a seed inbox: it is on the instance panel, or a placement test is still sending from it |
@@ -291,7 +292,7 @@ Two `401` variants are not about API keys at all. `setup_token_invalid` is retur
 
 ### 402 Payment Required
 
-Returned when an AI action is requested but the organization is out of credits. The response carries the stable code `insufficient_credits`.
+Returned when an AI action, or a placement test paid in credits, is requested but the organization does not have enough credits. The response carries the stable code `insufficient_credits`.
 
 ```json
 {
@@ -306,7 +307,7 @@ Returned when an AI action is requested but the organization is out of credits. 
 - Wait for the monthly allowance to reset, or buy a top-up pack (see [AI credits](/guides/ai-credits/))
 - Related: a `429` with code `usage_cap_exceeded` means a short-term AI usage cap was hit; retry later
 
-Placement tests answer `402` too, with `placement_not_entitled` or `placement_quota_exceeded`; see [placement test refusals](#placement-test-refusals).
+Placement tests answer `402` too, with `placement_not_entitled` or `placement_quota_exceeded`; see [placement test refusals](#placement-test-refusals). A paid placement test past the credit balance answers `insufficient_credits`, and one past a spend limit answers `429` with `usage_cap_exceeded`; neither charges anything.
 
 ### 403 Forbidden
 

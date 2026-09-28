@@ -1989,6 +1989,9 @@ func main() {
 		if streamingPublisher != nil {
 			placementDeps.Publisher = streamingPublisher
 		}
+		if creditService != nil {
+			placementDeps.Credits = creditService
+		}
 		// A self-hosted instance borrows Warmbly Cloud's panel through its link;
 		// the hosted product is the cloud and runs its own.
 		if config.SelfHosted() && cloudLinkService != nil {
