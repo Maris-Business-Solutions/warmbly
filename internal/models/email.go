@@ -67,6 +67,8 @@ type Email struct {
 	// VendorConnectionID and Vendor name the inbox vendor account a mailbox was imported from.
 	VendorConnectionID *uuid.UUID `json:"vendor_connection_id,omitempty"`
 	Vendor             string     `json:"vendor,omitempty"`
+	// AvatarURL is the mailbox's own profile photo, empty when its provider or vendor has none we can read.
+	AvatarURL string `json:"avatar_url"`
 
 	LastSyncedAt time.Time `json:"last_synced_at"`
 	LastID       *int64    `json:"last_id"`

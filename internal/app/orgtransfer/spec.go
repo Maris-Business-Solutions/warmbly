@@ -198,10 +198,13 @@ var Tables = []Table{
 		// seed_scope is the operator's choice of test inboxes on this
 		// instance; an archive must not add mailboxes to another instance's
 		// seed panel.
+		// avatar_checked_at is this instance's photo sweep checkpoint; the photo travels.
 		ResetOnImport: []string{
 			"worker_id", "auth_checked_at", "auth_failing_since", "cold_ramp_started_at",
 			"send_lifecycle", "send_lifecycle_since", "send_lifecycle_reason", "seed_scope",
+			"avatar_checked_at",
 		},
+		Blobs: []BlobColumn{{Column: "avatar_url", Kind: BlobKindPublicURL}},
 	},
 	{
 		Name: "email_accounts_smtp_imap", Group: models.OrgDataGroupCore,

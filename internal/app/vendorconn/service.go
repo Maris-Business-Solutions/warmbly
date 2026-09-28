@@ -410,6 +410,29 @@ func (s *Service) Mailboxes(ctx context.Context, orgID, id uuid.UUID) ([]models.
 	return out, nil
 }
 
+// Pictures lists the profile photo URLs the vendor account publishes, keyed by vendor mailbox id.
+func (s *Service) Pictures(ctx context.Context, orgID, id uuid.UUID) (map[string]string, error) {
+	c, xerr := s.get(ctx, orgID, id)
+	if xerr != nil {
+		return nil, xerr
+	}
+	client, xerr := s.client(ctx, c)
+	if xerr != nil {
+		return nil, xerr
+	}
+	list, err := client.List(ctx)
+	if err != nil {
+		return nil, s.failed(ctx, c, err)
+	}
+	out := make(map[string]string)
+	for _, m := range list {
+		if m.Picture != "" {
+			out[m.ID] = m.Picture
+		}
+	}
+	return out, nil
+}
+
 // ImportInput picks mailboxes from a vendor account.
 type ImportInput struct {
 	MailboxIDs []string                    `json:"mailbox_ids"`

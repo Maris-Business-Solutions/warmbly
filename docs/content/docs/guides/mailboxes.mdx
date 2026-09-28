@@ -261,6 +261,16 @@ Two things worth knowing before you use one:
 
 Outlook and SMTP/IMAP mailboxes have no equivalent list to read, so the card is absent for them. Their signature is written in Warmbly.
 
+### Profile photo
+
+The mailbox's own profile photo shows at the top of its drawer, with its provider's logo in the corner. Warmbly reads it where it can without asking for any extra permission:
+
+- a Microsoft 365 or Outlook.com mailbox, when it connects or reconnects
+- a mailbox connected through a Google Workspace or Microsoft 365 [admin grant](/guides/mailbox-import/), from the organization's directory
+- a mailbox imported from an inbox vendor that publishes one, such as Zapmail
+
+Grant and vendor photos are checked again every week, so a new photo appears on its own and a removed one goes away. A Google mailbox signed in on its own and any SMTP/IMAP mailbox shows its initials instead, because nothing Warmbly is allowed to read carries a photo for it.
+
 ### Custom tracking domain
 
 Open pixels and click links go out on a shared tracking host by default, which means their reputation is the sum of everyone else using it. Pointing a subdomain of the domain you send from at that host puts them on your own name instead.
@@ -406,7 +416,7 @@ This is not the same as the risk band that decides which sending worker and IP h
 
 ## Health
 
-The Accounts list groups mailboxes as **Healthy** (sending normally), **Warming** (ramping through warmup), or **Needs attention** (paused, failing, or not sending). Each row shows the mailbox's host, sender name and tags, a **Status** that says what it is doing (**Sending**, **Warming**, **Active** when it does both, **Resting**, or **Idle**, and **Error**, **Off** or **Reconnect** when something stops it), campaign emails sent today against its cap, warmup sent today against the ramp target, the inbox rate, and the health score. Hover a status for the reason, and click any column header to sort. A drop in health between refreshes notifies you rather than waiting to be noticed.
+The Accounts list groups mailboxes as **Healthy** (sending normally), **Warming** (ramping through warmup), or **Needs attention** (paused, failing, or not sending). Each row shows the mailbox with how it connects and its tags, a **Status** that says what it is doing (**Sending**, **Warming**, **Active** when it does both, **Resting**, or **Idle**, and **Error**, **Off** or **Reconnect** when something stops it), campaign emails sent today against its cap, warmup sent today against the ramp target, the inbox rate, and the health score. Hover a status for the reason, and click any column header to sort. A drop in health between refreshes notifies you rather than waiting to be noticed.
 
 The **Inbox** column is the share of the mailbox's warmup mail that reached partners' inboxes at Google, Microsoft and Yahoo over the last seven days (smaller mail hosts run their own filters and are never counted), and the score is capped at it, so a mailbox landing some mail in spam no longer reads `100`. Click it, or open the drawer's **Deliverability** tab, for the day-by-day history and the split per provider. See [seeing where warmup lands](/guides/warmup/#seeing-where-warmup-lands).
 

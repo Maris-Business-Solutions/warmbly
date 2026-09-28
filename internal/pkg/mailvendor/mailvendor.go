@@ -89,6 +89,8 @@ type Mailbox struct {
 	Workspace string
 	// Admin marks the domain's administrator mailbox, where the vendor says.
 	Admin bool
+	// Picture is the profile photo URL the vendor set on the mailbox, empty when it publishes none.
+	Picture string
 }
 
 // Endpoint is one server a mailbox connects to.

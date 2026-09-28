@@ -30,3 +30,8 @@ export function mailboxSource(box: MailboxSourceBox): MailboxSource {
     }
     return { kind: "host", logo: box.mail_host || box.provider || "", label: connection, title: connection };
 }
+
+/** The mark a mailbox's avatar shows: Google, Microsoft, or a generic SMTP server. */
+export function mailboxBrand(box: Pick<Inbox, "provider" | "mail_host">): "google" | "microsoft" | "smtp_imap" {
+    return mailHostLogo(box.mail_host) ?? (box.provider === "gmail" ? "google" : box.provider === "outlook" ? "microsoft" : "smtp_imap");
+}

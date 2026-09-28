@@ -22,6 +22,8 @@ export default interface Inbox {
     vendor_connection_id?: string | null;
     /** That vendor's id (inboxkit, zapmail, ...); absent when none. */
     vendor?: string;
+    /** The mailbox's own profile photo from its provider or vendor; "" when none can be read. */
+    avatar_url?: string;
     status: string;
     last_synced_at: Date;
     last_id?: number | null;

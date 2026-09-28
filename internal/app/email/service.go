@@ -134,6 +134,8 @@ type EmailService interface {
 	// WireImportSignin lets an OAuth connect close the import rows that were
 	// waiting for someone to sign in as that mailbox.
 	WireImportSignin(r ImportSigninResolver)
+	// WireAvatars lets a connect keep the profile photo its provider returns.
+	WireAvatars(a AvatarSaver)
 	// WireAccountErrors lets a successful reconnect resolve the credential
 	// errors it just fixed, which is what clears the mailbox's error banner.
 	WireAccountErrors(repo repository.EmailAccountErrorRepository)
@@ -204,6 +206,8 @@ type emailService struct {
 	unibox repository.UniboxRepository
 	// importSignin closes import rows waiting on a sign-in. Optional.
 	importSignin ImportSigninResolver
+	// avatars keeps the photo a connect handshake returns. Optional.
+	avatars AvatarSaver
 }
 
 // WireUnibox attaches the unified inbox store, for the purge that follows a

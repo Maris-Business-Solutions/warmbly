@@ -172,6 +172,9 @@ func (s *emailService) OAuthFinish(ctx context.Context, userID, code, state stri
 		if xerr == nil && acc != nil && sess.OrganizationID != nil {
 			s.resolveImportSignin(ctx, *sess.OrganizationID, acc)
 		}
+		if xerr == nil {
+			s.captureAvatar(acc, provider, tok)
+		}
 		return acc, true, xerr
 	}
 
@@ -217,6 +220,7 @@ func (s *emailService) OAuthFinish(ctx context.Context, userID, code, state stri
 	})
 	if xerr == nil && acc != nil {
 		s.captureSendIdentity(ctx, acc, tok)
+		s.captureAvatar(acc, provider, tok)
 		s.syncWarmupPoolMembership(ctx, acc)
 		s.publishAccountEvent(ctx, pubsub.EventAccountConnected, acc)
 		s.dispatchAccountConnected(ctx, sess.OrganizationID, acc)
