@@ -22,6 +22,9 @@ type CampaignSendPlanner interface {
 	// estimate) or for the whole workspace (the dashboard meter). A campaign
 	// with no daily limit clamps nothing at the campaign level.
 	PoolCapacityToday(ctx context.Context, campaign *models.Campaign, accounts []models.Email) (*models.WorkspaceSendCapacity, error)
+	// ProjectCampaign simulates a campaign that may not exist yet day by
+	// day, for the wizard's estimate. Read-only.
+	ProjectCampaign(ctx context.Context, in CampaignProjectionInput) (*models.CampaignEstimateResult, error)
 }
 
 // mailboxDay is one mailbox's day on a campaign with the working shown: every

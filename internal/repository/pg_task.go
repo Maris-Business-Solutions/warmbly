@@ -149,6 +149,9 @@ type TaskRepository interface {
 	// CountCampaignEmailsSentTodayByAccounts is CountCampaignEmailsSentToday
 	// for a whole pool in one read; an id with no sends is absent.
 	CountCampaignEmailsSentTodayByAccounts(ctx context.Context, accountIDs []uuid.UUID) (map[uuid.UUID]int, error)
+	// CampaignSendsPerDayByAccounts is each mailbox's average campaign sends
+	// per day over the last `days` whole days; an id with none is absent.
+	CampaignSendsPerDayByAccounts(ctx context.Context, accountIDs []uuid.UUID, days int) (map[uuid.UUID]float64, error)
 	CountWarmupEmailsSentToday(ctx context.Context, accountID uuid.UUID) (int, error)
 
 	// Create user-initiated email task (transactional)
@@ -543,6 +546,40 @@ func (r *taskRepository) CountCampaignEmailsSentTodayByAccounts(ctx context.Cont
 			return nil, err
 		}
 		out[id] += n
+	}
+	return out, rows.Err()
+}
+
+// CampaignSendsPerDayByAccounts averages the same ledger as
+// CountCampaignEmailsSentTodayByAccounts over whole days before today.
+func (r *taskRepository) CampaignSendsPerDayByAccounts(ctx context.Context, accountIDs []uuid.UUID, days int) (map[uuid.UUID]float64, error) {
+	out := make(map[uuid.UUID]float64, len(accountIDs))
+	if len(accountIDs) == 0 || days <= 0 {
+		return out, nil
+	}
+	query := `
+		SELECT t.email_account_id, COUNT(*)
+		FROM tasks t
+		WHERE t.email_account_id = ANY($1)
+		  AND t.status = 'completed'
+		  AND t.task_type = 'campaign'
+		  AND t.completed_at >= CURRENT_DATE - $2::int
+		  AND t.completed_at < CURRENT_DATE
+		  AND ` + taskDispatchedEmail + `
+		GROUP BY t.email_account_id
+	`
+	rows, err := r.db.Query(ctx, query, accountIDs, days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = float64(n) / float64(days)
 	}
 	return out, rows.Err()
 }

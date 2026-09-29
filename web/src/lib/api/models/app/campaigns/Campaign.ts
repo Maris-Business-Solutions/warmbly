@@ -1,4 +1,3 @@
-export type CampaignKind = "sequence" | "one_time";
 
 export default interface Campaign {
     id: string;
@@ -6,9 +5,6 @@ export default interface Campaign {
     name: string;
     description: string;
     status: string;
-    // "sequence" (multi-step, the default) or "one_time" (a single message
-    // to an audience, no follow-ups). Fixed at creation.
-    kind: CampaignKind;
 
     stop_on_reply: boolean;
     open_tracking: boolean;

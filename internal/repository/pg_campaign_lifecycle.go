@@ -124,7 +124,7 @@ func (r *campaignRepository) Duplicate(ctx context.Context, in DuplicateCampaign
 			guardrail_reply_rate_min, guardrail_min_sample, guardrail_window_days,
 			guardrail_tripped_at, guardrail_reason,
 			utm_tracking, utm_source, utm_medium, utm_campaign,
-			last_status_change_at, updated_at, created_at, kind
+			last_status_change_at, updated_at, created_at
 		)
 		SELECT
 			$2, $3, organization_id, $4, description, 'draft',
@@ -143,7 +143,7 @@ func (r *campaignRepository) Duplicate(ctx context.Context, in DuplicateCampaign
 			guardrail_reply_rate_min, guardrail_min_sample, guardrail_window_days,
 			NULL, '',
 			utm_tracking, utm_source, utm_medium, utm_campaign,
-			NULL, NOW(), NOW(), kind
+			NULL, NOW(), NOW()
 		FROM campaigns
 		WHERE id = $1
 	`

@@ -283,13 +283,13 @@ export default function EmailContentEditor({
                 </div>
                 {subjectLocked ? (
                     <>
-                        <div className="h-7 px-2.5 flex items-center rounded-md border border-slate-200 bg-slate-50 text-[12.5px] text-slate-500">
+                        <div className="h-9 px-3 flex items-center rounded-md border border-slate-200 bg-slate-50 text-[13.5px] text-slate-500">
                             <span className="truncate">{subjectLocked.subject || "No subject"}</span>
                         </div>
                         <p className="mt-1.5 text-[10.5px] text-slate-400">{subjectLocked.note}</p>
                     </>
                 ) : (
-                    <TextInput value={subject} onChange={onSubjectChange} placeholder={subjectPlaceholder} />
+                    <TextInput value={subject} onChange={onSubjectChange} placeholder={subjectPlaceholder} className="w-full h-9 px-3 text-[13.5px]" />
                 )}
             </div>
 

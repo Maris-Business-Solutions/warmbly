@@ -731,7 +731,7 @@ export function VariableMenu({
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.12 }}
-                                className="z-[60] w-[340px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]"
+                                className="z-[150] w-[340px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]"
                             >
                         <div className="px-3 py-2 border-b border-slate-100">
                             <p className="text-[12px] font-medium text-slate-800">Personalization</p>
@@ -939,7 +939,7 @@ function FormMenu({ onPick }: { onPick: (publicId: string) => void }) {
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.12 }}
-                                className="z-[60] w-72 max-w-[calc(100vw-24px)] overflow-hidden rounded-md border border-slate-200 bg-white p-2 shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]"
+                                className="z-[150] w-72 max-w-[calc(100vw-24px)] overflow-hidden rounded-md border border-slate-200 bg-white p-2 shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]"
                             >
                                 <div className="px-1 pb-1.5">
                                     <p className="text-[12px] font-medium text-slate-800">Insert a form</p>

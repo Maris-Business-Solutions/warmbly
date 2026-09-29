@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PermissionButton from "@/components/ui/PermissionButton";
-import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
     ArrowLeftIcon,
@@ -10,11 +10,10 @@ import {
     Loader2Icon,
     PauseIcon,
     PlayIcon,
-    SendIcon,
     Settings2Icon,
     UsersIcon,
 } from "lucide-react";
-import { campaignDisplayLabel, isIdleCampaign, isOneTimeCampaign } from "@/components/app/campaigns/status";
+import { campaignDisplayLabel, isIdleCampaign } from "@/components/app/campaigns/status";
 import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
 import useStartCampaign from "@/lib/api/hooks/app/campaigns/useStartCampaign";
 import useStopCampaign from "@/lib/api/hooks/app/campaigns/useStopCampaign";
@@ -28,6 +27,7 @@ import toast from "react-hot-toast";
 import { CAMPAIGN_DELETED_EVENT, type CampaignDeletedDetail } from "@/lib/realtime/campaignDeleted";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import { usePresenceResource } from "@/hooks/PresenceProvider";
+import { usePermission } from "@/hooks/usePermission";
 
 const TABS = [
     { label: "Overview", path: "", Icon: BarChart3Icon },
@@ -55,6 +55,25 @@ export default function CampaignLayout() {
     const startCampaign = useStartCampaign();
     const stopCampaign = useStopCampaign();
     const [launchOpen, setLaunchOpen] = useState(false);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const canSend = usePermission("SEND_CAMPAIGNS");
+    const launchRequested = searchParams.get("launch") === "1";
+    const loadedStatus = campaignData.data?.status;
+
+    // ?launch=1 (the new-campaign flow's hand-off, the draft checklist) opens
+    // the launch dialog once the campaign has loaded, then leaves the URL clean.
+    useEffect(() => {
+        if (!launchRequested || !loadedStatus) return;
+        if (canSend && canStartCampaign(loadedStatus)) setLaunchOpen(true);
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("launch");
+                return next;
+            },
+            { replace: true },
+        );
+    }, [launchRequested, loadedStatus, canSend, setSearchParams]);
 
     // Collaboration: claim this campaign while it's open so teammates see
     // who's already in here (header pill + the org-wide presence stack).
@@ -147,15 +166,6 @@ export default function CampaignLayout() {
                             >
                                 {campaignDisplayLabel(campaign)}
                             </span>
-                            {isOneTimeCampaign(campaign) && (
-                                <span
-                                    title="One-time email: a single message, no follow-ups"
-                                    className="shrink-0 inline-flex items-center gap-1 h-5 px-2 rounded-md bg-sky-50 text-sky-700 text-[10px] uppercase tracking-[0.12em] font-medium"
-                                >
-                                    <SendIcon className="w-2.5 h-2.5" />
-                                    One-time
-                                </span>
-                            )}
                             <ResourceViewers resource={`campaign:${campaign.id}`} className="shrink-0" />
                         </div>
                         <p className="text-[11px] text-slate-400 font-mono mt-1 truncate">{campaign.id}</p>

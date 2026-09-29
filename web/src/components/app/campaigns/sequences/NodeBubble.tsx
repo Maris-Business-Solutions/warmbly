@@ -58,7 +58,7 @@ export function NodeBubble({ anchor, children }: { anchor: NodeAnchor; children:
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.12 }}
-            style={{ position: "fixed", top: anchor.top, left: anchor.left, zIndex: 60 }}
+            style={{ position: "fixed", top: anchor.top, left: anchor.left, zIndex: 150 }}
             ref={(el) => {
                 // Placed from the bar's own size rather than a guess at it:
                 // these bars are one row or two depending on what they edit, so

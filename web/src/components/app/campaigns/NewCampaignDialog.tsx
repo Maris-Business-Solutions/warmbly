@@ -1,12 +1,13 @@
-// Multi-step new-campaign wizard.
+// The new-campaign flow: Leads, Emails, Schedule, Review, with a live launch
+// plan beside it that simulates the send against the real mailbox pool
+// (warmup graduation, the warmup mail running alongside, other campaigns,
+// health bands, spacing).
 //
-// Two flows share one dialog. A sequence (basics, schedule, sending, first
-// email) ends in a single atomic create call and leaves a draft. A one-time
-// email (basics, email, audience, sending, send) creates the campaign, links
-// the chosen segments so their members become leads, and starts it, either
-// now or on the scheduled date. Both use directional slide transitions and a
-// numbered stepper; a step cannot be left until it is complete, and the
-// reason shows in the footer instead of a silently disabled button.
+// A campaign that is not launched yet is a draft on the server. Closing the
+// flow with something in it saves the draft, a draft clicked in the campaigns
+// list reopens here, and a launch saves it and hands over to the campaign
+// page's launch dialog, so the pre-send checks and the list-risk gate run
+// exactly as they do for every other start.
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -16,272 +17,184 @@ import {
     CheckIcon,
     ChevronLeftIcon,
     ChevronRightIcon,
+    ExternalLinkIcon,
     ListChecksIcon,
     Loader2Icon,
-    MailIcon,
     MegaphoneIcon,
-    PencilLineIcon,
-    PlusIcon,
-    SendIcon,
-    Trash2Icon,
-    UsersIcon,
+    RocketIcon,
     XIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
-import useCreateCampaign from "@/lib/api/hooks/app/campaigns/useCreateCampaign";
-import useStartCampaign from "@/lib/api/hooks/app/campaigns/useStartCampaign";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import useCampaignEstimate from "@/lib/api/hooks/app/campaigns/useCampaignEstimate";
-import { useSetCampaignSegments } from "@/lib/api/hooks/app/segments";
-import type { CampaignKind } from "@/lib/api/models/app/campaigns/Campaign";
-import { Label, NumberInput, TextInput } from "@/components/ui/field";
-import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
-import { TimePicker } from "@/components/ui/TimePicker";
-import { DateTimePicker } from "@/components/ui/DateTimePicker";
-import WeekdayBitmask from "@/components/app/campaigns/schedule/WeekdayBitmask";
-import TagSelector from "@/components/app/popup/select/TagSelector";
-import { SegmentMultiPicker } from "@/components/app/segments/SegmentPickers";
-import { Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
-import { useUserProfile } from "@/hooks/context/user";
+import useDeleteCampaign from "@/lib/api/hooks/app/campaigns/useDeleteCampaign";
+import { useSegments } from "@/lib/api/hooks/app/segments";
 import useCurrentOrganization from "@/lib/api/hooks/app/organizations/useCurrentOrganization";
-import { defaultScheduleTimezone, followWorkspaceLabel, timezoneOptions } from "@/lib/timezone";
+import { defaultScheduleTimezone } from "@/lib/timezone";
 import { useConfirm } from "@/hooks/context/confirm";
+import { usePermission } from "@/hooks/usePermission";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { cn } from "@/lib/utils";
+import {
+    NAME_MAX,
+    NAME_MIN,
+    STEPS,
+    autoName,
+    firstIssue,
+    initialDraft,
+    scheduledDate,
+    stepIssue,
+    stepWaits,
+    writtenEmails,
+    type Draft,
+    type StepKey,
+} from "./new/draft";
+import { draftSignature, freshMeta, loadServerDraft, saveServerDraft, type DraftMeta } from "./new/serverDraft";
+import { EmailsStep, LeadsStep, LaunchPlanRail, ReviewStep, ScheduleStep, type EstimateState } from "./new/steps";
 
 interface Props {
     open: boolean;
     onClose: () => void;
+    // A draft campaign to reopen; absent starts a new one.
+    draftId?: string | null;
 }
 
-type SequenceDraft = {
-    id: string;
-    subject: string;
-    body_plain: string;
-    wait_after: number;
-};
+type Busy = "draft" | "launch" | "close" | "leave" | "delete";
 
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const WEEKDAYS_MASK = 0b0011111;
-const EVERY_DAY_MASK = 0b1111111;
-
-const NAME_MIN = 3;
-const NAME_MAX = 50;
-
-type StepKey = "basics" | "schedule" | "sending" | "email" | "audience" | "send";
-type StepDef = { key: StepKey; label: string; icon: typeof MegaphoneIcon };
-
-const SEQUENCE_STEPS: readonly StepDef[] = [
-    { key: "basics", label: "Basics", icon: MegaphoneIcon },
-    { key: "schedule", label: "Schedule", icon: CalendarClockIcon },
-    { key: "sending", label: "Sending", icon: SendIcon },
-    { key: "email", label: "First email", icon: MailIcon },
-];
-
-// A one-time email asks for the message before the audience, and ends on the
-// send step where the estimate can see everything it depends on.
-const ONE_TIME_STEPS: readonly StepDef[] = [
-    { key: "basics", label: "Basics", icon: MegaphoneIcon },
-    { key: "email", label: "Email", icon: MailIcon },
-    { key: "audience", label: "Audience", icon: UsersIcon },
-    { key: "sending", label: "Sending", icon: SendIcon },
-    { key: "send", label: "Send", icon: CalendarClockIcon },
-];
-
-function stepsFor(kind: CampaignKind): readonly StepDef[] {
-    return kind === "one_time" ? ONE_TIME_STEPS : SEQUENCE_STEPS;
+// Where a reopened draft picks up: the first part that still needs work.
+function resumeStep(d: Draft, meta: DraftMeta): number {
+    if (d.segmentIds.length === 0 && meta.leadCount === 0) return 0;
+    if (!meta.stepsLocked && writtenEmails(d).length === 0) return 1;
+    return STEPS.length - 1;
 }
 
-let seqCounter = 0;
-const newSequence = (wait: number): SequenceDraft => ({
-    id: `seq-${++seqCounter}`,
-    subject: "",
-    body_plain: "",
-    wait_after: wait,
-});
-
-type SendMode = "now" | "later";
-
-type Draft = {
-    kind: CampaignKind;
-    name: string;
-    description: string;
-    timezone: string;
-    days: number;
-    startTime: string;
-    endTime: string;
-    // Minutes to hold a contact's first email after they enter the campaign.
-    emailTagIds: string[];
-    dailyLimit: number;
-    stopOnReply: boolean;
-    openTracking: boolean;
-    linkTracking: boolean;
-    utmTracking: boolean;
-    unsubHeader: boolean;
-    sequences: SequenceDraft[];
-    // One-time only.
-    segmentIds: string[];
-    sendMode: SendMode;
-    // Local "yyyy-MM-ddTHH:mm", the DateTimePicker's shape.
-    scheduledAt: string;
-};
-
-const initialDraft = (timezone: string): Draft => ({
-    kind: "sequence",
-    name: "",
-    description: "",
-    timezone,
-    days: WEEKDAYS_MASK,
-    startTime: "08:00",
-    endTime: "18:00",
-    emailTagIds: [],
-    dailyLimit: 50,
-    stopOnReply: true,
-    openTracking: true,
-    linkTracking: true,
-    utmTracking: true,
-    unsubHeader: true,
-    sequences: [newSequence(0)],
-    segmentIds: [],
-    sendMode: "now",
-    scheduledAt: "",
-});
-
-function scheduledDate(d: Draft): Date | null {
-    if (d.sendMode !== "later" || !d.scheduledAt) return null;
-    const date = new Date(d.scheduledAt);
-    return Number.isNaN(date.getTime()) ? null : date;
-}
-
-// One human-readable reason a step cannot be left yet, or null when it can.
-function stepIssue(key: StepKey, d: Draft): string | null {
-    switch (key) {
-        case "basics": {
-            const n = d.name.trim().length;
-            if (n < NAME_MIN) return `Name needs at least ${NAME_MIN} characters`;
-            if (n > NAME_MAX) return `Name is ${NAME_MAX} characters max`;
-            return null;
-        }
-        case "schedule":
-            if (d.days === 0) return "Pick at least one sending day";
-            if (d.startTime && d.endTime && d.startTime >= d.endTime) return "End time must be after the start time";
-            return null;
-        case "email": {
-            const first = d.sequences[0];
-            if (!first) return null;
-            const hasSubject = first.subject.trim().length > 0;
-            const hasBody = first.body_plain.trim().length > 0;
-            // A one-time email is the whole campaign, so it cannot be skipped.
-            if (d.kind === "one_time") {
-                if (!hasSubject) return "Give the email a subject line";
-                if (!hasBody) return "Write the email's body";
-                return null;
-            }
-            // A sequence's first email may be skipped entirely (written later
-            // on the Steps tab), but a half-written one must be finished.
-            if (hasBody && !hasSubject) return "Give the first email a subject line";
-            if (hasSubject && !hasBody) return "Write the first email's body";
-            return null;
-        }
-        case "audience":
-            if (d.segmentIds.length === 0) return "Pick at least one segment";
-            return null;
-        case "send": {
-            if (d.days === 0) return "Pick at least one sending day";
-            if (d.startTime && d.endTime && d.startTime >= d.endTime) return "End time must be after the start time";
-            if (d.sendMode === "later") {
-                const at = scheduledDate(d);
-                if (!at) return "Pick a date and time to send";
-                if (at.getTime() < Date.now()) return "The scheduled time has already passed";
-            }
-            return null;
-        }
-        default:
-            return null;
-    }
-}
-
-function daysLabel(mask: number): string {
-    if (mask === EVERY_DAY_MASK) return "Every day";
-    if (mask === WEEKDAYS_MASK) return "Weekdays";
-    const on = WEEKDAYS.filter((_, i) => (mask & (1 << i)) !== 0).map((d) => d.slice(0, 3));
-    return on.length === 0 ? "No days" : on.join(", ");
-}
-
-// "14:30" -> "2:30 PM"
-function fmt12(hhmm: string): string {
-    const [h, m] = hhmm.split(":").map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
-    const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `${h12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-}
-
-function fmtDate(d: Date): string {
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function fmtDateTime(d: Date): string {
-    return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-export function NewCampaignDialog({ open, onClose }: Props) {
+export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
     const navigate = useNavigate();
+    const { pathname } = useLocation();
     const confirm = useConfirm();
-    const create = useCreateCampaign();
-    const linkSegments = useSetCampaignSegments();
-    const start = useStartCampaign();
+    const queryClient = useQueryClient();
+    const deleteCampaign = useDeleteCampaign();
+    const org = useCurrentOrganization();
+    const canSend = usePermission("SEND_CAMPAIGNS");
     // Follow the workspace when it has a timezone, else start from this
     // browser's. The API's list is sorted by offset, so its first entry is
     // never a sensible default.
-    const org = useCurrentOrganization();
     const defaultTimezone = org.data?.timezone ? "" : defaultScheduleTimezone("");
 
     const [step, setStep] = React.useState(0);
     const [direction, setDirection] = React.useState<1 | -1>(1);
     const [draft, setDraft] = React.useState<Draft>(() => initialDraft(defaultTimezone));
+    const [emailIndex, setEmailIndex] = React.useState(0);
     // Set when the user tries to leave a step that is not ready; shows the reason.
     const [nudged, setNudged] = React.useState(false);
-    // The one-time flow is three calls; the footer stays busy across all of them.
-    const [submitting, setSubmitting] = React.useState(false);
-
-    const steps = stepsFor(draft.kind);
-    const lastStep = steps.length - 1;
-    const current = steps[Math.min(step, lastStep)];
-
+    const [busyWith, setBusyWith] = React.useState<Busy | null>(null);
+    // The saved campaign this flow edits, and what it held when opened.
+    const [existing, setExisting] = React.useState<{ id: string; meta: DraftMeta } | null>(null);
+    const [baseline, setBaseline] = React.useState("");
+    const [loading, setLoading] = React.useState(false);
     // Set once the user picks a zone, so a workspace default that loads late never overrides it.
     const tzTouched = React.useRef(false);
+
+    const current = STEPS[step];
+    const lastStep = STEPS.length - 1;
+
+    // Each opening starts fresh, or from the saved draft it was opened on.
+    React.useEffect(() => {
+        if (!open) return;
+        setEmailIndex(0);
+        setDirection(1);
+        setNudged(false);
+        setBusyWith(null);
+        if (!draftId) {
+            const fresh = initialDraft(defaultTimezone);
+            setDraft(fresh);
+            setExisting(null);
+            setBaseline(draftSignature(fresh));
+            setStep(0);
+            setLoading(false);
+            tzTouched.current = false;
+            return;
+        }
+        let cancelled = false;
+        setLoading(true);
+        tzTouched.current = true;
+        loadServerDraft(draftId)
+            .then(({ draft: d, meta }) => {
+                if (cancelled) return;
+                setDraft(d);
+                setExisting({ id: draftId, meta });
+                setBaseline(draftSignature(d));
+                setStep(resumeStep(d, meta));
+                setLoading(false);
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                toast.error(buildError(err as AppError));
+                onClose();
+            });
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the opening, not on every render's callbacks
+    }, [open, draftId]);
+
+    React.useEffect(() => {
+        if (open && !draftId && !tzTouched.current) {
+            setDraft((d) => (d.timezone === defaultTimezone ? d : { ...d, timezone: defaultTimezone }));
+        }
+    }, [open, draftId, defaultTimezone]);
+
     const patch = React.useCallback((p: Partial<Draft>) => {
         if (p.timezone !== undefined) tzTouched.current = true;
         setDraft((d) => ({ ...d, ...p }));
     }, []);
 
-    const setKind = React.useCallback(
-        (kind: CampaignKind) =>
-            setDraft((d) => {
-                if (d.kind === kind) return d;
-                return {
-                    ...d,
-                    kind,
-                    // A one-time email is exactly one message.
-                    sequences: kind === "one_time" ? d.sequences.slice(0, 1) : d.sequences,
-                };
-            }),
-        [],
-    );
+    // Names for the auto name and the review.
+    const segments = useSegments(open);
+    const segmentNames = React.useMemo(() => {
+        const byId = new Map((segments.data ?? []).map((s) => [s.id, s.name]));
+        return draft.segmentIds.map((id) => byId.get(id)).filter((n): n is string => !!n);
+    }, [segments.data, draft.segmentIds]);
+    const placeholderName = autoName(segmentNames);
+    const meta = existing?.meta;
+    // Leads can come from the lists picked here or be on a saved draft already.
+    const hasLeads = draft.segmentIds.length > 0 || (meta?.leadCount ?? 0) > 0;
+    const typedName = draft.name.trim();
+    const finalName = typedName || placeholderName;
+    // A save never fails on the name: one that is not valid yet falls back.
+    const savedName =
+        typedName.length >= NAME_MIN && typedName.length <= NAME_MAX ? typedName : typedName.length > NAME_MAX ? typedName.slice(0, NAME_MAX) : placeholderName;
 
-    React.useEffect(() => {
-        if (!open) {
-            setStep(0);
-            setDirection(1);
-            setNudged(false);
-            setSubmitting(false);
-            setDraft(initialDraft(defaultTimezone));
-            tzTouched.current = false;
-        } else if (!tzTouched.current) {
-            setDraft((d) => (d.timezone === defaultTimezone ? d : { ...d, timezone: defaultTimezone }));
-        }
-    }, [open, defaultTimezone]);
+    const lockedEmails = meta?.stepsLocked ? meta.steps.filter((s) => (s.kind ?? "email") === "email") : null;
+
+    // The live projection behind the rail and the review.
+    const at = scheduledDate(draft);
+    const estimateQuery = useCampaignEstimate(
+        {
+            segment_ids: draft.segmentIds,
+            email_tag_ids: draft.emailTagIds,
+            daily_limit: Math.min(5000, Math.max(3, draft.dailyLimit || 3)),
+            days: draft.days || undefined,
+            timezone: draft.timezone,
+            // A saved draft's own per-day windows stand when it has them.
+            start_time: !meta?.customWindows && draft.startTime < draft.endTime ? draft.startTime : undefined,
+            end_time: !meta?.customWindows && draft.startTime < draft.endTime ? draft.endTime : undefined,
+            start_date: at && at.getTime() > Date.now() ? at.toISOString() : undefined,
+            campaign_id: existing?.id,
+            step_waits: lockedEmails ? lockedEmails.slice(1).map((s) => Math.max(0, s.wait_after)) : stepWaits(draft),
+        },
+        open && !loading,
+    );
+    const estimate: EstimateState = {
+        data: estimateQuery.data,
+        loading: estimateQuery.isFetching,
+        error: estimateQuery.isError,
+    };
+    // Projection days are midnights in the campaign's zone.
+    const tz = draft.timezone || org.data?.timezone || undefined;
+    const tzLabel = draft.timezone || (org.data?.timezone ? `${org.data.timezone} (workspace)` : "Workspace timezone");
 
     const issue = stepIssue(current.key, draft);
     React.useEffect(() => {
@@ -291,10 +204,10 @@ export function NewCampaignDialog({ open, onClose }: Props) {
     // A step is reachable when every step before it is complete.
     const canReach = React.useCallback(
         (target: number) => {
-            for (let i = 0; i < target; i++) if (stepIssue(steps[i].key, draft)) return false;
+            for (let i = 0; i < target; i++) if (stepIssue(STEPS[i].key, draft)) return false;
             return true;
         },
-        [draft, steps],
+        [draft],
     );
 
     const goTo = React.useCallback(
@@ -310,14 +223,7 @@ export function NewCampaignDialog({ open, onClose }: Props) {
         },
         [step, canReach],
     );
-
-    const goToKey = React.useCallback(
-        (key: StepKey) => {
-            const idx = steps.findIndex((s) => s.key === key);
-            if (idx >= 0) goTo(idx);
-        },
-        [steps, goTo],
-    );
+    const goToKey = React.useCallback((key: StepKey) => goTo(STEPS.findIndex((s) => s.key === key)), [goTo]);
 
     const next = React.useCallback(() => {
         if (issue) {
@@ -327,140 +233,150 @@ export function NewCampaignDialog({ open, onClose }: Props) {
         if (step < lastStep) goTo(step + 1);
     }, [issue, step, lastStep, goTo]);
 
-    const dirty =
-        draft.name.trim() !== "" ||
-        draft.description.trim() !== "" ||
-        draft.emailTagIds.length > 0 ||
-        draft.segmentIds.length > 0 ||
-        !draft.stopOnReply ||
-        !draft.openTracking ||
-        !draft.linkTracking ||
-        !draft.utmTracking ||
-        !draft.unsubHeader ||
-        draft.sequences.some((s) => s.subject.trim() !== "" || s.body_plain.trim() !== "");
+    // Why a launch cannot happen yet; a draft can always be saved.
+    const e = estimate.data;
+    const written = writtenEmails(draft);
+    const emailCount = lockedEmails ? lockedEmails.length : written.length;
+    const launchBlock: string | null = !canSend
+        ? "Launching needs the send campaigns permission; a teammate who has it can start it."
+        : emailCount === 0
+          ? "There is no email to send yet."
+          : !hasLeads || (e && e.recipients === 0 && draft.segmentIds.length === 0)
+            ? "It has no leads yet."
+            : e && e.recipients === 0
+              ? "The chosen lists are empty right now."
+              : e && e.mailboxes === 0
+                ? "No active mailbox can send it."
+                : null;
 
-    const isPending = create.isPending || submitting;
+    const busy = busyWith !== null;
+    // A new flow with only a zone picked is still empty.
+    const changed = existing
+        ? draftSignature(draft) !== baseline
+        : draftSignature({ ...draft, timezone: "", nameTouched: false }) !== draftSignature(initialDraft(""));
 
-    const requestClose = React.useCallback(() => {
-        if (isPending) return;
-        if (dirty) {
-            confirm.show("Discard this campaign draft?", async () => onClose());
+    // Writes the draft and refreshes every view of it.
+    const persist = React.useCallback(async (): Promise<string> => {
+        const id = await saveServerDraft(draft, savedName, existing, (created, stepIds) => setExisting({ id: created, meta: { ...freshMeta(), knownStepIds: stepIds } }));
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
+            queryClient.invalidateQueries({ queryKey: ["segments"] }),
+        ]);
+        return id;
+    }, [draft, savedName, existing, queryClient]);
+
+    // Closing saves what is there; an untouched flow leaves nothing behind.
+    const requestClose = React.useCallback(async () => {
+        if (busy) return;
+        if (loading || !changed) {
+            onClose();
             return;
         }
-        onClose();
-    }, [isPending, dirty, confirm, onClose]);
+        setBusyWith("close");
+        try {
+            await persist();
+            toast.success(existing ? "Draft saved." : "Saved as a draft. It is in your campaigns list.");
+            onClose();
+        } catch (err) {
+            toast.error(`Could not save the draft: ${buildError(err as AppError)}`);
+        } finally {
+            setBusyWith(null);
+        }
+    }, [busy, loading, changed, persist, existing, onClose]);
+
+    // Leaves for another page, saving first.
+    const leaveTo = React.useCallback(
+        async (to: string, message?: string) => {
+            if (busy) return;
+            setBusyWith("leave");
+            try {
+                if (changed) await persist();
+                onClose();
+                navigate(to);
+                if (message) toast(message);
+            } catch (err) {
+                toast.error(`Could not save the draft: ${buildError(err as AppError)}`);
+            } finally {
+                setBusyWith(null);
+            }
+        },
+        [busy, changed, persist, onClose, navigate],
+    );
+
+    const discard = React.useCallback(() => {
+        if (!existing) {
+            confirm.show("Discard this campaign? Nothing of it has been saved.", async () => onClose());
+            return;
+        }
+        const id = existing.id;
+        confirm.show("Delete this draft campaign?", async () => {
+            setBusyWith("delete");
+            try {
+                await deleteCampaign.mutateAsync(id);
+                toast.success("Draft deleted.");
+                onClose();
+                if (pathname.startsWith(`/app/campaigns/${id}`)) navigate("/app/campaigns", { replace: true });
+            } catch (err) {
+                toast.error(buildError(err as AppError));
+            } finally {
+                setBusyWith(null);
+            }
+        });
+    }, [existing, confirm, onClose, deleteCampaign, pathname, navigate]);
 
     React.useEffect(() => {
         if (!open) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key !== "Escape") return;
-            // An open dropdown (timezone, tags, segments, date) or the discard confirm owns this Escape.
+        const onKey = (ev: KeyboardEvent) => {
+            if (ev.key !== "Escape") return;
+            // An open dropdown, picker or the confirm owns this Escape.
             if (document.querySelector("[data-floating], [role='alertdialog']")) return;
-            e.preventDefault();
-            requestClose();
+            ev.preventDefault();
+            void requestClose();
         };
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
     }, [open, requestClose]);
 
-    // The wizard writes plain text, so it sends plain text. The backend renders
-    // the HTML part from it: it used to be built here with an escapeHtml that
-    // turned the quotes in a conditional ({{if eq .Company "Acme"}}) into
-    // entities, which makes the template fail to parse at send time and ships
-    // the literal {{if}} to the recipient. The server's version also links bare
-    // URLs, so a wizard-written step gets click tracking like any other.
-    function buildSteps() {
-        return draft.sequences
-            .filter((s) => s.subject.trim().length > 0 || s.body_plain.trim().length > 0)
-            .map((s, i) => ({
-                name: draft.kind === "one_time" ? "Email" : `Step ${i + 1}`,
-                subject: s.subject.trim(),
-                body_plain: s.body_plain,
-                wait_after: i === 0 ? 0 : Math.max(0, s.wait_after),
-                // thread_reply is deliberately not sent: the server derives it
-                // from the subjects (blank or the conversation's own replies in
-                // the thread, a subject of its own opens a new one), which is
-                // exactly what the subject box here promises and what the API
-                // does for every other caller. Deciding it twice is how the two
-                // drift apart.
-            }));
+    function importLeads() {
+        void leaveTo(
+            "/app/contacts",
+            changed || existing ? "Saved as a draft. Reopen it from Campaigns when your leads are in." : undefined,
+        );
     }
 
-    async function submit() {
-        if (isPending) return;
-        for (let i = 0; i < steps.length; i++) {
-            if (stepIssue(steps[i].key, draft)) {
-                setDirection(i > step ? 1 : -1);
-                setStep(i);
-                setNudged(true);
-                return;
-            }
-        }
-        const base = {
-            name: draft.name.trim(),
-            description: draft.description.trim(),
-            timezone: draft.timezone,
-            days: draft.days,
-            start_time: draft.startTime,
-            end_time: draft.endTime,
-            daily_limit: draft.dailyLimit,
-            open_tracking: draft.openTracking,
-            link_tracking: draft.linkTracking,
-            utm_tracking: draft.utmTracking,
-            unsubscribe_header: draft.unsubHeader,
-            email_tag_ids: draft.emailTagIds,
-            steps: buildSteps(),
-        };
-
-        if (draft.kind === "sequence") {
-            try {
-                const created = await create.mutateAsync({ ...base, kind: "sequence", stop_on_reply: draft.stopOnReply });
-                toast.success("Campaign created. Add contacts, then launch it.");
-                onClose();
-                if (created?.id) navigate(`/app/campaigns/${created.id}`);
-            } catch (err) {
-                toast.error(buildError(err as AppError));
-            }
+    async function submit(mode: "draft" | "launch") {
+        if (busy) return;
+        const bad = firstIssue(draft);
+        if (bad) {
+            const idx = STEPS.findIndex((s) => s.key === bad.key);
+            setDirection(idx > step ? 1 : -1);
+            setStep(idx);
+            setNudged(true);
             return;
         }
-
-        // One-time: create, link the audience (which enrols its members as
-        // leads), then start. A scheduled start date parks the campaign until
-        // then; the scheduler does the waiting, not the browser.
-        const at = scheduledDate(draft);
-        setSubmitting(true);
-        let createdID: string | null = null;
+        if (mode === "launch" && launchBlock) return;
+        setBusyWith(mode);
         try {
-            const created = await create.mutateAsync({
-                ...base,
-                kind: "one_time",
-                // No follow-ups exist to stop, and a reply should still not
-                // re-send the one message, so the flag stays on.
-                stop_on_reply: true,
-                start_date: at ? at.toISOString() : undefined,
-            });
-            createdID = created.id;
-            await linkSegments.mutateAsync({ campaignId: created.id, segmentIds: draft.segmentIds });
-            await start.mutateAsync({ id: created.id });
-            toast.success(at ? `Scheduled for ${fmtDateTime(at)}.` : "Sending now.");
+            const id = await persist();
             onClose();
-            navigate(`/app/campaigns/${created.id}`);
-        } catch (err) {
-            // Past the create call the campaign exists as a draft: say so and
-            // hand over to the campaign page, where the launch dialog can
-            // explain a refused start (an empty segment, a risky list).
-            const message = buildError(err as AppError);
-            if (createdID) {
-                toast.error(`${message} The email was saved as a draft; start it from its page.`);
-                onClose();
-                navigate(`/app/campaigns/${createdID}`);
+            if (mode === "launch") {
+                // The campaign page's launch dialog runs the pre-send checks and the start.
+                navigate(`/app/campaigns/${id}?launch=1`);
             } else {
-                toast.error(message);
+                toast.success(
+                    hasLeads ? "Draft saved. Launch it when you are ready." : "Draft saved. Add leads, then launch it.",
+                );
             }
+        } catch (err) {
+            toast.error(buildError(err as AppError));
         } finally {
-            setSubmitting(false);
+            setBusyWith(null);
         }
     }
+
+    const launchLabel = at ? "Schedule" : "Launch";
+    const LaunchIcon = at ? CalendarClockIcon : RocketIcon;
+    const showRail = current.key === "leads" || current.key === "schedule";
 
     return (
         <AnimatePresence>
@@ -471,71 +387,175 @@ export function NewCampaignDialog({ open, onClose }: Props) {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    onMouseDown={requestClose}
-                    className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] px-4"
+                    onMouseDown={() => void requestClose()}
+                    className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] px-2 sm:px-4"
                 >
                     <motion.div
                         key="card"
                         role="dialog"
                         aria-modal="true"
-                        aria-label={draft.kind === "one_time" ? "New one-time email" : "New campaign"}
+                        aria-label="New campaign"
                         initial={{ y: 8, opacity: 0, scale: 0.985 }}
                         animate={{ y: 0, opacity: 1, scale: 1 }}
                         exit={{ y: 8, opacity: 0, scale: 0.985 }}
                         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        className="w-full max-w-[720px] rounded-lg bg-white border border-slate-200 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.18),0_8px_16px_-8px_rgba(15,23,42,0.1)] overflow-hidden flex flex-col max-h-[88dvh]"
+                        onMouseDown={(ev) => ev.stopPropagation()}
+                        className="w-full max-w-[1120px] h-[min(92dvh,880px)] rounded-lg bg-white border border-slate-200 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.18),0_8px_16px_-8px_rgba(15,23,42,0.1)] overflow-hidden flex flex-col"
                     >
-                        <Header kind={draft.kind} onClose={requestClose} />
-                        <Stepper steps={steps} step={step} canReach={canReach} goTo={goTo} />
+                        <Header
+                            name={loading ? "" : finalName}
+                            editing={!!existing}
+                            saving={busyWith === "close"}
+                            onOpenPage={existing ? () => void leaveTo(`/app/campaigns/${existing.id}`) : undefined}
+                            onClose={() => void requestClose()}
+                        />
+                        <Stepper step={step} canReach={canReach} goTo={goTo} draft={draft} />
 
-                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-                            <AnimatePresence mode="wait" initial={false} custom={direction}>
-                                <motion.div
-                                    key={`${draft.kind}-${current.key}`}
-                                    custom={direction}
-                                    variants={paneVariants}
-                                    initial="enter"
-                                    animate="center"
-                                    exit="exit"
-                                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                                    className="px-5 py-5 min-h-[340px]"
-                                >
-                                    {current.key === "basics" && (
-                                        <BasicsStep draft={draft} patch={patch} setKind={setKind} onEnter={next} />
-                                    )}
-                                    {current.key === "schedule" && <ScheduleStep draft={draft} patch={patch} />}
-                                    {current.key === "sending" && <SendingStep draft={draft} patch={patch} />}
-                                    {current.key === "email" && <EmailsStep draft={draft} patch={patch} goToKey={goToKey} />}
-                                    {current.key === "audience" && <AudienceStep draft={draft} patch={patch} />}
-                                    {current.key === "send" && <SendStep draft={draft} patch={patch} goToKey={goToKey} />}
-                                </motion.div>
-                            </AnimatePresence>
+                        <div className="flex-1 min-h-0 flex">
+                            <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+                                {loading ? (
+                                    <div className="h-full flex items-center justify-center gap-2 text-[12.5px] text-slate-500">
+                                        <Loader2Icon className="w-4 h-4 animate-spin text-slate-400" />
+                                        Opening the draft…
+                                    </div>
+                                ) : (
+                                <AnimatePresence mode="wait" initial={false} custom={direction}>
+                                    <motion.div
+                                        key={current.key}
+                                        custom={direction}
+                                        variants={paneVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                                        className="px-4 sm:px-6 py-5"
+                                    >
+                                        {current.key === "leads" && (
+                                            <LeadsStep
+                                                draft={draft}
+                                                patch={patch}
+                                                placeholderName={placeholderName}
+                                                estimate={estimate}
+                                                existingLeads={meta?.leadCount}
+                                                onImport={importLeads}
+                                                onEnter={next}
+                                            />
+                                        )}
+                                        {current.key === "emails" && (
+                                            <EmailsStep
+                                                draft={draft}
+                                                patch={patch}
+                                                selected={emailIndex}
+                                                setSelected={setEmailIndex}
+                                                lockedSteps={lockedEmails}
+                                                onOpenSteps={existing ? () => void leaveTo(`/app/campaigns/${existing.id}/steps`) : undefined}
+                                            />
+                                        )}
+                                        {current.key === "schedule" && <ScheduleStep draft={draft} patch={patch} estimate={estimate} tz={tz} meta={meta} />}
+                                        {current.key === "review" && (
+                                            <ReviewStep
+                                                draft={draft}
+                                                estimate={estimate}
+                                                tz={tz}
+                                                tzLabel={tzLabel}
+                                                finalName={finalName}
+                                                segmentNames={segmentNames}
+                                                launchBlock={launchBlock}
+                                                lockedSteps={lockedEmails}
+                                                customWindows={meta?.customWindows}
+                                                existingLeads={meta?.leadCount}
+                                                goTo={goToKey}
+                                            />
+                                        )}
+                                    </motion.div>
+                                </AnimatePresence>
+                                )}
+                            </div>
+                            {showRail && !loading && <LaunchPlanRail draft={draft} estimate={estimate} tz={tz} existingLeads={meta?.leadCount} />}
                         </div>
 
-                        <Footer
-                            step={step}
-                            lastStep={lastStep}
-                            submitLabel={
-                                draft.kind === "one_time"
-                                    ? draft.sendMode === "later"
-                                        ? "Schedule"
-                                        : "Send now"
-                                    : "Create campaign"
-                            }
-                            submitIcon={
-                                draft.kind === "one_time"
-                                    ? draft.sendMode === "later"
-                                        ? CalendarClockIcon
-                                        : SendIcon
-                                    : PlusIcon
-                            }
-                            issue={nudged ? issue : null}
-                            onBack={() => goTo(step - 1)}
-                            onNext={next}
-                            onSubmit={submit}
-                            isPending={isPending}
-                        />
+                        <div className="px-3 min-h-12 py-1.5 sm:py-0 sm:h-12 border-t border-slate-200 flex items-center gap-1.5 shrink-0 bg-slate-50/30">
+                            {step > 0 ? (
+                                <button
+                                    type="button"
+                                    onClick={() => goTo(step - 1)}
+                                    disabled={busy}
+                                    className="h-7 px-2.5 rounded-md text-[12px] text-slate-700 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center gap-1 transition-colors disabled:opacity-50"
+                                >
+                                    <ChevronLeftIcon className="w-3 h-3" />
+                                    Back
+                                </button>
+                            ) : existing || changed ? (
+                                <button
+                                    type="button"
+                                    onClick={discard}
+                                    disabled={busy || loading}
+                                    className="h-7 px-2.5 rounded-md text-[12px] text-slate-500 hover:text-rose-600 hover:bg-rose-50 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                >
+                                    {busyWith === "delete" && <Loader2Icon className="w-3 h-3 animate-spin" />}
+                                    {existing ? "Delete draft" : "Discard"}
+                                </button>
+                            ) : (
+                                <span className="text-[11px] text-slate-400 pl-1 hidden sm:inline">
+                                    Closing saves it as a draft you can reopen from Campaigns.
+                                </span>
+                            )}
+
+                            <div className="ml-auto flex items-center gap-2 min-w-0">
+                                <AnimatePresence initial={false}>
+                                    {nudged && issue && (
+                                        <motion.span
+                                            key={issue}
+                                            initial={{ opacity: 0, x: 6 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            exit={{ opacity: 0, x: 6 }}
+                                            transition={{ duration: 0.14 }}
+                                            role="status"
+                                            className="text-[11.5px] text-amber-700 inline-flex items-center gap-1 min-w-0"
+                                        >
+                                            <AlertCircleIcon className="w-3 h-3 shrink-0" />
+                                            <span className="truncate">{issue}</span>
+                                        </motion.span>
+                                    )}
+                                </AnimatePresence>
+                                {step < lastStep ? (
+                                    <button
+                                        type="button"
+                                        onClick={next}
+                                        className="h-7 px-3 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors shrink-0"
+                                    >
+                                        {current.key === "emails" && written.length === 0
+                                            ? "Write it later"
+                                            : current.key === "leads" && draft.segmentIds.length === 0
+                                              ? "Continue without leads"
+                                              : "Continue"}
+                                        <ChevronRightIcon className="w-3 h-3" />
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => submit("draft")}
+                                            disabled={busy}
+                                            className="h-7 px-2.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60 shrink-0"
+                                        >
+                                            {busyWith === "draft" ? <Loader2Icon className="w-3 h-3 animate-spin" /> : <ListChecksIcon className="w-3 h-3" />}
+                                            Save as draft
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => submit("launch")}
+                                            disabled={busy || !!launchBlock}
+                                            title={launchBlock ?? undefined}
+                                            className="h-7 px-3 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:bg-slate-200 disabled:text-slate-500 shrink-0"
+                                        >
+                                            {busyWith === "launch" ? <Loader2Icon className="w-3 h-3 animate-spin" /> : <LaunchIcon className="w-3 h-3" />}
+                                            {launchLabel}
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
                     </motion.div>
                 </motion.div>
             )}
@@ -549,46 +569,75 @@ const paneVariants = {
     exit: (dir: 1 | -1) => ({ x: dir * -28, opacity: 0 }),
 };
 
-function Header({ kind, onClose }: { kind: CampaignKind; onClose: () => void }) {
-    const Icon = kind === "one_time" ? SendIcon : MegaphoneIcon;
+function Header({
+    name,
+    editing,
+    saving,
+    onOpenPage,
+    onClose,
+}: {
+    name: string;
+    editing: boolean;
+    saving: boolean;
+    onOpenPage?: () => void;
+    onClose: () => void;
+}) {
     return (
         <div className="h-12 px-4 border-b border-slate-200 flex items-center gap-2.5 shrink-0">
             <div className="size-5 rounded bg-slate-100 text-slate-600 flex items-center justify-center">
-                <Icon className="w-3 h-3" />
+                <MegaphoneIcon className="w-3 h-3" />
             </div>
-            <span className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">New</span>
-            <div className="h-4 w-px bg-slate-200" />
-            <span className="text-[12.5px] text-slate-900 font-medium">
-                {kind === "one_time" ? "One-time email" : "Campaign"}
+            <span className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium shrink-0">
+                {editing ? "Draft campaign" : "New campaign"}
             </span>
-            <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="ml-auto size-7 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center justify-center transition-colors"
-            >
-                <XIcon className="w-3.5 h-3.5" />
-            </button>
+            <div className="h-4 w-px bg-slate-200 shrink-0" />
+            <span className="text-[12.5px] text-slate-900 font-medium truncate">{name}</span>
+            <div className="ml-auto flex items-center gap-1 shrink-0">
+                {saving && (
+                    <span className="inline-flex items-center gap-1.5 text-[11.5px] text-slate-400 pr-1">
+                        <Loader2Icon className="w-3 h-3 animate-spin" />
+                        Saving
+                    </span>
+                )}
+                {onOpenPage && (
+                    <button
+                        type="button"
+                        onClick={onOpenPage}
+                        className="h-7 px-2 rounded-md text-[12px] text-slate-500 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center gap-1.5 transition-colors"
+                    >
+                        <ExternalLinkIcon className="w-3 h-3" />
+                        <span className="hidden sm:inline">Campaign page</span>
+                    </button>
+                )}
+                <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close"
+                    className="size-7 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center justify-center transition-colors"
+                >
+                    <XIcon className="w-3.5 h-3.5" />
+                </button>
+            </div>
         </div>
     );
 }
 
 function Stepper({
-    steps,
     step,
     canReach,
     goTo,
+    draft,
 }: {
-    steps: readonly StepDef[];
     step: number;
     canReach: (s: number) => boolean;
     goTo: (s: number) => void;
+    draft: Draft;
 }) {
     return (
         <div className="px-4 sm:px-5 h-11 border-b border-slate-100 flex items-center shrink-0 bg-slate-50/40">
-            {steps.map((s, i) => {
+            {STEPS.map((s, i) => {
                 const active = i === step;
-                const done = i < step;
+                const done = i < step && !stepIssue(s.key, draft);
                 const reachable = i <= step || canReach(i);
                 return (
                     <React.Fragment key={s.key}>
@@ -648,11 +697,11 @@ function Stepper({
                                 {s.label}
                             </span>
                         </button>
-                        {i < steps.length - 1 && (
+                        {i < STEPS.length - 1 && (
                             <span className="relative flex-1 h-px mx-1 sm:mx-2 bg-slate-200 min-w-3 overflow-hidden">
                                 <motion.span
                                     initial={false}
-                                    animate={{ scaleX: done ? 1 : 0 }}
+                                    animate={{ scaleX: i < step ? 1 : 0 }}
                                     transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
                                     style={{ originX: 0 }}
                                     className="absolute inset-0 bg-sky-600"
@@ -665,813 +714,3 @@ function Stepper({
         </div>
     );
 }
-
-function Footer({
-    step,
-    lastStep,
-    submitLabel,
-    submitIcon: SubmitIcon,
-    issue,
-    onBack,
-    onNext,
-    onSubmit,
-    isPending,
-}: {
-    step: number;
-    lastStep: number;
-    submitLabel: string;
-    submitIcon: typeof PlusIcon;
-    issue: string | null;
-    onBack: () => void;
-    onNext: () => void;
-    onSubmit: () => void;
-    isPending: boolean;
-}) {
-    const isLast = step === lastStep;
-    return (
-        <div className="px-3 min-h-12 py-1.5 sm:py-0 sm:h-12 border-t border-slate-200 flex items-center gap-1.5 shrink-0 bg-slate-50/30">
-            {step > 0 ? (
-                <button
-                    type="button"
-                    onClick={onBack}
-                    disabled={isPending}
-                    className="h-7 px-2.5 rounded-md text-[12px] text-slate-700 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center gap-1 transition-colors disabled:opacity-50"
-                >
-                    <ChevronLeftIcon className="w-3 h-3" />
-                    Back
-                </button>
-            ) : (
-                <span className="text-[11px] text-slate-400 pl-1 hidden sm:inline">
-                    Everything here can be changed later.
-                </span>
-            )}
-
-            <div className="ml-auto flex items-center gap-2.5 min-w-0">
-                <AnimatePresence initial={false}>
-                    {issue && (
-                        <motion.span
-                            key={issue}
-                            initial={{ opacity: 0, x: 6 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 6 }}
-                            transition={{ duration: 0.14 }}
-                            role="status"
-                            className="text-[11.5px] text-amber-700 inline-flex items-center gap-1 min-w-0"
-                        >
-                            <AlertCircleIcon className="w-3 h-3 shrink-0" />
-                            <span className="truncate">{issue}</span>
-                        </motion.span>
-                    )}
-                </AnimatePresence>
-                {!isLast ? (
-                    <button
-                        type="button"
-                        onClick={onNext}
-                        className="h-7 px-2.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors shrink-0"
-                    >
-                        Continue
-                        <ChevronRightIcon className="w-3 h-3" />
-                    </button>
-                ) : (
-                    <button
-                        type="button"
-                        onClick={onSubmit}
-                        disabled={isPending}
-                        className="h-7 px-2.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60 shrink-0"
-                    >
-                        {isPending ? <Loader2Icon className="w-3 h-3 animate-spin" /> : <SubmitIcon className="w-3 h-3" />}
-                        {submitLabel}
-                    </button>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function StepIntro({ title, hint }: { title: string; hint: string }) {
-    return (
-        <div className="mb-4">
-            <p className="text-[13.5px] text-slate-900 font-semibold">{title}</p>
-            <p className="text-[11.5px] text-slate-500 mt-0.5 leading-relaxed">{hint}</p>
-        </div>
-    );
-}
-
-function KindCard({
-    selected,
-    icon: Icon,
-    title,
-    description,
-    onSelect,
-}: {
-    selected: boolean;
-    icon: typeof MegaphoneIcon;
-    title: string;
-    description: string;
-    onSelect: () => void;
-}) {
-    return (
-        <button
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={onSelect}
-            className={cn(
-                "text-left rounded-md border px-3 py-2.5 flex items-start gap-2.5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sky-100",
-                selected
-                    ? "border-sky-400 bg-sky-50/60 ring-1 ring-inset ring-sky-400"
-                    : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
-            )}
-        >
-            <span
-                className={cn(
-                    "size-6 rounded-md inline-flex items-center justify-center shrink-0 mt-0.5",
-                    selected ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600",
-                )}
-            >
-                <Icon className="w-3.5 h-3.5" />
-            </span>
-            <span className="min-w-0">
-                <span className="block text-[12.5px] text-slate-900 font-medium">{title}</span>
-                <span className="block text-[11px] text-slate-500 mt-0.5 leading-relaxed">{description}</span>
-            </span>
-        </button>
-    );
-}
-
-function BasicsStep({
-    draft,
-    patch,
-    setKind,
-    onEnter,
-}: {
-    draft: Draft;
-    patch: (p: Partial<Draft>) => void;
-    setKind: (k: CampaignKind) => void;
-    onEnter: () => void;
-}) {
-    const len = draft.name.trim().length;
-    return (
-        <div className="max-w-[560px]">
-            <StepIntro
-                title="What are you sending?"
-                hint="A sequence follows up over days; a one-time email goes out once to a segment. Both send through your mailbox pool at its daily caps."
-            />
-            <div className="space-y-4">
-                <div role="radiogroup" aria-label="Campaign type" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <KindCard
-                        selected={draft.kind === "sequence"}
-                        icon={ListChecksIcon}
-                        title="Sequence"
-                        description="Several emails with waits, branches and follow-ups. Add contacts and launch when ready."
-                        onSelect={() => setKind("sequence")}
-                    />
-                    <KindCard
-                        selected={draft.kind === "one_time"}
-                        icon={SendIcon}
-                        title="One-time email"
-                        description="One message to a segment, sent now or on a date, with no follow-ups."
-                        onSelect={() => setKind("one_time")}
-                    />
-                </div>
-                <div>
-                    <div className="flex items-baseline justify-between">
-                        <Label>{draft.kind === "one_time" ? "Email name" : "Campaign name"}</Label>
-                        <span
-                            className={cn(
-                                "text-[10.5px] tabular-nums",
-                                len > NAME_MAX ? "text-rose-600" : "text-slate-400",
-                            )}
-                        >
-                            {len}/{NAME_MAX}
-                        </span>
-                    </div>
-                    <TextInput
-                        value={draft.name}
-                        onChange={(v) => patch({ name: v })}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                                e.preventDefault();
-                                onEnter();
-                            }
-                        }}
-                        placeholder={draft.kind === "one_time" ? "September product update" : "Q3 outbound, SaaS founders"}
-                        autoFocus
-                        className="w-full"
-                    />
-                </div>
-                <div>
-                    <Label>Description</Label>
-                    <TextInput
-                        value={draft.description}
-                        onChange={(v) => patch({ description: v })}
-                        placeholder="Optional. Who this targets and why."
-                        className="w-full"
-                    />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function TimezoneField({ draft, patch }: { draft: Draft; patch: (p: Partial<Draft>) => void }) {
-    const profile = useUserProfile();
-    const org = useCurrentOrganization();
-    const options = React.useMemo<SelectOption[]>(
-        () => [{ value: "", label: followWorkspaceLabel(org.data?.timezone) }, ...timezoneOptions(profile?.timezones, draft.timezone)],
-        [profile?.timezones, draft.timezone, org.data?.timezone],
-    );
-    return (
-        <div>
-            <Label>Timezone</Label>
-            <SelectMenu
-                value={draft.timezone}
-                onChange={(v) => patch({ timezone: v })}
-                options={options}
-                fullWidth
-                placeholder="Select a timezone"
-                aria-label="Sending timezone"
-            />
-        </div>
-    );
-}
-
-function SendingWindowFields({ draft, patch }: { draft: Draft; patch: (p: Partial<Draft>) => void }) {
-    const windowInvalid = draft.startTime >= draft.endTime;
-    return (
-        <>
-            <div>
-                <div className="flex items-baseline justify-between">
-                    <Label>Sending days</Label>
-                    <div className="flex items-center gap-1 text-[10.5px]">
-                        <button
-                            type="button"
-                            onClick={() => patch({ days: WEEKDAYS_MASK })}
-                            className={cn(
-                                "px-1.5 h-5 rounded transition-colors",
-                                draft.days === WEEKDAYS_MASK
-                                    ? "bg-sky-50 text-sky-700"
-                                    : "text-slate-400 hover:text-slate-700 hover:bg-slate-100",
-                            )}
-                        >
-                            Weekdays
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => patch({ days: EVERY_DAY_MASK })}
-                            className={cn(
-                                "px-1.5 h-5 rounded transition-colors",
-                                draft.days === EVERY_DAY_MASK
-                                    ? "bg-sky-50 text-sky-700"
-                                    : "text-slate-400 hover:text-slate-700 hover:bg-slate-100",
-                            )}
-                        >
-                            Every day
-                        </button>
-                    </div>
-                </div>
-                <div className="mt-1">
-                    <WeekdayBitmask weekdays={WEEKDAYS} value={draft.days} setValue={(v) => patch({ days: v })} />
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <Label>From</Label>
-                    <TimePicker
-                        value={draft.startTime}
-                        onChange={(v) => patch({ startTime: v })}
-                        stepMinutes={30}
-                        fullWidth
-                        placeholder="Start"
-                    />
-                </div>
-                <div>
-                    <Label>Until</Label>
-                    <TimePicker
-                        value={draft.endTime}
-                        onChange={(v) => patch({ endTime: v })}
-                        stepMinutes={30}
-                        fullWidth
-                        placeholder="End"
-                    />
-                </div>
-            </div>
-
-            <p className={cn("text-[11.5px] leading-relaxed", windowInvalid ? "text-amber-700" : "text-slate-500")}>
-                {windowInvalid
-                    ? "The window ends before it starts. Pick an end time after the start time."
-                    : `${daysLabel(draft.days)}, ${fmt12(draft.startTime)} to ${fmt12(draft.endTime)}.`}
-            </p>
-        </>
-    );
-}
-
-function ScheduleStep({ draft, patch }: { draft: Draft; patch: (p: Partial<Draft>) => void }) {
-    return (
-        <div className="max-w-[560px]">
-            <StepIntro
-                title="When should it send?"
-                hint="Sends stay inside this window in the campaign timezone and spread out across it."
-            />
-            <div className="space-y-5">
-                <TimezoneField draft={draft} patch={patch} />
-                <SendingWindowFields draft={draft} patch={patch} />
-            </div>
-        </div>
-    );
-}
-
-function SendingStep({ draft, patch }: { draft: Draft; patch: (p: Partial<Draft>) => void }) {
-    const oneTime = draft.kind === "one_time";
-    return (
-        <div className="max-w-[560px]">
-            <StepIntro
-                title="Who sends it, and how?"
-                hint="Volume is split across every mailbox in the pool so no single sender carries the campaign."
-            />
-            <div className="space-y-5">
-                <div>
-                    <Label>Sender pool</Label>
-                    <TagSelector
-                        selected={draft.emailTagIds}
-                        onAdd={(t) => patch({ emailTagIds: [...draft.emailTagIds, t] })}
-                        onRemove={(t) => patch({ emailTagIds: draft.emailTagIds.filter((id) => id !== t) })}
-                    />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                        Mailbox tags this campaign rotates through. Leave empty to use every active mailbox.
-                    </p>
-                </div>
-
-                <div className="flex items-start justify-between gap-5">
-                    <div className="min-w-0">
-                        <p className="text-[12.5px] text-slate-900 font-medium">Daily limit per mailbox</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                            3 to 5,000. Stay near 50 until the mailboxes have proven their reputation.
-                        </p>
-                    </div>
-                    <NumberInput
-                        value={draft.dailyLimit}
-                        min={3}
-                        max={5000}
-                        onChange={(v) => patch({ dailyLimit: v })}
-                        className="w-24 shrink-0"
-                    />
-                </div>
-
-                <div className="border border-slate-200 rounded-md divide-y divide-slate-100 overflow-hidden">
-                    {!oneTime && (
-                        <SwitchRow
-                            label="Stop on reply"
-                            description="Pause follow-ups for a contact once they respond."
-                            value={draft.stopOnReply}
-                            onChange={(v) => patch({ stopOnReply: v })}
-                        />
-                    )}
-                    <SwitchRow
-                        label="Track opens"
-                        description="Insert a transparent pixel to measure inbox impressions."
-                        value={draft.openTracking}
-                        onChange={(v) => patch({ openTracking: v })}
-                    />
-                    <SwitchRow
-                        label="Track clicks"
-                        description="Wrap links so each click, and which link it was, appears in your live feed and the contact's activity."
-                        value={draft.linkTracking}
-                        onChange={(v) => patch({ linkTracking: v })}
-                    />
-                    <SwitchRow
-                        label="Add UTM parameters"
-                        description="Tag every link with utm_source, utm_medium, utm_campaign and a per-link utm_content for your web analytics. Editable later in settings."
-                        value={draft.utmTracking}
-                        onChange={(v) => patch({ utmTracking: v })}
-                    />
-                    <SwitchRow
-                        label="Unsubscribe header"
-                        description="Add List-Unsubscribe, which most providers require for bulk mail."
-                        value={draft.unsubHeader}
-                        onChange={(v) => patch({ unsubHeader: v })}
-                    />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function SwitchRow({
-    label,
-    description,
-    value,
-    onChange,
-}: {
-    label: string;
-    description: string;
-    value: boolean;
-    onChange: (v: boolean) => void;
-}) {
-    return (
-        // The row is the click target; the switch stops propagation so a click
-        // on it does not toggle twice.
-        <div
-            onClick={() => onChange(!value)}
-            className="w-full px-3 py-2.5 flex items-start justify-between gap-4 cursor-pointer select-none hover:bg-slate-50 transition-colors"
-        >
-            <div className="min-w-0">
-                <p className="text-[12.5px] text-slate-900 font-medium">{label}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{description}</p>
-            </div>
-            <span onClick={(e) => e.stopPropagation()} className="shrink-0 mt-0.5 inline-flex">
-                <Toggle value={value} onChange={onChange} />
-            </span>
-        </div>
-    );
-}
-
-function EmailsStep({
-    draft,
-    patch,
-    goToKey,
-}: {
-    draft: Draft;
-    patch: (p: Partial<Draft>) => void;
-    goToKey: (k: StepKey) => void;
-}) {
-    const oneTime = draft.kind === "one_time";
-    const update = (i: number, p: Partial<SequenceDraft>) =>
-        patch({ sequences: draft.sequences.map((s, idx) => (idx === i ? { ...s, ...p } : s)) });
-
-    return (
-        <div className="max-w-[640px]">
-            <StepIntro
-                title={oneTime ? "What does the email say?" : "What does the first email say?"}
-                hint={
-                    oneTime
-                        ? "This is the whole send. You can polish it in the full editor on the Steps tab afterwards."
-                        : "Optional. Skip this to write it in the full editor on the Steps tab afterwards."
-                }
-            />
-
-            {!oneTime && (
-                <div className="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-slate-500">
-                    <button type="button" onClick={() => goToKey("schedule")} className="hover:text-slate-900 hover:underline underline-offset-2">
-                        {daysLabel(draft.days)}, {fmt12(draft.startTime)} to {fmt12(draft.endTime)}
-                    </button>
-                    <span className="text-slate-300">·</span>
-                    <button type="button" onClick={() => goToKey("sending")} className="hover:text-slate-900 hover:underline underline-offset-2">
-                        {draft.dailyLimit}/day per mailbox
-                    </button>
-                    <span className="text-slate-300">·</span>
-                    <button type="button" onClick={() => goToKey("sending")} className="hover:text-slate-900 hover:underline underline-offset-2">
-                        {draft.emailTagIds.length === 0
-                            ? "all mailboxes"
-                            : `${draft.emailTagIds.length} tag${draft.emailTagIds.length === 1 ? "" : "s"}`}
-                    </button>
-                    <PencilLineIcon className="w-3 h-3 text-slate-300 ml-0.5" />
-                </div>
-            )}
-
-            <div className="space-y-3">
-                <AnimatePresence initial={false}>
-                    {draft.sequences.map((seq, i) => (
-                        <motion.div
-                            key={seq.id}
-                            layout
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -6 }}
-                            transition={{ duration: 0.16 }}
-                            className="border border-slate-200 rounded-md overflow-hidden"
-                        >
-                            <div className="h-9 px-3 flex items-center gap-2 bg-slate-50/60 border-b border-slate-100">
-                                <span className="size-5 rounded-full bg-white ring-1 ring-inset ring-slate-200 text-[10.5px] font-semibold text-slate-600 inline-flex items-center justify-center tabular-nums">
-                                    {i + 1}
-                                </span>
-                                <span className="text-[12px] text-slate-900 font-medium">
-                                    {oneTime ? "Email" : i === 0 ? "First email" : `Follow-up ${i}`}
-                                </span>
-                                {i > 0 && (
-                                    <div className="flex items-center gap-1.5 ml-1">
-                                        <span className="text-[11px] text-slate-500">after</span>
-                                        <NumberInput
-                                            value={seq.wait_after}
-                                            min={0}
-                                            max={60}
-                                            onChange={(v) => update(i, { wait_after: v })}
-                                            className="w-20"
-                                        />
-                                        <span className="text-[11px] text-slate-500">
-                                            day{seq.wait_after === 1 ? "" : "s"}
-                                        </span>
-                                    </div>
-                                )}
-                                {i > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            patch({ sequences: draft.sequences.filter((_, idx) => idx !== i) })
-                                        }
-                                        aria-label="Remove follow-up"
-                                        className="ml-auto size-6 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 inline-flex items-center justify-center transition-colors"
-                                    >
-                                        <Trash2Icon className="w-3 h-3" />
-                                    </button>
-                                )}
-                            </div>
-                            <div className="p-3 space-y-2">
-                                <TextInput
-                                    value={seq.subject}
-                                    onChange={(v) => update(i, { subject: v })}
-                                    placeholder={
-                                        i === 0
-                                            ? "Subject, e.g. quick idea for {{.Company}}"
-                                            : "Subject (leave blank to reply in the same thread)"
-                                    }
-                                    className="w-full"
-                                />
-                                <textarea
-                                    value={seq.body_plain}
-                                    onChange={(e) => update(i, { body_plain: e.target.value })}
-                                    placeholder={
-                                        i === 0
-                                            ? "Hi {{.FirstName}},\n\nNoticed {{.Company}} is ..."
-                                            : "Just bumping this up in case it slipped past."
-                                    }
-                                    rows={i === 0 ? 7 : 4}
-                                    className="w-full px-2.5 py-2 rounded-md border border-slate-200 bg-white text-[12.5px] text-slate-900 placeholder:text-slate-400 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 resize-y leading-relaxed"
-                                />
-                            </div>
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
-
-                {oneTime ? (
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                        No follow-ups here by design. Want a reminder a few days later? Create a sequence instead.
-                    </p>
-                ) : (
-                    <button
-                        type="button"
-                        onClick={() => patch({ sequences: [...draft.sequences, newSequence(3)] })}
-                        className="w-full h-8 rounded-md border border-dashed border-slate-200 text-[12px] text-slate-500 hover:text-slate-900 hover:border-slate-300 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5 transition-colors"
-                    >
-                        <PlusIcon className="w-3 h-3" />
-                        Add a follow-up
-                    </button>
-                )}
-
-                <p className="text-[10.5px] text-slate-400 leading-relaxed">
-                    Personalise with <code className="font-mono">{"{{.FirstName}}"}</code>,{" "}
-                    <code className="font-mono">{"{{.Company}}"}</code>, custom fields like{" "}
-                    <code className="font-mono">{"{{.role}}"}</code>, and conditionals like{" "}
-                    <code className="font-mono">{"{{if .Company}}...{{end}}"}</code>. HTML is generated for you.
-                </p>
-            </div>
-        </div>
-    );
-}
-
-function AudienceStep({ draft, patch }: { draft: Draft; patch: (p: Partial<Draft>) => void }) {
-    const estimate = useCampaignEstimate({ segment_ids: draft.segmentIds });
-    const recipients = estimate.data?.recipients;
-    return (
-        <div className="max-w-[560px]">
-            <StepIntro
-                title="Who receives it?"
-                hint="Every current member of the segments you pick becomes a lead. Suppressed and unsubscribed contacts are skipped at send time."
-            />
-            <div className="space-y-4">
-                <div>
-                    <Label>Segments</Label>
-                    <SegmentMultiPicker value={draft.segmentIds} onChange={(next) => patch({ segmentIds: next })} />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                        Contacts in more than one segment are counted, and emailed, once.
-                    </p>
-                </div>
-                <div className="rounded-md border border-slate-200 px-3 py-2.5 flex items-center gap-3">
-                    <span className="size-7 rounded-md bg-slate-100 text-slate-600 inline-flex items-center justify-center shrink-0">
-                        <UsersIcon className="w-3.5 h-3.5" />
-                    </span>
-                    <div className="min-w-0">
-                        <p className="text-[12.5px] text-slate-900 font-medium tabular-nums">
-                            {draft.segmentIds.length === 0
-                                ? "No segment picked yet"
-                                : estimate.isPending
-                                  ? "Counting…"
-                                  : estimate.isError
-                                    ? "Could not count recipients"
-                                    : `${(recipients ?? 0).toLocaleString()} recipient${recipients === 1 ? "" : "s"}`}
-                        </p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                            {recipients === 0 && !estimate.isPending && draft.segmentIds.length > 0
-                                ? "These segments have no contacts right now, so there is nothing to send."
-                                : "Live membership, as of now."}
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function SendStep({
-    draft,
-    patch,
-    goToKey,
-}: {
-    draft: Draft;
-    patch: (p: Partial<Draft>) => void;
-    goToKey: (k: StepKey) => void;
-}) {
-    const at = scheduledDate(draft);
-    const estimate = useCampaignEstimate({
-        segment_ids: draft.segmentIds,
-        email_tag_ids: draft.emailTagIds,
-        daily_limit: draft.dailyLimit,
-        days: draft.days,
-        timezone: draft.timezone,
-        start_date: at ? at.toISOString() : undefined,
-    });
-    const e = estimate.data;
-    const finish = e?.estimated_finish_at ? new Date(e.estimated_finish_at) : null;
-
-    return (
-        <div className="max-w-[560px]">
-            <StepIntro
-                title="When should it go?"
-                hint="Send now starts the moment you confirm. Either way it keeps to the sending window and the daily cap of every mailbox."
-            />
-            <div className="space-y-5">
-                <div role="radiogroup" aria-label="Send timing" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <KindCard
-                        selected={draft.sendMode === "now"}
-                        icon={SendIcon}
-                        title="Send now"
-                        description="Start as soon as it is created."
-                        onSelect={() => patch({ sendMode: "now" })}
-                    />
-                    <KindCard
-                        selected={draft.sendMode === "later"}
-                        icon={CalendarClockIcon}
-                        title="Schedule for later"
-                        description="Pick the date and time sending begins."
-                        onSelect={() => patch({ sendMode: "later" })}
-                    />
-                </div>
-
-                <AnimatePresence initial={false}>
-                    {draft.sendMode === "later" && (
-                        <motion.div
-                            key="when"
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.16 }}
-                            className="overflow-hidden"
-                        >
-                            <Label>Start sending at</Label>
-                            <DateTimePicker
-                                value={draft.scheduledAt}
-                                onChange={(v) => patch({ scheduledAt: v })}
-                                stepMinutes={15}
-                                datePlaceholder="Pick a date"
-                            />
-                            <p className="text-[11px] text-slate-400 mt-1">In your local time.</p>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                <TimezoneField draft={draft} patch={patch} />
-                <SendingWindowFields draft={draft} patch={patch} />
-
-                <EstimatePanel
-                    loading={estimate.isPending && draft.segmentIds.length > 0}
-                    error={estimate.isError}
-                    recipients={e?.recipients ?? 0}
-                    mailboxes={e?.mailboxes ?? 0}
-                    dailyCapacity={e?.daily_capacity ?? 0}
-                    sendingDays={e?.sending_days ?? null}
-                    finish={finish}
-                    startsAt={at}
-                    onEditPool={() => goToKey("sending")}
-                    onEditAudience={() => goToKey("audience")}
-                />
-            </div>
-        </div>
-    );
-}
-
-function EstimatePanel({
-    loading,
-    error,
-    recipients,
-    mailboxes,
-    dailyCapacity,
-    sendingDays,
-    finish,
-    startsAt,
-    onEditPool,
-    onEditAudience,
-}: {
-    loading: boolean;
-    error: boolean;
-    recipients: number;
-    mailboxes: number;
-    dailyCapacity: number;
-    sendingDays: number | null;
-    finish: Date | null;
-    startsAt: Date | null;
-    onEditPool: () => void;
-    onEditAudience: () => void;
-}) {
-    let headline: string;
-    let detail: React.ReactNode;
-    let tone: "neutral" | "warn" = "neutral";
-
-    if (loading) {
-        headline = "Working out the timing…";
-        detail = "Counting the audience against the mailbox pool.";
-    } else if (error) {
-        headline = "Could not estimate the timing";
-        detail = "The send still works; this only affects the preview.";
-    } else if (recipients === 0) {
-        headline = "Nothing to send yet";
-        detail = (
-            <>
-                The chosen segments have no contacts.{" "}
-                <button type="button" onClick={onEditAudience} className="underline underline-offset-2 hover:text-slate-900">
-                    Change the audience
-                </button>
-                .
-            </>
-        );
-        tone = "warn";
-    } else if (mailboxes === 0 || dailyCapacity === 0) {
-        headline = "No mailbox can send this";
-        detail = (
-            <>
-                The sender pool resolves to no active mailbox.{" "}
-                <button type="button" onClick={onEditPool} className="underline underline-offset-2 hover:text-slate-900">
-                    Change the pool
-                </button>{" "}
-                or connect a mailbox first.
-            </>
-        );
-        tone = "warn";
-    } else if (sendingDays === null || finish === null) {
-        // The backend leaves both null when the audience is not covered
-        // inside its two-year horizon, which must not read as "one day".
-        headline = "Longer than this estimate can project";
-        detail = (
-            <>
-                {recipients.toLocaleString()} recipients at up to {dailyCapacity.toLocaleString()} a day would take
-                years.{" "}
-                <button type="button" onClick={onEditPool} className="underline underline-offset-2 hover:text-slate-900">
-                    Add mailboxes or raise the daily limit
-                </button>
-                , or narrow the audience.
-            </>
-        );
-        tone = "warn";
-    } else {
-        const days = sendingDays;
-        headline =
-            days <= 1
-                ? `Finishes ${startsAt ? "on" : "today,"} ${fmtDate(finish)}`
-                : `About ${days} sending days, finishing around ${fmtDate(finish)}`;
-        detail = (
-            <>
-                {recipients.toLocaleString()} recipient{recipients === 1 ? "" : "s"} across {mailboxes} mailbox
-                {mailboxes === 1 ? "" : "es"} at up to {dailyCapacity.toLocaleString()} a day.
-                {days > 1 && " One-time means one message per contact, not one day: the daily caps still pace it."}
-            </>
-        );
-        if (days > 7) tone = "warn";
-    }
-
-    return (
-        <div
-            className={cn(
-                "rounded-md border px-3 py-2.5 flex items-start gap-3",
-                tone === "warn" ? "border-amber-200 bg-amber-50/60" : "border-slate-200",
-            )}
-        >
-            <span
-                className={cn(
-                    "size-7 rounded-md inline-flex items-center justify-center shrink-0",
-                    tone === "warn" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600",
-                )}
-            >
-                {loading ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <CalendarClockIcon className="w-3.5 h-3.5" />}
-            </span>
-            <div className="min-w-0">
-                <p className={cn("text-[12.5px] font-medium", tone === "warn" ? "text-amber-900" : "text-slate-900")}>
-                    {headline}
-                </p>
-                <p className={cn("text-[11px] mt-0.5 leading-relaxed", tone === "warn" ? "text-amber-800" : "text-slate-500")}>
-                    {detail}
-                </p>
-            </div>
-        </div>
-    );
-}
-

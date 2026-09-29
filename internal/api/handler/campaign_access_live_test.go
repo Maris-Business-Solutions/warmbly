@@ -288,11 +288,6 @@ func TestLiveSharedCampaignAccess(t *testing.T) {
 			t.Fatal("layout changed a step outside the selected workspace or campaign")
 		}
 	})
-	t.Run("one_time_limit", func(t *testing.T) {
-		exec(`UPDATE campaigns SET kind = 'one_time' WHERE id = $1`, campaignID)
-		t.Cleanup(func() { exec(`UPDATE campaigns SET kind = 'sequence' WHERE id = $1`, campaignID) })
-		request(t, teammate, &org, nil, "POST", campaignPath+"/steps", "", 400)
-	})
 	t.Run("creator_attribution", func(t *testing.T) {
 		var creator uuid.UUID
 		if err := handle.QueryRow(ctx, `SELECT user_id FROM campaigns WHERE id = $1`, campaignID).Scan(&creator); err != nil {
