@@ -141,20 +141,19 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
 
   // One descriptor per row so a section can fold, hide and edit them without
   // knowing what each one is. `key` is the scopeKey, which is also what is
-  // stored when a row is hidden. `group` only decides where the small gap goes.
+  // stored when a row is hidden.
   const scopeRow = (
     target: UniboxScope,
     label: string,
     icon: React.ReactNode,
     count: number | undefined,
-    { group = 0, accent = false }: { group?: number; accent?: boolean } = {},
+    { accent = false }: { accent?: boolean } = {},
   ): RailRow => {
     const key = scopeKey(target);
     return {
       key,
       label,
       icon,
-      group,
       accent,
       node: (
         <Item
@@ -173,7 +172,6 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
     folder: UniboxFolder,
     label: string,
     icon: React.ReactNode,
-    group: number,
   ): RailRow => {
     const counts = folderCounts.get(folder);
     // Drafts reads better as a total; everywhere else the number is unread.
@@ -183,7 +181,6 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
       key: `folder:${folder}`,
       label,
       icon,
-      group,
       accent,
       node: (
         <FolderItem
@@ -201,7 +198,7 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
 
   const mailRows: RailRow[] = [
     scopeRow({ kind: "all" }, "All mail", <LayersIcon className={ICON} />, data?.total),
-    folderRow("inbox", "Inbox", <InboxIcon className={ICON} />, 0),
+    folderRow("inbox", "Inbox", <InboxIcon className={ICON} />),
     scopeRow({ kind: "unread" }, "Unread", <MailIcon className={ICON} />, data?.unread, {
       accent: !!data?.unread,
     }),
@@ -220,15 +217,15 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
       { accent: !!data?.awaiting_agent_draft },
     ),
     scopeRow({ kind: "snoozed" }, "Snoozed", <MoonIcon className={ICON} />, data?.snoozed),
-    ...MAIL_FOLDERS.slice(0, 2).map((f) => folderRow(f.folder, f.label, f.icon, 1)),
+    ...MAIL_FOLDERS.slice(0, 2).map((f) => folderRow(f.folder, f.label, f.icon)),
     scopeRow(
       { kind: "scheduled" },
       "Scheduled",
       <ClockIcon className={ICON} />,
       data?.scheduled_pending,
-      { group: 1, accent: !!data?.scheduled_pending },
+      { accent: !!data?.scheduled_pending },
     ),
-    ...MAIL_FOLDERS.slice(2).map((f) => folderRow(f.folder, f.label, f.icon, 1)),
+    ...MAIL_FOLDERS.slice(2).map((f) => folderRow(f.folder, f.label, f.icon)),
   ];
 
   const viewRows: RailRow[] = data
@@ -393,7 +390,6 @@ interface RailRow {
   key: string;
   label: string;
   icon: React.ReactNode;
-  group?: number;
   accent?: boolean;
   node: React.ReactNode;
 }
@@ -466,9 +462,8 @@ function SectionHeader({
       </button>
       {/* Non-interactive: a reminder that rows are missing, so a rail that
           looks short is not mistaken for a bug. Slate-500 (4.7:1 on white),
-          as is the pencil at rest, because both are new information and the
-          only way in to editing, unlike the quieter slate-300 totals. It also
-          describes the pencil, so tabbing to it hears the number. */}
+          because it is new information, unlike the quieter slate-300 totals.
+          It also describes the pencil, so tabbing to it hears the number. */}
       {!!hiddenCount && (
         <span id={hiddenId} className="shrink-0 text-[10.5px] text-slate-500 tabular-nums">
           {hiddenCount} hidden
@@ -486,7 +481,9 @@ function SectionHeader({
           </button>
         ) : (
           // Always visible, unlike the folder menu: this is the only way in to
-          // hiding rows, so it cannot wait for a hover to be found.
+          // hiding rows, so it cannot wait for a hover to be found. At rest it
+          // is as quiet as the section label and darkens on hover, like the
+          // rest of the header.
           <button
             type="button"
             data-rail-options
@@ -494,7 +491,7 @@ function SectionHeader({
             title={`Edit ${label} rows`}
             aria-label={`Edit ${label} rows`}
             aria-describedby={hiddenCount ? hiddenId : undefined}
-            className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-500 hover:text-slate-700 focus-visible:text-slate-700 hover:bg-slate-200/70 transition-colors"
+            className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-400 hover:text-slate-700 focus-visible:text-slate-700 hover:bg-slate-200/70 transition-colors"
           >
             <PencilIcon className="w-3.5 h-3.5" />
           </button>
@@ -575,9 +572,6 @@ function RailSection({
       <div id={panelId} className="px-2 space-y-px">
         {shown.map((r, i) => (
           <React.Fragment key={r.key}>
-            {i > 0 && (r.group ?? 0) !== (shown[i - 1].group ?? 0) && (
-              <div aria-hidden className="h-3" />
-            )}
             {editing ? (
               <EditRow
                 buttonRef={i === 0 ? firstEditRowRef : undefined}
