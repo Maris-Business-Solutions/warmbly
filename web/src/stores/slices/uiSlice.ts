@@ -37,6 +37,9 @@ export interface UISlice {
   // and the rows the user hid, as the rail's scopeKey values.
   uniboxRailFolded: Record<string, boolean>
   uniboxRailHidden: string[]
+  // Row order per section and the order of the sections; absent means default.
+  uniboxRailOrder: Record<string, string[]>
+  uniboxRailSectionOrder: string[]
 
   // Theme
   theme: Theme
@@ -67,6 +70,10 @@ export interface UISlice {
   // Actions - Unibox scope rail
   toggleUniboxRailSection: (id: string) => void
   toggleUniboxRailRow: (key: string) => void
+  setUniboxRailFolded: (folded: Record<string, boolean>) => void
+  setUniboxRailRowsHidden: (keys: string[], hidden: boolean) => void
+  setUniboxRailOrder: (section: string, keys: string[] | null) => void
+  setUniboxRailSectionOrder: (ids: string[]) => void
 
   // Actions - Theme
   setTheme: (theme: Theme) => void
@@ -106,6 +113,30 @@ export const sanitizeUniboxRailHidden = (v: unknown): string[] => {
   return [...new Set(v.filter((k): k is string => typeof k === 'string'))]
 }
 
+// Row orders rehydrate as a map of string lists, each deduplicated.
+export const sanitizeUniboxRailOrder = (v: unknown): Record<string, string[]> => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  return Object.fromEntries(
+    Object.entries(v).flatMap(([id, keys]) => (Array.isArray(keys) ? [[id, sanitizeUniboxRailHidden(keys)]] : [])),
+  )
+}
+
+// A stored order over keys that come and go: known keys keep the stored order,
+// and a key the stored order never saw lands right after its default predecessor.
+export const applyRailOrder = (defaults: string[], stored: string[] | undefined): string[] => {
+  if (!stored?.length) return defaults
+  const known = new Set(defaults)
+  const out = stored.filter((k) => known.has(k))
+  const placed = new Set(out)
+  defaults.forEach((k, i) => {
+    if (placed.has(k)) return
+    const prev = i > 0 ? out.indexOf(defaults[i - 1]) : -1
+    out.splice(prev + 1, 0, k)
+    placed.add(k)
+  })
+  return out
+}
+
 // The dashboard is light-only today: every surface is styled on white, so a
 // resolved dark theme would flip only the CSS-variable components (command
 // palette, toasts) and look broken. 'dark'/'system' are accepted but resolve
@@ -121,6 +152,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   navCollapsedSections: {},
   uniboxRailFolded: {},
   uniboxRailHidden: [],
+  uniboxRailOrder: {},
+  uniboxRailSectionOrder: [],
 
   // Theme
   theme: getInitialTheme(),
@@ -161,6 +194,21 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
         ? state.uniboxRailHidden.filter((k) => k !== key)
         : [...state.uniboxRailHidden, key],
     })),
+  setUniboxRailFolded: (folded) =>
+    set((state) => ({ uniboxRailFolded: { ...state.uniboxRailFolded, ...folded } })),
+  setUniboxRailRowsHidden: (keys, hidden) =>
+    set((state) => {
+      const rest = state.uniboxRailHidden.filter((k) => !keys.includes(k))
+      return { uniboxRailHidden: hidden ? [...rest, ...keys] : rest }
+    }),
+  setUniboxRailOrder: (section, keys) =>
+    set((state) => {
+      const next = { ...state.uniboxRailOrder }
+      if (keys) next[section] = keys
+      else delete next[section]
+      return { uniboxRailOrder: next }
+    }),
+  setUniboxRailSectionOrder: (ids) => set({ uniboxRailSectionOrder: ids }),
 
   // Actions - Theme
   setTheme: (theme) => {

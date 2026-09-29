@@ -10,7 +10,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { useAppStore } from "@/stores";
-import { sanitizeUniboxRailHidden } from "@/stores/slices/uiSlice";
+import { applyRailOrder, sanitizeUniboxRailHidden, sanitizeUniboxRailOrder } from "@/stores/slices/uiSlice";
 import { ScopeRail, type UniboxScope } from "./ScopeRail";
 
 const overview = vi.hoisted(() => ({
@@ -70,7 +70,12 @@ function mountRail(scope: UniboxScope = { kind: "all" }) {
 }
 
 beforeEach(() => {
-  useAppStore.setState({ uniboxRailFolded: {}, uniboxRailHidden: [] });
+  useAppStore.setState({
+    uniboxRailFolded: {},
+    uniboxRailHidden: [],
+    uniboxRailOrder: {},
+    uniboxRailSectionOrder: [],
+  });
 });
 
 afterEach(() => {
@@ -361,5 +366,270 @@ describe("sanitizeUniboxRailHidden", () => {
     } finally {
       useAppStore.persist.setOptions({ storage: original });
     }
+  });
+});
+
+const MAIL_DEFAULT = [
+  "all", "folder:inbox", "unread", "awaiting", "agent_drafts", "snoozed",
+  "folder:drafts", "folder:sent", "scheduled", "folder:archive", "folder:spam", "folder:trash",
+];
+
+// The rail row element around a label, as the keyboard sees it.
+const rowOf = (label: string) => screen.getByText(label).closest("[data-rail-row]") as HTMLElement;
+
+// Headers in the order they are on screen.
+const headerOrder = () =>
+  screen.getAllByRole("button", { expanded: true }).map((b) => b.textContent?.replace(/\d+$/, ""));
+
+describe("row order", () => {
+  it("moves a row with the grip's arrow keys while editing, and says where it went", () => {
+    mountRail();
+    startEditing("Mail");
+    fireEvent.keyDown(screen.getByRole("button", { name: /^Move Spam/ }), { key: "ArrowUp" });
+
+    const order = useAppStore.getState().uniboxRailOrder.mail;
+    expect(order.indexOf("folder:spam")).toBe(order.indexOf("folder:archive") - 1);
+    expect(screen.getByText("Spam moved to position 10 of 12")).toBeTruthy();
+
+    // Checkboxes follow the new order.
+    const names = screen.getAllByRole("checkbox").map((c) => c.textContent);
+    expect(names.indexOf("Spam")).toBeLessThan(names.indexOf("Archive"));
+  });
+
+  it("moves a row with Alt+arrow outside edit mode, stepping over a hidden neighbour", () => {
+    useAppStore.setState({ uniboxRailHidden: ["unread"] });
+    mountRail();
+    fireEvent.keyDown(rowOf("Inbox"), { key: "ArrowDown", altKey: true });
+    expect(useAppStore.getState().uniboxRailOrder.mail.slice(0, 4)).toEqual([
+      "all", "unread", "awaiting", "folder:inbox",
+    ]);
+  });
+
+  it("stores nothing once a row is moved back to where it started", () => {
+    mountRail();
+    fireEvent.keyDown(rowOf("Inbox"), { key: "ArrowDown", altKey: true });
+    expect(useAppStore.getState().uniboxRailOrder.mail).toBeDefined();
+    fireEvent.keyDown(rowOf("Inbox"), { key: "ArrowUp", altKey: true });
+    expect(useAppStore.getState().uniboxRailOrder.mail).toBeUndefined();
+  });
+
+  it("renders a stored order", () => {
+    useAppStore.setState({ uniboxRailOrder: { mail: ["folder:trash", ...MAIL_DEFAULT.slice(0, -1)] } });
+    mountRail();
+    const rows = Array.from(document.querySelectorAll("[data-rail-row]")).map((r) => r.textContent);
+    expect(rows[0]).toContain("Trash");
+  });
+
+  it("resets order and hidden rows from the edit footer", () => {
+    useAppStore.setState({
+      uniboxRailHidden: ["folder:spam", "view:hot"],
+      uniboxRailOrder: { mail: ["folder:trash", ...MAIL_DEFAULT.slice(0, -1)] },
+    });
+    mountRail();
+    startEditing("Mail");
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(useAppStore.getState().uniboxRailOrder.mail).toBeUndefined();
+    // Only this section's rows come back.
+    expect(useAppStore.getState().uniboxRailHidden).toEqual(["view:hot"]);
+    expect((screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("row menu", () => {
+  it("hides a row from its menu", () => {
+    mountRail();
+    fireEvent.click(screen.getByLabelText("Spam folder actions"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide from rail" }));
+    expect(useAppStore.getState().uniboxRailHidden).toEqual(["folder:spam"]);
+    expect(screen.queryByText("Spam")).toBeNull();
+  });
+
+  it("opens the same menu on right-click, without opening the scope", () => {
+    const onChange = vi.fn();
+    render(<ScopeRail scope={{ kind: "all" }} onChange={onChange} />);
+    fireEvent.contextMenu(rowOf("Unread"), { clientX: 40, clientY: 80 });
+    expect(screen.getByRole("menuitem", { name: /Move up/ })).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("disables moves the row cannot make", () => {
+    mountRail();
+    fireEvent.click(screen.getByLabelText("All mail actions"));
+    expect((screen.getByRole("menuitem", { name: /Move up/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("menuitem", { name: /Move down/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("walks its items with the arrow keys", async () => {
+    mountRail();
+    fireEvent.click(screen.getByLabelText("Inbox folder actions"));
+    const menu = screen.getByRole("menu");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement?.textContent).toBe("Mark all as read");
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" });
+    expect(document.activeElement?.textContent).toContain("Move up");
+    fireEvent.keyDown(document.activeElement as Element, { key: "End" });
+    expect(document.activeElement?.textContent).toContain("Edit Mail rows");
+  });
+});
+
+describe("section menu", () => {
+  it("moves a section and remembers it", () => {
+    mountRail();
+    expect(headerOrder().slice(0, 2)).toEqual(["Mail", "Views"]);
+    fireEvent.click(screen.getByLabelText("Mail section options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move section down" }));
+    expect(useAppStore.getState().uniboxRailSectionOrder.slice(0, 2)).toEqual(["views", "mail"]);
+    expect(headerOrder().slice(0, 2)).toEqual(["Views", "Mail"]);
+  });
+
+  it("folds every other section", () => {
+    mountRail();
+    fireEvent.click(screen.getByLabelText("Views section options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Fold other sections" }));
+    const folded = useAppStore.getState().uniboxRailFolded;
+    expect(folded).toMatchObject({ mail: true, views: false, mailboxes: true, labels: true });
+    expect(screen.getByText("Hot leads")).toBeTruthy();
+    expect(screen.queryByText("Inbox")).toBeNull();
+  });
+
+  it("offers to show the hidden rows", () => {
+    useAppStore.setState({ uniboxRailHidden: ["folder:spam", "folder:trash"] });
+    mountRail();
+    fireEvent.click(screen.getByLabelText("Mail section options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Show 2 hidden rows" }));
+    expect(useAppStore.getState().uniboxRailHidden).toEqual([]);
+    expect(screen.getByText("Spam")).toBeTruthy();
+  });
+
+  it("starts editing from the menu", () => {
+    mountRail();
+    fireEvent.click(screen.getByLabelText("Views section options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit rows…" }));
+    expect(screen.getByRole("checkbox", { name: "Hot leads" })).toBeTruthy();
+  });
+});
+
+describe("edit mode ends", () => {
+  it("on a click outside the section", () => {
+    mountRail();
+    startEditing("Mail");
+    fireEvent.mouseDown(screen.getByText("me@example.com"));
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("not on a click inside it", () => {
+    mountRail();
+    startEditing("Mail");
+    fireEvent.mouseDown(screen.getByRole("checkbox", { name: "Spam" }));
+    expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
+  });
+});
+
+describe("arrow keys between rows", () => {
+  it("move focus down the rail and across sections", () => {
+    mountRail();
+    rowOf("All mail").focus();
+    fireEvent.keyDown(rowOf("All mail"), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rowOf("Inbox"));
+    fireEvent.keyDown(document.activeElement as Element, { key: "End" });
+    expect(document.activeElement?.textContent).toContain("Interested");
+  });
+});
+
+describe("applyRailOrder", () => {
+  it("keeps the stored order, drops keys that are gone, and slots new ones after their default neighbour", () => {
+    expect(applyRailOrder(["a", "b", "c"], ["c", "a", "b"])).toEqual(["c", "a", "b"]);
+    expect(applyRailOrder(["a", "b"], ["b", "gone", "a"])).toEqual(["b", "a"]);
+    expect(applyRailOrder(["a", "b", "new", "c"], ["c", "b", "a"])).toEqual(["c", "b", "new", "a"]);
+    expect(applyRailOrder(["first", "a"], ["a"])).toEqual(["first", "a"]);
+    expect(applyRailOrder(["a"], undefined)).toEqual(["a"]);
+  });
+});
+
+describe("sanitizeUniboxRailOrder", () => {
+  it("keeps string lists only, deduplicated", () => {
+    expect(sanitizeUniboxRailOrder({ mail: ["a", "a", 3, "b"], views: "x", tags: [] })).toEqual({
+      mail: ["a", "b"],
+      tags: [],
+    });
+    expect(sanitizeUniboxRailOrder(["mail"])).toEqual({});
+  });
+
+  it("is persisted with the section order", () => {
+    useAppStore.setState({ uniboxRailOrder: { mail: ["unread"] }, uniboxRailSectionOrder: ["views"] });
+    const persisted = useAppStore.persist.getOptions().partialize?.(useAppStore.getState()) as {
+      uniboxRailOrder?: unknown;
+      uniboxRailSectionOrder?: unknown;
+    };
+    expect(persisted.uniboxRailOrder).toEqual({ mail: ["unread"] });
+    expect(persisted.uniboxRailSectionOrder).toEqual(["views"]);
+  });
+});
+
+describe("keyboard moves keep their place", () => {
+  // Browsers blur a focused node that is moved in the DOM (React restores it); jsdom does not, so mimic it.
+  const insertBefore = Node.prototype.insertBefore;
+  beforeEach(() => {
+    Node.prototype.insertBefore = function <T extends Node>(this: Node, node: T, child: Node | null): T {
+      const focused = document.activeElement;
+      if (node.isConnected && focused && node.contains(focused)) (focused as HTMLElement).blur();
+      return insertBefore.call(this, node, child) as T;
+    };
+  });
+  afterEach(() => {
+    Node.prototype.insertBefore = insertBefore;
+  });
+
+  it("keeps focus on the row it moved", () => {
+    mountRail();
+    rowOf("Inbox").focus();
+    fireEvent.keyDown(rowOf("Inbox"), { key: "ArrowDown", altKey: true });
+    expect(document.activeElement).toBe(rowOf("Inbox"));
+    fireEvent.keyDown(rowOf("Inbox"), { key: "ArrowDown", altKey: true });
+    expect(useAppStore.getState().uniboxRailOrder.mail.slice(0, 4)).toEqual([
+      "all", "unread", "awaiting", "folder:inbox",
+    ]);
+  });
+
+  it("keeps focus on the grip it moved", () => {
+    mountRail();
+    startEditing("Mail");
+    const grip = () => screen.getByRole("button", { name: /^Move Inbox/ });
+    grip().focus();
+    fireEvent.keyDown(grip(), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(grip());
+  });
+
+  it("offers no moves in a folded section", () => {
+    useAppStore.setState({ uniboxRailFolded: { mail: true } });
+    mountRail({ kind: "unread" });
+    fireEvent.click(screen.getByLabelText("Unread actions"));
+    expect((screen.getByRole("menuitem", { name: /Move up/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("menuitem", { name: /Move down/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("dropdown keys", () => {
+  it("jump to the first matching item from the panel, and never reach global shortcuts", () => {
+    const globalKeys = vi.fn();
+    window.addEventListener("keydown", globalKeys);
+    try {
+      mountRail();
+      fireEvent.click(screen.getByLabelText("Mail section options"));
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "f" });
+      expect(document.activeElement?.textContent).toBe("Fold section");
+      fireEvent.keyDown(document.activeElement as Element, { key: "e" });
+      expect(document.activeElement?.textContent).toBe("Edit rows…");
+      expect(globalKeys).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", globalKeys);
+    }
+  });
+
+  it("leave Tab alone", () => {
+    mountRail();
+    fireEvent.click(screen.getByLabelText("Mail section options"));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Tab" });
+    expect(screen.getByRole("menu")).toBeTruthy();
   });
 });
