@@ -20,13 +20,15 @@ Message encoding is orthogonal to transport, selected by `CODEC_PROVIDER`:
 <Callout type="warn" title="Every derived field carries a default">
 Schemas are derived from the Go structs (`internal/models/event_schema.go`), and each field is given the Avro default matching its zero value. This is what makes adding a field safe: a reader on the new schema can still decode data written under the schema registered before it, filling the field it did not carry from the default, so the registry accepts the new version. A newly added field with no default is rejected under `BACKWARD` compatibility, and because the publisher registers before it serializes, the rejection stops every publish on that topic rather than degrading one field.
 
-Two things follow. The registered document is the marshalled schema, not `Schema.String()`, which omits defaults and would throw the guarantee away. And the registry stays on `BACKWARD` rather than `FORWARD`: adding a field is safe under both, but adding a new event type adds a union branch, which `BACKWARD` accepts and `FORWARD` refuses.
+Two things follow. The registered document is the marshalled schema, not `Schema.String()`, which omits defaults and would throw the guarantee away. And the registry stays on `BACKWARD` rather than `FORWARD`: adding a field is safe under both, but adding a new event type adds a union branch, which `BACKWARD` accepts and `FORWARD` refuses. When a registration is refused and the subject's effective level is `FORWARD` or `FULL` (or their transitive forms), the publisher sets that subject to `BACKWARD` and registers again, so the registry key needs permission to change a subject's compatibility. Any other level, and any other refusal, is left as it is.
+
+Nothing in this reaches production untested. `internal/app/eventschemas` lists every schema a release publishes and keeps the one the registry last accepted under `testdata/`. CI decodes the recorded schema with the new one, which is the registry's own `BACKWARD` check, and fails a change the registry would refuse. It also fails a compatible change that has not been recorded, so a schema change is always in the diff: run `make schemas` and commit the result. On release the backend registers every listed schema when it boots, and the fleet does not move to the release until that has succeeded.
 </Callout>
 
 The Rust tracking service follows both switches. It speaks Kafka only when compiled with its `kafka` cargo feature, which is what the `tracking:*-kafka` image is, and it encodes with `CODEC_PROVIDER` on either transport. So a Kafka deployment on `CODEC_PROVIDER=json` needs no Schema Registry at all, and `avro` there is refused at boot without `SCHEMA_REGISTRY_URL` rather than failing at the first published event.
 
 <Callout type="warn" title="One codec covers both topics">
-The consumer decodes `jobs.worker-events` and `tracking-events` with the same `CODEC_PROVIDER`, and worker envelopes cannot be Avro. That makes `json` the only value a working deployment uses, and it is why the tracking publisher has to read the setting rather than always writing Avro: a JSON consumer handed Avro drops every open and click with nothing but a deserialize warning.
+The consumer decodes `jobs.worker-events` and `tracking-events` with the same `CODEC_PROVIDER`, which is why the tracking publisher has to read the setting rather than always writing Avro: a JSON consumer handed Avro drops every open and click with nothing but a deserialize warning.
 </Callout>
 
 ## Topics

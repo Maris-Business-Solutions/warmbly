@@ -45,6 +45,7 @@ func (s *JobsService) ingestNewEmail(ctx context.Context, e *models.JobEventNewE
 		log.Warn().Msg("NEW_EMAIL event without a message body, dropping")
 		return nil
 	}
+	e.Message.ValidText()
 	warmupToken := warmupTokenFromMessage(e.Message)
 	if warmupToken != "" {
 		handled, err := s.handleWarmupEmail(ctx, e, warmupToken)

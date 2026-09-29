@@ -1,0 +1,839 @@
+{
+  "fields": [
+    {
+      "name": "type",
+      "type": "string"
+    },
+    {
+      "name": "body",
+      "type": [
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": null,
+              "name": "organization_id",
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            {
+              "default": false,
+              "name": "imap_sync",
+              "type": "boolean"
+            },
+            {
+              "default": null,
+              "name": "save_to_sent",
+              "type": [
+                "null",
+                "boolean"
+              ]
+            },
+            {
+              "default": "",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "first_name",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "last_name",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "type",
+              "type": "string"
+            },
+            {
+              "default": null,
+              "name": "google",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+                      "name": "last_history_id",
+                      "type": {
+                        "name": "warmbly.events.uint64",
+                        "size": 8,
+                        "type": "fixed"
+                      }
+                    },
+                    {
+                      "default": null,
+                      "name": "token",
+                      "type": [
+                        "null",
+                        {
+                          "fields": [
+                            {
+                              "default": "",
+                              "name": "AccessToken",
+                              "type": "string"
+                            },
+                            {
+                              "default": "",
+                              "name": "TokenType",
+                              "type": "string"
+                            },
+                            {
+                              "default": "",
+                              "name": "RefreshToken",
+                              "type": "string"
+                            },
+                            {
+                              "default": 0,
+                              "name": "Expiry",
+                              "type": {
+                                "logicalType": "timestamp-millis",
+                                "type": "long"
+                              }
+                            },
+                            {
+                              "default": 0,
+                              "name": "ExpiresIn",
+                              "type": "long"
+                            }
+                          ],
+                          "name": "warmbly.events.Token",
+                          "type": "record"
+                        }
+                      ]
+                    }
+                  ],
+                  "name": "warmbly.events.AddWorkerEmailGoogleData",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": null,
+              "name": "smtp_imap",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": [],
+                      "name": "mailboxes",
+                      "type": {
+                        "items": {
+                          "fields": [
+                            {
+                              "default": "",
+                              "name": "name",
+                              "type": "string"
+                            },
+                            {
+                              "default": [],
+                              "name": "attributes",
+                              "type": {
+                                "items": "string",
+                                "type": "array"
+                              }
+                            },
+                            {
+                              "default": 0,
+                              "name": "uid_validity",
+                              "type": "long"
+                            },
+                            {
+                              "default": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+                              "name": "highestmodseq",
+                              "type": "warmbly.events.uint64"
+                            },
+                            {
+                              "default": 0,
+                              "name": "uid_next",
+                              "type": "long"
+                            },
+                            {
+                              "default": "",
+                              "name": "delim",
+                              "type": "string"
+                            },
+                            {
+                              "default": 0,
+                              "name": "messages",
+                              "type": "long"
+                            },
+                            {
+                              "default": 0,
+                              "name": "updated_at",
+                              "type": {
+                                "logicalType": "timestamp-millis",
+                                "type": "long"
+                              }
+                            }
+                          ],
+                          "name": "warmbly.events.Mailbox",
+                          "type": "record"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": null,
+                      "name": "token",
+                      "type": [
+                        "null",
+                        "warmbly.events.Token"
+                      ]
+                    },
+                    {
+                      "default": null,
+                      "name": "credentials",
+                      "type": [
+                        "null",
+                        {
+                          "fields": [
+                            {
+                              "default": null,
+                              "name": "smtp",
+                              "type": [
+                                "null",
+                                {
+                                  "fields": [
+                                    {
+                                      "default": "",
+                                      "name": "username",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "default": "",
+                                      "name": "password",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "default": "",
+                                      "name": "host",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "default": 0,
+                                      "name": "port",
+                                      "type": "int"
+                                    },
+                                    {
+                                      "default": "",
+                                      "name": "security",
+                                      "type": "string"
+                                    }
+                                  ],
+                                  "name": "warmbly.events.Service",
+                                  "type": "record"
+                                }
+                              ]
+                            },
+                            {
+                              "default": null,
+                              "name": "imap",
+                              "type": [
+                                "null",
+                                "warmbly.events.Service"
+                              ]
+                            }
+                          ],
+                          "name": "warmbly.events.SmtpImap",
+                          "type": "record"
+                        }
+                      ]
+                    }
+                  ],
+                  "name": "warmbly.events.AddWorkerEmailSmtpImapData",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": null,
+              "name": "graph",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": null,
+                      "name": "token",
+                      "type": [
+                        "null",
+                        "warmbly.events.Token"
+                      ]
+                    },
+                    {
+                      "default": {},
+                      "name": "delta_links",
+                      "type": {
+                        "type": "map",
+                        "values": "string"
+                      }
+                    },
+                    {
+                      "default": "",
+                      "name": "user",
+                      "type": "string"
+                    }
+                  ],
+                  "name": "warmbly.events.AddWorkerEmailGraphData",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": null,
+              "name": "sync",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": {
+                        "backfill_days": 0,
+                        "backfill_messages": 0,
+                        "daily_messages": 0,
+                        "org_daily_messages": 0,
+                        "skip_folders": []
+                      },
+                      "name": "policy",
+                      "type": {
+                        "fields": [
+                          {
+                            "default": 0,
+                            "name": "backfill_days",
+                            "type": "int"
+                          },
+                          {
+                            "default": 0,
+                            "name": "backfill_messages",
+                            "type": "int"
+                          },
+                          {
+                            "default": 0,
+                            "name": "daily_messages",
+                            "type": "int"
+                          },
+                          {
+                            "default": 0,
+                            "name": "org_daily_messages",
+                            "type": "int"
+                          },
+                          {
+                            "default": [],
+                            "name": "skip_folders",
+                            "type": {
+                              "items": "string",
+                              "type": "array"
+                            }
+                          }
+                        ],
+                        "name": "warmbly.events.SyncPolicy",
+                        "type": "record"
+                      }
+                    },
+                    {
+                      "default": null,
+                      "name": "state",
+                      "type": [
+                        "null",
+                        {
+                          "fields": [
+                            {
+                              "default": "",
+                              "name": "backfill_status",
+                              "type": "string"
+                            },
+                            {
+                              "default": {
+                                "folders": {},
+                                "page_token": ""
+                              },
+                              "name": "backfill_cursor",
+                              "type": {
+                                "fields": [
+                                  {
+                                    "default": "",
+                                    "name": "page_token",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "default": {},
+                                    "name": "folders",
+                                    "type": {
+                                      "type": "map",
+                                      "values": {
+                                        "fields": [
+                                          {
+                                            "default": "",
+                                            "name": "next",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "default": 0,
+                                            "name": "uid",
+                                            "type": "long"
+                                          },
+                                          {
+                                            "default": false,
+                                            "name": "done",
+                                            "type": "boolean"
+                                          }
+                                        ],
+                                        "name": "warmbly.events.SyncFolderCursor",
+                                        "type": "record"
+                                      }
+                                    }
+                                  }
+                                ],
+                                "name": "warmbly.events.SyncCursor",
+                                "type": "record"
+                              }
+                            },
+                            {
+                              "default": 0,
+                              "name": "backfill_synced",
+                              "type": "int"
+                            },
+                            {
+                              "default": null,
+                              "name": "backfill_since",
+                              "type": [
+                                "null",
+                                {
+                                  "logicalType": "timestamp-millis",
+                                  "type": "long"
+                                }
+                              ]
+                            },
+                            {
+                              "default": null,
+                              "name": "backfill_started_at",
+                              "type": [
+                                "null",
+                                {
+                                  "logicalType": "timestamp-millis",
+                                  "type": "long"
+                                }
+                              ]
+                            },
+                            {
+                              "default": null,
+                              "name": "backfill_completed_at",
+                              "type": [
+                                "null",
+                                {
+                                  "logicalType": "timestamp-millis",
+                                  "type": "long"
+                                }
+                              ]
+                            },
+                            {
+                              "default": null,
+                              "name": "throttled_until",
+                              "type": [
+                                "null",
+                                {
+                                  "logicalType": "timestamp-millis",
+                                  "type": "long"
+                                }
+                              ]
+                            },
+                            {
+                              "default": "",
+                              "name": "throttle_reason",
+                              "type": "string"
+                            },
+                            {
+                              "default": 0,
+                              "name": "deferred",
+                              "type": "int"
+                            },
+                            {
+                              "default": 0,
+                              "name": "folders_skipped_cap",
+                              "type": "int"
+                            },
+                            {
+                              "default": 0,
+                              "name": "folders_skipped_conflict",
+                              "type": "int"
+                            },
+                            {
+                              "default": null,
+                              "name": "last_synced_at",
+                              "type": [
+                                "null",
+                                {
+                                  "logicalType": "timestamp-millis",
+                                  "type": "long"
+                                }
+                              ]
+                            }
+                          ],
+                          "name": "warmbly.events.SyncState",
+                          "type": "record"
+                        }
+                      ]
+                    }
+                  ],
+                  "name": "warmbly.events.AddWorkerEmailSyncData",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": false,
+              "name": "brokered",
+              "type": "boolean"
+            }
+          ],
+          "name": "warmbly.events.AddWorkerEmail",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "org_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "process_id",
+              "type": "string"
+            },
+            {
+              "default": null,
+              "name": "credentials",
+              "type": [
+                "null",
+                "warmbly.events.SmtpImap"
+              ]
+            }
+          ],
+          "name": "warmbly.events.EventWorkerEmailValidation",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "process_id",
+              "type": "string"
+            },
+            {
+              "default": false,
+              "name": "want_signature",
+              "type": "boolean"
+            },
+            {
+              "default": "",
+              "name": "signature_for",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.EventWorkerMailboxIdentity",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": false,
+              "name": "seen",
+              "type": "boolean"
+            },
+            {
+              "default": [],
+              "name": "messages",
+              "type": {
+                "items": {
+                  "fields": [
+                    {
+                      "default": "",
+                      "name": "provider_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": 0,
+                      "name": "uid",
+                      "type": "long"
+                    },
+                    {
+                      "default": "",
+                      "name": "folder",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "rfc_message_id",
+                      "type": "string"
+                    }
+                  ],
+                  "name": "warmbly.events.MessageSeenRef",
+                  "type": "record"
+                },
+                "type": "array"
+              }
+            }
+          ],
+          "name": "warmbly.events.MessageSeenAction",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.RemoveWorkerEmail",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "task_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "org_id",
+              "type": "string"
+            },
+            {
+              "default": [],
+              "name": "to",
+              "type": {
+                "items": "string",
+                "type": "array"
+              }
+            },
+            {
+              "default": [],
+              "name": "cc",
+              "type": {
+                "items": "string",
+                "type": "array"
+              }
+            },
+            {
+              "default": [],
+              "name": "bcc",
+              "type": {
+                "items": "string",
+                "type": "array"
+              }
+            },
+            {
+              "default": "",
+              "name": "subject",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "body_s3_key",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "message_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "in_reply_to",
+              "type": "string"
+            },
+            {
+              "default": null,
+              "name": "parent",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": "",
+                      "name": "id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "message_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "thread_id",
+                      "type": "string"
+                    }
+                  ],
+                  "name": "warmbly.events.EmailParent",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": false,
+              "name": "is_warmup",
+              "type": "boolean"
+            },
+            {
+              "default": null,
+              "name": "tracking_info",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": false,
+                      "name": "open_tracking",
+                      "type": "boolean"
+                    },
+                    {
+                      "default": false,
+                      "name": "link_tracking",
+                      "type": "boolean"
+                    },
+                    {
+                      "default": "",
+                      "name": "tracking_domain",
+                      "type": "string"
+                    }
+                  ],
+                  "name": "warmbly.events.TrackingInfo",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": "",
+              "name": "warmup_token",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "unsubscribe_url",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.SendEmail",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "gmail_id",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "uid",
+              "type": "long"
+            },
+            {
+              "default": 0,
+              "name": "mailbox_uid_validity",
+              "type": "long"
+            },
+            {
+              "default": "",
+              "name": "mailbox_folder",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "rfc_message_id",
+              "type": "string"
+            },
+            {
+              "default": [],
+              "name": "actions",
+              "type": {
+                "items": "string",
+                "type": "array"
+              }
+            },
+            {
+              "default": "",
+              "name": "placement",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "target_folder",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "internal_id",
+              "type": "string"
+            },
+            {
+              "default": false,
+              "name": "recheck",
+              "type": "boolean"
+            },
+            {
+              "default": 0,
+              "name": "delay_seconds",
+              "type": "int"
+            }
+          ],
+          "name": "warmbly.events.WarmupEmailAction",
+          "type": "record"
+        }
+      ]
+    }
+  ],
+  "name": "warmbly.events.WorkerEvent",
+  "type": "record"
+}

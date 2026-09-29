@@ -162,6 +162,10 @@ func WithCopyJudge(asker typesafe.Asker, cache repository.CopyJudgmentRepository
 // least important cards their rewrite, and the next run picks them up.
 const maxNarrationsPerRun = 12
 
+// narrationBudget bounds the completions of one run so the summary and run
+// record still land inside the caller's deadline.
+const narrationBudget = 60 * time.Second
+
 func (s *service) Evaluate(ctx context.Context, orgID uuid.UUID, trigger string) (*models.AdvisorSummary, error) {
 	settings, err := s.repo.GetSettings(ctx, orgID)
 	if err != nil {
@@ -219,7 +223,9 @@ func (s *service) Evaluate(ctx context.Context, orgID uuid.UUID, trigger string)
 	// rather than reporting problems that no longer exist.
 	fixed := s.autopilot(ctx, orgID, settings, stored)
 
-	narrated := s.narrateBatch(ctx, orgID, stored)
+	nctx, cancelNarrate := context.WithTimeout(ctx, narrationBudget)
+	narrated := s.narrateBatch(nctx, orgID, stored)
+	cancelNarrate()
 
 	summary, err := s.repo.Summary(ctx, orgID)
 	if err != nil {
@@ -303,7 +309,7 @@ func (s *service) narrateBatch(ctx context.Context, orgID uuid.UUID, findings []
 	// Detect, so the cap spends the budget on what matters.
 	count := 0
 	for _, f := range findings {
-		if count >= maxNarrationsPerRun {
+		if count >= maxNarrationsPerRun || ctx.Err() != nil {
 			break
 		}
 		if f.Narrated {

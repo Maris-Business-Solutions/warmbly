@@ -1,0 +1,1056 @@
+{
+  "fields": [
+    {
+      "name": "type",
+      "type": "string"
+    },
+    {
+      "name": "body",
+      "type": [
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "task_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_account_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "error_code",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "error_type",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "resolve_method",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "default": false,
+              "name": "user_visible",
+              "type": "boolean"
+            },
+            {
+              "default": "",
+              "name": "user_title",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "user_message",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "action_required",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "timestamp",
+              "type": "long"
+            }
+          ],
+          "name": "warmbly.events.EmailErrorEvent",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "id",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "uid",
+              "type": "long"
+            },
+            {
+              "default": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+              "name": "mod_seq",
+              "type": {
+                "name": "warmbly.events.uint64",
+                "size": 8,
+                "type": "fixed"
+              }
+            },
+            {
+              "default": 0,
+              "name": "mailbox",
+              "type": "long"
+            },
+            {
+              "default": "",
+              "name": "folder_path",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "folder",
+              "type": "string"
+            },
+            {
+              "default": [],
+              "name": "flags",
+              "type": {
+                "items": "string",
+                "type": "array"
+              }
+            }
+          ],
+          "name": "warmbly.events.JobEventEmailUpdate",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "id",
+              "type": "string"
+            },
+            {
+              "default": [],
+              "name": "flags",
+              "type": {
+                "items": "string",
+                "type": "array"
+              }
+            }
+          ],
+          "name": "warmbly.events.JobEventFlags",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "folder",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "delta_link",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.JobEventGraphDeltaUpdate",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+              "name": "history_id",
+              "type": "warmbly.events.uint64"
+            }
+          ],
+          "name": "warmbly.events.JobEventHistoryIDUpdate",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "original_message_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "failed_recipient",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "reason",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.JobEventInboundBounce",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "original_message_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "complained_recipient",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "provider",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.JobEventInboundComplaint",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "mailbox",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "uid_validity",
+              "type": "long"
+            },
+            {
+              "default": false,
+              "name": "skipped",
+              "type": "boolean"
+            }
+          ],
+          "name": "warmbly.events.JobEventMailboxDelete",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "from",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "to",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.JobEventMailboxRename",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": null,
+              "name": "data",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": "",
+                      "name": "name",
+                      "type": "string"
+                    },
+                    {
+                      "default": [],
+                      "name": "attributes",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": 0,
+                      "name": "uid_validity",
+                      "type": "long"
+                    },
+                    {
+                      "default": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+                      "name": "highestmodseq",
+                      "type": "warmbly.events.uint64"
+                    },
+                    {
+                      "default": 0,
+                      "name": "uid_next",
+                      "type": "long"
+                    },
+                    {
+                      "default": "",
+                      "name": "delim",
+                      "type": "string"
+                    },
+                    {
+                      "default": 0,
+                      "name": "messages",
+                      "type": "long"
+                    },
+                    {
+                      "default": 0,
+                      "name": "updated_at",
+                      "type": {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    }
+                  ],
+                  "name": "warmbly.events.Mailbox",
+                  "type": "record"
+                }
+              ]
+            }
+          ],
+          "name": "warmbly.events.JobEventMailboxUpdate",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": null,
+              "name": "message",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": "",
+                      "name": "id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "email_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": 0,
+                      "name": "mailbox",
+                      "type": "long"
+                    },
+                    {
+                      "default": "",
+                      "name": "folder_path",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "folder",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "provider_folder",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "thread_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "message_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "gmail_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "parent_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": 0,
+                      "name": "uid",
+                      "type": "long"
+                    },
+                    {
+                      "default": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+                      "name": "mod_seq",
+                      "type": "warmbly.events.uint64"
+                    },
+                    {
+                      "default": [],
+                      "name": "flags",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": [],
+                      "name": "bcc",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": [],
+                      "name": "cc",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": [],
+                      "name": "from_addr",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": [],
+                      "name": "in_reply_to",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": [],
+                      "name": "reply_to",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": [],
+                      "name": "to_addr",
+                      "type": {
+                        "items": "string",
+                        "type": "array"
+                      }
+                    },
+                    {
+                      "default": "",
+                      "name": "subject",
+                      "type": "string"
+                    },
+                    {
+                      "default": 0,
+                      "name": "size",
+                      "type": "long"
+                    },
+                    {
+                      "default": 0,
+                      "name": "internal_date",
+                      "type": {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    },
+                    {
+                      "default": 0,
+                      "name": "sent_date",
+                      "type": {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    },
+                    {
+                      "default": "",
+                      "name": "snippet",
+                      "type": "string"
+                    },
+                    {
+                      "default": false,
+                      "name": "seen",
+                      "type": "boolean"
+                    },
+                    {
+                      "default": "",
+                      "name": "body_text",
+                      "type": "string"
+                    },
+                    {
+                      "default": 0,
+                      "name": "updated_at",
+                      "type": {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    },
+                    {
+                      "default": 0,
+                      "name": "created_at",
+                      "type": {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    }
+                  ],
+                  "name": "warmbly.events.EmailMessageStoreData",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": "",
+              "name": "report_original_message_id",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.JobEventNewEmail",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "skipped_folder",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.JobEventRemoveEmail",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": {
+                "backfill_completed_at": null,
+                "backfill_cursor": {
+                  "folders": {},
+                  "page_token": ""
+                },
+                "backfill_since": null,
+                "backfill_started_at": null,
+                "backfill_status": "",
+                "backfill_synced": 0,
+                "deferred": 0,
+                "folders_skipped_cap": 0,
+                "folders_skipped_conflict": 0,
+                "last_synced_at": null,
+                "throttle_reason": "",
+                "throttled_until": null
+              },
+              "name": "state",
+              "type": {
+                "fields": [
+                  {
+                    "default": "",
+                    "name": "backfill_status",
+                    "type": "string"
+                  },
+                  {
+                    "default": {
+                      "folders": {},
+                      "page_token": ""
+                    },
+                    "name": "backfill_cursor",
+                    "type": {
+                      "fields": [
+                        {
+                          "default": "",
+                          "name": "page_token",
+                          "type": "string"
+                        },
+                        {
+                          "default": {},
+                          "name": "folders",
+                          "type": {
+                            "type": "map",
+                            "values": {
+                              "fields": [
+                                {
+                                  "default": "",
+                                  "name": "next",
+                                  "type": "string"
+                                },
+                                {
+                                  "default": 0,
+                                  "name": "uid",
+                                  "type": "long"
+                                },
+                                {
+                                  "default": false,
+                                  "name": "done",
+                                  "type": "boolean"
+                                }
+                              ],
+                              "name": "warmbly.events.SyncFolderCursor",
+                              "type": "record"
+                            }
+                          }
+                        }
+                      ],
+                      "name": "warmbly.events.SyncCursor",
+                      "type": "record"
+                    }
+                  },
+                  {
+                    "default": 0,
+                    "name": "backfill_synced",
+                    "type": "int"
+                  },
+                  {
+                    "default": null,
+                    "name": "backfill_since",
+                    "type": [
+                      "null",
+                      {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    ]
+                  },
+                  {
+                    "default": null,
+                    "name": "backfill_started_at",
+                    "type": [
+                      "null",
+                      {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    ]
+                  },
+                  {
+                    "default": null,
+                    "name": "backfill_completed_at",
+                    "type": [
+                      "null",
+                      {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    ]
+                  },
+                  {
+                    "default": null,
+                    "name": "throttled_until",
+                    "type": [
+                      "null",
+                      {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    ]
+                  },
+                  {
+                    "default": "",
+                    "name": "throttle_reason",
+                    "type": "string"
+                  },
+                  {
+                    "default": 0,
+                    "name": "deferred",
+                    "type": "int"
+                  },
+                  {
+                    "default": 0,
+                    "name": "folders_skipped_cap",
+                    "type": "int"
+                  },
+                  {
+                    "default": 0,
+                    "name": "folders_skipped_conflict",
+                    "type": "int"
+                  },
+                  {
+                    "default": null,
+                    "name": "last_synced_at",
+                    "type": [
+                      "null",
+                      {
+                        "logicalType": "timestamp-millis",
+                        "type": "long"
+                      }
+                    ]
+                  }
+                ],
+                "name": "warmbly.events.SyncState",
+                "type": "record"
+              }
+            }
+          ],
+          "name": "warmbly.events.JobEventSyncState",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "access_token",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "refresh_token",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "expires_at",
+              "type": {
+                "logicalType": "timestamp-millis",
+                "type": "long"
+              }
+            }
+          ],
+          "name": "warmbly.events.JobEventTokenUpdate",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "user_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "rfc_message_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "outcome",
+              "type": "string"
+            },
+            {
+              "default": false,
+              "name": "recheck",
+              "type": "boolean"
+            }
+          ],
+          "name": "warmbly.events.JobEventWarmupRemovalChecked",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "task_id",
+              "type": "string"
+            },
+            {
+              "default": false,
+              "name": "success",
+              "type": "boolean"
+            },
+            {
+              "default": "",
+              "name": "message_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "provider_msg_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "thread_id",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "sent_at",
+              "type": {
+                "logicalType": "timestamp-millis",
+                "type": "long"
+              }
+            },
+            {
+              "default": null,
+              "name": "error",
+              "type": [
+                "null",
+                {
+                  "fields": [
+                    {
+                      "default": "",
+                      "name": "code",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "type",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "message",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "resolve_method",
+                      "type": "string"
+                    },
+                    {
+                      "default": false,
+                      "name": "user_visible",
+                      "type": "boolean"
+                    },
+                    {
+                      "default": "",
+                      "name": "user_title",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "user_message",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "action_required",
+                      "type": "string"
+                    }
+                  ],
+                  "name": "warmbly.events.EmailSendError",
+                  "type": "record"
+                }
+              ]
+            },
+            {
+              "default": "",
+              "name": "legacy_error",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.SendEmailResult",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "worker_id",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "observed_at",
+              "type": {
+                "logicalType": "timestamp-millis",
+                "type": "long"
+              }
+            },
+            {
+              "default": 0,
+              "name": "assigned_count",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "imap_idle_count",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "memory_mb",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "goroutine_count",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "sends_attempted",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "sends_succeeded",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "bounces_hard",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "bounces_soft",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "complaints",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "auth_errors",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "rate_limit_errors",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "smtp_latency_p50_ms",
+              "type": "int"
+            },
+            {
+              "default": 0,
+              "name": "smtp_latency_p99_ms",
+              "type": "int"
+            }
+          ],
+          "name": "warmbly.events.WorkerHealthSample",
+          "type": "record"
+        }
+      ]
+    }
+  ],
+  "name": "warmbly.events.JobEvent",
+  "type": "record"
+}

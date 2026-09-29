@@ -2,6 +2,7 @@ package models
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -158,6 +159,24 @@ type EmailMessageStoreData struct {
 	BodyText  string    `json:"body_text,omitempty" avro:"body_text"`
 	UpdatedAt time.Time `json:"updated_at" avro:"updated_at"`
 	CreatedAt time.Time `json:"created_at" avro:"created_at"`
+}
+
+// ValidText makes every text field storable: Postgres refuses invalid UTF-8
+// and NUL, and an unlabelled 8-bit header or body carries both.
+func (e *EmailMessageStoreData) ValidText() {
+	for _, s := range []*string{&e.FolderPath, &e.Folder, &e.ProviderFolder, &e.ThreadID, &e.MessageID,
+		&e.GmailID, &e.ParentID, &e.Subject, &e.Snippet, &e.BodyText} {
+		*s = validText(*s)
+	}
+	for _, list := range [][]string{e.Flags, e.BCC, e.CC, e.FromAddr, e.InReplyTo, e.ReplyTo, e.ToAddr} {
+		for i := range list {
+			list[i] = validText(list[i])
+		}
+	}
+}
+
+func validText(s string) string {
+	return strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "\uFFFD")
 }
 
 type EmailMessageStoreDataPreview struct {

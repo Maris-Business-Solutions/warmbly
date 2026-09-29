@@ -56,6 +56,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/email"
 	"github.com/warmbly/warmbly/internal/app/emailsend"
 	emailverifyapp "github.com/warmbly/warmbly/internal/app/emailverify"
+	"github.com/warmbly/warmbly/internal/app/eventschemas"
 	"github.com/warmbly/warmbly/internal/app/feature"
 	"github.com/warmbly/warmbly/internal/app/fleet"
 	"github.com/warmbly/warmbly/internal/app/fleetnode"
@@ -149,6 +150,7 @@ import (
 	"github.com/warmbly/warmbly/internal/tasks"
 	"github.com/warmbly/warmbly/internal/tasks/proto"
 	"github.com/warmbly/warmbly/internal/tasksched"
+	"github.com/warmbly/warmbly/internal/version"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -596,6 +598,15 @@ func main() {
 			errs.CaptureFatal(err)
 			log.Fatal(err)
 		}
+		// Register this release's bus schemas before any node publishes them.
+		go func() {
+			rctx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			if err := eventschemas.Register(rctx, codecImpl); err != nil {
+				errs.CaptureException(err)
+				log.Printf("event schemas: %v", err)
+			}
+		}()
 
 		bus, err := eventbus.FromEnv(kafkaBootstrapServers, kafkaSaslConfig)
 		if err != nil {
@@ -1154,6 +1165,7 @@ func main() {
 				GithubRepo:      getenvDefault("RELEASES_GITHUB_REPO", "warmbly/warmbly"),
 				WorkerImageRepo: getenvDefault("RELEASES_WORKER_IMAGE_REPO", "ghcr.io/warmbly/warmbly/worker"),
 				GithubToken:     os.Getenv("RELEASES_GITHUB_TOKEN"),
+				SchemaGate:      eventschemas.Gate(codecImpl, version.Version),
 			},
 			fleetSettingsRepo,
 		)
