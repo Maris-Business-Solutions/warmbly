@@ -33,7 +33,7 @@ All errors follow this structure:
 | 404 | Not Found | Resource doesn't exist |
 | 409 | Conflict | Resource already exists |
 | 422 | Unprocessable | Validation failed |
-| 429 | Too Many Requests | Rate limit or AI usage cap exceeded (`rate_limit_exceeded`, `usage_cap_exceeded`), or too many placement tests running at once (`placement_too_many_running`) |
+| 429 | Too Many Requests | Rate limit or AI usage cap exceeded (`rate_limit_exceeded`, `usage_cap_exceeded`), or too many placement tests or batches running at once (`placement_too_many_running`, `placement_too_many_batches`) |
 
 ### Server errors (5xx)
 
@@ -247,6 +247,12 @@ The [inbox placement test](/guides/placement-tests/) routes (`/placement/*` and 
 | `placement_seed_unavailable` | 409 | The mailbox cannot be marked as a seed inbox: it is on the instance panel, or a placement test is still sending from it |
 | `placement_seed_limit` | 409 | The workspace already has `50` seed inboxes. Unmark one first |
 | `mailbox_is_seed` | 409 | Warmup was started or resumed on a seed inbox. A seed never warms up; unmark it first with `PUT /placement/seeds/:email_account_id` |
+| `placement_batch_empty` | 400 | `POST /placement/batches` resolved to no sending mailbox: the scope, its filters and the sample left nothing |
+| `placement_batch_too_large` | 400 | The batch would hold more mailboxes than the instance allows in one batch (`10,000` by default, an operator setting). The `message` gives both numbers; narrow the selection or take a sample |
+| `placement_too_many_batches` | 429 | The workspace already has `5` batches running. Wait for one to finish, or cancel one |
+| `placement_batch_not_running` | 409 | `POST /placement/batches/:id/cancel` on a batch that has already finished or been cancelled |
+
+A batch runs every check that applies to the whole batch (the copy, the panel, the tracking, the allowance and the credits agreed) before it is created, and refuses with the codes above. The checks for each mailbox run when its turn comes: a mailbox refused then is deferred or skipped, and its sender row in `GET /placement/batches/:id/senders` carries the code as `reason` with its sentence as `detail`. Besides the single-test codes, a sender row can carry `placement_sender_deleted` (the mailbox was removed from the workspace), `placement_batch_retry_expired` (still unavailable when the seven-day retry window closed), `placement_batch_start_failed` (the test could not be started after several tries) and `placement_batch_copy_unavailable` (the campaign or step being tested was deleted, which skips every mailbox not started yet).
 
 ```json
 {
@@ -257,7 +263,7 @@ The [inbox placement test](/guides/placement-tests/) routes (`/placement/*` and 
 }
 ```
 
-A `400` without one of these codes is a malformed request: an unknown `panel` or `tracking`, a `sequence_id` without its `campaign_id`, a missing subject or body on an ad-hoc test, a monitor `interval_days` outside `1` to `30` or an `alert_below` outside `0` to `100`.
+A `400` without one of these codes is a malformed request: an unknown `panel` or `tracking`, a `sequence_id` without its `campaign_id`, a missing subject or body on an ad-hoc test, a monitor `interval_days` outside `1` to `30` or an `alert_below` outside `0` to `100`, or on a batch `pace` `quick`, both or neither of `sender_account_ids` and `sender_scope`, an unknown `sender_scope.type`, `sample.mode` or `on_unavailable`, or `sample.stratify` on a sample that is not random or percent.
 
 ### 401 Unauthorized
 

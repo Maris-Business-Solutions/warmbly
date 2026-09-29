@@ -1506,6 +1506,47 @@ func placementSpec() resource {
 		},
 		Empty: "No placement tests yet. Start one with `warmbly placement test --mailbox MAILBOX_ID --campaign CAMPAIGN_ID`.",
 	}
+	batchTable := output.Table{
+		Root: "data",
+		Columns: []output.Column{
+			col("ID", "id"),
+			colt("SUBJECT", "subject", 30),
+			col("MAILBOXES", "sender_count"),
+			col("STATUS", "status"),
+			col("DONE", "progress.completed"),
+			col("SKIPPED", "progress.skipped"),
+			col("INBOX", "summary.inbox"),
+			col("SPAM", "summary.spam"),
+			colf("CREATED", "created_at", "time"),
+		},
+		Empty: "No placement batches yet. Start one with `warmbly placement batch-start --scope campaign --scope-campaign CAMPAIGN_ID --campaign CAMPAIGN_ID`.",
+	}
+	batchFlags := []flagSpec{
+		{Name: "mailbox", Help: "Test from this mailbox's id (repeatable); instead of --scope", Kind: flagStrings, Key: "sender_account_ids"},
+		{Name: "scope", Help: "campaign (a campaign's mailboxes) or workspace (every mailbox)", Key: "sender_scope[type]"},
+		{Name: "scope-campaign", Help: "The campaign whose mailboxes to test, with --scope campaign", Key: "sender_scope[campaign_id]"},
+		{Name: "only-provider", Help: "Only mailboxes hosted by this provider, e.g. google_workspace (repeatable)", Kind: flagStrings, Key: "sender_scope[providers]"},
+		{Name: "only-domain", Help: "Only mailboxes sending from this domain (repeatable)", Kind: flagStrings, Key: "sender_scope[domains]"},
+		{Name: "only-tag", Help: "Only mailboxes with this tag id (repeatable)", Kind: flagStrings, Key: "sender_scope[tag_ids]"},
+		{Name: "include-inactive", Help: "Keep disconnected mailboxes", Kind: flagBool, Key: "sender_scope[include_inactive]"},
+		{Name: "untested-days", Help: "Only mailboxes with no finished placement test in this many days", Kind: flagInt, Key: "sender_scope[untested_days]"},
+		{Name: "sample", Help: "all, random, percent, per_domain or per_provider", Key: "sample[mode]"},
+		{Name: "sample-count", Help: "Mailboxes for random, or per group for per_domain and per_provider", Kind: flagInt, Key: "sample[count]"},
+		{Name: "sample-percent", Help: "Share of mailboxes for percent, 1 to 100", Kind: flagInt, Key: "sample[percent]"},
+		{Name: "stratify", Help: "Spread a random or percent sample across provider or domain", Key: "sample[stratify]"},
+		{Name: "campaign", Help: "Test this campaign's copy", Key: "campaign_id"},
+		{Name: "step", Help: "The step to test; with --campaign", Key: "sequence_id"},
+		{Name: "contact", Help: "Render the copy for this contact's id", Key: "contact_id"},
+		{Name: "subject", Help: "Subject of an ad-hoc template", Key: "subject"},
+		{Name: "text", Help: "Plain-text body of an ad-hoc template", Key: "body_plain"},
+		{Name: "html", Help: "HTML body of an ad-hoc template", Key: "body_html"},
+		{Name: "tracking", Help: "campaign, on, off or compare (sends twice, with and without)", Key: "tracking"},
+		{Name: "panel", Help: "instance, workspace or cloud", Key: "panel"},
+		{Name: "seed", Help: "Only this seed inbox's id, with --panel workspace (repeatable)", Kind: flagStrings, Key: "seed_ids"},
+		{Name: "provider", Help: "Only seeds at this provider, e.g. gmail or outlook (repeatable)", Kind: flagStrings, Key: "families"},
+		{Name: "on-unavailable", Help: "defer (retry a mailbox that cannot send yet, the default) or skip", Key: "on_unavailable"},
+		{Name: "max-credits", Help: "Pay up to this many credits in total for tests past this month's free ones", Kind: flagInt, Key: "max_credits"},
+	}
 	return resource{
 		Name:    "placement",
 		Aliases: []string{"placement-test", "placement-tests"},
@@ -1515,7 +1556,8 @@ func placementSpec() resource {
 seed inboxes and see where each copy landed.
 
 Every copy is a real send from that mailbox, counted against its daily limit,
-so starting a test asks before it does it.`,
+so starting a test asks before it does it. A batch runs the same test from many
+mailboxes, a few at a time.`,
 		Endpoints: []endpoint{
 			{Name: "overview", Short: "The seed panels you can test on and this month's allowance", Method: http.MethodGet, Path: "/placement/overview"},
 			{
@@ -1597,6 +1639,56 @@ so starting a test asks before it does it.`,
 				Method: http.MethodDelete, Path: "/campaigns/{id}/placement-monitor",
 				Args:    []argSpec{{Name: "id", Help: "The campaign's id"}},
 				Success: "Placement monitor removed.",
+			},
+			{
+				Name: "batches", Short: "List placement batches: one test run from many mailboxes",
+				Method: http.MethodGet, Path: "/placement/batches", Paginate: true,
+				Flag:  withPaging(),
+				Table: batchTable,
+			},
+			{
+				Name: "batch", Aliases: []string{"batch-view"}, Short: "Show a batch with its placement by domain and provider",
+				Method: http.MethodGet, Path: "/placement/batches/{id}",
+				Args: []argSpec{{Name: "id", Help: "The batch's id"}},
+			},
+			{
+				Name: "batch-preview", Short: "Count the mailboxes, tests, copies and credits a batch would take",
+				Method: http.MethodPost, Path: "/placement/batches/preview", Body: bodyRequired,
+				Example: "  $ warmbly placement batch-preview --scope campaign --scope-campaign CAMPAIGN_ID --sample percent --sample-percent 10 --stratify provider --campaign CAMPAIGN_ID --step STEP_ID",
+				Flag:    batchFlags,
+			},
+			{
+				Name: "batch-start", Aliases: []string{"batch-test"}, Short: "Run a placement test from many mailboxes, a few at a time",
+				Method: http.MethodPost, Path: "/placement/batches", Body: bodyRequired, Sends: true, Idempotent: true,
+				Example: "  $ warmbly placement batch-start --scope campaign --scope-campaign CAMPAIGN_ID --campaign CAMPAIGN_ID --step STEP_ID\n" +
+					"  $ warmbly placement batch-start --scope workspace --untested-days 30 --sample per_domain --sample-count 2 --subject \"Quick question\" --text \"Hi there\"",
+				Flag:  batchFlags,
+				Table: batchTable,
+			},
+			{
+				Name: "batch-senders", Short: "List a batch's mailboxes, worst inbox rate first",
+				Method: http.MethodGet, Path: "/placement/batches/{id}/senders", Paginate: true,
+				Args: []argSpec{{Name: "id", Help: "The batch's id"}},
+				Flag: withPaging(
+					flagSpec{Name: "sort", Help: "worst (default), best, email or status", Query: true},
+					flagSpec{Name: "status", Help: "Only mailboxes in this status: queued, deferred, running, completed, skipped, failed or cancelled", Query: true},
+					flagSpec{Name: "search", Help: "Only addresses containing this text", Query: true, Key: "q"},
+				),
+				Table: output.Table{Root: "data", Columns: []output.Column{
+					colt("MAILBOX", "sender_email", 34), col("PROVIDER", "sender_family_label"), col("STATUS", "status"),
+					col("INBOX", "summary.inbox"), col("SPAM", "summary.spam"), col("MISSING", "summary.missing"),
+					colt("REASON", "detail", 40),
+				}, Empty: "No mailboxes match."},
+			},
+			{
+				Name: "batch-cancel", Short: "Stop a batch; copies already sent keep being classified",
+				Method: http.MethodPost, Path: "/placement/batches/{id}/cancel", Body: bodyOptional,
+				Args:    []argSpec{{Name: "id", Help: "The batch's id"}},
+				Success: "Placement batch cancelled.",
+			},
+			{
+				Name: "coverage", Short: "How many mailboxes finished a placement test in the last 7 and 30 days",
+				Method: http.MethodGet, Path: "/placement/coverage",
 			},
 		},
 	}

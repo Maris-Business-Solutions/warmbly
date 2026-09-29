@@ -48,6 +48,7 @@ export const ORIGIN_LABEL: Record<string, string> = {
     monitor: "Monitor",
     admin: "Operator",
     remote: "Linked instance",
+    batch: "Batch",
 };
 
 /** A 0..1 fraction as a whole percentage, or a dash while there is none. */

@@ -768,6 +768,17 @@ var Tables = []Table{
 		Scope: scopeOrg,
 	},
 	{
+		// A batch travels as a record of its senders and results. It lands
+		// inactive, so the destination never resumes sending it.
+		Name: "placement_batches", Group: models.OrgDataGroupEvents,
+		Scope:         scopeOrg,
+		ResetOnImport: []string{"active", "lease_until", "last_tick_at"},
+	},
+	{
+		Name: "placement_batch_senders", Group: models.OrgDataGroupEvents,
+		Scope: `batch_id IN (SELECT id FROM placement_batches WHERE organization_id = $1)`,
+	},
+	{
 		// The results travel as a record. The link to a cloud-run test and the
 		// seeds on the source instance's panel do not, and neither does a
 		// credit charge, whose ledger stays behind.

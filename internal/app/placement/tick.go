@@ -16,7 +16,8 @@ import (
 )
 
 // Tick is one pass of the poller: read verdicts, expire what never arrived,
-// sync the cloud's panel, close finished tests and start due monitors.
+// sync the cloud's panel, close finished tests, start due monitors and
+// advance batches.
 func (s *service) Tick(ctx context.Context) error {
 	now := s.now()
 	touched := map[uuid.UUID]bool{}
@@ -72,6 +73,7 @@ func (s *service) Tick(ctx context.Context) error {
 	}
 
 	s.runMonitors(ctx)
+	s.runBatches(ctx)
 	return nil
 }
 

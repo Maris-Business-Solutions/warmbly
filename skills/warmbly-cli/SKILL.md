@@ -80,7 +80,7 @@ gives the arguments and flags. Ids are positional, not flags.
 | `segment`, `template`, `automation`, `form` | audiences, reply templates, automations, lead capture |
 | `deal`, `pipeline`, `task` | the CRM |
 | `analytics`, `audit`, `advisor` | numbers, the audit trail, recommendations |
-| `placement` | inbox placement tests: overview, test, list, view, cancel, seed inboxes, a campaign's scheduled test |
+| `placement` | inbox placement tests: overview, test, list, view, cancel, seed inboxes, a campaign's scheduled test, batches across many mailboxes, fleet coverage |
 | `webhook`, `key`, `oauth-app`, `integration` | the developer surface |
 | `org`, `team`, `settings`, `warmup-routing` | the workspace surface a key can reach |
 | `tool` | the AI tool registry, listed and called |
@@ -103,9 +103,9 @@ warmbly api /contacts/search -X POST --input filter.json
 ## Sending safety, read before anything that sends
 
 These put real mail on the wire and prompt before doing so:
-`campaign start`, `campaign test`, `placement test`, `mailbox send`,
-`inbox reply`, `inbox compose`, `inbox approve-draft`. Everything else is safe
-to run freely.
+`campaign start`, `campaign test`, `placement test`, `placement batch-start`,
+`mailbox send`, `inbox reply`, `inbox compose`, `inbox approve-draft`.
+Everything else is safe to run freely.
 
 - With no terminal they refuse rather than send. `--yes` is what proceeds, so
   **only pass `--yes` when the user asked for that specific send.** Never add
@@ -138,6 +138,15 @@ to run freely.
   TEST_ID` reads the result. One test is a signal, not a verdict: compare a few
   before rewriting copy, and `--tracking compare` isolates open and click
   tracking.
+- To check a whole fleet, `warmbly placement batch-preview` with the same flags
+  as `batch-start` states the mailboxes, tests, copies and credits first; show
+  that to the user before starting. `batch-start --scope campaign
+  --scope-campaign CAMPAIGN_ID` (or `--scope workspace`, narrowed with
+  `--only-provider`, `--only-domain`, `--untested-days`, and sampled with
+  `--sample`) runs one test per mailbox, a few at a time, over hours.
+  `placement batch BATCH_ID` groups the result by sending domain and provider,
+  and `batch-senders BATCH_ID` lists mailboxes worst first: a whole domain low
+  is that domain, one mailbox low on a healthy domain is that mailbox.
 
 ## Errors
 
