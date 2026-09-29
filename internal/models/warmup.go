@@ -62,6 +62,19 @@ const (
 	// by the retention sweep alone, and only for a message it has retired
 	// first, so the removal the sync then observes is never a strike.
 	WarmupActionDelete = "delete"
+	// WarmupActionVerifyRemoval asks the worker where a warmup message the
+	// sync reported gone actually is. It changes nothing in the mailbox; the
+	// answer comes back as WARMUP_REMOVAL_CHECKED, and only a message in the
+	// trash or gone for good is held against the mailbox.
+	WarmupActionVerifyRemoval = "verify_removal"
+)
+
+// Where a verify_removal found the message. Present means it is still in the
+// mailbox outside the trash, whatever folder it was moved to.
+const (
+	WarmupRemovalPresent = "present"
+	WarmupRemovalTrashed = "trashed"
+	WarmupRemovalGone    = "gone"
 )
 
 // WarmupEmailAction represents actions to perform on a detected warmup email.

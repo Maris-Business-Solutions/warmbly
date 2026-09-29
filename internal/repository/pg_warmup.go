@@ -240,6 +240,18 @@ type WarmupRepository interface {
 	GetWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID) (*WarmupReceived, error)
 	RecordWarmupTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (bool, error)
 	CountWarmupTamperingSince(ctx context.Context, accountID uuid.UUID, since time.Time) (int, error)
+	// WithdrawWarmupTampering deletes a strike the mailbox turned out not to
+	// have earned, reporting whether there was one.
+	WithdrawWarmupTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (bool, error)
+	// ListUnverifiedDeletions is deletion strikes since the given time that
+	// were recorded before removals were checked against the mailbox, on
+	// active mailboxes with a worker to search them. MarkTamperingVerified
+	// stamps one once its search is on the bus.
+	ListUnverifiedDeletions(ctx context.Context, since time.Time, limit int) ([]WarmupTamperingToVerify, error)
+	MarkTamperingVerified(ctx context.Context, accountID uuid.UUID, messageID, kind string) error
+	// LiftTamperingHold clears a live pause or block whose reason is still
+	// the given one, so a hold set since by something else is left alone.
+	LiftTamperingHold(ctx context.Context, accountID uuid.UUID, reason string) (bool, error)
 
 	// Retention: warmup mail is deleted from the mailbox once its window has
 	// passed, the platform's own copy of the body with it, and the
@@ -1886,6 +1898,87 @@ func (r *warmupRepository) RecordWarmupTampering(ctx context.Context, accountID 
 		ON CONFLICT (email_account_id, message_id, kind) DO NOTHING
 	`
 	cmd, err := r.db.Exec(ctx, query, accountID, messageID, kind)
+	if err != nil {
+		return false, err
+	}
+	return cmd.RowsAffected() > 0, nil
+}
+
+func (r *warmupRepository) WithdrawWarmupTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (bool, error) {
+	cmd, err := r.db.Exec(ctx, `
+		DELETE FROM warmup_tampering_events
+		WHERE email_account_id = $1 AND message_id = $2 AND kind = $3`,
+		accountID, messageID, kind)
+	if err != nil {
+		return false, err
+	}
+	return cmd.RowsAffected() > 0, nil
+}
+
+// WarmupTamperingToVerify is one unverified deletion strike and what the
+// worker needs to search the mailbox for its message.
+type WarmupTamperingToVerify struct {
+	EmailAccountID uuid.UUID
+	UserID         uuid.UUID
+	WorkerID       uuid.UUID
+	MessageID      string
+	// InternalID is the receipt's message id; nil once the receipt is pruned.
+	InternalID *uuid.UUID
+}
+
+func (r *warmupRepository) ListUnverifiedDeletions(ctx context.Context, since time.Time, limit int) ([]WarmupTamperingToVerify, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT t.email_account_id, ea.user_id, ea.worker_id, t.message_id, wr.internal_id
+		FROM warmup_tampering_events t
+		JOIN email_accounts ea ON ea.id = t.email_account_id
+		LEFT JOIN LATERAL (
+			SELECT r.internal_id FROM warmup_received r
+			WHERE r.email_account_id = t.email_account_id AND r.message_id = t.message_id
+			LIMIT 1
+		) wr ON true
+		WHERE t.kind = 'deletion'
+		  AND t.verified_at IS NULL
+		  AND t.created_at >= $1
+		  AND t.message_id <> ''
+		  AND ea.status = 'active'
+		  AND ea.worker_id IS NOT NULL
+		ORDER BY t.created_at
+		LIMIT $2`, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WarmupTamperingToVerify
+	for rows.Next() {
+		var v WarmupTamperingToVerify
+		if err := rows.Scan(&v.EmailAccountID, &v.UserID, &v.WorkerID, &v.MessageID, &v.InternalID); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (r *warmupRepository) MarkTamperingVerified(ctx context.Context, accountID uuid.UUID, messageID, kind string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE warmup_tampering_events SET verified_at = NOW()
+		WHERE email_account_id = $1 AND message_id = $2 AND kind = $3 AND verified_at IS NULL`,
+		accountID, messageID, kind)
+	return err
+}
+
+func (r *warmupRepository) LiftTamperingHold(ctx context.Context, accountID uuid.UUID, reason string) (bool, error) {
+	cmd, err := r.db.Exec(ctx, `
+		UPDATE warmup_pool_participants
+		SET health_state = 'healthy',
+		    blocked_at = NULL,
+		    blocked_until = NULL,
+		    blocked_reason = NULL
+		WHERE email_account_id = $1
+		  AND blocked_reason = $2
+		  AND health_state IN ('quarantined', 'blocked')
+		  AND blocked_until IS NOT NULL`,
+		accountID, reason)
 	if err != nil {
 		return false, err
 	}

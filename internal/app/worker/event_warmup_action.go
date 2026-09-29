@@ -50,6 +50,8 @@ func (w *WorkerService) HandleWarmupAction(ctx context.Context, action models.Wa
 		if hasWarmupAction(action.Actions, models.WarmupActionDelete) {
 			err = errors.New("mailbox not loaded on this worker")
 		}
+	case hasWarmupAction(action.Actions, models.WarmupActionVerifyRemoval):
+		err = w.verifyWarmupRemoval(ctx, mail, action)
 	case mail.GoogleData != nil && mail.GoogleData.Client != nil:
 		err = w.runGoogleWarmupActions(ctx, mail, action)
 	case mail.GraphData != nil && mail.GraphData.Client != nil:
@@ -66,21 +68,23 @@ func (w *WorkerService) HandleWarmupAction(ctx context.Context, action models.Wa
 	}
 	// Engagement is best effort and never returns here. A retention delete
 	// is not: the control plane has already retired the row, so a failure
-	// here is the only chance the message has of going. The bus redelivers
-	// on an error, bounded so a message the provider will never give up is
-	// not retried forever.
+	// here is the only chance the message has of going. A removal check is
+	// retried too, since giving up means the removal is never judged. The
+	// bus redelivers on an error, bounded so a message the provider will
+	// never give up is not retried forever.
 	if d := deliveryOf(ctx); d.redelivers && d.attempt < warmupDeleteRedeliveries {
 		return err
 	}
 	log.Error().Err(err).
 		Str("email_id", action.EmailID.String()).
 		Str("rfc_message_id", action.RFCMessageID).
-		Msg("Warmup delete gave up; the message stays in the mailbox")
+		Strs("actions", action.Actions).
+		Msg("Warmup action gave up")
 	return nil
 }
 
-// warmupDeleteRedeliveries bounds how many times a failed retention delete is
-// redelivered before the message is left in place.
+// warmupDeleteRedeliveries bounds how many times a failed retention delete or
+// removal check is redelivered before it is given up.
 const warmupDeleteRedeliveries = 5
 
 func (w *WorkerService) runGoogleWarmupActions(ctx context.Context, mail *wmail.WMail, action models.WarmupEmailAction) error {

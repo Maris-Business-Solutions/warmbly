@@ -59,6 +59,9 @@ const (
 	// Per-worker health telemetry. Emitted every 30s by every worker;
 	// consumer writes it into worker_health_samples for the capacity view.
 	JobEventTypeWorkerHealth JobEventType = "WORKER_HEALTH"
+
+	// JobEventTypeWarmupRemovalChecked answers a verify_removal warmup action.
+	JobEventTypeWarmupRemovalChecked JobEventType = "WARMUP_REMOVAL_CHECKED"
 )
 
 type JobEvent struct {

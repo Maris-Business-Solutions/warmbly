@@ -56,6 +56,40 @@ func (c *Client) FindUIDByMessageID(ctx context.Context, mailboxName, rfcMessage
 	return uint32(uids[len(uids)-1]), nil
 }
 
+// HoldsMessageID reports whether mailboxName holds the message with the given
+// RFC 5322 Message-ID. Unlike FindUIDByMessageID, a folder that cannot be
+// selected is an error: the caller is establishing that the message is gone.
+func (c *Client) HoldsMessageID(ctx context.Context, mailboxName, rfcMessageID string) (bool, error) {
+	rfcMessageID = strings.TrimSpace(rfcMessageID)
+	if mailboxName == "" || rfcMessageID == "" {
+		return false, errors.New("imap: nothing to look up")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if merr := c.ensureConnected(); merr != nil {
+		return false, merr
+	}
+	c.lifecycle.RLock()
+	defer c.lifecycle.RUnlock()
+	defer c.begin()()
+	name := c.qualifyMailboxLocked(mailboxName)
+	if _, err := c.selectMailbox(name, nil); err != nil {
+		return false, fmt.Errorf("select %q: %w", name, err)
+	}
+	data, err := c.client.UIDSearch(&imap.SearchCriteria{
+		Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: "<" + strings.Trim(rfcMessageID, "<>") + ">"}},
+	}, nil).Wait()
+	if err != nil {
+		return false, fmt.Errorf("search %q for message id: %w", name, err)
+	}
+	return len(data.AllUIDs()) > 0, nil
+}
+
+// SelectableFolder is false for a folder listed only as hierarchy.
+func SelectableFolder(attrs []string) bool { return selectableFolder(attrs) }
+
 // FindUIDsByMessageIDs is FindUIDByMessageID for many ids against one
 // folder: one SELECT, then one SEARCH per id. It answers only the ids it
 // found. A folder that does not exist answers nothing and is not an error.

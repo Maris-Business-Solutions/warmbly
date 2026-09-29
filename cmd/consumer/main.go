@@ -522,6 +522,9 @@ func main() {
 	// Deletes warmup mail past its retention window from the mailbox itself
 	// and prunes the per-message warmup records after theirs.
 	go jobsService.StartWarmupMailRetention(ctx)
+	// Searches the mailbox for deletion strikes recorded before removals were
+	// checked, withdrawing any whose message is still there.
+	go jobsService.StartWarmupTamperingRecheck(ctx)
 	go jobsService.StartWarmupPlacementSweep(ctx)
 	go jobsService.StartPendingWarmupVerification(ctx)
 	// Re-offers inbound mail that reply processing never claimed, so a

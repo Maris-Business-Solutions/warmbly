@@ -35,6 +35,8 @@ const (
 	FolderSent    = "sentitems"
 	FolderArchive = "archive"
 	FolderDrafts  = "drafts"
+	// FolderDeletedItems is where Outlook's Delete puts a message.
+	FolderDeletedItems = "deleteditems"
 )
 
 // Client is a single Microsoft 365 mailbox reached over Graph.

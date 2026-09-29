@@ -2,6 +2,7 @@ package msgraph
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -141,6 +142,48 @@ func (c *Client) ResolveMessageID(ctx context.Context, internetMessageID string)
 		return "", nil
 	}
 	return resp.Value[0].ID, nil
+}
+
+// LocateRFCMessageID reports whether the mailbox still holds the message with
+// this internetMessageId in any folder, and whether every copy it holds is in
+// Deleted Items. A move is copy plus delete, so the removal the delta reports
+// for it says nothing about where the message went; this does.
+func (c *Client) LocateRFCMessageID(ctx context.Context, internetMessageID string) (found, trashed bool, err error) {
+	id := strings.TrimSpace(internetMessageID)
+	if id == "" {
+		return false, false, errors.New("msgraph: no message id to look up")
+	}
+	deletedID, err := c.wellKnownFolderID(ctx, FolderDeletedItems)
+	if err != nil {
+		return false, false, err
+	}
+	// Graph stores the id bracketed; a bare one is tried both ways.
+	forms := []string{id}
+	if !strings.HasPrefix(id, "<") {
+		forms = append(forms, "<"+id+">")
+	}
+	for _, form := range forms {
+		filter := "internetMessageId eq '" + strings.ReplaceAll(form, "'", "''") + "'"
+		u := c.root() + "/messages?$select=id,parentFolderId&$top=10&$filter=" + url.QueryEscape(filter)
+		var resp struct {
+			Value []struct {
+				ParentFolderID string `json:"parentFolderId"`
+			} `json:"value"`
+		}
+		if err := c.doJSON(ctx, "GET", u, nil, &resp); err != nil {
+			return false, false, err
+		}
+		for _, m := range resp.Value {
+			found = true
+			if m.ParentFolderID != deletedID {
+				return true, false, nil
+			}
+		}
+		if found {
+			return true, true, nil
+		}
+	}
+	return false, false, nil
 }
 
 func (c *Client) messageURL(messageID string) string {

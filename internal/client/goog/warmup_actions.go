@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"google.golang.org/api/gmail/v1"
@@ -279,4 +280,37 @@ func (c *Client) FindByRFCMessageID(ctx context.Context, rfcMessageID string) (s
 		return "", nil
 	}
 	return ids[0], nil
+}
+
+// LocateRFCMessageID reports whether the mailbox still holds the message
+// carrying this RFC 5322 Message-ID, and whether every copy it holds is in
+// Trash. Spam is searched too: a message filed there was moved, not deleted.
+func (c *Client) LocateRFCMessageID(ctx context.Context, rfcMessageID string) (found, trashed bool, err error) {
+	rfcMessageID = strings.Trim(strings.TrimSpace(rfcMessageID), "<>")
+	if rfcMessageID == "" || c.srv == nil {
+		return false, false, errors.New("gmail: no message id to look up")
+	}
+	resp, err := c.srv.Users.Messages.List("me").Q("rfc822msgid:" + rfcMessageID).
+		IncludeSpamTrash(true).MaxResults(10).Context(ctx).Do()
+	if err != nil {
+		return false, false, HandleError(err)
+	}
+	for _, m := range resp.Messages {
+		if m == nil || m.Id == "" {
+			continue
+		}
+		msg, err := c.srv.Users.Messages.Get("me", m.Id).Format("minimal").Context(ctx).Do()
+		if err != nil {
+			var gerr *googleapi.Error
+			if errors.As(err, &gerr) && gerr.Code == 404 {
+				continue
+			}
+			return false, false, HandleError(err)
+		}
+		found = true
+		if !slices.Contains(msg.LabelIds, Trash) {
+			return true, false, nil
+		}
+	}
+	return found, found, nil
 }
