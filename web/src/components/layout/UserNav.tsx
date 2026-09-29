@@ -46,11 +46,13 @@ export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
             <PopoverMenuTrigger asChild>
                 <button
                     aria-label={collapsed ? displayName : undefined}
+                    // One element in both shapes so it eases with the sidebar's
+                    // width: the avatar drifts to the rail's centre, the name fades.
                     className={cn(
-                        "flex items-center rounded-md hover:bg-slate-200/40 transition-colors cursor-pointer",
+                        "flex items-center mx-3 my-2 rounded-md hover:bg-slate-200/40 cursor-pointer transition-[width,padding,gap,background-color] duration-200 ease-out motion-reduce:transition-none",
                         collapsed
-                            ? "mx-auto my-2 size-8 justify-center"
-                            : "gap-2.5 mx-3 my-2 px-1.5 py-1 w-[calc(100%-1.5rem)]",
+                            ? "w-8 gap-0 p-0.5"
+                            : "w-[calc(100%-1.5rem)] gap-2.5 px-1.5 py-1",
                     )}
                 >
                     <div className="w-7 h-7 rounded-full bg-slate-900 flex items-center justify-center shrink-0 overflow-hidden">
@@ -66,16 +68,20 @@ export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
                             </span>
                         )}
                     </div>
-                    {!collapsed && (
-                        <div className="flex-1 min-w-0 text-left">
-                            <div className="text-[13px] text-slate-900 truncate">
-                                {displayName}
-                            </div>
-                            <div className="text-[10.5px] text-slate-500 truncate">
-                                {user.email}
-                            </div>
+                    <div
+                        aria-hidden={collapsed || undefined}
+                        className={cn(
+                            "flex-1 min-w-0 overflow-hidden whitespace-nowrap text-left transition-opacity ease-out motion-reduce:transition-none",
+                            collapsed ? "opacity-0 duration-100" : "opacity-100 duration-200 delay-75",
+                        )}
+                    >
+                        <div className="text-[13px] text-slate-900 truncate">
+                            {displayName}
                         </div>
-                    )}
+                        <div className="text-[10.5px] text-slate-500 truncate">
+                            {user.email}
+                        </div>
+                    </div>
                 </button>
             </PopoverMenuTrigger>
 

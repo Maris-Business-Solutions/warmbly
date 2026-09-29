@@ -18,7 +18,7 @@ export function checkPermission(key: PermissionKey): boolean {
     return orgHasPermission(useAppStore.getState().currentOrganization, key);
 }
 
-function orgHasPermission(
+export function orgHasPermission(
     org: { role?: string; permissions?: number } | null | undefined,
     key: PermissionKey,
 ): boolean {

@@ -30,6 +30,8 @@ export interface UISlice {
   // and every store written before this had no version field at all.
   navCollapsed: boolean
   sidebarMobileOpen: boolean
+  // Folded sidebar sections, keyed by the section's stable id (not its label).
+  navCollapsedSections: Record<string, boolean>
 
   // Theme
   theme: Theme
@@ -55,6 +57,7 @@ export interface UISlice {
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setSidebarMobileOpen: (open: boolean) => void
+  toggleNavSection: (id: string) => void
 
   // Actions - Theme
   setTheme: (theme: Theme) => void
@@ -79,6 +82,13 @@ const getInitialTheme = (): Theme => {
   return (localStorage.getItem('theme') as Theme) || 'system'
 }
 
+// Rehydration bypasses the setter, so a stored value that is not a map of
+// booleans (older build, hand edit) falls back to everything expanded.
+export const sanitizeNavCollapsedSections = (v: unknown): Record<string, boolean> => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  return Object.fromEntries(Object.entries(v).filter(([, folded]) => typeof folded === 'boolean'))
+}
+
 // The dashboard is light-only today: every surface is styled on white, so a
 // resolved dark theme would flip only the CSS-variable components (command
 // palette, toasts) and look broken. 'dark'/'system' are accepted but resolve
@@ -91,6 +101,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   // Sidebar
   navCollapsed: false,
   sidebarMobileOpen: false,
+  navCollapsedSections: {},
 
   // Theme
   theme: getInitialTheme(),
@@ -114,6 +125,11 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
     set((state) => (state.navCollapsed === navCollapsed ? state : { navCollapsed })),
   setSidebarMobileOpen: (sidebarMobileOpen) =>
     set((state) => (state.sidebarMobileOpen === sidebarMobileOpen ? state : { sidebarMobileOpen })),
+
+  toggleNavSection: (id) =>
+    set((state) => ({
+      navCollapsedSections: { ...state.navCollapsedSections, [id]: !state.navCollapsedSections[id] },
+    })),
 
   // Actions - Theme
   setTheme: (theme) => {
