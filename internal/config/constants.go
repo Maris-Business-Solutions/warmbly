@@ -100,9 +100,11 @@ const (
 
 	// Gmail folder reconciliation: how often stored Gmail mail is checked
 	// against where Gmail has it now, how many rows one pass checks, how many
-	// inbox listing pages it reads, how many messages it looks up, and how
-	// long a message found still in the inbox is not looked up again.
+	// inbox listing pages it reads, how many messages it looks up, how long a
+	// message found still in the inbox is not looked up again, and how soon a
+	// pass that failed is tried again.
 	GmailFolderReconcileInterval = 6 * time.Hour
+	GmailFolderReconcileRetry    = 15 * time.Minute
 	GmailFolderReconcileMessages = 1_000
 	GmailFolderReconcilePages    = 10
 	GmailFolderReconcileLookups  = 100

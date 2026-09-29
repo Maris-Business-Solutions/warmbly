@@ -127,6 +127,29 @@ func (c *Client) MessageLabels(ctx context.Context, id string) (labels []string,
 	return msg.LabelIds, true, nil
 }
 
+// ListLabelMessages is one page of the ids of messages carrying labelID,
+// matched per message rather than per thread, narrowed by q.
+func (c *Client) ListLabelMessages(ctx context.Context, labelID, q, pageToken string, max int64) ([]string, string, error) {
+	call := c.srv.Users.Messages.List("me").LabelIds(labelID).MaxResults(max).Context(ctx)
+	if q != "" {
+		call = call.Q(q)
+	}
+	if pageToken != "" {
+		call = call.PageToken(pageToken)
+	}
+	resp, err := call.Do()
+	if err != nil {
+		return nil, "", HandleError(err)
+	}
+	ids := make([]string, 0, len(resp.Messages))
+	for _, m := range resp.Messages {
+		if m != nil && m.Id != "" {
+			ids = append(ids, m.Id)
+		}
+	}
+	return ids, resp.NextPageToken, nil
+}
+
 // ListMessages is one page of the backfill: message ids matching q, newest
 // first, and the token for the next page ("" when the query is exhausted).
 func (c *Client) ListMessages(ctx context.Context, q, pageToken string, max int64) ([]string, string, error) {

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/warmbly/warmbly/internal/client/goog"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
@@ -23,6 +25,7 @@ func (w *WMail) SyncGoogle(ctx context.Context) *errx.MailError {
 	w.beginTick()
 	stats := &tickStats{}
 	w.googleTick = stats
+	w.googleFolders = nil
 	if !w.retryUnmap(ctx) {
 		return nil
 	}
@@ -52,7 +55,9 @@ func (w *WMail) SyncGoogle(ctx context.Context) *errx.MailError {
 		}
 	}
 	if !stats.aborted {
-		if merr := w.googleReconcileFolders(ctx, time.Now(), stats); merr != nil {
+		// The pass's own work is done; only a refusal the owner has to act
+		// on is worth failing it for.
+		if merr := w.googleReconcileFolders(ctx, time.Now(), stats); merr != nil && merr.Type == errx.MailErrorCritical {
 			return merr
 		}
 	}
@@ -233,38 +238,48 @@ func (w *WMail) googleBackfill(ctx context.Context, stats *tickStats) *errx.Mail
 	return nil
 }
 
-// reconcileFolders is every folder a stored Gmail message can be moved out of
-// by a label change the history feed may not have delivered.
-var reconcileFolders = []string{models.FolderInbox, models.FolderArchive, models.FolderSpam, models.FolderTrash}
+// reconcileElsewhere is every folder a stored Gmail message can be moved back
+// to the inbox from.
+var reconcileElsewhere = []string{models.FolderArchive, models.FolderSpam, models.FolderTrash}
 
 // googleReconcileFolders repairs stored mail the history feed did not move:
 // changes from before the sync followed labels, and any a checkpoint Gmail
 // expired skipped over. Inbox rows missing from Gmail's inbox are looked up;
-// every other row only moves when Gmail lists it in the inbox.
+// every other row only moves when Gmail lists it in the inbox. A pass that
+// fails is tried again after GmailFolderReconcileRetry.
 func (w *WMail) googleReconcileFolders(ctx context.Context, now time.Time, stats *tickStats) *errx.MailError {
 	if w.SyncContext == nil || now.Sub(w.googleReconciledAt) < config.GmailFolderReconcileInterval {
 		return nil
 	}
-	w.googleReconciledAt = now
+	w.googleReconciledAt = now.Add(config.GmailFolderReconcileRetry - config.GmailFolderReconcileInterval)
 
-	stored, err := w.SyncContext.ListProviderFolderMessages(ctx, w.UserID, w.ID, reconcileFolders, config.GmailFolderReconcileMessages)
+	inboxRows, err := w.SyncContext.ListProviderFolderMessages(ctx, w.UserID, w.ID, []string{models.FolderInbox}, config.GmailFolderReconcileMessages)
 	if err != nil {
 		return w.controlPlaneError(err, stats)
 	}
-	if len(stored) == 0 {
+	otherRows, err := w.SyncContext.ListProviderFolderMessages(ctx, w.UserID, w.ID, reconcileElsewhere, config.GmailFolderReconcileMessages)
+	if err != nil {
+		return w.controlPlaneError(err, stats)
+	}
+	window := inboxRows
+	if len(window) == 0 {
+		window = otherRows
+	}
+	if len(window) == 0 {
+		w.googleReconciledAt = now
 		return nil
 	}
 
 	// The rows come newest first; a day of slack covers Gmail reading after:
 	// against its own calendar.
-	q := "in:inbox"
-	if oldest := stored[len(stored)-1].InternalDate.Add(-24 * time.Hour); oldest.Unix() > 0 {
-		q = fmt.Sprintf("in:inbox after:%d", oldest.Unix())
+	q := ""
+	if oldest := window[len(window)-1].InternalDate.Add(-24 * time.Hour); oldest.Unix() > 0 {
+		q = fmt.Sprintf("after:%d", oldest.Unix())
 	}
 	inInbox := make(map[string]struct{})
 	token := ""
 	for page := 0; page < config.GmailFolderReconcilePages; page++ {
-		ids, next, err := w.GoogleData.Client.ListMessages(ctx, q, token, 500)
+		ids, next, err := w.GoogleData.Client.ListLabelMessages(ctx, goog.Inbox, q, token, 500)
 		if err != nil {
 			return w.googleReconcileError(err)
 		}
@@ -277,6 +292,15 @@ func (w *WMail) googleReconcileFolders(ctx context.Context, now time.Time, stats
 		token = next
 	}
 
+	for _, m := range otherRows {
+		if _, ok := inInbox[m.ProviderID]; !ok {
+			continue
+		}
+		if err := w.emitFolder(m.ID, models.FolderInbox); err != nil {
+			return w.controlPlaneError(err, stats)
+		}
+	}
+
 	if w.googleInboxChecked == nil {
 		w.googleInboxChecked = make(map[string]time.Time)
 	}
@@ -286,52 +310,73 @@ func (w *WMail) googleReconcileFolders(ctx context.Context, now time.Time, stats
 		}
 	}
 	lookups := 0
-	for _, m := range stored {
-		folder := ""
+	for _, m := range inboxRows {
 		if _, ok := inInbox[m.ProviderID]; ok {
-			folder = models.FolderInbox
-		} else if m.ProviderFolder == models.FolderInbox {
-			if _, checked := w.googleInboxChecked[m.ProviderID]; checked || lookups >= config.GmailFolderReconcileLookups {
-				continue
-			}
-			lookups++
-			labels, found, err := w.GoogleData.Client.MessageLabels(ctx, m.ProviderID)
-			if err != nil {
-				return w.googleReconcileError(err)
-			}
-			if !found {
-				w.googleInboxChecked[m.ProviderID] = now
-				continue
-			}
-			folder = goog.Folder(labels)
-			if folder == models.FolderInbox {
-				w.googleInboxChecked[m.ProviderID] = now
-			}
-		}
-		if folder == "" || folder == m.ProviderFolder {
 			continue
 		}
-		if err := w.onEvent(models.JobEventTypeFolderUpdate, &models.JobEventFolderUpdate{
-			UserID:  w.UserID,
-			EmailID: w.ID,
-			ID:      m.ID,
-			Folder:  folder,
-		}); err != nil {
+		if _, checked := w.googleInboxChecked[m.ProviderID]; checked {
+			continue
+		}
+		if lookups >= config.GmailFolderReconcileLookups {
+			break
+		}
+		lookups++
+		labels, found, err := w.GoogleData.Client.MessageLabels(ctx, m.ProviderID)
+		if err != nil {
+			if gmailRetryable(err) {
+				return w.googleReconcileError(err)
+			}
+			// One message Gmail refuses must not hold up every row after it.
+			log.Debug().Err(err).Str("email_id", w.ID.String()).Str("gmail_id", m.ProviderID).Msg("gmail folder reconciliation: lookup refused")
+			w.googleInboxChecked[m.ProviderID] = now
+			continue
+		}
+		if !found {
+			// Gone from Gmail, which is what the live feed's delete reports.
+			if err := w.onEvent(models.JobEventTypeRemoveEmail, &models.JobEventRemoveEmail{
+				UserID:  w.UserID,
+				EmailID: w.ID,
+				ID:      m.ID,
+			}); err != nil {
+				return w.controlPlaneError(err, stats)
+			}
+			w.googleInboxChecked[m.ProviderID] = now
+			continue
+		}
+		folder := goog.Folder(labels)
+		if folder == models.FolderInbox {
+			w.googleInboxChecked[m.ProviderID] = now
+			continue
+		}
+		if err := w.emitFolder(m.ID, folder); err != nil {
 			return w.controlPlaneError(err, stats)
 		}
 	}
+	w.googleReconciledAt = now
 	return nil
 }
 
-// googleReconcileError ends the pass on a Gmail refusal the sync loop acts on
-// (auth, throttling) and swallows the rest; the next interval tries again.
+func (w *WMail) emitFolder(id uuid.UUID, folder string) error {
+	return w.onEvent(models.JobEventTypeFolderUpdate, &models.JobEventFolderUpdate{
+		UserID:  w.UserID,
+		EmailID: w.ID,
+		ID:      id,
+		Folder:  folder,
+	})
+}
+
+// googleReconcileError returns a Gmail failure to the caller, which fails the
+// tick only when it is critical; the rest are captured unless transient.
 func (w *WMail) googleReconcileError(err error) *errx.MailError {
 	var errMail *errx.MailError
-	if errors.As(err, &errMail) {
-		return errMail
+	if !errors.As(err, &errMail) {
+		w.CaptureError(err)
+		return nil
 	}
-	w.CaptureError(err)
-	return nil
+	if errMail.Type != errx.MailErrorCritical && !gmailRetryable(err) {
+		w.CaptureError(err)
+	}
+	return errMail
 }
 
 // NewHistoryID persists the mailbox's Gmail history checkpoint. UserID and

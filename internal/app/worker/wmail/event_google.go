@@ -2,10 +2,13 @@ package wmail
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/warmbly/warmbly/internal/client/goog"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 )
 
@@ -121,18 +124,45 @@ func (w *WMail) emitGoogleLabelEvents(ctx context.Context, messageID string, cha
 		found := false
 		labels, found, err = w.GoogleData.Client.MessageLabels(ctx, messageID)
 		if err != nil {
-			return err
+			// Only a failure the whole walk should retry holds the checkpoint;
+			// anything else is left to the folder reconciliation.
+			if gmailRetryable(err) {
+				return err
+			}
+			log.Debug().Err(err).Str("email_id", w.ID.String()).Msg("gmail labels lookup failed; folder left to reconciliation")
+			return nil
 		}
 		if !found {
 			return nil
 		}
 	}
-	return w.onEvent(models.JobEventTypeFolderUpdate, &models.JobEventFolderUpdate{
+	folder := goog.Folder(labels)
+	if w.googleFolders[messageID] == folder {
+		return nil
+	}
+	if err := w.onEvent(models.JobEventTypeFolderUpdate, &models.JobEventFolderUpdate{
 		UserID:  w.UserID,
 		EmailID: w.ID,
 		ID:      internalID,
-		Folder:  goog.Folder(labels),
-	})
+		Folder:  folder,
+	}); err != nil {
+		return err
+	}
+	if w.googleFolders == nil {
+		w.googleFolders = make(map[string]string)
+	}
+	w.googleFolders[messageID] = folder
+	return nil
+}
+
+// gmailRetryable reports a Gmail failure that is about the mailbox or the
+// connection (auth, throttling, transport) rather than one message.
+func gmailRetryable(err error) bool {
+	var merr *errx.MailError
+	if !errors.As(err, &merr) {
+		return true
+	}
+	return merr.Type == errx.MailErrorCritical || merr.Code == errx.MailErrorCodeSendingTooFast || isTransportError(merr)
 }
 
 // labelsReflect reports whether labels already show the folder labels in

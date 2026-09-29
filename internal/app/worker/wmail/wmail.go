@@ -101,6 +101,9 @@ type WMail struct {
 	// in the inbox (or gone), so the next passes spend lookups elsewhere.
 	googleReconciledAt time.Time
 	googleInboxChecked map[string]time.Time
+	// googleFolders is the folder last reported per Gmail id this tick, so a
+	// move that both adds and removes labels is reported once.
+	googleFolders map[string]string
 	// flagScan is the previous flag snapshot per folder name, used only on
 	// IMAP servers without CONDSTORE, which cannot say what changed.
 	flagScan map[string]*folderFlagScan

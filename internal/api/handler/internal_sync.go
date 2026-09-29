@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/observability/errs"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -136,7 +137,8 @@ func (h *Handler) InternalSyncProviderFolderMessages(c *gin.Context) {
 	}
 	messages, err := h.EmailSyncState.ListProviderFolderMessages(c.Request.Context(), userID, emailID, folders, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errs.CaptureException(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not list stored messages"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})

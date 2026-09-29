@@ -484,9 +484,10 @@ export default function UniboxPage() {
                       ? undefined
                       : () => {
                           // Widening keeps the query; the reset below reads
-                          // this flag on the scope change it causes.
+                          // this flag on the scope change it causes. All mail
+                          // holds the open conversation, so it stays open.
                           keepSearch.current = true;
-                          setScope({ kind: "all" });
+                          goTo({ scope: "all", ref: null });
                         }
                   }
                   onOpenScopeSheet={() => setScopeSheetOpen(true)}

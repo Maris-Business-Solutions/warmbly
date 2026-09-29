@@ -3,8 +3,11 @@ package wmail
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +23,8 @@ import (
 type labelGmail struct {
 	inbox   []string
 	labels  map[string][]string
-	queries []string
+	refuse  map[string]int // messages.get answers this status instead
+	queries []url.Values
 	gets    []string
 }
 
@@ -30,6 +34,11 @@ func (g *labelGmail) serve(t *testing.T) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json")
 		if id, isGet := strings.CutPrefix(r.URL.Path, "/gmail/v1/users/me/messages/"); isGet {
 			g.gets = append(g.gets, id)
+			if code, ok := g.refuse[id]; ok {
+				w.WriteHeader(code)
+				_, _ = fmt.Fprintf(w, `{"error":{"code":%d,"message":"refused"}}`, code)
+				return
+			}
 			labels, ok := g.labels[id]
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
@@ -39,7 +48,7 @@ func (g *labelGmail) serve(t *testing.T) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "labelIds": labels})
 			return
 		}
-		g.queries = append(g.queries, r.URL.Query().Get("q"))
+		g.queries = append(g.queries, r.URL.Query())
 		msgs := make([]map[string]string, 0, len(g.inbox))
 		for _, id := range g.inbox {
 			msgs = append(msgs, map[string]string{"id": id, "threadId": "t-" + id})
@@ -65,10 +74,13 @@ func folderUpdates(events []captured) map[uuid.UUID]string {
 // Archiving in Gmail only removes the INBOX label, and that has to reach the
 // platform as a move to archive, not only as a flag nobody files by.
 func TestGmailLabelChangeReportsTheFolder(t *testing.T) {
-	g := &labelGmail{labels: map[string][]string{
-		"gone-to-trash": {"TRASH", "UNREAD"},
-		"stale-record":  {"CATEGORY_UPDATES"},
-	}}
+	g := &labelGmail{
+		labels: map[string][]string{
+			"gone-to-trash": {"TRASH", "UNREAD"},
+			"stale-record":  {"CATEGORY_UPDATES"},
+		},
+		refuse: map[string]int{"refused": http.StatusBadRequest},
+	}
 	var events []captured
 	w := newGoogleTestMail(t, g.serve(t), &events)
 	rowID := uuid.New()
@@ -88,6 +100,7 @@ func TestGmailLabelChangeReportsTheFolder(t *testing.T) {
 		{"labels looked up when the record has none", "gone-to-trash", []string{"TRASH"}, nil, true, models.FolderTrash},
 		{"labels that contradict the change are looked up", "stale-record", []string{"INBOX"}, []string{"INBOX"}, false, models.FolderArchive},
 		{"a star moves nothing", "m4", []string{"STARRED"}, []string{"INBOX", "STARRED"}, true, ""},
+		{"a lookup Gmail refuses leaves the folder to reconciliation", "refused", []string{"INBOX"}, nil, false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -107,8 +120,27 @@ func TestGmailLabelChangeReportsTheFolder(t *testing.T) {
 			}
 		})
 	}
-	if strings.Join(g.gets, ",") != "gone-to-trash,stale-record" {
+	if strings.Join(g.gets, ",") != "gone-to-trash,stale-record,refused" {
 		t.Errorf("looked up %v, want only the records whose labels could not be trusted", g.gets)
+	}
+
+	// Delete in Gmail adds TRASH and removes INBOX: one move, one report.
+	events = nil
+	current := []string{"TRASH"}
+	if err := w.emitGoogleLabelEvents(t.Context(), "m5", []string{"TRASH"}, current, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.emitGoogleLabelEvents(t.Context(), "m5", []string{"INBOX"}, current, false); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range events {
+		if e.eventType == models.JobEventTypeFolderUpdate {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("reported the move %d times, want once", n)
 	}
 }
 
@@ -119,9 +151,25 @@ type providerRows struct {
 	calls int
 }
 
-func (p *providerRows) ListProviderFolderMessages(context.Context, uuid.UUID, uuid.UUID, []string, int) ([]repository.ProviderFolderMessage, error) {
+func (p *providerRows) ListProviderFolderMessages(_ context.Context, _, _ uuid.UUID, folders []string, _ int) ([]repository.ProviderFolderMessage, error) {
 	p.calls++
-	return p.rows, nil
+	var out []repository.ProviderFolderMessage
+	for _, r := range p.rows {
+		if slices.Contains(folders, r.ProviderFolder) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func removedIDs(events []captured) []uuid.UUID {
+	var out []uuid.UUID
+	for _, e := range events {
+		if e.eventType == models.JobEventTypeRemoveEmail {
+			out = append(out, e.body.(*models.JobEventRemoveEmail).ID)
+		}
+	}
+	return out
 }
 
 // Mail archived in Gmail before labels were followed stays in the unibox
@@ -134,6 +182,7 @@ func TestGmailReconcileMovesWhatGmailMoved(t *testing.T) {
 	stillInbox := row("still-inbox", models.FolderInbox, time.Hour)
 	archived := row("archived", models.FolderInbox, 2*time.Hour)
 	trashed := row("trashed", models.FolderInbox, 3*time.Hour)
+	refused := row("refused", models.FolderInbox, 3*time.Hour+30*time.Minute)
 	deleted := row("deleted", models.FolderInbox, 4*time.Hour)
 	backToInbox := row("back", models.FolderArchive, 5*time.Hour)
 	stillArchived := row("old-archive", models.FolderArchive, 6*time.Hour)
@@ -144,10 +193,11 @@ func TestGmailReconcileMovesWhatGmailMoved(t *testing.T) {
 			"archived": {"CATEGORY_PERSONAL"},
 			"trashed":  {"TRASH"},
 		},
+		refuse: map[string]int{"refused": http.StatusBadRequest},
 	}
 	var events []captured
 	w := newGoogleTestMail(t, g.serve(t), &events)
-	sc := &providerRows{rows: []repository.ProviderFolderMessage{stillInbox, archived, trashed, deleted, backToInbox, stillArchived}}
+	sc := &providerRows{rows: []repository.ProviderFolderMessage{stillInbox, archived, trashed, refused, deleted, backToInbox, stillArchived}}
 	w.SyncContext = sc
 
 	if merr := w.googleReconcileFolders(t.Context(), now, &tickStats{}); merr != nil {
@@ -168,12 +218,17 @@ func TestGmailReconcileMovesWhatGmailMoved(t *testing.T) {
 			t.Errorf("row %s moved to %q, want %q", id, got[id], folder)
 		}
 	}
-	// Only inbox rows missing from the listing cost a lookup.
-	if strings.Join(g.gets, ",") != "archived,trashed,deleted" {
-		t.Errorf("looked up %v, want archived, trashed, deleted", g.gets)
+	// Gone from Gmail is removed, as the live feed's delete would.
+	if got := removedIDs(events); len(got) != 1 || got[0] != deleted.ID {
+		t.Errorf("removed %v, want only the deleted row", got)
 	}
-	if len(g.queries) != 1 || !strings.HasPrefix(g.queries[0], "in:inbox after:") {
-		t.Errorf("inbox listing queries = %v", g.queries)
+	// Only inbox rows missing from the listing cost a lookup, and one Gmail
+	// refuses does not stop the rows after it.
+	if strings.Join(g.gets, ",") != "archived,trashed,refused,deleted" {
+		t.Errorf("looked up %v, want archived, trashed, refused, deleted", g.gets)
+	}
+	if len(g.queries) != 1 || g.queries[0].Get("labelIds") != "INBOX" || !strings.HasPrefix(g.queries[0].Get("q"), "after:") {
+		t.Errorf("inbox listing queries = %v, want labelIds=INBOX and an after: bound", g.queries)
 	}
 
 	// Inside the interval nothing runs; after it, a message already found
@@ -182,8 +237,8 @@ func TestGmailReconcileMovesWhatGmailMoved(t *testing.T) {
 	if merr := w.googleReconcileFolders(t.Context(), now.Add(time.Minute), &tickStats{}); merr != nil {
 		t.Fatalf("second pass: %v", merr.Message)
 	}
-	if sc.calls != 1 {
-		t.Errorf("listed stored rows %d times inside the interval, want 1", sc.calls)
+	if sc.calls != 2 {
+		t.Errorf("listed stored rows %d times inside the interval, want the first pass's 2", sc.calls)
 	}
 	sc.rows = []repository.ProviderFolderMessage{stillInbox, deleted}
 	if merr := w.googleReconcileFolders(t.Context(), now.Add(7*time.Hour), &tickStats{}); merr != nil {
@@ -202,5 +257,24 @@ func TestGmailReconcileMovesWhatGmailMoved(t *testing.T) {
 	}
 	if strings.Join(g.gets, ",") != "deleted" {
 		t.Errorf("looked up %v a day later, want deleted", g.gets)
+	}
+}
+
+// A pass Gmail throttles is tried again soon, not after the full interval.
+func TestGmailReconcileRetriesAFailedPassSoon(t *testing.T) {
+	now := time.Now()
+	g := &labelGmail{refuse: map[string]int{"throttled": http.StatusTooManyRequests}}
+	var events []captured
+	w := newGoogleTestMail(t, g.serve(t), &events)
+	w.SyncContext = &providerRows{rows: []repository.ProviderFolderMessage{
+		{ID: uuid.New(), ProviderID: "throttled", ProviderFolder: models.FolderInbox, InternalDate: now},
+	}}
+
+	if merr := w.googleReconcileFolders(t.Context(), now, &tickStats{}); merr == nil {
+		t.Fatal("a throttled lookup was swallowed")
+	}
+	g.gets = nil
+	if merr := w.googleReconcileFolders(t.Context(), now.Add(20*time.Minute), &tickStats{}); merr == nil || len(g.gets) != 1 {
+		t.Errorf("20 minutes on the pass did not run again (looked up %v)", g.gets)
 	}
 }
