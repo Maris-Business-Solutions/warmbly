@@ -80,10 +80,15 @@ function mapError(e: unknown): Error {
                 return new PasskeyCancelled("aborted");
             case "NotAllowedError":
                 return new PasskeyCancelled("not-allowed");
+            // Another WebAuthn request is still pending, so this one never started.
+            case "InvalidStateError":
+                return new PasskeyCancelled("aborted");
             default:
                 return new Error(e.message || "Your device couldn't complete the passkey request.");
         }
     }
+    // SimpleWebAuthn's words for a ceremony the browser ended with no credential.
+    if (e instanceof Error && e.message === "Authentication was not completed") return new PasskeyCancelled("aborted");
     if (e instanceof Error) return e;
     return new Error("Something went wrong with the passkey request.");
 }
@@ -125,7 +130,7 @@ async function startExplicitAuthentication(
     }) as PublicKeyCredential | null;
 
     if (!credential) {
-        throw new Error("Authentication was not completed");
+        throw new PasskeyCancelled("aborted");
     }
 
     const response = credential.response as AuthenticatorAssertionResponse;

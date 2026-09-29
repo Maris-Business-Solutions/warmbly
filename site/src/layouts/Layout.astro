@@ -217,21 +217,27 @@ const websiteJsonLd = {
               'ResizeObserver loop completed with undelivered notifications.',
               'ResizeObserver loop limit exceeded',
             ];
+            // A link scanner's embedded browser (Outlook Safe Links and the like)
+            // rejects with this while it walks the page; it is not our code.
+            var scanner = 'Object Not Found Matching Id:';
+            var isNoise = function (v) {
+              return typeof v === 'string' && (noise.indexOf(v.trim()) !== -1 || v.indexOf(scanner) !== -1);
+            };
             var exceptions = event.properties && event.properties.$exception_list;
             if (Array.isArray(exceptions)) {
               for (var i = 0; i < exceptions.length; i++) {
                 var value = exceptions[i] && (exceptions[i].value || exceptions[i].$exception_value);
-                if (typeof value === 'string' && noise.indexOf(value.trim()) !== -1) return null;
+                if (isNoise(value)) return null;
               }
             }
             var message = event.properties && event.properties.$exception_message;
-            if (typeof message === 'string' && noise.indexOf(message.trim()) !== -1) return null;
+            if (isNoise(message)) return null;
             // Keep accepting flattened payloads while cached SDK chunks are
             // still in browsers during a rolling release.
             var values = event.properties && event.properties.$exception_values;
             if (!Array.isArray(values)) return event;
             for (var i = 0; i < values.length; i++) {
-              if (typeof values[i] === 'string' && noise.indexOf(values[i].trim()) !== -1) return null;
+              if (isNoise(values[i])) return null;
             }
             return event;
           },

@@ -1,0 +1,59 @@
+{
+  "fields": [
+    {
+      "default": "",
+      "name": "event_type",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "task_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "account_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "campaign_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "contact_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "sequence_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "message_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "recipient",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "subject",
+      "type": "string"
+    },
+    {
+      "default": 0,
+      "name": "sent_at",
+      "type": {
+        "logicalType": "timestamp-millis",
+        "type": "long"
+      }
+    }
+  ],
+  "name": "warmbly.events.EmailSentEvent",
+  "type": "record"
+}

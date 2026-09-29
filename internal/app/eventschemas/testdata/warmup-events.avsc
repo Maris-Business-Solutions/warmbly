@@ -1,0 +1,44 @@
+{
+  "fields": [
+    {
+      "default": "",
+      "name": "event_type",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "task_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "sender_account_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "target_account_id",
+      "type": "string"
+    },
+    {
+      "default": "",
+      "name": "message_id",
+      "type": "string"
+    },
+    {
+      "default": false,
+      "name": "is_reply",
+      "type": "boolean"
+    },
+    {
+      "default": 0,
+      "name": "sent_at",
+      "type": {
+        "logicalType": "timestamp-millis",
+        "type": "long"
+      }
+    }
+  ],
+  "name": "warmbly.events.WarmupEmailSentEvent",
+  "type": "record"
+}
