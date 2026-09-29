@@ -53,7 +53,7 @@ const (
 	AuditEntityCampaign AuditEntityType = "campaign"
 	// AuditEntityCampaignLead is ONE contact inside ONE campaign: the entity id
 	// is the contact and metadata carries the campaign. Written when a member
-	// pauses or resumes that lead's flow.
+	// pauses or resumes that lead's flow, or changes who it copies.
 	AuditEntityCampaignLead   AuditEntityType = "campaign_lead"
 	AuditEntityContact        AuditEntityType = "contact"
 	AuditEntityEmailAccount   AuditEntityType = "email_account"

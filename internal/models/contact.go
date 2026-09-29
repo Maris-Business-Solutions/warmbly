@@ -111,6 +111,8 @@ type ContactCampaignProgress struct {
 	// Hold is the per-lead pause, set only while it is live. Present on any
 	// status: a held lead that has also replied still reads "replied".
 	Hold *LeadHold `json:"hold,omitempty"`
+	// CC is the contacts copied on every email to this lead in this campaign.
+	CC []CampaignLeadCC `json:"cc,omitempty"`
 }
 
 // LeadHold is one contact's flow parked inside one campaign. Source is

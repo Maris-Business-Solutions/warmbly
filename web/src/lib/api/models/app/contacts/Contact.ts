@@ -21,19 +21,46 @@ export type LeadStatus =
     | "undeliverable";
 
 // One contact's flow parked inside one campaign. source is "out_of_office"
-// when an auto-reply parked it and "manual" when a member did; `until` absent
-// means the hold has no end and only a resume lifts it.
+// when an auto-reply parked it, "manual" when a member did, and "cc" while the
+// contact is copied on another lead's emails (reason is that lead's address);
+// `until` absent means the hold has no end and only a resume lifts it.
 export interface LeadHold {
     since: Date;
     until?: Date | null;
     reason?: string;
-    source: "manual" | "out_of_office" | string;
+    source: "manual" | "out_of_office" | "inbox_tagging" | "cc" | string;
+}
+
+// Why a copied contact is or is not on the next email to the lead.
+export type LeadCCStatus = "active" | "unsubscribed" | "bounced" | "undeliverable";
+
+// A contact copied on every email one campaign sends one lead.
+export interface LeadCC {
+    contact_id: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    company?: string;
+    status: LeadCCStatus;
+    bounced_at?: Date | null;
+}
+
+// The most contacts one lead can copy; mirrors config.CampaignLeadMaxCC.
+export const LEAD_CC_MAX = 2;
+
+export function leadCCName(cc: Pick<LeadCC, "first_name" | "last_name" | "email">): string {
+    return `${cc.first_name ?? ""} ${cc.last_name ?? ""}`.trim() || cc.email;
 }
 
 // holdSummary is the one sentence a held lead gets, wherever it is shown: why
 // the flow is parked and when it lifts. One function so the Leads row and the
 // contact drawer cannot word the same hold two different ways.
 export function holdSummary(hold: LeadHold): string {
+    if (hold.source === "cc") {
+        return hold.reason
+            ? `Copied on the emails to ${hold.reason} · none of their own are sent`
+            : "Copied on another lead's emails · none of their own are sent";
+    }
     const what = hold.source === "out_of_office" ? "Out of office" : "Paused";
     const why = hold.reason ? ` · ${hold.reason}` : "";
     if (!hold.until) return `${what}${why} · until someone resumes it`;
@@ -83,6 +110,8 @@ export interface ContactCampaignProgress {
     // The live hold, when the lead's flow is parked. Present on any status: a
     // held lead that also replied still reads "replied".
     hold?: LeadHold | null;
+    // Contacts copied on every email to this lead in this campaign.
+    cc?: LeadCC[];
 }
 
 // VerificationStatus mirrors emailverify.Status: the pre-send verdict on the

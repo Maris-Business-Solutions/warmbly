@@ -72,7 +72,7 @@ gives the arguments and flags. Ids are positional, not flags.
 | Command | Covers |
 |---|---|
 | `status` | one call for "what is happening": mailboxes needing attention, what is sending, what is unread |
-| `campaign` | list, view, create, edit, delete, steps, senders, segments, preflight, test, start, stop, logs, plan, pause-lead / resume-lead |
+| `campaign` | list, view, create, edit, delete, steps, senders, segments, preflight, test, start, stop, logs, plan, pause-lead / resume-lead, lead-cc / set-lead-cc / lead-cc-suggestions |
 | `contact` | list, view, create, edit, delete, lookup, timeline, emails, notes, import, imports, import-status, import-start, import-cancel, export, verify |
 | `mailbox` | list, view, edit, check, sync, skip-folders, identity, refresh-identity, behavior, warmup, hold, release, send |
 | `inbox` | list, view, thread, read, reply, compose, drafts, scheduled, snooze |
@@ -130,6 +130,13 @@ to run freely.
   recipient answers with an out-of-office auto-reply, in every campaign that
   contact is a lead of, so do not also pause a lead that reads `paused` for
   that reason.
+- To reach two people at one company in ONE thread, copy the second on the
+  first lead's emails: `warmbly campaign set-lead-cc CAMPAIGN_ID CONTACT_ID
+  --cc COLLEAGUE_ID` (at most two; `lead-cc-suggestions` lists likely
+  colleagues). Do not enrol both as leads of the same campaign for this: a
+  copied contact's own lead is held anyway, and `resume-lead` on that hold
+  sends them a second thread. Every copy is a recipient who did not ask for
+  the email, so keep it to small, personal campaigns.
 - If deliverability shows rising bounces or complaints, stop the campaign and
   report. Do not push volume into a degrading mailbox.
 - To check where copy lands before a launch, `warmbly placement test --mailbox

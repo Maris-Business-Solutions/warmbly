@@ -463,6 +463,12 @@ var Tables = []Table{
 		Scope: `campaign_id IN ` + orgCampaigns,
 	},
 	{
+		// Both contacts are in the contacts group, which campaigns require.
+		Name: "campaign_lead_cc", Group: models.OrgDataGroupCampaigns,
+		Scope: `campaign_id IN ` + orgCampaigns,
+		Note:  "Must travel with the leads, or a copied contact held on their own lead is released into a second sequence.",
+	},
+	{
 		Name: "campaign_lead_removals", Group: models.OrgDataGroupCampaigns,
 		Scope: `campaign_id IN ` + orgCampaigns,
 		Note:  "Must travel, or linked segments on the destination re-add every lead the user removed by hand.",

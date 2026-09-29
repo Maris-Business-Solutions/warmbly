@@ -46,7 +46,7 @@ import useContactCampaignStates from "@/lib/api/hooks/app/contacts/useContactCam
 import type ContactCampaignState from "@/lib/api/models/app/contacts/ContactCampaignState";
 import type MiniCampaign from "@/lib/api/models/app/campaigns/MiniCampaign";
 import { holdSummary } from "@/lib/api/models/app/contacts/Contact";
-import { leadCanBePaused } from "@/lib/leadHold";
+import { CC_RESUME_CONFIRM, leadCanBePaused } from "@/lib/leadHold";
 import { usePermission } from "@/hooks/usePermission";
 import { PauseLeadButton, ResumeLeadButton } from "@/components/app/contacts/LeadHoldButtons";
 import LeadStatusPill from "@/components/app/contacts/LeadStatusPill";
@@ -372,7 +372,11 @@ function CampaignsSection({
                                     {line.text}
                                 </span>
                                 {canWrite && s.hold ? (
-                                    <ResumeLeadButton campaignId={s.campaign_id} contactId={contactId} />
+                                    <ResumeLeadButton
+                                        campaignId={s.campaign_id}
+                                        contactId={contactId}
+                                        confirmText={s.hold.source === "cc" ? CC_RESUME_CONFIRM : undefined}
+                                    />
                                 ) : canWrite && leadCanBePaused(s) ? (
                                     <PauseLeadButton
                                         campaign={{ id: s.campaign_id, name: s.campaign_name }}

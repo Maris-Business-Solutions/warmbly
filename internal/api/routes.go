@@ -704,6 +704,14 @@ func Run(
 				campaigns.POST("/:id/leads/:contactId/pause", m.RequireOrganization(), m.RequireAccess(models.PermManageCampaigns, models.APIPermWriteCampaigns), h.PauseCampaignLead)
 				campaigns.POST("/:id/leads/:contactId/resume", m.RequireOrganization(), m.RequireAccess(models.PermManageCampaigns, models.APIPermWriteCampaigns), h.ResumeCampaignLead)
 
+				// Contacts copied on every email to one lead, so colleagues
+				// share one thread. The answers carry contact details, hence
+				// the contacts gate too. PUT replaces the list, so retries are
+				// safe.
+				campaigns.GET("/:id/leads/:contactId/cc", m.RequireOrganization(), m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.GetCampaignLeadCC)
+				campaigns.PUT("/:id/leads/:contactId/cc", m.RequireOrganization(), m.RequireAccess(models.PermManageCampaigns, models.APIPermWriteCampaigns), m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.SetCampaignLeadCC)
+				campaigns.GET("/:id/leads/:contactId/cc/suggestions", m.RequireOrganization(), m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.SuggestCampaignLeadCC)
+
 				sequences := campaigns.Group("/:id/steps")
 				{
 					sequences.GET("", m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), h.GetSequences)

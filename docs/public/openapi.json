@@ -5823,6 +5823,295 @@
         }
       }
     },
+    "/campaigns/{id}/leads/{contactId}/cc": {
+      "get": {
+        "operationId": "campaigns_get_lead_cc",
+        "summary": "Get a lead's CC",
+        "description": "List the contacts copied on every email this campaign sends one lead. Scope READ_CAMPAIGNS and READ_CONTACTS, org permission view_campaigns and view_contacts.",
+        "tags": [
+          "campaigns"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignLeadCCResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The campaign is not the caller's organization's, or the contact is not a lead of it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "campaigns_set_lead_cc",
+        "summary": "Set a lead's CC",
+        "description": "Replace the contacts copied on every email this campaign sends one lead, follow-ups included. An empty list removes them all. A copied contact who is also a lead of the campaign has their own sequence held (source cc) while any lead copies them. The body is the whole list, so retries are safe without an Idempotency-Key. Scope WRITE_CAMPAIGNS and READ_CONTACTS, org permission manage_campaigns and view_contacts.",
+        "tags": [
+          "campaigns"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignLeadCCRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignLeadCCResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad_request: a contact_ids entry is not a uuid; lead_cc_limit: more than 2 contacts; lead_cc_self: the lead is in its own list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: the campaign is not the caller's organization's, or the contact is not a lead of it; lead_cc_contact_not_found: a contact to copy is not in the workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "lead_cc_lead_is_copied: the lead is copied on another lead in this campaign; lead_cc_has_copies: a contact to copy has copies of their own in this campaign.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/campaigns/{id}/leads/{contactId}/cc/suggestions": {
+      "get": {
+        "operationId": "campaigns_suggest_lead_cc",
+        "summary": "Suggest colleagues to CC",
+        "description": "Up to eight contacts who look like the lead's colleagues: the same company name, or the same email domain when it belongs to a company rather than a personal mail service. Unsubscribed contacts and ones already copied are left out. Scope READ_CAMPAIGNS and READ_CONTACTS, org permission view_campaigns and view_contacts.",
+        "tags": [
+          "campaigns"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignLeadCCSuggestions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The campaign is not the caller's organization's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/campaigns/{id}/logs": {
       "get": {
         "operationId": "campaigns_list_logs",
@@ -30087,6 +30376,13 @@
             ],
             "nullable": true,
             "description": "The live per-lead hold: an out-of-office auto-reply parked the contact, or a member paused them. Absent when the lead is not held."
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CampaignLeadCC"
+            },
+            "description": "Contacts copied on every email to this lead in this campaign. Absent when none."
           }
         }
       },
@@ -38875,9 +39171,11 @@
             "type": "string",
             "enum": [
               "manual",
-              "out_of_office"
+              "out_of_office",
+              "inbox_tagging",
+              "cc"
             ],
-            "description": "What wrote it."
+            "description": "What wrote it. cc holds a contact's own lead while they are copied on another lead's emails in the campaign; its reason is that lead's address."
           }
         },
         "required": [
@@ -38926,6 +39224,140 @@
             "description": "Optional note shown next to the hold."
           }
         }
+      },
+      "CampaignLeadCC": {
+        "type": "object",
+        "description": "A contact copied on every email one campaign sends one lead.",
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "company": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "unsubscribed",
+              "bounced",
+              "undeliverable"
+            ],
+            "description": "Whether the next email copies them: only active does."
+          },
+          "bounced_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Set when a bounce was attributed to this copy on this lead's thread."
+          }
+        },
+        "required": [
+          "contact_id",
+          "email",
+          "first_name",
+          "last_name",
+          "status"
+        ]
+      },
+      "CampaignLeadCCResult": {
+        "type": "object",
+        "properties": {
+          "campaign_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CampaignLeadCC"
+            }
+          }
+        },
+        "required": [
+          "campaign_id",
+          "contact_id",
+          "cc"
+        ]
+      },
+      "CampaignLeadCCRequest": {
+        "type": "object",
+        "properties": {
+          "contact_ids": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contacts of the workspace to copy, at most 2. Duplicates are ignored; an empty list removes every copy."
+          }
+        },
+        "required": [
+          "contact_ids"
+        ]
+      },
+      "CampaignLeadCCSuggestions": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "first_name": {
+                  "type": "string"
+                },
+                "last_name": {
+                  "type": "string"
+                },
+                "company": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "company",
+                    "domain"
+                  ]
+                }
+              },
+              "required": [
+                "contact_id",
+                "email",
+                "first_name",
+                "last_name",
+                "reason"
+              ]
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
       },
       "MailboxSendAsIdentity": {
         "type": "object",

@@ -156,6 +156,16 @@ const nameColumn: ContactColumn = {
                         <MailIcon className="w-2.5 h-2.5 shrink-0" />
                         <span className="truncate" {...clippedTitle}>{c.email}</span>
                         <VerificationBadge contact={c} />
+                        {!!c.campaign_lead?.cc?.length && (
+                            <span
+                                className="inline-flex items-center h-3.5 px-1 shrink-0 rounded bg-sky-50 text-sky-700 font-sans text-[9.5px] font-medium"
+                                title={`CC: ${c.campaign_lead.cc
+                                    .map((x) => (x.status === "active" ? x.email : `${x.email} (${x.status}, left off)`))
+                                    .join(", ")}`}
+                            >
+                                CC {c.campaign_lead.cc.length}
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
