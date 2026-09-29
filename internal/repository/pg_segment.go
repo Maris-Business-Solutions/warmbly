@@ -257,9 +257,14 @@ func (r *segmentRepository) CountAudience(ctx context.Context, orgID uuid.UUID, 
 		parts = append(parts, "("+clause+")")
 	}
 	if campaignID != nil {
-		args = append(args, *campaignID)
-		// A link's own enrolments leave with the link, so only other routes count.
-		parts = append(parts, fmt.Sprintf(`EXISTS (SELECT 1 FROM campaign_leads cl WHERE cl.contact_id = c.id AND cl.campaign_id = $%d AND cl.source <> '%s')`, len(args), leadSourceSegment))
+		// Unlinking a segment withdraws the leads its link enrolled that are still its members.
+		withdrawn, next, err := r.detachedClause(ctx, orgID, *campaignID, segmentIDs, args)
+		if err != nil {
+			db.CaptureError(err, "segment compile", nil, "query")
+			return 0, errx.InternalError()
+		}
+		args = append(next, *campaignID)
+		parts = append(parts, fmt.Sprintf(`EXISTS (SELECT 1 FROM campaign_leads cl WHERE cl.contact_id = c.id AND cl.campaign_id = $%d AND (cl.source <> '%s' OR NOT (%s)))`, len(args), leadSourceSegment, withdrawn))
 	}
 	if len(parts) == 0 {
 		return 0, nil
@@ -271,6 +276,49 @@ func (r *segmentRepository) CountAudience(ctx context.Context, orgID uuid.UUID, 
 		return 0, errx.InternalError()
 	}
 	return n, nil
+}
+
+// detachedClause matches members of the segments linked to the campaign that
+// are not among keep, or FALSE when there are none.
+func (r *segmentRepository) detachedClause(ctx context.Context, orgID, campaignID uuid.UUID, keep []uuid.UUID, args []any) (string, []any, error) {
+	rows, err := r.DB.Query(ctx, `SELECT cs.segment_id FROM campaign_segments cs JOIN campaigns cp ON cp.id = cs.campaign_id WHERE cs.campaign_id = $1 AND cp.organization_id = $2`, campaignID, orgID)
+	if err != nil {
+		return "", args, err
+	}
+	kept := map[uuid.UUID]bool{}
+	for _, id := range keep {
+		kept[id] = true
+	}
+	var detached []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return "", args, err
+		}
+		if !kept[id] {
+			detached = append(detached, id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil || len(detached) == 0 {
+		return "FALSE", args, err
+	}
+	graph, err := loadSegmentGraph(ctx, r.DB, orgID, detached)
+	if err != nil {
+		return "", args, err
+	}
+	b := &segmentBuilder{orgID: orgID, args: args, graph: graph}
+	var clauses []string
+	for _, id := range detached {
+		if def, ok := graph[id]; ok {
+			clauses = append(clauses, b.segmentClause(def, true, map[uuid.UUID]bool{}))
+		}
+	}
+	if len(clauses) == 0 {
+		return "FALSE", b.args, nil
+	}
+	return "(" + strings.Join(clauses, ") OR (") + ")", b.args, nil
 }
 
 func (r *segmentRepository) SetMembers(ctx context.Context, orgID, segmentID uuid.UUID, contactIDs []uuid.UUID, mode models.SegmentMemberMode) (int, *errx.Error) {

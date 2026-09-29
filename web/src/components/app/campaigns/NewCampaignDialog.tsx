@@ -257,7 +257,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
 
     // Writes the draft and refreshes every view of it.
     const persist = React.useCallback(async (): Promise<string> => {
-        const id = await saveServerDraft(draft, savedName, existing, (created) => setExisting({ id: created, meta: freshMeta() }));
+        const id = await saveServerDraft(draft, savedName, existing, (created, stepIds) => setExisting({ id: created, meta: { ...freshMeta(), knownStepIds: stepIds } }));
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
             queryClient.invalidateQueries({ queryKey: ["segments"] }),

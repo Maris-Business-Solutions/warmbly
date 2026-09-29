@@ -29,6 +29,8 @@ export type DraftMeta = {
     segmentIds: string[];
     // Leads on the campaign that no list link enrolled.
     leadCount: number;
+    // Steps this flow loaded or created; any other step means someone else edited it.
+    knownStepIds: string[];
 };
 
 // A campaign just created by the flow: nothing on it is locked yet.
@@ -39,6 +41,7 @@ export const freshMeta = (): DraftMeta => ({
     steps: [],
     segmentIds: [],
     leadCount: 0,
+    knownStepIds: [],
 });
 
 export type LoadedDraft = { draft: Draft; meta: DraftMeta };
@@ -123,6 +126,7 @@ export async function loadServerDraft(id: string): Promise<LoadedDraft> {
             steps,
             segmentIds: draft.segmentIds,
             leadCount,
+            knownStepIds: steps.map((s) => s.id),
         },
     };
 }
@@ -134,11 +138,11 @@ export async function saveServerDraft(
     d: Draft,
     name: string,
     existing: { id: string; meta: DraftMeta } | null,
-    onCreated?: (id: string) => void,
+    onCreated?: (id: string, stepIds: string[]) => void,
 ): Promise<string> {
     if (!existing) {
         const created = await createCampaign(toCreateInput(d, name));
-        onCreated?.(created.id);
+        onCreated?.(created.id, await getSequences(created.id).then((s) => s.map((x) => x.id), () => []));
         if (d.segmentIds.length > 0) await setCampaignSegments(created.id, d.segmentIds);
         return created.id;
     }
@@ -162,7 +166,10 @@ export async function saveServerDraft(
     if (!meta.stepsLocked) {
         // Fresh, so a failed save's leftovers are swept up and a branch added meanwhile is kept.
         const current = await getSequences(id);
-        if (isRewritable(current)) await syncSteps(id, writtenEmails(d), current);
+        const known = new Set(meta.knownStepIds);
+        if (isRewritable(current) && current.every((s) => known.has(s.id))) {
+            await syncSteps(id, writtenEmails(d), current, (created) => meta.knownStepIds.push(created));
+        }
     }
     if (!sameSet(d.segmentIds, meta.segmentIds)) await setCampaignSegments(id, d.segmentIds);
     return id;
@@ -170,11 +177,17 @@ export async function saveServerDraft(
 
 // Writes the chain: new emails are created, changed ones patched, removed ones
 // deleted, and every step pointed at the next before anything is deleted.
-async function syncSteps(id: string, emails: EmailDraft[], before: Sequence[]) {
+async function syncSteps(id: string, emails: EmailDraft[], before: Sequence[], onCreated: (id: string) => void) {
     const byId = new Map(before.map((s) => [s.id, s]));
     const ids: string[] = [];
     for (const e of emails) {
-        ids.push(e.serverId && byId.has(e.serverId) ? e.serverId : (await createSequence(id)).id);
+        if (e.serverId && byId.has(e.serverId)) {
+            ids.push(e.serverId);
+            continue;
+        }
+        const created = (await createSequence(id)).id;
+        onCreated(created);
+        ids.push(created);
     }
     for (let i = 0; i < emails.length; i++) {
         const e = emails[i];

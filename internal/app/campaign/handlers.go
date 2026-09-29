@@ -1098,10 +1098,12 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 			return nil, errx.New(errx.BadRequest, "step_waits must be between 0 and 365 days")
 		}
 	}
-	// Unsent times fall back to the saved campaign's, then to a new campaign's.
+	// Unsent times fall back to the saved campaign's usable window, then to a new campaign's.
 	startTime, endTime := "08:00", "18:00"
-	if saved != nil && saved.StartTime != "" && saved.EndTime != "" {
-		startTime, endTime = saved.StartTime, saved.EndTime
+	if saved != nil {
+		if s, e := models.ClockMinutes(saved.StartTime, -1), models.ClockMinutes(saved.EndTime, -1); s >= 0 && e > s {
+			startTime, endTime = saved.StartTime, saved.EndTime
+		}
 	}
 	timesSent := false
 	if in.StartTime != nil && *in.StartTime != "" {

@@ -162,6 +162,23 @@ describe("server drafts", () => {
         expect(calls).toEqual(["campaign c1"]);
     });
 
+    it("leaves the steps alone when a follow-up was added elsewhere", async () => {
+        api.getSequences.mockResolvedValueOnce([step("s1", "Hi", null)]);
+        const loaded = await loadServerDraft("c1");
+        api.getSequences.mockResolvedValueOnce([step("s1", "Hi", "s9"), step("s9", "Added on the Steps tab", null)]);
+        await saveServerDraft({ ...loaded.draft, emails: [{ ...loaded.draft.emails[0], subject: "Changed" }] }, "Founders", { id: "c1", meta: loaded.meta });
+        expect(calls).toEqual(["campaign c1"]);
+    });
+
+    it("remembers the steps it created, so a retry keeps rewriting them", async () => {
+        api.getSequences.mockResolvedValueOnce([step("s1", "Hi", null)]);
+        const loaded = await loadServerDraft("c1");
+        api.getSequences.mockResolvedValueOnce([step("s1", "Hi", null)]);
+        const edited = { ...loaded.draft, emails: [loaded.draft.emails[0], { ...loaded.draft.emails[0], id: "local", serverId: undefined, subject: "More" }] };
+        await saveServerDraft(edited, "Founders", { id: "c1", meta: loaded.meta });
+        expect(loaded.meta.knownStepIds).toContain("s-new");
+    });
+
     it("leaves an unchanged chain and its lists alone", async () => {
         api.getSequences.mockResolvedValue([step("s1", "Hi", "s2", { name: "Step 1", wait_after: 0 }), step("s2", "Bump", null, { name: "Step 2" })]);
         const loaded = await loadServerDraft("c1");
