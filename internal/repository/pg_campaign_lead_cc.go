@@ -245,6 +245,30 @@ func (r *campaignProgressRepository) SuggestLeadCC(ctx context.Context, orgID, c
 	return out, rows.Err()
 }
 
+func (r *campaignProgressRepository) BouncedCopyAddresses(ctx context.Context, campaignID uuid.UUID, addresses []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(addresses) == 0 {
+		return out, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT lower(recipient_email)
+		FROM deliverability_events
+		WHERE campaign_id = $1 AND event_type = 'bounce'
+		  AND lower(recipient_email) = ANY($2::text[])`, campaignID, addresses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out[a] = true
+	}
+	return out, rows.Err()
+}
+
 // leadCCJSONSQL is one lead's copies as a JSON array for the Leads list, with
 // the lead row aliased hl and the campaign bound at cp.
 func leadCCJSONSQL(cp string) string {

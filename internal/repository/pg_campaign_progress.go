@@ -165,6 +165,12 @@ type CampaignProgressRepository interface {
 	// A lead with nothing else delivered is unbound from the mailbox that
 	// failed, so rotation can offer it a working one.
 	RecordSendFailure(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string) (attempts int, exhausted bool, rolledBack bool, err error)
+	// WalkBackSend is RecordSendFailure with the attempt optionally left
+	// uncounted, for a failure the retry is known not to repeat.
+	WalkBackSend(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string, countAttempt bool) (attempts int, exhausted bool, rolledBack bool, err error)
+	// BouncedCopyAddresses reports which of the campaign's own CC/BCC
+	// addresses have bounced on a send of this campaign.
+	BouncedCopyAddresses(ctx context.Context, campaignID uuid.UUID, addresses []string) (map[string]bool, error)
 	// LastSenderForLead is the mailbox a lead was LAST actually sent from,
 	// read from the campaign tasks that dispatched its steps. It answers the
 	// case campaign_leads.email_account_id cannot: a lead removed from the
@@ -582,6 +588,14 @@ func (r *campaignProgressRepository) ListStuckDispatches(ctx context.Context, ol
 // so a duplicate worker result after the step was already walked back (or
 // re-sent) is a no-op.
 func (r *campaignProgressRepository) RecordSendFailure(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string) (int, bool, bool, error) {
+	return r.WalkBackSend(ctx, campaignID, contactID, sequenceID, reason, true)
+}
+
+func (r *campaignProgressRepository) WalkBackSend(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string, countAttempt bool) (int, bool, bool, error) {
+	inc := 0
+	if countAttempt {
+		inc = 1
+	}
 	if len(reason) > 500 {
 		reason = reason[:500]
 	}
@@ -596,7 +610,7 @@ func (r *campaignProgressRepository) RecordSendFailure(ctx context.Context, camp
 			SET sent_at = NULL,
 			    dispatched_at = NULL,
 			    dispatch_task_id = NULL,
-			    send_attempts = send_attempts + 1,
+			    send_attempts = send_attempts + $5,
 			    failed_at = NOW(),
 			    failure_reason = $4
 			WHERE campaign_id = $1 AND contact_id = $2 AND sequence_id = $3
@@ -617,7 +631,7 @@ func (r *campaignProgressRepository) RecordSendFailure(ctx context.Context, camp
 		SELECT send_attempts FROM walked
 	`
 	var attempts int
-	err := r.db.QueryRow(ctx, query, campaignID, contactID, sequenceID, reason).Scan(&attempts)
+	err := r.db.QueryRow(ctx, query, campaignID, contactID, sequenceID, reason, inc).Scan(&attempts)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, false, false, nil

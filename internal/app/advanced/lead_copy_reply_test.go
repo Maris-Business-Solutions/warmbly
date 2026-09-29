@@ -2,6 +2,7 @@ package advanced
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -137,5 +138,48 @@ func TestUnsubscribeLinkOptsOutTheLeadsCopies(t *testing.T) {
 		if strings.Join(adv.suppressed, ",") != strings.Join(tc.want, ",") {
 			t.Fatalf("%s: suppressed %v, want %v", tc.name, adv.suppressed, tc.want)
 		}
+	}
+}
+
+// An unreadable copy list is an error, never "not a copy": guessing would
+// suppress or hold the lead for what a copy did.
+func TestCopyLookupFailureIsNotReadAsTheLead(t *testing.T) {
+	svc, progress, adv, accountID := newCopyReplyService(t)
+	progress.copiesErr = errors.New("database unavailable")
+	if xerr := svc.ProcessIncomingReply(context.Background(), accountID,
+		copyReply(accountID, "Re: Hello", "Please remove me from your list.", []string{"<opener@example.test>"})); xerr == nil {
+		t.Fatal("a failed copy lookup was processed as if the sender were not a copy")
+	}
+	if len(adv.suppressed) != 0 {
+		t.Fatalf("suppressed %v on a failed lookup", adv.suppressed)
+	}
+}
+
+// A fresh message from a copy is not a reply to anything, so it credits no lead.
+func TestCopyFreshMessageCreditsNoLead(t *testing.T) {
+	svc, progress, _, accountID := newCopyReplyService(t)
+	svc.taskRepo = incomingReplyTaskRepo{}
+	cr := svc.contactRepo.(copyReplyContactRepo)
+	cr.senderContact = &models.Contact{ID: uuid.New(), Email: "jonas@acme.test"}
+	svc.contactRepo = cr
+	progress.copiedLead = &repository.CopiedLeadRef{CampaignID: uuid.New(), ContactID: uuid.New(), SequenceID: uuid.New()}
+
+	if xerr := svc.ProcessIncomingReply(context.Background(), accountID,
+		copyReply(accountID, "Quick question", "Unrelated: are you at the fair next week?", nil)); xerr != nil {
+		t.Fatal(xerr)
+	}
+	if progress.replied != 0 {
+		t.Fatalf("RecordEmailReplied calls = %d, want none for a message that replies to nothing", progress.replied)
+	}
+}
+
+// The opt-out is not acknowledged while a copy is still sendable.
+func TestUnsubscribeFailsWhenCopiesCannotBeRead(t *testing.T) {
+	svc, progress, _, _ := newCopyReplyService(t)
+	progress.copiesErr = errors.New("database unavailable")
+	campaign := svc.campaignRepo.(incomingReplyCampaignRepo).campaign
+	lead := svc.contactRepo.(copyReplyContactRepo).taskContact.ID
+	if xerr := svc.UnsubscribeFromLink(context.Background(), *campaign.OrganizationID, campaign.ID, lead, "link"); xerr == nil {
+		t.Fatal("the unsubscribe succeeded without reaching the lead's copies")
 	}
 }

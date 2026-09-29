@@ -86,11 +86,11 @@ type incomingReplyProgressRepo struct {
 	advanced      *incomingReplyAdvancedRepo
 	copies        []models.CampaignLeadCC
 	copiedLead    *repository.CopiedLeadRef
-	heldEvery     int
+	copiesErr     error
 }
 
 func (r *incomingReplyProgressRepo) ListLeadCC(context.Context, uuid.UUID, uuid.UUID) ([]models.CampaignLeadCC, error) {
-	return r.copies, nil
+	return r.copies, r.copiesErr
 }
 
 func (r *incomingReplyProgressRepo) LeadForCopiedReply(context.Context, uuid.UUID, uuid.UUID) (*repository.CopiedLeadRef, error) {

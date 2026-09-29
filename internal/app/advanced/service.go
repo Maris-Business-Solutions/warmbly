@@ -646,39 +646,40 @@ func (s *service) unsubscribe(ctx context.Context, expectOrg *uuid.UUID, campaig
 	// who used it, so it opts all of them out. A sequence action is about the
 	// lead alone.
 	if via != "action" {
-		s.unsubscribeLeadCopies(ctx, *campaign.OrganizationID, campaignID, contactID, contact.Email, via, reason)
+		return s.unsubscribeLeadCopies(ctx, *campaign.OrganizationID, campaignID, contactID, contact.Email, via, reason)
 	}
 	return nil
 }
 
 // isLeadCopy reports whether sender is one of the contacts copied on the
-// lead's emails rather than the lead answering from another address.
-func (s *service) isLeadCopy(ctx context.Context, campaignID, contactID uuid.UUID, leadEmail, sender string) bool {
+// lead's emails rather than the lead answering from another address. A failed
+// read is an error, never "not a copy", which would charge the lead.
+func (s *service) isLeadCopy(ctx context.Context, campaignID, contactID uuid.UUID, leadEmail, sender string) (bool, error) {
 	if s.campaignProgressRepo == nil || sender == "" || strings.EqualFold(leadEmail, sender) {
-		return false
+		return false, nil
 	}
 	copies, err := s.campaignProgressRepo.ListLeadCC(ctx, campaignID, contactID)
 	if err != nil {
-		return false
+		return false, err
 	}
 	for _, cp := range copies {
 		if strings.EqualFold(strings.TrimSpace(cp.Email), sender) {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // unsubscribeLeadCopies suppresses every contact copied on one lead's emails.
-// Best effort: the lead itself is already opted out.
-func (s *service) unsubscribeLeadCopies(ctx context.Context, orgID, campaignID, contactID uuid.UUID, leadEmail, via, reason string) {
+// A failure fails the request, so the opt-out is retried rather than
+// acknowledged with a copy still sendable; the upserts are idempotent.
+func (s *service) unsubscribeLeadCopies(ctx context.Context, orgID, campaignID, contactID uuid.UUID, leadEmail, via, reason string) *errx.Error {
 	if s.campaignProgressRepo == nil {
-		return
+		return nil
 	}
 	copies, err := s.campaignProgressRepo.ListLeadCC(ctx, campaignID, contactID)
 	if err != nil {
-		log.Warn().Err(err).Str("contact_id", contactID.String()).Msg("unsubscribe: could not read the lead's copies")
-		return
+		return toErrx(err)
 	}
 	for _, cp := range copies {
 		addr := strings.ToLower(strings.TrimSpace(cp.Email))
@@ -694,8 +695,7 @@ func (s *service) unsubscribeLeadCopies(ctx context.Context, orgID, campaignID, 
 			CampaignID:     &campaignID,
 			Metadata:       map[string]interface{}{"via": via, "copied_on": leadEmail},
 		}); err != nil {
-			log.Warn().Err(err).Str("contact_id", cp.ContactID.String()).Msg("unsubscribe: could not suppress a copied contact")
-			continue
+			return toErrx(err)
 		}
 		if err := s.contactRepo.SetSubscribedByEmail(ctx, orgID, addr, false); err != nil {
 			log.Warn().Err(err).Str("contact_id", cp.ContactID.String()).Msg("unsubscribe: could not clear a copied contact's subscription flag")
@@ -707,6 +707,7 @@ func (s *service) unsubscribeLeadCopies(ctx context.Context, orgID, campaignID, 
 			"source":        via,
 		})
 	}
+	return nil
 }
 
 func (s *service) Resubscribe(ctx context.Context, organizationID, contactID uuid.UUID) *errx.Error {
@@ -1292,7 +1293,11 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		campaignID = ct.CampaignID
 		contactID = ct.ContactID
 		sequenceID = ct.SequenceID
-		senderIsCopy = s.isLeadCopy(ctx, *ct.CampaignID, *ct.ContactID, contactEmail, sender)
+		isCopy, cerr := s.isLeadCopy(ctx, *ct.CampaignID, *ct.ContactID, contactEmail, sender)
+		if cerr != nil {
+			return toErrx(cerr)
+		}
+		senderIsCopy = isCopy
 		break
 	}
 
@@ -1317,14 +1322,19 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 
 	// A copied contact answering further down the thread (to the lead's own
 	// reply, say) names no message of ours; the mailbox that wrote to the
-	// lead is the evidence, and the reply is the lead's.
-	if campaignID == nil && contactID != nil && !referencesCampaignThread {
+	// lead is the evidence, and the reply is the lead's. A fresh message with
+	// no parent is not a reply to anything and credits nobody.
+	if campaignID == nil && contactID != nil && !referencesCampaignThread && len(msg.InReplyTo) > 0 {
 		ref, err := s.campaignProgressRepo.LeadForCopiedReply(ctx, *contactID, emailAccountID)
 		if err != nil {
 			return toErrx(err)
 		}
 		if ref != nil {
-			if lead, lerr := s.contactRepo.GetByID(ctx, ref.ContactID); lerr == nil && lead != nil {
+			lead, lerr := s.contactRepo.GetByID(ctx, ref.ContactID)
+			if lerr != nil {
+				return lerr
+			}
+			if lead != nil {
 				campaignID, sequenceID = &ref.CampaignID, &ref.SequenceID
 				contactID = &ref.ContactID
 				contactEmail = strings.TrimSpace(lead.Email)

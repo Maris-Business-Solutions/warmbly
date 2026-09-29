@@ -194,7 +194,7 @@ Create a campaign. Only `name` is required, every other field is optional and ap
 | `daily_limit` | integer | no | Per-campaign daily send cap. |
 | `unsubscribe_header` | boolean | no | Add the RFC 8058 one-click unsubscribe header. |
 | `risky_emails` | boolean | no | Allow sending to risky/unverified addresses. |
-| `cc` | string[] | no | Static CC list, on every email to every lead. An address that is suppressed or is the lead's own is left off that email. To copy someone on one lead only, see [set a lead's CC](#set-a-leads-cc). |
+| `cc` | string[] | no | Static CC list, on every email to every lead. An address that is suppressed, is the lead's own, or has bounced on this campaign is left off that email. To copy someone on one lead only, see [set a lead's CC](#set-a-leads-cc). |
 | `bcc` | string[] | no | Static BCC list, filtered the same way. |
 | `start_date` | string (RFC 3339), nullable | no | Earliest send time. Today or later; omit or send `null` to start as soon as the campaign is active. |
 | `end_date` | string (RFC 3339), nullable | no | Latest send time. Must be in the future; omit or send `null` for an open-ended campaign. |

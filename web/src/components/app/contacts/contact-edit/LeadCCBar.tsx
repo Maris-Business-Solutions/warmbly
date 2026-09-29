@@ -189,7 +189,17 @@ function CCPicker({
     const loading = q.length > 0 ? search.isFetching && !search.contacts : suggestions.isLoading;
 
     return (
-        <div ref={ref} className="relative">
+        <div
+            ref={ref}
+            className="relative"
+            // On the wrapper, so Escape closes the picker from any focused child.
+            onKeyDown={(e) => {
+                if (e.key === "Escape" && open) {
+                    e.stopPropagation();
+                    setOpen(false);
+                }
+            }}
+        >
             <button
                 ref={triggerRef}
                 type="button"
@@ -219,12 +229,6 @@ function CCPicker({
                             <input
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Escape") {
-                                        e.stopPropagation();
-                                        setOpen(false);
-                                    }
-                                }}
                                 placeholder="Search contacts…"
                                 autoFocus
                                 className="w-full h-5 bg-transparent text-[12px] text-slate-900 placeholder:text-slate-400 outline-none"

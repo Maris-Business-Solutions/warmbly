@@ -245,9 +245,17 @@ func (s *JobsService) failCampaignSend(ctx context.Context, task *repository.Tas
 		s.Evidence.RecordEvidence(ctx, *ct.ContactID, models.Step(&campaignID, ct.SequenceID), "bounced_recipient", "send:"+ct.SequenceID.String(), reason)
 	}
 
+	// A refused copy that the retry will leave off costs the lead no attempt;
+	// one that could not be recorded is counted, so it cannot loop forever.
+	copyExcluded := copyRefused && s.recordRefusedCopy(ctx, task, ct, campaign, refused, reason)
+
 	attempts, exhausted, rolledBack := 0, false, false
 	if ct.ContactID != nil && ct.SequenceID != nil && s.CampaignProgressRepo != nil {
-		attempts, exhausted, rolledBack, err = s.CampaignProgressRepo.RecordSendFailure(ctx, campaignID, *ct.ContactID, *ct.SequenceID, reason)
+		if copyExcluded {
+			attempts, exhausted, rolledBack, err = s.CampaignProgressRepo.WalkBackSend(ctx, campaignID, *ct.ContactID, *ct.SequenceID, reason, false)
+		} else {
+			attempts, exhausted, rolledBack, err = s.CampaignProgressRepo.RecordSendFailure(ctx, campaignID, *ct.ContactID, *ct.SequenceID, reason)
+		}
 		if err != nil {
 			return err
 		}
@@ -277,9 +285,6 @@ func (s *JobsService) failCampaignSend(ctx context.Context, task *repository.Tas
 	// reputation, so it goes through the bounce pipeline (progress, optional
 	// suppression, guardrails, warmup health, webhooks) and the lead is
 	// dropped as bounced instead of being offered again.
-	if copyRefused {
-		s.recordRefusedCopy(ctx, task, ct, campaign, refused, reason)
-	}
 	if rolledBack && !copyRefused && code == string(errx.MailErrorCodeRecipientRejected) {
 		if s.recordSynchronousBounce(ctx, task, ct, campaign, recipient, reason) {
 			s.logCampaignSendFailure(ctx, campaignID, ct, recipient, reason, code, attempts, false, false, false)
@@ -345,12 +350,12 @@ func (s *JobsService) recordSynchronousBounce(ctx context.Context, task *reposit
 }
 
 // recordRefusedCopy feeds a copied address the server refused at RCPT into
-// the bounce pipeline under its own name. A lead's copied contact is marked
-// bounced on that lead, so the retry leaves them off whatever the workspace's
-// auto-suppress setting is.
-func (s *JobsService) recordRefusedCopy(ctx context.Context, task *repository.Task, ct *repository.CampaignTask, campaign *models.Campaign, refused, reason string) {
+// the bounce pipeline under its own name, and reports whether the next send
+// is sure to leave it off: a lead's copy through its bounced mark, a
+// campaign-wide one through the recorded bounce the send path reads.
+func (s *JobsService) recordRefusedCopy(ctx context.Context, task *repository.Task, ct *repository.CampaignTask, campaign *models.Campaign, refused, reason string) bool {
 	if campaign == nil || campaign.OrganizationID == nil || ct.CampaignID == nil || ct.ContactID == nil {
-		return
+		return false
 	}
 	address := strings.ToLower(mailhdr.Bare(refused))
 	var owner *uuid.UUID
@@ -362,7 +367,7 @@ func (s *JobsService) recordRefusedCopy(ctx context.Context, task *repository.Ta
 		owner = id
 	}
 	if s.AdvancedService == nil {
-		return
+		return owner != nil
 	}
 	taskID := task.ID
 	req := &models.IngestDeliverabilityEventRequest{
@@ -377,7 +382,9 @@ func (s *JobsService) recordRefusedCopy(ctx context.Context, task *repository.Ta
 	}
 	if xerr := s.AdvancedService.IngestDeliverabilityEvent(ctx, *campaign.OrganizationID, req); xerr != nil {
 		log.Warn().Str("task_id", taskID.String()).Str("error", xerr.Message).Msg("could not record a refused copy as a bounce")
+		return owner != nil
 	}
+	return true
 }
 
 // refusedRecipient is the address the server refused, when the worker knew.

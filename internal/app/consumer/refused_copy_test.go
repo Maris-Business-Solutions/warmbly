@@ -39,10 +39,17 @@ type copyProgressRepo struct {
 	repository.CampaignProgressRepository
 	copyID  uuid.UUID
 	bounced []string
+	counted []bool
 }
 
-func (*copyProgressRepo) RecordSendFailure(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) (int, bool, bool, error) {
+func (r *copyProgressRepo) RecordSendFailure(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) (int, bool, bool, error) {
+	r.counted = append(r.counted, true)
 	return 1, false, true, nil
+}
+
+func (r *copyProgressRepo) WalkBackSend(_ context.Context, _, _, _ uuid.UUID, _ string, count bool) (int, bool, bool, error) {
+	r.counted = append(r.counted, count)
+	return 0, false, true, nil
 }
 
 func (*copyProgressRepo) HasSentSteps(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
@@ -115,7 +122,14 @@ func TestRefusedCopyIsNotTheLeadsBounce(t *testing.T) {
 			if len(progress.bounced) != 1 {
 				t.Fatalf("%s: copy marked bounced %v times, want once", tc.name, progress.bounced)
 			}
+			// The retry leaves the copy off, so the lead is not charged an attempt.
+			if len(progress.counted) != 1 || progress.counted[0] {
+				t.Fatalf("%s: walk-backs %v, want one that counts no attempt", tc.name, progress.counted)
+			}
 			continue
+		}
+		if len(progress.counted) != 1 || !progress.counted[0] {
+			t.Fatalf("%s: walk-backs %v, want the lead's attempt counted", tc.name, progress.counted)
 		}
 		if got.RecipientEmail != "ana@acme.test" || got.ContactID == nil || *got.ContactID != lead || len(progress.bounced) != 0 {
 			t.Fatalf("%s: bounce event %+v (copies marked %v), want the lead's own bounce", tc.name, got, progress.bounced)

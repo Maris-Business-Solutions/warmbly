@@ -31,6 +31,10 @@ func (f copiesProgress) ListLeadCC(context.Context, uuid.UUID, uuid.UUID) ([]mod
 	return f.cc, nil
 }
 
+func (f copiesProgress) BouncedCopyAddresses(context.Context, uuid.UUID, []string) (map[string]bool, error) {
+	return map[string]bool{"refused@acme.test": true}, nil
+}
+
 // A copy never reaches someone the lead's own email could not: suppressed
 // campaign copies, the lead's own address, repeats and lead copies the status
 // already refused are all left off.
@@ -47,7 +51,7 @@ func TestCampaignCopiesFiltersEveryCopy(t *testing.T) {
 	campaign := &models.Campaign{
 		ID:  uuid.New(),
 		CC:  []string{"Boss <boss@acme.test>", "gone@acme.test", "ANA@acme.test"},
-		BCC: []string{"crm@acme.test", "boss@acme.test"},
+		BCC: []string{"crm@acme.test", "boss@acme.test", "Refused@acme.test"},
 	}
 	contact := &models.Contact{ID: uuid.New(), Email: "ana@acme.test"}
 

@@ -231,3 +231,34 @@ func TestLiveLeadCCShowsInTheLeadsList(t *testing.T) {
 		t.Fatalf("the copied lead reads %+v; want paused with a cc hold", lead)
 	}
 }
+
+// A refused copy walks the step back without spending the lead's attempt, and
+// a campaign-wide copy that bounced here is reported so the send leaves it off.
+func TestLiveLeadCCRefusedCopyCostsNoAttempt(t *testing.T) {
+	_, pool := liveContactDB(t)
+	f := newRoutedPairsFixture(t, pool, 1)
+	repo := NewCampaignProgressRepository(pool)
+	ctx := context.Background()
+	lead := f.leads[0]
+
+	if _, err := pool.Exec(ctx, `INSERT INTO campaign_contact_progress (campaign_id, contact_id, sequence_id, sent_at, dispatched_at)
+		VALUES ($1, $2, $3, NOW(), NOW())`, f.campaign, lead, f.step); err != nil {
+		t.Fatalf("progress: %v", err)
+	}
+	attempts, _, rolled, err := repo.WalkBackSend(ctx, f.campaign, lead, f.step, "copy refused", false)
+	if err != nil || !rolled || attempts != 0 {
+		t.Fatalf("WalkBackSend = %d, %v, %v; want rolled back with no attempt", attempts, rolled, err)
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO deliverability_events (organization_id, campaign_id, event_type, recipient_email, idempotency_key)
+		VALUES ($1, $2, 'bounce', 'Crm@Acme.test', $3)`, f.org, f.campaign, "test:"+uuid.NewString()); err != nil {
+		t.Fatalf("event: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM deliverability_events WHERE organization_id = $1`, f.org)
+	})
+	got, err := repo.BouncedCopyAddresses(ctx, f.campaign, []string{"crm@acme.test", "boss@acme.test"})
+	if err != nil || !got["crm@acme.test"] || got["boss@acme.test"] {
+		t.Fatalf("BouncedCopyAddresses = %v, %v; want only the bounced address", got, err)
+	}
+}

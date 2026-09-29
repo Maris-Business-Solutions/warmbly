@@ -33,6 +33,22 @@ func (s *tasksService) campaignCopies(ctx context.Context, orgID uuid.UUID, camp
 		return true, nil
 	}
 
+	// A campaign-wide copy that bounced on this campaign is dropped, so one bad
+	// address cannot keep failing every lead's send.
+	var wide []string
+	for _, a := range append(append([]string{}, campaign.CC...), campaign.BCC...) {
+		if bare := strings.ToLower(mailhdr.Bare(a)); bare != "" {
+			wide = append(wide, bare)
+		}
+	}
+	bounced, berr := s.campaignProgressRepo.BouncedCopyAddresses(ctx, campaign.ID, wide)
+	if berr != nil {
+		return nil, nil, berr
+	}
+	for a := range bounced {
+		seen[a] = true
+	}
+
 	for _, a := range campaign.CC {
 		ok, kerr := keep(a)
 		if kerr != nil {

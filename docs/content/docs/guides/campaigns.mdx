@@ -193,18 +193,18 @@ What happens to the people on the thread:
 
 | Event | What Warmbly does |
 |-------|-------------------|
-| A copy replies | It counts as the lead's reply, whether they answer your email or the lead's reply to it. With stop on reply on, the sequence stops for everyone on the thread. A reply that leaves your mailbox off (sent only to the lead) never reaches Warmbly |
+| A copy replies | It counts as the lead's reply, whether they answer your email or the lead's reply to it. A new email from them that answers nothing counts for no lead. With stop on reply on, the sequence stops for everyone on the thread. A reply that leaves your mailbox off (sent only to the lead) never reaches Warmbly |
 | A copy is out of office | Nothing: the lead is not held for someone else's away message |
 | A copy replies asking to stop | Only the copy is suppressed and left off later emails. The lead is not |
 | Someone uses the unsubscribe link | The link cannot tell who clicked, so the lead and every copy on the thread are unsubscribed |
-| A copy bounces | That copy is dropped from the lead's later emails and the lead keeps receiving them. The lead is never marked bounced for a copy |
+| A copy bounces | That copy is dropped from the lead's later emails and the lead keeps receiving them. The lead is never marked bounced for a copy. When the mail server refuses the copy outright, the email is retried without them and the refusal does not count against the lead's five attempts |
 | A copy is unsubscribed, suppressed, bounced or fails verification | They are left off the next email and their chip is struck through in the drawer; the lead's email still goes out |
 
 Opens and clicks are counted per email, not per person, so a copy opening the email or clicking a link counts toward the lead.
 
 A contact copied on a lead is reached in that lead's thread, so if they are also a lead of the same campaign their own sequence is held with the reason **Copied on the emails to** the lead's address. That hold has no end and does not keep the campaign from finishing. Removing the copy, or removing the lead from the campaign, releases it and their own sequence picks up. **Send their own too** on that hold starts it anyway after asking, for when two threads are really what you want. For the same reason a lead that is copied on someone else cannot copy others, and a contact with copies of their own cannot be copied.
 
-The campaign's own **CC** and **BCC** in its preferences go on every email to every lead. Both kinds of copy skip an address that is suppressed or is the lead's own, so a copy never reaches someone the lead's email could not have.
+The campaign's own **CC** and **BCC** in its preferences go on every email to every lead. Both kinds of copy skip an address that is suppressed or is the lead's own, so a copy never reaches someone the lead's email could not have. A campaign-wide address that bounces on one of the campaign's emails is left off its later emails, so one bad address cannot fail every lead's send; fix or remove it in the preferences.
 
 ### Who opened, clicked and replied
 

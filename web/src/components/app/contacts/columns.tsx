@@ -159,7 +159,9 @@ const nameColumn: ContactColumn = {
                         {!!c.campaign_lead?.cc?.length && (
                             <span
                                 className="inline-flex items-center h-3.5 px-1 shrink-0 rounded bg-sky-50 text-sky-700 font-sans text-[9.5px] font-medium"
-                                title={`Copied on every email: ${c.campaign_lead.cc.map((x) => x.email).join(", ")}`}
+                                title={`CC: ${c.campaign_lead.cc
+                                    .map((x) => (x.status === "active" ? x.email : `${x.email} (${x.status}, left off)`))
+                                    .join(", ")}`}
                             >
                                 CC {c.campaign_lead.cc.length}
                             </span>
