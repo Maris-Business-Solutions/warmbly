@@ -17,6 +17,8 @@ export interface CampaignEstimateInput {
     end_time?: string;
     // Each follow-up's wait in days, in order. Empty is a single email.
     step_waits?: number[];
+    // A saved draft: its leads count too, and its own senders and windows apply.
+    campaign_id?: string;
 }
 
 export type EstimateBottleneck =

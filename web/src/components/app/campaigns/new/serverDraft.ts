@@ -13,6 +13,7 @@ import createSequence from "@/lib/api/client/app/campaigns/sequences/createSeque
 import updateSequence from "@/lib/api/client/app/campaigns/sequences/updateSequence";
 import deleteSequence from "@/lib/api/client/app/campaigns/sequences/deleteSequence";
 import { listCampaignSegments, setCampaignSegments } from "@/lib/api/client/app/segments";
+import getCampaignAnalytics from "@/lib/api/client/app/analytics/getCampaignAnalytics";
 import { htmlToPlain } from "@/components/app/campaigns/sequences/emailPreview";
 import { hasContent, initialDraft, scheduledDate, toCreateInput, writtenEmails, type Draft, type EmailDraft } from "./draft";
 
@@ -26,7 +27,19 @@ export type DraftMeta = {
     explicitSenders: boolean;
     steps: Sequence[];
     segmentIds: string[];
+    // Leads already on the campaign, however they got there.
+    leadCount: number;
 };
+
+// A campaign just created by the flow: nothing on it is locked yet.
+export const freshMeta = (): DraftMeta => ({
+    stepsLocked: false,
+    customWindows: false,
+    explicitSenders: false,
+    steps: [],
+    segmentIds: [],
+    leadCount: 0,
+});
 
 export type LoadedDraft = { draft: Draft; meta: DraftMeta };
 
@@ -52,7 +65,13 @@ function isLinear(steps: Sequence[]): boolean {
 }
 
 export async function loadServerDraft(id: string): Promise<LoadedDraft> {
-    const [campaign, steps, links] = await Promise.all([getCampaign(id), getSequences(id), listCampaignSegments(id)]);
+    const [campaign, steps, links, leadCount] = await Promise.all([
+        getCampaign(id),
+        getSequences(id),
+        listCampaignSegments(id),
+        // Analytics may be off for this member; the count is a hint, not a gate.
+        getCampaignAnalytics(id).then((a) => a.summary?.total_contacts ?? 0, () => 0),
+    ]);
     const stepsLocked = !isLinear(steps);
     const customWindows = (campaign.schedule_windows ?? []).some((d) => Array.isArray(d) && d.length > 0);
     const base = initialDraft(campaign.timezone ?? "");
@@ -96,6 +115,7 @@ export async function loadServerDraft(id: string): Promise<LoadedDraft> {
             explicitSenders: campaign.sender_strategy === "explicit",
             steps,
             segmentIds: draft.segmentIds,
+            leadCount,
         },
     };
 }
@@ -103,9 +123,17 @@ export async function loadServerDraft(id: string): Promise<LoadedDraft> {
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
 // Creates the draft, or writes the flow's answers back onto it. Returns the id.
-export async function saveServerDraft(d: Draft, name: string, existing: { id: string; meta: DraftMeta } | null): Promise<string> {
+// onCreated fires the moment a new campaign exists, so a save that fails
+// after it retries as an update instead of creating a second campaign.
+export async function saveServerDraft(
+    d: Draft,
+    name: string,
+    existing: { id: string; meta: DraftMeta } | null,
+    onCreated?: (id: string) => void,
+): Promise<string> {
     if (!existing) {
         const created = await createCampaign(toCreateInput(d, name));
+        onCreated?.(created.id);
         if (d.segmentIds.length > 0) await setCampaignSegments(created.id, d.segmentIds);
         return created.id;
     }
@@ -126,7 +154,8 @@ export async function saveServerDraft(d: Draft, name: string, existing: { id: st
     if (!meta.customWindows) Object.assign(patch, { days: d.days, start_time: d.startTime, end_time: d.endTime });
     if (!meta.explicitSenders) patch.email_tags = d.emailTagIds;
     await updateCampaign(id, patch);
-    if (!meta.stepsLocked) await syncSteps(id, writtenEmails(d), meta.steps);
+    // Read fresh, so steps a failed earlier save left behind are swept up.
+    if (!meta.stepsLocked) await syncSteps(id, writtenEmails(d), await getSequences(id));
     if (!sameSet(d.segmentIds, meta.segmentIds)) await setCampaignSegments(id, d.segmentIds);
     return id;
 }
@@ -145,7 +174,8 @@ async function syncSteps(id: string, emails: EmailDraft[], before: Sequence[]) {
         const next = ids[i + 1] ?? null;
         const branch = prev?.conditions?.branches?.[0];
         const content = {
-            name: `Step ${i + 1}`,
+            // A name given on the Steps tab stays.
+            name: prev?.name || `Step ${i + 1}`,
             subject: e.subject.trim(),
             body_html: e.body_html,
             body_plain: e.body_plain || htmlToPlain(e.body_html),

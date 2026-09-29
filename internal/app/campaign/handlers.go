@@ -1059,13 +1059,25 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 		seen[raw] = true
 		segmentIDs = append(segmentIDs, raw)
 	}
-	// One preview over "in any of these segments" counts each contact once
-	// however many of the segments they belong to.
-	if len(segmentIDs) > 0 && s.segments != nil {
-		n, xerr := s.segments.Preview(ctx, orgID, &models.SegmentPreview{
-			Match:      models.SegmentMatchAny,
-			Conditions: []models.SegmentCondition{{Field: "segment", Operator: models.SegOpIn, Values: segmentIDs}},
-		})
+	var saved *models.Campaign
+	if in.CampaignID != nil && *in.CampaignID != "" {
+		c, _, xerr := s.campaignForOrg(ctx, orgID, *in.CampaignID)
+		if xerr != nil {
+			return nil, xerr
+		}
+		saved = c
+	}
+	// One preview over "in any of these segments, or already a lead" counts
+	// each contact once however many of them they belong to.
+	conditions := []models.SegmentCondition{}
+	if len(segmentIDs) > 0 {
+		conditions = append(conditions, models.SegmentCondition{Field: "segment", Operator: models.SegOpIn, Values: segmentIDs})
+	}
+	if saved != nil {
+		conditions = append(conditions, models.SegmentCondition{Field: "campaign", Operator: models.SegOpIn, Values: []string{saved.ID.String()}})
+	}
+	if len(conditions) > 0 && s.segments != nil {
+		n, xerr := s.segments.Preview(ctx, orgID, &models.SegmentPreview{Match: models.SegmentMatchAny, Conditions: conditions})
 		if xerr != nil {
 			return nil, xerr
 		}
@@ -1087,20 +1099,35 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 			return nil, errx.New(errx.BadRequest, "step_waits must be between 0 and 365 days")
 		}
 	}
-	for _, v := range []*string{in.StartTime, in.EndTime} {
-		if v != nil && *v != "" && models.ClockMinutes(*v, -1) < 0 {
-			return nil, errx.New(errx.BadRequest, "start_time and end_time must be HH:MM")
-		}
+	// The window a new campaign gets when none is sent.
+	startTime, endTime := "08:00", "18:00"
+	if in.StartTime != nil && *in.StartTime != "" {
+		startTime = *in.StartTime
+	}
+	if in.EndTime != nil && *in.EndTime != "" {
+		endTime = *in.EndTime
+	}
+	startMin, endMin := models.ClockMinutes(startTime, -1), models.ClockMinutes(endTime, -1)
+	if startMin < 0 || endMin < 0 {
+		return nil, errx.New(errx.BadRequest, "start_time and end_time must be HH:MM")
+	}
+	if endMin <= startMin {
+		return nil, errx.New(errx.BadRequest, "end_time must be after start_time")
 	}
 
-	// Same pool resolution as the scheduler: tags when given, otherwise
+	// Same pool resolution as the scheduler: a saved campaign with mailboxes
+	// picked one by one sends from those, otherwise tags when given, otherwise
 	// every active mailbox in the workspace.
 	scope := repository.NewAccountScope(&orgID)
 	var accounts []models.Email
 	var xerr *errx.Error
-	if len(in.EmailTagIDs) > 0 {
+	switch {
+	case saved != nil && repository.ExplicitSenderPool(saved):
+		pool, perr := repository.ResolveCampaignSenderPool(ctx, s.emailRepo, saved)
+		accounts, xerr = pool.Accounts, perr
+	case len(in.EmailTagIDs) > 0:
 		accounts, xerr = s.emailRepo.GetByTags(ctx, scope, in.EmailTagIDs)
-	} else {
+	default:
 		accounts, xerr = s.emailRepo.GetAllActiveInScope(ctx, scope)
 	}
 	if xerr != nil {
@@ -1120,9 +1147,10 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 	if in.Timezone != nil && *in.Timezone != "" && tz.Valid(*in.Timezone) {
 		zone = *in.Timezone
 	}
-	draft := &models.Campaign{OrganizationID: &orgID, DailyLimit: dailyLimit, Days: days, Timezone: zone, StartDate: in.StartDate}
-	if in.StartTime != nil && in.EndTime != nil {
-		draft.StartTime, draft.EndTime = *in.StartTime, *in.EndTime
+	draft := &models.Campaign{OrganizationID: &orgID, DailyLimit: dailyLimit, Days: days, Timezone: zone, StartDate: in.StartDate, StartTime: startTime, EndTime: endTime}
+	// A saved campaign's own per-day windows stand unless a window is sent.
+	if saved != nil && in.StartTime == nil && in.EndTime == nil && !saved.ScheduleWindows.IsEmpty() {
+		draft.ScheduleWindows = saved.ScheduleWindows
 	}
 
 	// The pool's day under the same clamps the scheduler applies (the

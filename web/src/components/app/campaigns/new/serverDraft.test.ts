@@ -39,6 +39,9 @@ vi.mock("@/lib/api/client/app/campaigns/sequences/updateSequence", () => ({
 vi.mock("@/lib/api/client/app/campaigns/sequences/deleteSequence", () => ({
     default: (c: string, sid: string) => api.deleteSequence(c, sid),
 }));
+vi.mock("@/lib/api/client/app/analytics/getCampaignAnalytics", () => ({
+    default: async () => ({ summary: { total_contacts: 7 } }),
+}));
 vi.mock("@/lib/api/client/app/segments", () => ({
     listCampaignSegments: (id: string) => api.listCampaignSegments(id),
     setCampaignSegments: (id: string, ids: string[]) => api.setCampaignSegments(id, ids),
@@ -118,10 +121,27 @@ describe("server drafts", () => {
             "campaign c1",
             "create step",
             "update s1 -> s3 content",
-            "update s3 -> s-new content",
+            "update s3 -> s-new",
             "update s-new content",
             "delete s2",
         ]);
+    });
+
+    it("keeps step names given on the Steps tab", async () => {
+        api.getSequences.mockResolvedValue([step("s1", "Hi", null, { name: "Intro", wait_after: 0 })]);
+        const loaded = await loadServerDraft("c1");
+        const edited = { ...loaded.draft, emails: [{ ...loaded.draft.emails[0], subject: "Hello" }] };
+        await saveServerDraft(edited, "Founders", { id: "c1", meta: loaded.meta });
+        expect(api.updateSequence).toHaveBeenCalledWith("c1", "s1", expect.objectContaining({ name: "Intro", subject: "Hello" }));
+        expect(loaded.meta.leadCount).toBe(7);
+    });
+
+    it("hands back a new campaign's id before a later call can fail", async () => {
+        api.setCampaignSegments.mockRejectedValueOnce(new Error("boom"));
+        const created: string[] = [];
+        const { draft } = await loadServerDraft("c1");
+        await expect(saveServerDraft(draft, "Founders", null, (id) => created.push(id))).rejects.toThrow("boom");
+        expect(created).toEqual(["new-campaign"]);
     });
 
     it("leaves an unchanged chain and its lists alone", async () => {

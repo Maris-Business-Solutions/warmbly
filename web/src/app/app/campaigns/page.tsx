@@ -250,8 +250,10 @@ export default function CampaignsPage() {
     const [status, setStatus] = useState<StatusFilter>("all");
     const [sort, setSort] = useState<SortMode>("newest");
     const [newOpen, setNewOpen] = useState<boolean>(false);
-    // A draft clicked in the list reopens in the new-campaign flow.
+    // A draft clicked in the list reopens in the new-campaign flow, for a
+    // member who may edit it; anyone else gets the campaign page.
     const [draftId, setDraftId] = useState<string | null>(null);
+    const canManage = usePermission("MANAGE_CAMPAIGNS");
     const [launchTarget, setLaunchTarget] = useState<Campaign | null>(null);
 
     async function toggleCampaign(id: string, currentStatus: string) {
@@ -517,7 +519,7 @@ export default function CampaignsPage() {
                                     to={`/app/campaigns/${c.id}`}
                                     onClick={(e) => {
                                         // A modified click still opens the page, in a new tab or not.
-                                        if (cstatus !== "draft" || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                                        if (!canManage || cstatus !== "draft" || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
                                         e.preventDefault();
                                         setDraftId(c.id);
                                     }}

@@ -62,6 +62,7 @@ export function LeadsStep({
     patch,
     placeholderName,
     estimate,
+    existingLeads = 0,
     onImport,
     onEnter,
 }: {
@@ -69,6 +70,8 @@ export function LeadsStep({
     patch: Patch;
     placeholderName: string;
     estimate: EstimateState;
+    // Leads a saved draft already has, added outside the lists.
+    existingLeads?: number;
     onImport: () => void;
     onEnter: () => void;
 }) {
@@ -194,7 +197,12 @@ export function LeadsStep({
 
             {lists.length > 0 && (
                 <p className="mt-3 flex items-center gap-2 text-[12px] min-h-5">
-                    {draft.segmentIds.length === 0 ? (
+                    {draft.segmentIds.length === 0 && existingLeads > 0 ? (
+                        <span className="text-slate-500">
+                            It already has <span className="text-slate-900 font-medium tabular-nums">{plural(existingLeads, "lead")}</span>.
+                            Lists picked here add their members too.
+                        </span>
+                    ) : draft.segmentIds.length === 0 ? (
                         <span className="text-slate-400">No list picked. You can also add leads after creating it.</span>
                     ) : estimate.loading && !estimate.data ? (
                         <span className="text-slate-500">Counting…</span>
@@ -203,7 +211,9 @@ export function LeadsStep({
                     ) : (
                         <span className="text-slate-500">
                             <span className="text-slate-900 font-medium tabular-nums">{plural(recipients, "unique lead")}</span>
-                            {" "}from {plural(draft.segmentIds.length, "list")}. Unsubscribed and suppressed leads are skipped.
+                            {" "}
+                            {existingLeads > 0 ? "including the leads it already has" : `from ${plural(draft.segmentIds.length, "list")}`}. Unsubscribed
+                            and suppressed leads are skipped.
                         </span>
                     )}
                     {estimate.loading && estimate.data && draft.segmentIds.length > 0 && (
@@ -629,6 +639,7 @@ export function ReviewStep({
     launchBlock,
     lockedSteps,
     customWindows,
+    existingLeads = 0,
     goTo,
 }: {
     draft: Draft;
@@ -640,6 +651,7 @@ export function ReviewStep({
     launchBlock: LaunchBlock;
     lockedSteps?: Sequence[] | null;
     customWindows?: boolean;
+    existingLeads?: number;
     goTo: (k: StepKey) => void;
 }) {
     const e = estimate.data;
@@ -648,7 +660,7 @@ export function ReviewStep({
         : writtenEmails(draft);
     const steps = Math.max(1, written.length);
     const at = scheduledDate(draft);
-    const hasLeads = draft.segmentIds.length > 0;
+    const hasLeads = draft.segmentIds.length > 0 || existingLeads > 0;
     const headline = estimateHeadline(e, { steps, hasLeads, tz });
     const totalDays = written.slice(1).reduce((n, x) => n + Math.max(0, x.wait_after), 0);
 
@@ -658,7 +670,9 @@ export function ReviewStep({
             icon: UsersIcon,
             title: "Leads",
             value: hasLeads
-                ? `${e ? plural(e.recipients, "lead") : "…"} from ${segmentNames.join(", ") || plural(draft.segmentIds.length, "list")}`
+                ? draft.segmentIds.length === 0
+                    ? `${e ? plural(e.recipients, "lead") : "…"} already on it`
+                    : `${e ? plural(e.recipients, "lead") : "…"} from ${segmentNames.join(", ") || plural(draft.segmentIds.length, "list")}${existingLeads > 0 ? " and the leads it has" : ""}`
                 : "None yet. Add them after creating it.",
             warn: !hasLeads || (e ? e.recipients === 0 : false),
         },
@@ -693,7 +707,7 @@ export function ReviewStep({
 
     return (
         <div className="max-w-[720px]">
-            <StepIntro title="Review and launch" hint={`“${finalName}”. Everything except the type can be changed later.`} />
+            <StepIntro title="Review and launch" hint={`“${finalName}”. Everything can be changed later.`} />
 
             <div
                 className={cn(
@@ -773,14 +787,16 @@ export function LaunchPlanRail({
     draft,
     estimate,
     tz,
+    existingLeads = 0,
 }: {
     draft: Draft;
     estimate: EstimateState;
     tz?: string;
+    existingLeads?: number;
 }) {
     const e = estimate.data;
     const steps = Math.max(1, writtenEmails(draft).length);
-    const headline = estimateHeadline(e, { steps, hasLeads: draft.segmentIds.length > 0, tz });
+    const headline = estimateHeadline(e, { steps, hasLeads: draft.segmentIds.length > 0 || existingLeads > 0, tz });
     return (
         <aside className="hidden lg:flex w-[300px] shrink-0 border-l border-slate-200 bg-slate-50/50 flex-col min-h-0">
             <div className="px-4 pt-4 pb-3 flex items-center gap-2">
@@ -808,7 +824,7 @@ export function LaunchPlanRail({
                             <EstimateTimeline days={e.timeline} height={64} maxBars={28} showFollowUps={steps > 1} />
                         )}
                         <dl className="space-y-1.5 text-[12px]">
-                            {draft.segmentIds.length > 0 && <Fact label="Contacts" value={e.recipients.toLocaleString()} />}
+                            {(draft.segmentIds.length > 0 || existingLeads > 0) && <Fact label="Leads" value={e.recipients.toLocaleString()} />}
                             {e.total_sends > 0 && steps > 1 && <Fact label="Emails in total" value={e.total_sends.toLocaleString()} />}
                             <Fact label="Mailboxes" value={e.mailboxes.toLocaleString()} />
                             {e.steady_capacity > 0 && <Fact label="Full speed" value={`${e.steady_capacity.toLocaleString()}/day`} />}

@@ -19,6 +19,8 @@ export default function DraftSetupCard({ campaign, leads }: { campaign: Campaign
     const steps = useQuery({
         queryKey: ["campaigns", campaign.id, "sequences"],
         queryFn: () => getSequences(campaign.id),
+        // Only a draft shows the card.
+        enabled: campaign.status === "draft",
     });
     if (campaign.status !== "draft") return null;
 

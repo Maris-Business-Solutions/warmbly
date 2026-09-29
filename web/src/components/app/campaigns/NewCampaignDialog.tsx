@@ -44,7 +44,6 @@ import {
     autoName,
     firstIssue,
     initialDraft,
-    isDirty,
     scheduledDate,
     stepIssue,
     stepWaits,
@@ -52,7 +51,7 @@ import {
     type Draft,
     type StepKey,
 } from "./new/draft";
-import { draftSignature, loadServerDraft, saveServerDraft, type DraftMeta } from "./new/serverDraft";
+import { draftSignature, freshMeta, loadServerDraft, saveServerDraft, type DraftMeta } from "./new/serverDraft";
 import { EmailsStep, LeadsStep, LaunchPlanRail, ReviewStep, ScheduleStep, type EstimateState } from "./new/steps";
 
 interface Props {
@@ -66,7 +65,7 @@ type Busy = "draft" | "launch" | "close" | "leave" | "delete";
 
 // Where a reopened draft picks up: the first part that still needs work.
 function resumeStep(d: Draft, meta: DraftMeta): number {
-    if (d.segmentIds.length === 0) return 0;
+    if (d.segmentIds.length === 0 && meta.leadCount === 0) return 0;
     if (!meta.stepsLocked && writtenEmails(d).length === 0) return 1;
     return STEPS.length - 1;
 }
@@ -159,13 +158,15 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
         return draft.segmentIds.map((id) => byId.get(id)).filter((n): n is string => !!n);
     }, [segments.data, draft.segmentIds]);
     const placeholderName = autoName(segmentNames);
+    const meta = existing?.meta;
+    // Leads can come from the lists picked here or be on a saved draft already.
+    const hasLeads = draft.segmentIds.length > 0 || (meta?.leadCount ?? 0) > 0;
     const typedName = draft.name.trim();
     const finalName = typedName || placeholderName;
     // A save never fails on the name: one that is not valid yet falls back.
     const savedName =
         typedName.length >= NAME_MIN && typedName.length <= NAME_MAX ? typedName : typedName.length > NAME_MAX ? typedName.slice(0, NAME_MAX) : placeholderName;
 
-    const meta = existing?.meta;
     const lockedEmails = meta?.stepsLocked ? meta.steps.filter((s) => (s.kind ?? "email") === "email") : null;
 
     // The live projection behind the rail and the review.
@@ -177,9 +178,11 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
             daily_limit: Math.min(5000, Math.max(3, draft.dailyLimit || 3)),
             days: draft.days || undefined,
             timezone: draft.timezone,
-            start_time: draft.startTime < draft.endTime ? draft.startTime : undefined,
-            end_time: draft.startTime < draft.endTime ? draft.endTime : undefined,
+            // A saved draft's own per-day windows stand when it has them.
+            start_time: !meta?.customWindows && draft.startTime < draft.endTime ? draft.startTime : undefined,
+            end_time: !meta?.customWindows && draft.startTime < draft.endTime ? draft.endTime : undefined,
             start_date: at && at.getTime() > Date.now() ? at.toISOString() : undefined,
+            campaign_id: existing?.id,
             step_waits: lockedEmails ? lockedEmails.slice(1).map((s) => Math.max(0, s.wait_after)) : stepWaits(draft),
         },
         open && !loading,
@@ -238,7 +241,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
         ? "Launching needs the send campaigns permission; a teammate who has it can start it."
         : emailCount === 0
           ? "There is no email to send yet."
-          : draft.segmentIds.length === 0
+          : !hasLeads
             ? "It has no leads yet."
             : e && e.recipients === 0
               ? "The chosen lists are empty right now."
@@ -247,11 +250,15 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                 : null;
 
     const busy = busyWith !== null;
-    const changed = existing ? draftSignature(draft) !== baseline : isDirty(draft);
+    // A new flow is compared with a fresh one in the same zone, so a zone
+    // that follows the workspace does not count as an edit.
+    const changed = existing
+        ? draftSignature(draft) !== baseline
+        : tzTouched.current || draftSignature({ ...draft, nameTouched: false }) !== draftSignature({ ...initialDraft(draft.timezone), nameTouched: false });
 
     // Writes the draft and refreshes every view of it.
     const persist = React.useCallback(async (): Promise<string> => {
-        const id = await saveServerDraft(draft, savedName, existing);
+        const id = await saveServerDraft(draft, savedName, existing, (created) => setExisting({ id: created, meta: freshMeta() }));
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
             queryClient.invalidateQueries({ queryKey: ["segments"] }),
@@ -334,7 +341,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
     function importLeads() {
         void leaveTo(
             "/app/contacts",
-            isDirty(draft) || existing ? "Saved as a draft. Reopen it from Campaigns when your leads are in." : undefined,
+            changed || existing ? "Saved as a draft. Reopen it from Campaigns when your leads are in." : undefined,
         );
     }
 
@@ -430,6 +437,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                                                 patch={patch}
                                                 placeholderName={placeholderName}
                                                 estimate={estimate}
+                                                existingLeads={meta?.leadCount}
                                                 onImport={importLeads}
                                                 onEnter={next}
                                             />
@@ -456,6 +464,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                                                 launchBlock={launchBlock}
                                                 lockedSteps={lockedEmails}
                                                 customWindows={meta?.customWindows}
+                                                existingLeads={meta?.leadCount}
                                                 goTo={goToKey}
                                             />
                                         )}
@@ -463,7 +472,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                                 </AnimatePresence>
                                 )}
                             </div>
-                            {showRail && !loading && <LaunchPlanRail draft={draft} estimate={estimate} tz={tz} />}
+                            {showRail && !loading && <LaunchPlanRail draft={draft} estimate={estimate} tz={tz} existingLeads={meta?.leadCount} />}
                         </div>
 
                         <div className="px-3 min-h-12 py-1.5 sm:py-0 sm:h-12 border-t border-slate-200 flex items-center gap-1.5 shrink-0 bg-slate-50/30">
@@ -477,7 +486,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                                     <ChevronLeftIcon className="w-3 h-3" />
                                     Back
                                 </button>
-                            ) : existing || isDirty(draft) ? (
+                            ) : existing || changed ? (
                                 <button
                                     type="button"
                                     onClick={discard}

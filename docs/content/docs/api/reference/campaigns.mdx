@@ -124,9 +124,10 @@ Project an audience against a sender pool before a campaign exists. The campaign
 | `days` | integer (0-127) | no | Weekday bitmask of sending days, bit 0 = Monday. Defaults to weekdays. |
 | `timezone` | string | no | IANA timezone the days and window are read in. Omit or send `""` to use the workspace timezone (UTC when none is set). |
 | `start_date` | string (RFC 3339) | no | When sending begins. Omit for now. |
-| `start_time` | string | no | Daily window start (`HH:MM`). Only applied together with `end_time`; omit both for an unrestricted day. |
-| `end_time` | string | no | Daily window end (`HH:MM`). |
+| `start_time` | string | no | Daily window start (`HH:MM`). Defaults to `08:00`, the window a new campaign gets. |
+| `end_time` | string | no | Daily window end (`HH:MM`). Defaults to `18:00`. An end at or before the start returns `400`. |
 | `step_waits` | integer[] | no | Each follow-up's `wait_after` in days (0 to 365), in order. Omit for a single email. At most 30. |
+| `campaign_id` | string | no | Project a saved campaign of this workspace. Its leads count toward `recipients` together with `segment_ids` (each contact once), a campaign that sends from mailboxes picked one by one uses those, and its per-day windows apply when no `start_time` or `end_time` is sent. A campaign from another workspace returns `404`. |
 
 ### Response
 

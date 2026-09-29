@@ -267,6 +267,10 @@ type CampaignEstimate struct {
 	// StepWaits is each follow-up's wait_after in days, in order. Empty is a
 	// single email.
 	StepWaits []int `json:"step_waits,omitempty"`
+	// CampaignID projects a saved draft: its leads count toward the audience
+	// alongside the segments, and its own sender pool and daily windows are
+	// used where it has them.
+	CampaignID *string `json:"campaign_id,omitempty"`
 }
 
 // CampaignEstimateStepsMax bounds StepWaits, the follow-ups one estimate simulates.
