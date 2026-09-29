@@ -55,9 +55,10 @@ vi.mock("@/components/ui/AnimatedNumber", () => ({
   default: ({ value }: { value: number }) => <>{value}</>,
 }));
 
-// The toggle's name grows by the dot's screen-reader text when unread mail is
-// folded away, so match on how it starts.
+// The toggle's name grows by the dot's screen-reader text when a highlighted
+// count is folded away, so match on how it starts.
 const MAIL_TOGGLE = /^Mail(?!boxes| section)/;
+const DOT = /highlighted count folded away/;
 
 // The header's always-visible three-dot button -> "Edit rows".
 function startEditing(section: "Mail" | "Views") {
@@ -123,13 +124,50 @@ describe("ScopeRail sections", () => {
     expect(screen.queryByText("me@example.com")).toBeNull();
   });
 
-  it("flags unread mail folded out of sight with a dot, and drops it when the section opens", () => {
+  it("flags a highlighted count folded out of sight with a dot, and drops it when the section opens", () => {
     useAppStore.setState({ uniboxRailFolded: { mail: true } });
     mountRail({ kind: "folder", folder: "spam" });
-    expect(screen.getByText("Unread mail in this folded section")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Mail, highlighted count folded away" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: MAIL_TOGGLE }));
-    expect(screen.queryByText("Unread mail in this folded section")).toBeNull();
+    expect(screen.queryByText(DOT)).toBeNull();
+  });
+
+  it("says highlighted count, not unread, because Scheduled raises the dot too", () => {
+    const saved = overview.data;
+    overview.data = {
+      ...saved,
+      unread: 0,
+      scheduled_pending: 5,
+      folders: [
+        { folder: "inbox", unread: 0, total: 9 },
+        { folder: "spam", unread: 0, total: 1 },
+      ],
+    };
+    try {
+      useAppStore.setState({ uniboxRailFolded: { mail: true } });
+      mountRail({ kind: "folder", folder: "spam" });
+      expect(screen.getByText(DOT)).toBeTruthy();
+      expect(screen.queryByText(/unread/i)).toBeNull();
+    } finally {
+      overview.data = saved;
+    }
+  });
+
+  it("does not raise the dot for rows the user hid", () => {
+    useAppStore.setState({
+      uniboxRailFolded: { mail: true },
+      uniboxRailHidden: ["folder:inbox", "unread"],
+    });
+    mountRail({ kind: "folder", folder: "spam" });
+    expect(screen.queryByText(DOT)).toBeNull();
+  });
+
+  it("marks the row you are on with aria-current", () => {
+    mountRail({ kind: "unread" });
+    const current = document.querySelectorAll("[aria-current]");
+    expect(current).toHaveLength(1);
+    expect(current[0].textContent).toContain("Unread");
   });
 
   it("folds Views on its own", () => {
@@ -199,6 +237,31 @@ describe("ScopeRail edit mode", () => {
     fireEvent.keyDown(screen.getByRole("checkbox", { name: "Inbox" }), { key: "Escape" });
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.getByRole("button", { name: "Mail section options" })).toBeTruthy();
+  });
+
+  it("holds the fold while editing, so Done never folds by surprise", () => {
+    mountRail();
+    startEditing("Mail");
+    const toggle = screen.getByRole("button", { name: MAIL_TOGGLE });
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(toggle);
+    expect(useAppStore.getState().uniboxRailFolded.mail).toBeUndefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Done editing Mail" }));
+    expect(screen.getByText("Spam")).toBeTruthy();
+  });
+
+  it("moves focus into the checkboxes and back to the options button", () => {
+    mountRail();
+    startEditing("Mail");
+    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "All mail" }));
+
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Mail section options" }));
+
+    startEditing("Mail");
+    fireEvent.click(screen.getByRole("button", { name: "Done editing Mail" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Mail section options" }));
   });
 
   it("edits Views separately from Mail", () => {

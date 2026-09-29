@@ -411,6 +411,7 @@ function SectionHeader({
   count,
   editing,
   onEdit,
+  optionsRef,
 }: {
   label: string;
   panelId: string;
@@ -420,13 +421,17 @@ function SectionHeader({
   count?: number;
   editing?: boolean;
   onEdit?: () => void;
+  optionsRef?: React.Ref<HTMLDivElement>;
 }) {
   return (
-    <div className="group/section h-7 px-4 flex items-center gap-1">
+    <div ref={optionsRef} className="group/section h-7 px-4 flex items-center gap-1">
       <button
         type="button"
         onClick={onToggle}
-        className="h-7 min-w-0 flex-1 flex items-center gap-1.5 text-left"
+        // While rows are being edited the section is held open, so a fold
+        // would change a state nobody can see until Done.
+        disabled={editing}
+        className="h-7 min-w-0 flex-1 flex items-center gap-1.5 text-left disabled:cursor-default"
         aria-expanded={open}
         aria-controls={panelId}
       >
@@ -438,13 +443,17 @@ function SectionHeader({
         ) : (
           <ChevronRightIcon className="w-3 h-3 text-slate-300 group-hover/section:text-slate-500 transition-colors" />
         )}
+        {/* Not only unread: Scheduled, Awaiting reply and Agent drafts
+            highlight their counts too, so the dot says what it really means. */}
         {dot && (
-          <span
-            title="Unread mail in this folded section"
-            className="size-1.5 shrink-0 rounded-full bg-sky-500"
-          >
-            <span className="sr-only">Unread mail in this folded section</span>
-          </span>
+          <>
+            <span
+              aria-hidden
+              title="Highlighted count folded away"
+              className="size-1.5 shrink-0 rounded-full bg-sky-500"
+            />
+            <span className="sr-only">, highlighted count folded away</span>
+          </>
         )}
         {count !== undefined && (
           <span className="ml-auto text-[10.5px] text-slate-300 tabular-nums">
@@ -470,6 +479,7 @@ function SectionHeader({
             <PopoverMenuTrigger asChild>
               <button
                 type="button"
+                data-rail-options
                 aria-label={`${label} section options`}
                 className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-300 hover:text-slate-600 focus-visible:text-slate-600 hover:bg-slate-200/70 transition-colors"
               >
@@ -514,6 +524,22 @@ function RailSection({
   const toggleRow = useAppStore((s) => s.toggleUniboxRailRow);
   // Local on purpose: editing is a moment, not a preference.
   const [editing, setEditing] = React.useState(false);
+  // Both ends of editing swap the focused control for another one (the menu
+  // trigger becomes Done, the checkboxes become rows), so focus is moved on
+  // purpose: to the first checkbox going in, back to the options button out.
+  // The options button is found through the header, because the menu trigger
+  // puts its own ref on it.
+  const headerRef = React.useRef<HTMLDivElement>(null);
+  const firstEditRowRef = React.useRef<HTMLButtonElement>(null);
+  const wasEditing = React.useRef(false);
+  React.useEffect(() => {
+    if (editing === wasEditing.current) return;
+    wasEditing.current = editing;
+    const target = editing
+      ? firstEditRowRef.current
+      : headerRef.current?.querySelector<HTMLButtonElement>("[data-rail-options]");
+    target?.focus();
+  }, [editing]);
 
   const wanted = rows.filter((r) => r.key === activeKey || !hiddenKeys.includes(r.key));
   // Folded, a section keeps only the row you are on. Editing needs every row,
@@ -540,6 +566,7 @@ function RailSection({
         dot={dot}
         editing={editing}
         onEdit={() => setEditing((v) => !v)}
+        optionsRef={headerRef}
       />
       <div id={panelId} className="px-2 space-y-px">
         {shown.map((r, i) => (
@@ -549,6 +576,7 @@ function RailSection({
             )}
             {editing ? (
               <EditRow
+                buttonRef={i === 0 ? firstEditRowRef : undefined}
                 icon={r.icon}
                 label={r.label}
                 hidden={hiddenKeys.includes(r.key)}
@@ -619,7 +647,9 @@ function CollapsibleSection<T extends { id: string }>({
         count={items.length}
       />
 
-      {!sectionOpen && foldedVisible.length > 0 && (
+      {/* Rendered even when empty, so the header's aria-controls always has
+          a target. */}
+      {!sectionOpen && (
         <div id={panelId} className="px-2 space-y-px">
           {foldedVisible.map(renderItem)}
         </div>
@@ -778,6 +808,7 @@ function FolderItem({
           onOpen();
         }
       }}
+      aria-current={active ? "true" : undefined}
       className={cn("group/folder relative cursor-pointer pr-7 md:pr-2", ROW, active ? ROW_ACTIVE : ROW_IDLE)}
       title={label}
     >
@@ -820,11 +851,13 @@ function FolderItem({
 // EditRow: a row while its section is being edited. A checkbox (checked means
 // shown) instead of a link, so a click changes visibility rather than scope.
 function EditRow({
+  buttonRef,
   icon,
   label,
   hidden,
   onToggle,
 }: {
+  buttonRef?: React.Ref<HTMLButtonElement>;
   icon: React.ReactNode;
   label: string;
   hidden: boolean;
@@ -832,6 +865,7 @@ function EditRow({
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       role="checkbox"
       aria-checked={!hidden}
@@ -874,6 +908,8 @@ function Item({
     <button
       type="button"
       onClick={onClick}
+      // A scope, not a page, so "true" rather than the nav's "page".
+      aria-current={active ? "true" : undefined}
       className={cn("group/item", ROW, active ? ROW_ACTIVE : ROW_IDLE)}
       title={hideNativeTitle ? undefined : label}
     >
