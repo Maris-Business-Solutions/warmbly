@@ -220,6 +220,10 @@ describe("ScopeRail edit mode", () => {
     expect(screen.queryByText("2 hidden")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Done editing Mail" }));
     expect(screen.getByText("2 hidden")).toBeTruthy();
+    // Tabbing to the pencil hears the number too.
+    expect(
+      screen.getByRole("button", { name: "Edit Mail rows", description: "2 hidden" }),
+    ).toBeTruthy();
     // Views has none of its own.
     expect(screen.queryByText("1 hidden")).toBeNull();
 

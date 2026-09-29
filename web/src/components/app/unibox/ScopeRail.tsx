@@ -425,6 +425,7 @@ function SectionHeader({
   hiddenCount?: number;
   optionsRef?: React.Ref<HTMLDivElement>;
 }) {
+  const hiddenId = React.useId();
   return (
     <div ref={optionsRef} className="group/section h-7 px-4 flex items-center gap-1">
       <button
@@ -464,9 +465,11 @@ function SectionHeader({
         )}
       </button>
       {/* Non-interactive: a reminder that rows are missing, so a rail that
-          looks short is not mistaken for a bug. */}
+          looks short is not mistaken for a bug. Slate-400 like the header
+          label (it is information, unlike the quieter slate-300 totals), and
+          it describes the pencil, so tabbing to it also hears the number. */}
       {!!hiddenCount && (
-        <span className="shrink-0 text-[10.5px] text-slate-300 tabular-nums">
+        <span id={hiddenId} className="shrink-0 text-[10.5px] text-slate-400 tabular-nums">
           {hiddenCount} hidden
         </span>
       )}
@@ -489,7 +492,8 @@ function SectionHeader({
             onClick={onEdit}
             title={`Edit ${label} rows`}
             aria-label={`Edit ${label} rows`}
-            className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-300 hover:text-slate-600 focus-visible:text-slate-600 hover:bg-slate-200/70 transition-colors"
+            aria-describedby={hiddenCount ? hiddenId : undefined}
+            className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-400 hover:text-slate-600 focus-visible:text-slate-600 hover:bg-slate-200/70 transition-colors"
           >
             <PencilIcon className="w-3.5 h-3.5" />
           </button>
