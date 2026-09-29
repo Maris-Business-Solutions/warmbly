@@ -202,6 +202,17 @@ type Placement struct {
 	// CreditsPerTest is what a test past the monthly allowance costs in
 	// credits. Zero turns paid tests off; nil is the compiled default.
 	CreditsPerTest *int `json:"credits_per_test"`
+	// BatchSendersMax is the most senders one batch may hold, an
+	// infrastructure safeguard separate from how many run at once.
+	BatchSendersMax int `json:"batch_senders_max"`
+	// BatchSenderConcurrency is how many of one workspace's batch senders
+	// may be sending probes at the same time.
+	BatchSenderConcurrency int `json:"batch_sender_concurrency"`
+	// BatchInstanceConcurrency caps batch senders sending at once across
+	// every workspace, which bounds what the shared seed panel receives.
+	BatchInstanceConcurrency int `json:"batch_instance_concurrency"`
+	// BatchStartsPerMinute paces how fast one batch starts senders.
+	BatchStartsPerMinute int `json:"batch_starts_per_minute"`
 }
 
 // CreditPrice is the resolved price of a paid test, zero when off.
@@ -221,6 +232,11 @@ func DefaultPlacement() Placement {
 		SeedsPerTest:       config.PlacementSeedsPerTestDefault,
 		SpacingSeconds:     config.PlacementSpacingSecondsDefault,
 		CreditsPerTest:     &price,
+
+		BatchSendersMax:          config.PlacementBatchSendersMaxDefault,
+		BatchSenderConcurrency:   config.PlacementBatchSenderConcurrencyDefault,
+		BatchInstanceConcurrency: config.PlacementBatchInstanceConcurrencyDefault,
+		BatchStartsPerMinute:     config.PlacementBatchStartsPerMinuteDefault,
 	}
 }
 
@@ -248,6 +264,16 @@ func (p *Placement) Normalize() {
 		v = max(0, min(*p.CreditsPerTest, config.PlacementCreditsPerTestMax))
 	}
 	p.CreditsPerTest = &v
+	clamp := func(v, def, ceiling int) int {
+		if v <= 0 {
+			return def
+		}
+		return min(v, ceiling)
+	}
+	p.BatchSendersMax = clamp(p.BatchSendersMax, config.PlacementBatchSendersMaxDefault, config.PlacementBatchSendersMaxCeiling)
+	p.BatchSenderConcurrency = clamp(p.BatchSenderConcurrency, config.PlacementBatchSenderConcurrencyDefault, config.PlacementBatchSenderConcurrencyMax)
+	p.BatchInstanceConcurrency = clamp(p.BatchInstanceConcurrency, config.PlacementBatchInstanceConcurrencyDefault, config.PlacementBatchInstanceConcurrencyMax)
+	p.BatchStartsPerMinute = clamp(p.BatchStartsPerMinute, config.PlacementBatchStartsPerMinuteDefault, config.PlacementBatchStartsPerMinuteMax)
 }
 
 // QuickSpacing is the gap between two probes of a quick test.
@@ -453,6 +479,11 @@ type Patch struct {
 		SeedsPerTest       *int `json:"seeds_per_test"`
 		SpacingSeconds     *int `json:"spacing_seconds"`
 		CreditsPerTest     *int `json:"credits_per_test"`
+
+		BatchSendersMax          *int `json:"batch_senders_max"`
+		BatchSenderConcurrency   *int `json:"batch_sender_concurrency"`
+		BatchInstanceConcurrency *int `json:"batch_instance_concurrency"`
+		BatchStartsPerMinute     *int `json:"batch_starts_per_minute"`
 	} `json:"placement"`
 	// Channels replaces the whole list when present. A channel that comes back
 	// with a masked target or secret keeps the stored value, so the admin panel
@@ -551,6 +582,18 @@ func (p Patch) Apply(doc Document) Document {
 		if p.Placement.CreditsPerTest != nil {
 			v := *p.Placement.CreditsPerTest
 			doc.Placement.CreditsPerTest = &v
+		}
+		if p.Placement.BatchSendersMax != nil {
+			doc.Placement.BatchSendersMax = *p.Placement.BatchSendersMax
+		}
+		if p.Placement.BatchSenderConcurrency != nil {
+			doc.Placement.BatchSenderConcurrency = *p.Placement.BatchSenderConcurrency
+		}
+		if p.Placement.BatchInstanceConcurrency != nil {
+			doc.Placement.BatchInstanceConcurrency = *p.Placement.BatchInstanceConcurrency
+		}
+		if p.Placement.BatchStartsPerMinute != nil {
+			doc.Placement.BatchStartsPerMinute = *p.Placement.BatchStartsPerMinute
 		}
 	}
 	if p.Notifications != nil && p.Notifications.Channels != nil {

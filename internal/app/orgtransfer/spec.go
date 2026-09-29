@@ -463,6 +463,12 @@ var Tables = []Table{
 		Scope: `campaign_id IN ` + orgCampaigns,
 	},
 	{
+		// Both contacts are in the contacts group, which campaigns require.
+		Name: "campaign_lead_cc", Group: models.OrgDataGroupCampaigns,
+		Scope: `campaign_id IN ` + orgCampaigns,
+		Note:  "Must travel with the leads, or a copied contact held on their own lead is released into a second sequence.",
+	},
+	{
 		Name: "campaign_lead_removals", Group: models.OrgDataGroupCampaigns,
 		Scope: `campaign_id IN ` + orgCampaigns,
 		Note:  "Must travel, or linked segments on the destination re-add every lead the user removed by hand.",
@@ -766,6 +772,17 @@ var Tables = []Table{
 	{
 		Name: "deliverability_events", Group: models.OrgDataGroupEvents,
 		Scope: scopeOrg,
+	},
+	{
+		// A batch travels as a record of its senders and results. It lands
+		// inactive, so the destination never resumes sending it.
+		Name: "placement_batches", Group: models.OrgDataGroupEvents,
+		Scope:         scopeOrg,
+		ResetOnImport: []string{"active", "lease_until", "last_tick_at"},
+	},
+	{
+		Name: "placement_batch_senders", Group: models.OrgDataGroupEvents,
+		Scope: `batch_id IN (SELECT id FROM placement_batches WHERE organization_id = $1)`,
 	},
 	{
 		// The results travel as a record. The link to a cloud-run test and the

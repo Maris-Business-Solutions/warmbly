@@ -5,6 +5,7 @@ import { Loader2Icon, PauseIcon, PlayIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import PauseLeadDialog from "./PauseLeadDialog";
 import { useResumeLead } from "@/lib/api/hooks/app/campaigns/useLeadHold";
+import { useConfirm } from "@/hooks/context/confirm";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 
@@ -40,14 +41,18 @@ export function ResumeLeadButton({
     label = "Resume",
     disabled = false,
     onBusyChange,
+    confirmText,
 }: {
     campaignId: string;
     contactId: string;
     label?: string;
     disabled?: boolean;
     onBusyChange?: (busy: boolean) => void;
+    // Asked first when resuming has a consequence worth a second look.
+    confirmText?: string;
 }) {
     const resume = useResumeLead();
+    const confirm = useConfirm();
     async function run() {
         onBusyChange?.(true);
         try {
@@ -65,7 +70,7 @@ export function ResumeLeadButton({
     return (
         <button
             type="button"
-            onClick={run}
+            onClick={() => (confirmText ? confirm.show(confirmText, run) : void run())}
             disabled={disabled || resume.isPending}
             title="Lift the pause now; the flow picks up where it stopped"
             className="h-6 px-2 rounded-md bg-white border border-violet-200 text-[11px] font-medium text-violet-700 hover:bg-violet-100 inline-flex items-center gap-1 transition-colors disabled:opacity-60 shrink-0"

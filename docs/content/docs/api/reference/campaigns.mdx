@@ -194,8 +194,8 @@ Create a campaign. Only `name` is required, every other field is optional and ap
 | `daily_limit` | integer | no | Per-campaign daily send cap. |
 | `unsubscribe_header` | boolean | no | Add the RFC 8058 one-click unsubscribe header. |
 | `risky_emails` | boolean | no | Allow sending to risky/unverified addresses. |
-| `cc` | string[] | no | Static CC list. |
-| `bcc` | string[] | no | Static BCC list. |
+| `cc` | string[] | no | Static CC list, on every email to every lead. An address that is suppressed, is the lead's own, or has bounced on this campaign is left off that email. To copy someone on one lead only, see [set a lead's CC](#set-a-leads-cc). |
+| `bcc` | string[] | no | Static BCC list, filtered the same way. |
 | `start_date` | string (RFC 3339), nullable | no | Earliest send time. Today or later; omit or send `null` to start as soon as the campaign is active. |
 | `end_date` | string (RFC 3339), nullable | no | Latest send time. Must be in the future; omit or send `null` for an open-ended campaign. |
 | `timezone` | string | no | IANA timezone for the schedule. Omit or send `""` to follow the workspace timezone, resolved on every read (UTC when none is set). The response carries the zone in use as `effective_timezone`. |
@@ -815,7 +815,7 @@ Read whether one contact's flow inside this campaign is currently held. A hold p
 }
 ```
 
-`hold` is absent when the lead is not held, including for a dated hold that has since expired. `until` is absent when the hold has no end, in which case only a resume lifts it. `source` is `out_of_office` or `manual`.
+`hold` is absent when the lead is not held, including for a dated hold that has since expired. `until` is absent when the hold has no end, in which case only a resume lifts it. `source` is `out_of_office`, `inbox_tagging`, `manual`, or `cc` while the contact is [copied on another lead's emails](#set-a-leads-cc) in this campaign; a `cc` hold's `reason` is that lead's address.
 
 ### Errors
 
@@ -884,6 +884,107 @@ Resuming a lead that is not held succeeds and changes nothing, so a retry is saf
 | Status | Code | When |
 | --- | --- | --- |
 | `404` | `not_found` | The campaign is not the caller's organization's, or the contact is not a lead of it. |
+
+## Get a lead's CC
+
+`GET /campaigns/:id/leads/:contact_id/cc`
+
+List the contacts copied on every email this campaign sends one lead. See [copying colleagues on one lead](/guides/campaigns/#copying-colleagues-on-one-lead). **Scope** `READ_CAMPAIGNS` and `READ_CONTACTS` · **Org permission** `view_campaigns` and `view_contacts`.
+
+| Parameter | In | Type | Description |
+| --- | --- | --- | --- |
+| `id` | path | uuid | Campaign id. |
+| `contact_id` | path | uuid | Contact id. Must already be a lead of the campaign. |
+
+### Response
+
+```json
+{
+  "campaign_id": "8f1d6b2e-2b7a-4c9e-9a1f-0e6d4c3b2a10",
+  "contact_id": "3a5e9c71-4f2b-4d88-9a0c-1b7e5d2f6c34",
+  "cc": [
+    {
+      "contact_id": "b61c0e84-2d9f-4a57-8e3b-6f0a1c2d4e59",
+      "email": "jonas@acme.example",
+      "first_name": "Jonas",
+      "last_name": "Weber",
+      "company": "Acme GmbH",
+      "status": "active"
+    }
+  ]
+}
+```
+
+`status` says whether the next email copies them: `active` does; `unsubscribed` (opted out or suppressed), `bounced` (bounced on this thread or on a campaign email of their own) and `undeliverable` (failed verification under the campaign's rules) are left off until that changes. `bounced_at` is set when a bounce was attributed to this copy on this lead's thread. The list is in the order it was set.
+
+### Errors
+
+| Status | Code | When |
+| --- | --- | --- |
+| `404` | `not_found` | The campaign is not the caller's organization's, or the contact is not a lead of it. |
+
+## Set a lead's CC
+
+`PUT /campaigns/:id/leads/:contact_id/cc`
+
+Replace the contacts copied on every email this campaign sends one lead, follow-ups included. An empty list removes them all. **Scope** `WRITE_CAMPAIGNS` and `READ_CONTACTS` · **Org permission** `manage_campaigns` and `view_contacts`.
+
+The body is the whole list, so a retry lands on the same state and no `Idempotency-Key` is needed.
+
+| Parameter | In | Type | Description |
+| --- | --- | --- | --- |
+| `id` | path | uuid | Campaign id. |
+| `contact_id` | path | uuid | Contact id. Must already be a lead of the campaign. |
+| `contact_ids` | body | array of uuid | Contacts of the workspace to copy, at most `2`. Duplicates are ignored. |
+
+A copied contact who is also a lead of this campaign has their own sequence held with `source` `cc` for as long as any lead copies them, so they never get two threads from one campaign. Removing the copy releases the hold.
+
+### Request body
+
+```json
+{ "contact_ids": ["b61c0e84-2d9f-4a57-8e3b-6f0a1c2d4e59"] }
+```
+
+### Response
+
+Same shape as [get a lead's CC](#get-a-leads-cc).
+
+### Errors
+
+| Status | Code | When |
+| --- | --- | --- |
+| `400` | `bad_request` | A `contact_ids` entry is not a uuid. |
+| `400` | `lead_cc_limit` | More than `2` contacts. |
+| `400` | `lead_cc_self` | The lead is in its own list. |
+| `404` | `not_found` | The campaign is not the caller's organization's, or the contact is not a lead of it. |
+| `404` | `lead_cc_contact_not_found` | A contact to copy is not a contact of the workspace. |
+| `409` | `lead_cc_lead_is_copied` | The lead is copied on another lead in this campaign, so it sends nothing of its own to copy anyone on. |
+| `409` | `lead_cc_has_copies` | A contact to copy has copies of their own in this campaign. |
+
+## Suggest colleagues to CC
+
+`GET /campaigns/:id/leads/:contact_id/cc/suggestions`
+
+Up to eight contacts who look like the lead's colleagues: the same company name, or the same email domain when that domain belongs to a company rather than a personal mail service. Unsubscribed contacts and ones already copied are left out. **Scope** `READ_CAMPAIGNS` and `READ_CONTACTS` · **Org permission** `view_campaigns` and `view_contacts`.
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "contact_id": "b61c0e84-2d9f-4a57-8e3b-6f0a1c2d4e59",
+      "email": "jonas@acme.example",
+      "first_name": "Jonas",
+      "last_name": "Weber",
+      "company": "Acme GmbH",
+      "reason": "company"
+    }
+  ]
+}
+```
+
+`reason` is `company` when the company names match and `domain` when only the email domain does. Company matches come first.
 
 ## Get campaign logs
 

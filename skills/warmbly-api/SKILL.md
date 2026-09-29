@@ -36,7 +36,7 @@ Run `warmblyctl <family> --help` for subcommands and `warmblyctl <family>
 | Family | Covers |
 |---|---|
 | `me` | Identity and granted scopes |
-| `campaign` | list, get, create, update, delete, steps, senders, preflight, start, stop, test-email, logs, plan, pause-lead / resume-lead |
+| `campaign` | list, get, create, update, delete, steps, senders, preflight, start, stop, test-email, logs, plan, pause-lead / resume-lead, lead-cc / set-lead-cc / lead-cc-suggestions |
 | `contact` | list (search), get, lookup, create, update, delete, notes, timeline, import, imports, import-status, import-start, import-cancel, export |
 | `mailbox` | list, get, update, delete, auth-check, sync, skip-folders, identity, refresh-identity, behavior, verify, send, warmup-start/pause/resume/stop/status |
 | `inbox` | list, count, thread, seen, reply, compose, agent drafts, scheduled sends |
@@ -99,6 +99,12 @@ These commands put real mail on the wire: `campaign start`,
   `campaign resume-lead` lifts it. An out-of-office auto-reply already writes
   the same hold by itself, across every campaign that contact is a lead of, so
   a lead reading `paused` for that reason needs nothing from you.
+- To reach two people at one company in ONE thread, copy the second on the
+  first lead's emails: `campaign set-lead-cc --id <campaign> --contact <lead>
+  --data '{"contact_ids":["<colleague>"]}'` (at most two;
+  `campaign lead-cc-suggestions` lists likely colleagues). Do not enrol both as
+  leads of the same campaign for this: a copied contact's own lead is held
+  anyway, and resuming that hold sends them a second thread.
 - If deliverability analytics show rising bounces or complaints, stop the
   campaign first and report; do not push volume into a degrading mailbox.
 

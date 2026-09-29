@@ -71,12 +71,12 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 				}
 			}
 			for _, m := range h.LabelsAdded {
-				if err := c.OnLabelAdd(ctx, m.Message.Id, m.LabelIds); err != nil {
+				if err := c.OnLabelAdd(ctx, m.Message.Id, m.LabelIds, m.Message.LabelIds); err != nil {
 					return checkpoint, err
 				}
 			}
 			for _, m := range h.LabelsRemoved {
-				if err := c.OnLabelRemove(ctx, m.Message.Id, m.LabelIds); err != nil {
+				if err := c.OnLabelRemove(ctx, m.Message.Id, m.LabelIds, m.Message.LabelIds); err != nil {
 					return checkpoint, err
 				}
 			}
@@ -111,6 +111,43 @@ func (c *Client) GetMessage(ctx context.Context, id string) (*models.EmailMessag
 		return nil, HandleError(err)
 	}
 	return GmailMessageToEmailData(full), nil
+}
+
+// MessageLabels returns a message's current label ids. found is false when
+// Gmail no longer has the message.
+func (c *Client) MessageLabels(ctx context.Context, id string) (labels []string, found bool, err error) {
+	msg, err := c.srv.Users.Messages.Get("me", id).Format("minimal").Context(ctx).Do()
+	if err != nil {
+		var gerr *googleapi.Error
+		if errors.As(err, &gerr) && gerr.Code == 404 {
+			return nil, false, nil
+		}
+		return nil, false, HandleError(err)
+	}
+	return msg.LabelIds, true, nil
+}
+
+// ListLabelMessages is one page of the ids of messages carrying labelID,
+// matched per message rather than per thread, narrowed by q.
+func (c *Client) ListLabelMessages(ctx context.Context, labelID, q, pageToken string, max int64) ([]string, string, error) {
+	call := c.srv.Users.Messages.List("me").LabelIds(labelID).MaxResults(max).Context(ctx)
+	if q != "" {
+		call = call.Q(q)
+	}
+	if pageToken != "" {
+		call = call.PageToken(pageToken)
+	}
+	resp, err := call.Do()
+	if err != nil {
+		return nil, "", HandleError(err)
+	}
+	ids := make([]string, 0, len(resp.Messages))
+	for _, m := range resp.Messages {
+		if m != nil && m.Id != "" {
+			ids = append(ids, m.Id)
+		}
+	}
+	return ids, resp.NextPageToken, nil
 }
 
 // ListMessages is one page of the backfill: message ids matching q, newest

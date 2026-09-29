@@ -626,7 +626,8 @@ func (p *StreamingPublisher) PublishFormSubmission(ctx context.Context, orgID, f
 type PlacementTestEvent struct {
 	BaseEvent
 	OrgID      string `json:"org_id"`
-	TestID     string `json:"test_id"`
+	TestID     string `json:"test_id,omitempty"`
+	BatchID    string `json:"batch_id,omitempty"`
 	CampaignID string `json:"campaign_id,omitempty"`
 	Status     string `json:"status"`
 }
@@ -644,6 +645,25 @@ func (p *StreamingPublisher) PublishPlacementTest(ctx context.Context, orgID, te
 	}
 	if campaignID != nil {
 		event.CampaignID = campaignID.String()
+	}
+	attrs := map[string]string{
+		"org_id":     orgID.String(),
+		"event_type": string(EventPlacementTest),
+	}
+	_ = p.client.Publish(ctx, TopicUserEvents, event, attrs)
+}
+
+// PublishPlacementBatch emits the placement signal for a batch that moved
+// without one of its tests moving (a sender skipped, the batch finished).
+func (p *StreamingPublisher) PublishPlacementBatch(ctx context.Context, orgID, batchID uuid.UUID, status string) {
+	if p == nil || p.client == nil || orgID == uuid.Nil {
+		return
+	}
+	event := &PlacementTestEvent{
+		BaseEvent: BaseEvent{EventType: EventPlacementTest, Timestamp: time.Now()},
+		OrgID:     orgID.String(),
+		BatchID:   batchID.String(),
+		Status:    status,
 	}
 	attrs := map[string]string{
 		"org_id":     orgID.String(),

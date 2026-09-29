@@ -113,6 +113,8 @@ Every tool is gated by its API permission. `tools/list` returns only the tools y
 | `list_mailboxes` | Sender mailboxes with health + warmup state | `READ_ANALYTICS` |
 | `list_placement_tests` / `get_placement_test` | Inbox placement tests and where each copy landed | `READ_ANALYTICS` |
 | `run_placement_test` | Send a step or template to the seed inboxes from one mailbox | `SEND_CAMPAIGNS` |
+| `list_placement_batches` / `get_placement_batch` | Placement batches, their progress, and placement by sending domain, sending provider and recipient provider | `READ_ANALYTICS` |
+| `run_placement_batch` | Run the same placement test from a campaign's senders or the whole workspace, optionally sampled. Signed-in members only: an API key starts a batch with `POST /placement/batches`, which applies the key's mailbox limits | `SEND_CAMPAIGNS` |
 | `add_contact` / `delete_contact` | Create or delete a contact | `WRITE_CONTACTS` |
 | `bulk_edit_contacts` | Tag or subscribe many contacts at once | `BULK_CONTACTS` |
 | `get_contact_timeline` / `get_contact_sent_emails` | Read a contact's activity and sent mail | `READ_CONTACTS` |

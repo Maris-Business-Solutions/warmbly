@@ -89,6 +89,14 @@ type CampaignService interface {
 	ResumeLead(ctx context.Context, orgID, campaignID, contactID uuid.UUID) *errx.Error
 	// GetLeadHold reads the live hold on one lead (nil when it is not held).
 	GetLeadHold(ctx context.Context, orgID, campaignID, contactID uuid.UUID) (*models.LeadHold, *errx.Error)
+
+	// ListLeadCC reads the contacts copied on every email to one lead.
+	ListLeadCC(ctx context.Context, orgID, campaignID, contactID uuid.UUID) ([]models.CampaignLeadCC, *errx.Error)
+	// SetLeadCC replaces the contacts copied on one lead and returns the new
+	// list. A copied contact's own lead in the campaign is held meanwhile.
+	SetLeadCC(ctx context.Context, orgID, campaignID, contactID uuid.UUID, contactIDs []string) ([]models.CampaignLeadCC, *errx.Error)
+	// SuggestLeadCC offers the lead's likely colleagues to copy.
+	SuggestLeadCC(ctx context.Context, orgID, campaignID, contactID uuid.UUID) ([]models.CampaignLeadCCSuggestion, *errx.Error)
 }
 
 // Bounds on a manual lead hold. A hold in the past would lift the moment it

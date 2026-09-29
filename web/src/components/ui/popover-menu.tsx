@@ -53,6 +53,7 @@ interface MenuCtx {
     side: "bottom" | "top";
     align: "start" | "end" | "center";
     sideOffset: number;
+    anchorPoint: { x: number; y: number } | null;
 }
 
 const Ctx = createContext<MenuCtx | null>(null);
@@ -70,6 +71,7 @@ export function PopoverMenu({
     sideOffset = 6,
     open: controlledOpen,
     onOpenChange,
+    anchorPoint = null,
 }: {
     children: React.ReactNode;
     side?: "bottom" | "top";
@@ -77,6 +79,8 @@ export function PopoverMenu({
     sideOffset?: number;
     open?: boolean;
     onOpenChange?: (o: boolean) => void;
+    /** Open at a viewport point instead of under the trigger (a context menu). */
+    anchorPoint?: { x: number; y: number } | null;
 }) {
     const id = useId();
     const triggerRef = useRef<HTMLElement>(null);
@@ -90,7 +94,7 @@ export function PopoverMenu({
         [controlledOpen, onOpenChange],
     );
     return (
-        <Ctx.Provider value={{ id, open, setOpen, triggerRef, side, align, sideOffset }}>
+        <Ctx.Provider value={{ id, open, setOpen, triggerRef, side, align, sideOffset, anchorPoint }}>
             {children}
         </Ctx.Provider>
     );
@@ -148,8 +152,10 @@ export function PopoverMenuContent({
     /** Pin the panel to the trigger's measured width (for full-width selects). */
     matchTriggerWidth?: boolean;
 }) {
-    const { open, setOpen, triggerRef, side, align, sideOffset } = useMenu();
+    const { open, setOpen, triggerRef, side, align, sideOffset, anchorPoint } = useMenu();
     const ref = useRef<HTMLDivElement>(null);
+    // Where focus was when the menu opened, so closing gives it back.
+    const returnFocus = useRef<HTMLElement | null>(null);
     const [pos, setPos] = useState<{ top: number; left: number; width?: number } | null>(null);
 
     useLayoutEffect(() => {
@@ -160,8 +166,10 @@ export function PopoverMenuContent({
         const compute = () => {
             const t = triggerRef.current;
             const c = ref.current;
-            if (!t || !c) return;
-            const r = t.getBoundingClientRect();
+            if ((!t && !anchorPoint) || !c) return;
+            const r = anchorPoint
+                ? new DOMRect(anchorPoint.x, anchorPoint.y, 0, 0)
+                : t!.getBoundingClientRect();
             const cw = c.offsetWidth;
             const ch = c.offsetHeight;
             let top: number;
@@ -185,8 +193,13 @@ export function PopoverMenuContent({
             setPos({ top, left, width: r.width });
         };
         compute();
+        // A context menu has no element to follow, so a scroll elsewhere closes it.
+        const onScroll = (e: Event) => {
+            if (anchorPoint && !ref.current?.contains(e.target as Node)) setOpen(false);
+            else compute();
+        };
         window.addEventListener("resize", compute);
-        window.addEventListener("scroll", compute, true);
+        window.addEventListener("scroll", onScroll, true);
 
         // Recompute when the popover's own content changes size — e.g.
         // swapping a preset list for a datetime picker inside. Without
@@ -200,35 +213,66 @@ export function PopoverMenuContent({
 
         return () => {
             window.removeEventListener("resize", compute);
-            window.removeEventListener("scroll", compute, true);
+            window.removeEventListener("scroll", onScroll, true);
             observer?.disconnect();
         };
-    }, [open, side, align, sideOffset, triggerRef]);
+    }, [open, side, align, sideOffset, triggerRef, anchorPoint, setOpen]);
 
+    // Keyboard: focus lands on the panel (never over an autofocused input), and
+    // closing hands it back to whatever held it before, if it is still there.
     useEffect(() => {
         if (!open) return;
-        const onClick = (e: MouseEvent) => {
-            const t = e.target as Node;
-            if (ref.current?.contains(t)) return;
-            if (triggerRef.current?.contains(t)) return;
-            // A click inside another portaled floating layer this menu opened (a
-            // date-picker calendar, a nested SelectMenu) must not close this menu.
-            const el = t as Element | null;
-            if (el && typeof el.closest === "function" && el.closest("[data-floating]")) return;
-            setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") setOpen(false);
-        };
-        // Capture phase: dialogs stop mousedown propagation on their card so the
-        // backdrop does not close them, which would otherwise swallow this too.
-        document.addEventListener("mousedown", onClick, true);
-        document.addEventListener("keydown", onKey);
+        const panel = ref.current;
+        const active = document.activeElement as HTMLElement | null;
+        if (!panel?.contains(active)) returnFocus.current = active;
+        const frame = requestAnimationFrame(() => {
+            if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+        });
         return () => {
-            document.removeEventListener("mousedown", onClick, true);
-            document.removeEventListener("keydown", onKey);
+            cancelAnimationFrame(frame);
+            const back = returnFocus.current;
+            returnFocus.current = null;
+            const now = document.activeElement;
+            const inside = !now || now === document.body || !!panel?.contains(now);
+            if (back?.isConnected && inside) back.focus({ preventScroll: true });
         };
-    }, [open, setOpen, triggerRef]);
+    }, [open]);
+
+    // Arrow keys, Home/End and typeahead over this panel's own items. Keys it
+    // handles stop here, so a nested menu's keys never reach this one and a
+    // letter never also runs a global shortcut.
+    const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+        const target = e.target as HTMLElement;
+        if (!ref.current?.contains(target)) return;
+        if (target.matches("input, textarea, select, [contenteditable='true']")) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const items = Array.from(
+            ref.current.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'),
+        );
+        const typeahead = e.key.length === 1 && /\S/.test(e.key);
+        if (!items.length || (!typeahead && !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key))) return;
+        e.stopPropagation();
+        const at = items.indexOf(target);
+        let next = -1;
+        if (e.key === "ArrowDown") next = at < 0 ? 0 : (at + 1) % items.length;
+        else if (e.key === "ArrowUp") next = at < 0 ? items.length - 1 : (at - 1 + items.length) % items.length;
+        else if (e.key === "Home") next = 0;
+        else if (e.key === "End") next = items.length - 1;
+        else {
+            // The next item after the focused one whose label starts with the key.
+            const k = e.key.toLowerCase();
+            for (let i = 1; i <= items.length; i++) {
+                const idx = (at + i + items.length) % items.length;
+                if (items[idx].textContent?.trim().toLowerCase().startsWith(k)) {
+                    next = idx;
+                    break;
+                }
+            }
+        }
+        if (next < 0) return;
+        e.preventDefault();
+        items[next].focus();
+    };
 
     // Anchor the animation origin to the side the menu opens from so
     // the scale + lift feels like it's growing out of the trigger
@@ -259,7 +303,9 @@ export function PopoverMenuContent({
                     ref={ref}
                     key="popover"
                     role="menu"
+                    tabIndex={-1}
                     data-floating="true"
+                    onKeyDown={onMenuKeyDown}
                     layout
                     initial={{ opacity: 0, scale: 0.96, y: enterY }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -292,7 +338,7 @@ export function PopoverMenuContent({
                         willChange: "transform, opacity",
                     }}
                     className={cn(
-                        "rounded-md border border-slate-200 bg-white shadow-[0_4px_12px_-2px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04)] overflow-hidden py-1",
+                        "outline-none rounded-md border border-slate-200 bg-white shadow-[0_4px_12px_-2px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04)] overflow-hidden py-1",
                         // Default viewport cap so tall menus scroll instead of
                         // clipping off a phone screen; callers with a tighter
                         // max-h still win via the cn merge below.
@@ -351,10 +397,10 @@ export function PopoverMenuItem({
                 if (closeOnSelect) setOpen(false);
             }}
             className={cn(
-                "w-full h-7 px-3 flex items-center gap-2 text-[12.5px] text-left transition-colors",
+                "w-full h-7 px-3 flex items-center gap-2 text-[12.5px] text-left transition-colors outline-none",
                 danger
-                    ? "text-red-600 hover:bg-red-50"
-                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-900",
+                    ? "text-red-600 hover:bg-red-50 focus-visible:bg-red-50"
+                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-900 focus-visible:bg-slate-50 focus-visible:text-slate-900",
                 selected && !danger && "text-slate-900 font-medium",
                 disabled && "opacity-50 cursor-not-allowed",
             )}

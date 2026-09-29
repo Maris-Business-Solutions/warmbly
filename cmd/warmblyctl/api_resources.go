@@ -72,6 +72,11 @@ var apiSpecs = []apiSpec{
 	{name: "campaign lead-hold", summary: "Whether one lead's flow is held", method: "GET", path: "/campaigns/{id}/leads/{child}/hold", child: "contact"},
 	{name: "campaign pause-lead", summary: "Hold one lead's flow until a date, or until resumed", method: "POST", path: "/campaigns/{id}/leads/{child}/pause", body: bodyOptional, child: "contact"},
 	{name: "campaign resume-lead", summary: "Lift one lead's hold now", method: "POST", path: "/campaigns/{id}/leads/{child}/resume", child: "contact"},
+	// Contacts copied on every email to one lead. --data carries
+	// {"contact_ids": ["<contact>", ...]}, at most two; [] copies nobody.
+	{name: "campaign lead-cc", summary: "Contacts copied on one lead's emails", method: "GET", path: "/campaigns/{id}/leads/{child}/cc", child: "contact"},
+	{name: "campaign set-lead-cc", summary: "Replace the contacts copied on one lead's emails", method: "PUT", path: "/campaigns/{id}/leads/{child}/cc", body: bodyRequired, child: "contact"},
+	{name: "campaign lead-cc-suggestions", summary: "The lead's likely colleagues to copy", method: "GET", path: "/campaigns/{id}/leads/{child}/cc/suggestions", child: "contact"},
 
 	// Contacts.
 	{name: "contact list", summary: "List or search contacts; --data carries the filter body", method: "POST", path: "/contacts/search", body: bodyOptional, query: []string{"limit", "cursor"}},

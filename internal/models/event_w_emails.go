@@ -43,6 +43,16 @@ type JobEventFlags struct {
 	Flags   []string  `json:"flags" avro:"flags"`
 }
 
+// JobEventFolderUpdate reports the canonical folder the provider now has a
+// message in. The consumer resolves it against provider_folder, so local filing
+// survives unless the provider itself moved the message.
+type JobEventFolderUpdate struct {
+	UserID  uuid.UUID `json:"user_id" avro:"user_id"`
+	EmailID uuid.UUID `json:"email_id" avro:"email_id"`
+	ID      uuid.UUID `json:"id" avro:"id"`
+	Folder  string    `json:"folder" avro:"folder"`
+}
+
 type JobEventEmailUpdate struct {
 	UserID  uuid.UUID `json:"user_id" avro:"user_id"`
 	EmailID uuid.UUID `json:"email_id" avro:"email_id"`

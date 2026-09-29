@@ -132,16 +132,19 @@ type PlacementTest struct {
 	SequenceID      *uuid.UUID `json:"sequence_id"`
 	ContactID       *uuid.UUID `json:"contact_id"`
 	MonitorID       *uuid.UUID `json:"monitor_id"`
-	Subject         string     `json:"subject"`
-	BodyHTML        string     `json:"body_html,omitempty"`
-	BodyPlain       string     `json:"body_plain,omitempty"`
-	OpenTracking    bool       `json:"open_tracking"`
-	LinkTracking    bool       `json:"link_tracking"`
-	CompareGroupID  *uuid.UUID `json:"compare_group_id"`
-	Origin          string     `json:"origin"`
-	Panel           string     `json:"panel"`
-	Status          string     `json:"status"`
-	Error           string     `json:"error,omitempty"`
+	// BatchID and BatchSenderID name the batch that started the test.
+	BatchID        *uuid.UUID `json:"batch_id"`
+	BatchSenderID  *uuid.UUID `json:"-"`
+	Subject        string     `json:"subject"`
+	BodyHTML       string     `json:"body_html,omitempty"`
+	BodyPlain      string     `json:"body_plain,omitempty"`
+	OpenTracking   bool       `json:"open_tracking"`
+	LinkTracking   bool       `json:"link_tracking"`
+	CompareGroupID *uuid.UUID `json:"compare_group_id"`
+	Origin         string     `json:"origin"`
+	Panel          string     `json:"panel"`
+	Status         string     `json:"status"`
+	Error          string     `json:"error,omitempty"`
 	// RemoteInstanceID is set on the cloud's copy of a test it runs for a
 	// linked instance; RemoteTestID on the instance's copy, naming the cloud's.
 	RemoteInstanceID *uuid.UUID `json:"-"`
@@ -205,25 +208,28 @@ type PlacementCounts struct {
 }
 
 // Add counts one probe.
-func (c *PlacementCounts) Add(folder string) {
-	c.Total++
+func (c *PlacementCounts) Add(folder string) { c.AddN(folder, 1) }
+
+// AddN counts n probes in one folder.
+func (c *PlacementCounts) AddN(folder string, n int) {
+	c.Total += n
 	switch folder {
 	case PlacementFolderInbox:
-		c.Inbox++
+		c.Inbox += n
 	case PlacementFolderPromotions:
-		c.Promotions++
+		c.Promotions += n
 	case PlacementFolderOther:
-		c.Other++
+		c.Other += n
 	case PlacementFolderSpam:
-		c.Spam++
+		c.Spam += n
 	case PlacementFolderMissing:
-		c.Missing++
+		c.Missing += n
 	case PlacementFolderFailed:
-		c.Failed++
+		c.Failed += n
 	case PlacementFolderCancelled:
-		c.Cancelled++
+		c.Cancelled += n
 	default:
-		c.Pending++
+		c.Pending += n
 	}
 }
 

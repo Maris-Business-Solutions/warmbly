@@ -98,6 +98,18 @@ const (
 	SyncSkipFoldersMax              = 50    // folders one mailbox may exclude from sync
 	SyncSkipFolderNameMax           = 255   // characters in one excluded folder name
 
+	// Gmail folder reconciliation: how often stored Gmail mail is checked
+	// against where Gmail has it now, how many rows one pass checks, how many
+	// inbox listing pages it reads, how many messages it looks up, how long a
+	// message found still in the inbox is not looked up again, and how soon a
+	// pass that failed is tried again.
+	GmailFolderReconcileInterval = 6 * time.Hour
+	GmailFolderReconcileRetry    = 15 * time.Minute
+	GmailFolderReconcileMessages = 1_000
+	GmailFolderReconcilePages    = 10
+	GmailFolderReconcileLookups  = 100
+	GmailFolderReconcileRecheck  = 24 * time.Hour
+
 	// Forms. Funnel events feed analytics ranges up to 90 days, so the default
 	// window keeps double coverage. Operator-editable under Instance settings.
 	FormEventsRetentionDaysDefault = 180
@@ -127,6 +139,22 @@ const (
 	PlacementMonitorIntervalDaysDef    = 7
 	PlacementMonitorAlertBelowDefault  = 70 // inbox rate, percent
 
+	// Placement batches run one test from many senders. Membership is bounded
+	// only by an operator ceiling; execution by concurrency and a start rate.
+	PlacementBatchSendersMaxDefault          = 10_000
+	PlacementBatchSendersMaxCeiling          = 100_000
+	PlacementBatchSenderConcurrencyDefault   = 20 // senders of one workspace sending probes at once
+	PlacementBatchSenderConcurrencyMax       = 500
+	PlacementBatchInstanceConcurrencyDefault = 200 // batch senders sending at once across every workspace, so no shared seed floods
+	PlacementBatchInstanceConcurrencyMax     = 5_000
+	PlacementBatchStartsPerMinuteDefault     = 10
+	PlacementBatchStartsPerMinuteMax         = 600
+	PlacementBatchRetryDays                  = 7 // a deferred sender is retried this long, then skipped
+	PlacementBatchOpenPerOrgMax              = 5 // batches one workspace may have open at once
+	PlacementBatchSenderErrorAttemptsMax     = 5 // unexpected errors before a sender fails
+	PlacementBatchRunnerBatchesPerTick       = 20
+	PlacementBatchSenderStaleMinutes         = 10 // a claimed sender with no test after this goes back to the queue
+
 	// Sequences. Empty by default so the editor shows a smart, position-based
 	// label (e.g. "Email 1") until the user names the step themselves.
 	SequenceDefaultName  = ""
@@ -142,6 +170,10 @@ const (
 	// campaign. A worker-reported failure clears the step's sent_at so the next
 	// tick retries it; this bounds that loop for a mailbox that can never send.
 	CampaignSendMaxAttempts = 5
+
+	// CampaignLeadMaxCC caps the contacts copied on one lead's emails. Every
+	// copy is one more recipient who did not ask for the email.
+	CampaignLeadMaxCC = 2
 
 	// CampaignNotDueGraceSeconds is how far in the future a step's hard
 	// constraints (wait_after, start date, sending window, mailbox min-gap)

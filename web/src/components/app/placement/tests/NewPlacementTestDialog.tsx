@@ -7,19 +7,9 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import {
-    AlertCircleIcon,
-    Loader2Icon,
-    MailCheckIcon,
-    MailIcon,
-    MegaphoneIcon,
-    PlayIcon,
-    UserRoundIcon,
-    XIcon,
-} from "lucide-react";
+import { Loader2Icon, MailCheckIcon, MailIcon, PlayIcon, XIcon } from "lucide-react";
 import toast from "react-hot-toast";
-import { Label, SearchInput, TextInput } from "@/components/ui/field";
+import { Label, SearchInput } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
     PopoverMenu,
@@ -30,39 +20,30 @@ import {
     PopoverMenuTrigger,
     SelectButton,
 } from "@/components/ui/popover-menu";
-import { SelectMenu } from "@/components/ui/select-menu";
-import { OptionSelect, Segmented } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
-import RichTextEditor from "@/components/app/campaigns/sequences/RichTextEditor";
-import { VARIABLES, htmlToPlain } from "@/components/app/campaigns/sequences/emailPreview";
-import { contactLabel } from "@/components/app/campaigns/sequences/previewContext";
-import { LINK_VARIABLES } from "@/lib/templateVars";
 import { useConfirm } from "@/hooks/context/confirm";
 import { usePermission } from "@/hooks/usePermission";
-import useDebouncedValue from "@/hooks/useDebouncedValue";
-import useCampaigns from "@/lib/api/hooks/app/campaigns/useCampaigns";
 import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
 import useCampaignSenders from "@/lib/api/hooks/app/campaigns/useCampaignSenders";
-import useSearchContacts from "@/lib/api/hooks/app/contacts/useSearchContacts";
-import getSequences from "@/lib/api/client/app/campaigns/sequences/getSequences";
+import { htmlToPlain } from "@/components/app/campaigns/sequences/emailPreview";
 import { useCreatePlacementTest, usePlacementOverview, usePlacementSeeds } from "@/lib/api/hooks/app/placement/usePlacement";
-import {
-    PANEL_LABEL,
-    type CreatePlacementTestRequest,
-    type PlacementPace,
-    type PlacementPanel,
-    type PlacementPanelFamily,
-    type PlacementTracking,
+import type {
+    CreatePlacementTestRequest,
+    PlacementPace,
+    PlacementPanel,
+    PlacementTracking,
 } from "@/lib/api/models/app/placement/Placement";
 import type Contact from "@/lib/api/models/app/contacts/Contact";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import { cn } from "@/lib/utils";
 import { placementErrorMessage, seedBlocker, testCost, type PlacementErrorField } from "./placementTests";
+import { CopySourceFields, FamilyChips, InlineError, PaceChoice, PanelChoice, TrackingChoice } from "./PlacementFormParts";
+import {
+    QUICK_SPACING_SECONDS,
+    newIdempotencyKey as newKey,
+    useCampaignEmailSteps,
+    type CopySource as Source,
+} from "./placementCopy";
 import SeedChooser from "./SeedChooser";
-
-type Source = "step" | "custom";
-
-// Mirrors config.PlacementQuickSpacingSeconds.
-const QUICK_SPACING_SECONDS = 8;
 
 interface Draft {
     senderId: string;
@@ -117,12 +98,6 @@ function draftKey(d: Draft): string {
     return JSON.stringify([d.source, d.campaignId, d.stepId, d.subject, d.bodyHtml, d.contact?.id ?? "", d.tracking, d.seedIds, d.families, d.pace]);
 }
 
-function newKey(): string {
-    return typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 export default function NewPlacementTestDialog({
     open,
     onClose,
@@ -163,15 +138,8 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
 
     const campaign = useCampaign(draft.source === "step" ? draft.campaignId : "");
     const campaignSenders = useCampaignSenders(draft.campaignId, draft.source === "step" && !!draft.campaignId);
-    const steps = useQuery({
-        queryKey: ["campaigns", draft.campaignId, "sequences"],
-        queryFn: () => getSequences(draft.campaignId),
-        enabled: draft.source === "step" && !!draft.campaignId,
-    });
-    const emailSteps = React.useMemo(
-        () => (steps.data ?? []).filter((s) => (s.kind ?? "email") === "email"),
-        [steps.data],
-    );
+    const steps = useCampaignEmailSteps(draft.campaignId, draft.source === "step");
+    const emailSteps = steps.emailSteps;
 
     // Senders: connected mailboxes that are not seeds, the campaign's own first.
     const inCampaign = React.useMemo(
@@ -395,212 +363,42 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                     </section>
 
                     {/* What to test */}
-                    <section className="space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">What to test</span>
-                            <Segmented<Source>
-                                value={draft.source}
-                                onChange={(v) =>
-                                    patch({
-                                        source: v,
-                                        tracking: v === "step" ? "campaign" : draft.tracking === "campaign" ? "off" : draft.tracking,
-                                    })
-                                }
-                                options={[
-                                    { value: "step", label: "Campaign step" },
-                                    { value: "custom", label: "Custom copy" },
-                                ]}
-                            />
-                        </div>
-
-                        {draft.source === "step" ? (
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <div className="min-w-0">
-                                    <Label>Campaign</Label>
-                                    <CampaignPicker
-                                        value={draft.campaignId}
-                                        name={campaign.data?.name}
-                                        onChange={(id) => patch({ campaignId: id, stepId: "", contact: null })}
-                                    />
-                                </div>
-                                <div className="min-w-0">
-                                    <Label>Step</Label>
-                                    <SelectMenu
-                                        value={draft.stepId}
-                                        onChange={(v) => patch({ stepId: v })}
-                                        disabled={!draft.campaignId || steps.isLoading}
-                                        fullWidth
-                                        placeholder={
-                                            !draft.campaignId
-                                                ? "Pick a campaign first"
-                                                : steps.isLoading
-                                                  ? "Loading steps…"
-                                                  : emailSteps.length === 0
-                                                    ? "No email steps"
-                                                    : "Pick a step"
-                                        }
-                                        options={emailSteps.map((s, i) => ({
-                                            value: s.id,
-                                            label: `${s.name || `Step ${i + 1}`}${s.subject ? `: ${s.subject}` : ""}`,
-                                        }))}
-                                        aria-label="Step"
-                                    />
-                                </div>
-                                <p className="sm:col-span-2 text-[11px] text-slate-400 leading-relaxed">
-                                    The saved step is rendered exactly as the campaign sends it: merge fields, spintax,
-                                    signature, opt-out footer and unsubscribe header.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                <div>
-                                    <Label>Subject</Label>
-                                    <TextInput
-                                        value={draft.subject}
-                                        onChange={(v) => patch({ subject: v })}
-                                        placeholder="Quick question, {{.FirstName}}"
-                                    />
-                                </div>
-                                <div>
-                                    <Label>Body</Label>
-                                    <RichTextEditor
-                                        html={draft.bodyHtml}
-                                        onChange={(html) =>
-                                            patch({ bodyHtml: html, bodyPlain: draft.bodyCode ? "" : htmlToPlain(html) })
-                                        }
-                                        code={draft.bodyCode}
-                                        onCodeChange={(c) => patch({ bodyCode: c })}
-                                        variables={VARIABLES}
-                                        links={LINK_VARIABLES}
-                                        placeholder="Hi {{.FirstName}}, …"
-                                    />
-                                </div>
-                            </div>
-                        )}
-                        {fieldError("source")}
-
-                        <div>
-                            <Label>Render for</Label>
-                            <ContactPicker
-                                campaignId={draft.source === "step" ? draft.campaignId : ""}
-                                value={draft.contact}
-                                onChange={(c) => patch({ contact: c })}
-                            />
-                            <p className="mt-1.5 text-[11px] text-slate-400 leading-relaxed">
-                                Fills the merge fields. Nobody but the seed inboxes receives the copies.
-                            </p>
-                        </div>
-                    </section>
+                    <CopySourceFields
+                        value={draft}
+                        patch={patch}
+                        onSource={(v) =>
+                            patch({
+                                source: v,
+                                tracking: v === "step" ? "campaign" : draft.tracking === "campaign" ? "off" : draft.tracking,
+                            })
+                        }
+                        campaignName={campaign.data?.name}
+                        steps={steps}
+                        error={fieldError("source")}
+                    />
 
                     {/* Tracking */}
-                    <section>
-                        <span className="block mb-2 text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">Tracking</span>
-                        <OptionSelect<PlacementTracking>
-                            value={draft.tracking}
-                            onChange={(v) => patch({ tracking: v })}
-                            cols={2}
-                            aria-label="Tracking"
-                            options={[
-                                ...(draft.source === "step"
-                                    ? [{ value: "campaign" as const, label: "As the campaign", hint: "Uses the campaign's open and click tracking." }]
-                                    : []),
-                                ...(textOnly
-                                    ? []
-                                    : [{ value: "on" as const, label: "On", hint: "Open pixel and tracked links." }]),
-                                { value: "off" as const, label: "Off", hint: "No pixel, links left as written." },
-                                ...(textOnly
-                                    ? []
-                                    : [
-                                          {
-                                              value: "compare" as const,
-                                              label: "Compare with and without",
-                                              hint: "Two tests to the same seeds. Counts as 2 tests.",
-                                          },
-                                      ]),
-                            ]}
-                        />
-                        {textOnly && (
-                            <p className="mt-1.5 text-[11px] text-slate-400">This campaign sends plain text, which carries no tracking.</p>
-                        )}
-                        {fieldError("tracking")}
-                    </section>
+                    <TrackingChoice
+                        value={draft.tracking}
+                        onChange={(v) => patch({ tracking: v })}
+                        source={draft.source}
+                        textOnly={textOnly}
+                        error={fieldError("tracking")}
+                    />
 
                     {/* Pace */}
-                    <section>
-                        <span className="block mb-2 text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">Pace</span>
-                        <OptionSelect<PlacementPace>
-                            value={draft.pace}
-                            onChange={(v) => patch({ pace: v })}
-                            cols={2}
-                            aria-label="Pace"
-                            options={[
-                                { value: "spaced", label: "Spaced", hint: "About a minute between copies, the way a campaign sends." },
-                                { value: "quick", label: "Quick", hint: "A few seconds apart, so results come in within minutes." },
-                            ]}
-                        />
-                    </section>
+                    <PaceChoice value={draft.pace} onChange={(v) => patch({ pace: v })} />
 
                     {/* Panel */}
                     <section>
                         <span className="block mb-2 text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">Seed panel</span>
-                        {overview.isLoading ? (
-                            <div className="h-16 rounded-md bg-slate-50 animate-pulse" />
-                        ) : (
-                            <div role="radiogroup" aria-label="Seed panel" className="grid gap-1.5">
-                                {panels.map((p) => {
-                                    const active = p.panel === draft.panel;
-                                    return (
-                                        <button
-                                            key={p.panel}
-                                            type="button"
-                                            role="radio"
-                                            aria-checked={active}
-                                            disabled={!p.available}
-                                            onClick={() => patch({ panel: p.panel })}
-                                            className={cn(
-                                                "flex w-full items-start gap-2.5 rounded-md border px-3 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sky-100",
-                                                active && p.available
-                                                    ? "border-sky-300 bg-sky-50"
-                                                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
-                                                !p.available && "opacity-60 cursor-not-allowed hover:bg-white hover:border-slate-200",
-                                            )}
-                                        >
-                                            <span className="min-w-0 flex-1">
-                                                <span className="flex items-center gap-2">
-                                                    <span className={cn("text-[12px] font-medium", active && p.available ? "text-sky-700" : "text-slate-700")}>
-                                                        {PANEL_LABEL[p.panel]}
-                                                    </span>
-                                                    <span className="font-mono text-[10.5px] text-slate-400 tabular-nums">
-                                                        {p.seeds} seed{p.seeds === 1 ? "" : "s"}
-                                                    </span>
-                                                    {p.metered && p.available && (
-                                                        <span className="h-4 px-1.5 rounded bg-slate-100 text-[10px] text-slate-500 inline-flex items-center">
-                                                            Counted
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
-                                                    {!p.available
-                                                        ? p.reason || "Not available on this workspace."
-                                                        : p.metered
-                                                          ? usage?.limit != null
-                                                              ? `Counts toward your monthly tests: ${usage.used} of ${usage.limit} used.`
-                                                              : "Counts toward your monthly tests."
-                                                          : "Not counted toward your monthly tests."}
-                                                </span>
-                                            </span>
-                                            <span
-                                                className={cn(
-                                                    "mt-0.5 size-4 shrink-0 rounded-full border transition-colors",
-                                                    active && p.available ? "border-sky-600 bg-sky-600 ring-2 ring-inset ring-white" : "border-slate-300 bg-white",
-                                                )}
-                                                aria-hidden="true"
-                                            />
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <PanelChoice
+                            panels={panels}
+                            loading={overview.isLoading}
+                            value={draft.panel}
+                            onChange={(p) => patch({ panel: p })}
+                            usage={usage}
+                        />
                         {draft.panel !== "workspace" && panel?.available && panelFamilies.length > 1 && (
                             <FamilyChips
                                 families={panelFamilies}
@@ -705,57 +503,6 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
     );
 }
 
-// The shared panels' provider families; nothing picked tests every provider.
-function FamilyChips({
-    families,
-    value,
-    onChange,
-}: {
-    families: PlacementPanelFamily[];
-    value: string[];
-    onChange: (families: string[]) => void;
-}) {
-    const chip = (active: boolean) =>
-        cn(
-            "h-6 px-2 rounded-md border text-[11px] font-medium inline-flex items-center gap-1 transition-colors",
-            active ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-        );
-    return (
-        <div className="mt-2">
-            <span className="block mb-1.5 text-[11px] text-slate-500">Providers</span>
-            <div className="flex flex-wrap gap-1">
-                <button type="button" aria-pressed={value.length === 0} onClick={() => onChange([])} className={chip(value.length === 0)}>
-                    All
-                </button>
-                {families.map((f) => {
-                    const active = value.includes(f.family);
-                    return (
-                        <button
-                            key={f.family}
-                            type="button"
-                            aria-pressed={active}
-                            onClick={() => onChange(active ? value.filter((v) => v !== f.family) : [...value, f.family])}
-                            className={chip(active)}
-                        >
-                            {f.label}
-                            <span className="font-mono tabular-nums text-slate-400">{f.seeds}</span>
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
-function InlineError({ message, compact = false }: { message: string; compact?: boolean }) {
-    return (
-        <p className={cn("flex items-start gap-1.5 text-[11.5px] leading-snug text-rose-600", !compact && "mt-1.5")}>
-            <AlertCircleIcon className="w-3.5 h-3.5 shrink-0 mt-px" />
-            <span>{message}</span>
-        </p>
-    );
-}
-
 function SenderPicker({
     senders,
     inCampaign,
@@ -818,112 +565,6 @@ function SenderPicker({
                         )}
                     </>
                 )}
-            </PopoverMenuContent>
-        </PopoverMenu>
-    );
-}
-
-function CampaignPicker({ value, name, onChange }: { value: string; name?: string; onChange: (id: string) => void }) {
-    const [open, setOpen] = React.useState(false);
-    const [q, setQ] = React.useState("");
-    const debounced = useDebouncedValue(q.trim(), 250);
-    const list = useCampaigns({ query: debounced, folder: "", limit: 20, enabled: open, all: false });
-    return (
-        <PopoverMenu open={open} onOpenChange={setOpen}>
-            <PopoverMenuTrigger asChild>
-                <SelectButton
-                    icon={<MegaphoneIcon className="w-3.5 h-3.5" />}
-                    label={value ? (name ?? "Loading…") : "Pick a campaign"}
-                    className="w-full [&>span:nth-child(2)]:max-w-none [&>span:nth-child(2)]:flex-1 [&>span:nth-child(2)]:text-left"
-                />
-            </PopoverMenuTrigger>
-            <PopoverMenuContent minWidth={280} className="p-1 max-h-80">
-                <div className="p-1.5">
-                    <SearchInput value={q} onChange={setQ} placeholder="Search campaigns…" autoFocus />
-                </div>
-                {list.isLoading && list.campaigns.length === 0 ? (
-                    <div className="px-3 py-2 text-[11.5px] text-slate-400 inline-flex items-center gap-1.5">
-                        <Loader2Icon className="w-3 h-3 animate-spin" /> Loading…
-                    </div>
-                ) : list.campaigns.length === 0 ? (
-                    <div className="px-3 py-2 text-[11.5px] text-slate-400">No campaign matches that.</div>
-                ) : (
-                    list.campaigns.map((c) => (
-                        <PopoverMenuItem key={c.id} selected={c.id === value} onSelect={() => onChange(c.id)}>
-                            {c.name}
-                        </PopoverMenuItem>
-                    ))
-                )}
-            </PopoverMenuContent>
-        </PopoverMenu>
-    );
-}
-
-// Whose merge fields fill the copy. Empty = the campaign's first lead, or the
-// built-in sample contact for custom copy.
-function ContactPicker({
-    campaignId,
-    value,
-    onChange,
-}: {
-    campaignId: string;
-    value: Contact | null;
-    onChange: (c: Contact | null) => void;
-}) {
-    const [open, setOpen] = React.useState(false);
-    const [q, setQ] = React.useState("");
-    const debounced = useDebouncedValue(q.trim(), 250);
-    const searching = debounced.length > 0;
-    const search = useSearchContacts({
-        options: {
-            query: debounced,
-            custom_field_filters: [],
-            campaign_ids: searching || !campaignId ? [] : [campaignId],
-            sort_by: "updated_at",
-            reverse: false,
-        },
-        limit: 8,
-        enabled: open,
-        keepPrevious: true,
-    });
-    const contacts = search.contacts ?? [];
-    const fallback = campaignId ? "The campaign's first lead" : "A sample contact";
-    return (
-        <PopoverMenu open={open} onOpenChange={setOpen}>
-            <PopoverMenuTrigger asChild>
-                <SelectButton
-                    icon={<UserRoundIcon className="w-3.5 h-3.5" />}
-                    label={value ? contactLabel(value) : fallback}
-                    className="w-full [&>span:nth-child(2)]:max-w-none [&>span:nth-child(2)]:flex-1 [&>span:nth-child(2)]:text-left"
-                />
-            </PopoverMenuTrigger>
-            <PopoverMenuContent minWidth={300} matchTriggerWidth className="p-1">
-                <div className="p-1.5">
-                    <SearchInput value={q} onChange={setQ} placeholder="Search contacts…" autoFocus />
-                </div>
-                <PopoverMenuItem selected={value === null} onSelect={() => onChange(null)} icon={<UserRoundIcon className="w-3.5 h-3.5" />}>
-                    {fallback}
-                </PopoverMenuItem>
-                <PopoverMenuSeparator />
-                <PopoverMenuLabel>{searching || !campaignId ? "Contacts" : "Leads in this campaign"}</PopoverMenuLabel>
-                <div className="max-h-56 overflow-y-auto">
-                    {search.isLoading && contacts.length === 0 ? (
-                        <div className="px-3 py-2 text-[11.5px] text-slate-400 inline-flex items-center gap-1.5">
-                            <Loader2Icon className="w-3 h-3 animate-spin" /> Loading…
-                        </div>
-                    ) : contacts.length === 0 ? (
-                        <div className="px-3 py-2 text-[11.5px] text-slate-400">
-                            {searching ? "No contact matches that." : "No contacts yet. Type to search."}
-                        </div>
-                    ) : (
-                        contacts.map((c) => (
-                            <PopoverMenuItem key={c.id} selected={value?.id === c.id} onSelect={() => onChange(c)}>
-                                <span className="text-slate-800">{contactLabel(c)}</span>
-                                <span className="ml-1.5 text-[11px] text-slate-400">{c.email}</span>
-                            </PopoverMenuItem>
-                        ))
-                    )}
-                </div>
             </PopoverMenuContent>
         </PopoverMenu>
     );

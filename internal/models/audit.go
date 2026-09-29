@@ -53,7 +53,7 @@ const (
 	AuditEntityCampaign AuditEntityType = "campaign"
 	// AuditEntityCampaignLead is ONE contact inside ONE campaign: the entity id
 	// is the contact and metadata carries the campaign. Written when a member
-	// pauses or resumes that lead's flow.
+	// pauses or resumes that lead's flow, or changes who it copies.
 	AuditEntityCampaignLead   AuditEntityType = "campaign_lead"
 	AuditEntityContact        AuditEntityType = "contact"
 	AuditEntityEmailAccount   AuditEntityType = "email_account"
@@ -147,10 +147,11 @@ const (
 	AuditEntityPoolLink  AuditEntityType = "pool_link"
 	AuditEntityCloudLink AuditEntityType = "cloud_link"
 
-	// Inbox placement: a test started or cancelled, and a campaign's
+	// Inbox placement: a test or batch started or cancelled, and a campaign's
 	// scheduled test set up, changed or removed.
 	AuditEntityPlacementTest    AuditEntityType = "placement_test"
 	AuditEntityPlacementMonitor AuditEntityType = "placement_monitor"
+	AuditEntityPlacementBatch   AuditEntityType = "placement_batch"
 )
 
 // AuditActor is the minimal identity of the member who performed an action,

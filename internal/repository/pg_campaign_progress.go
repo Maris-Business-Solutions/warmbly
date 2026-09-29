@@ -165,6 +165,12 @@ type CampaignProgressRepository interface {
 	// A lead with nothing else delivered is unbound from the mailbox that
 	// failed, so rotation can offer it a working one.
 	RecordSendFailure(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string) (attempts int, exhausted bool, rolledBack bool, err error)
+	// WalkBackSend is RecordSendFailure with the attempt optionally left
+	// uncounted, for a failure the retry is known not to repeat.
+	WalkBackSend(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string, countAttempt bool) (attempts int, exhausted bool, rolledBack bool, err error)
+	// BouncedCopyAddresses reports which of the campaign's own CC/BCC
+	// addresses have bounced on a send of this campaign.
+	BouncedCopyAddresses(ctx context.Context, campaignID uuid.UUID, addresses []string) (map[string]bool, error)
 	// LastSenderForLead is the mailbox a lead was LAST actually sent from,
 	// read from the campaign tasks that dispatched its steps. It answers the
 	// case campaign_leads.email_account_id cannot: a lead removed from the
@@ -328,6 +334,24 @@ type CampaignProgressRepository interface {
 	// including a dated hold that has since expired). Returns
 	// ErrLeadNotInCampaign when the contact is not a lead of the campaign.
 	GetLeadHold(ctx context.Context, campaignID, contactID uuid.UUID) (*models.LeadHold, error)
+
+	// ListLeadCC reads the contacts copied on one lead, each with whether the
+	// next email carries them.
+	ListLeadCC(ctx context.Context, campaignID, contactID uuid.UUID) ([]models.CampaignLeadCC, error)
+	// SetLeadCC replaces the contacts copied on one lead. See the ErrLeadCC
+	// errors for what it refuses.
+	SetLeadCC(ctx context.Context, orgID, campaignID, contactID uuid.UUID, ccIDs []uuid.UUID) error
+	// MarkLeadCCBounced records a bounce on the copy of one lead's thread sent
+	// to address, and returns that copy's contact, or nil when address is not
+	// one of the lead's copies.
+	MarkLeadCCBounced(ctx context.Context, campaignID, contactID uuid.UUID, address string) (*uuid.UUID, error)
+	// LeadForCopiedReply finds the lead whose thread a copied contact is
+	// answering in: the latest email step sent from emailAccountID to a lead
+	// that copies them. Nil when there is none.
+	LeadForCopiedReply(ctx context.Context, ccContactID, emailAccountID uuid.UUID) (*CopiedLeadRef, error)
+	// SuggestLeadCC offers the lead's likely colleagues: same company name, or
+	// the same email domain when that domain is not a personal mail service.
+	SuggestLeadCC(ctx context.Context, orgID, campaignID, contactID uuid.UUID, limit int) ([]models.CampaignLeadCCSuggestion, error)
 }
 
 // ErrLeadNotInCampaign is returned when a hold is asked for on a contact that
@@ -564,6 +588,14 @@ func (r *campaignProgressRepository) ListStuckDispatches(ctx context.Context, ol
 // so a duplicate worker result after the step was already walked back (or
 // re-sent) is a no-op.
 func (r *campaignProgressRepository) RecordSendFailure(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string) (int, bool, bool, error) {
+	return r.WalkBackSend(ctx, campaignID, contactID, sequenceID, reason, true)
+}
+
+func (r *campaignProgressRepository) WalkBackSend(ctx context.Context, campaignID, contactID, sequenceID uuid.UUID, reason string, countAttempt bool) (int, bool, bool, error) {
+	inc := 0
+	if countAttempt {
+		inc = 1
+	}
 	if len(reason) > 500 {
 		reason = reason[:500]
 	}
@@ -578,7 +610,7 @@ func (r *campaignProgressRepository) RecordSendFailure(ctx context.Context, camp
 			SET sent_at = NULL,
 			    dispatched_at = NULL,
 			    dispatch_task_id = NULL,
-			    send_attempts = send_attempts + 1,
+			    send_attempts = send_attempts + $5,
 			    failed_at = NOW(),
 			    failure_reason = $4
 			WHERE campaign_id = $1 AND contact_id = $2 AND sequence_id = $3
@@ -599,7 +631,7 @@ func (r *campaignProgressRepository) RecordSendFailure(ctx context.Context, camp
 		SELECT send_attempts FROM walked
 	`
 	var attempts int
-	err := r.db.QueryRow(ctx, query, campaignID, contactID, sequenceID, reason).Scan(&attempts)
+	err := r.db.QueryRow(ctx, query, campaignID, contactID, sequenceID, reason, inc).Scan(&attempts)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, false, false, nil
@@ -2295,7 +2327,9 @@ func (r *campaignProgressRepository) CountHeldLeads(ctx context.Context, campaig
 	var n int
 	err := r.db.QueryRow(ctx, `
 		SELECT COUNT(*) FROM campaign_leads cl
-		WHERE cl.campaign_id = $1 AND `+liveHold("cl"),
+		WHERE cl.campaign_id = $1 AND `+liveHold("cl")+`
+		  -- Reached in another lead's thread: nothing is left to wait for.
+		  AND cl.pause_source IS DISTINCT FROM 'cc'`,
 		campaignID).Scan(&n)
 	return n, err
 }

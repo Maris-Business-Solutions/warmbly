@@ -131,9 +131,10 @@ describe("unibox scroll position", SUITE, () => {
         await settle();
         scroller().scrollTop = 0;
 
-        // The thread pane's back link, the mobile way back to the list.
+        // The thread pane's back link, the mobile way back to the list. It
+        // names the scope the list shows.
         const back = screen
-            .getAllByRole("button", { name: "Inbox" })
+            .getAllByRole("button", { name: "Today" })
             .find((b) => b.className.includes("md:hidden"))!;
         await act(async () => {
             fireEvent.click(back);
