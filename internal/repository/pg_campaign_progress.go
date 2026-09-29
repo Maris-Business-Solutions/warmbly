@@ -328,6 +328,24 @@ type CampaignProgressRepository interface {
 	// including a dated hold that has since expired). Returns
 	// ErrLeadNotInCampaign when the contact is not a lead of the campaign.
 	GetLeadHold(ctx context.Context, campaignID, contactID uuid.UUID) (*models.LeadHold, error)
+
+	// ListLeadCC reads the contacts copied on one lead, each with whether the
+	// next email carries them.
+	ListLeadCC(ctx context.Context, campaignID, contactID uuid.UUID) ([]models.CampaignLeadCC, error)
+	// SetLeadCC replaces the contacts copied on one lead. See the ErrLeadCC
+	// errors for what it refuses.
+	SetLeadCC(ctx context.Context, orgID, campaignID, contactID uuid.UUID, ccIDs []uuid.UUID) error
+	// MarkLeadCCBounced records a bounce on the copy of one lead's thread sent
+	// to address, and returns that copy's contact, or nil when address is not
+	// one of the lead's copies.
+	MarkLeadCCBounced(ctx context.Context, campaignID, contactID uuid.UUID, address string) (*uuid.UUID, error)
+	// LeadForCopiedReply finds the lead whose thread a copied contact is
+	// answering in: the latest email step sent from emailAccountID to a lead
+	// that copies them. Nil when there is none.
+	LeadForCopiedReply(ctx context.Context, ccContactID, emailAccountID uuid.UUID) (*CopiedLeadRef, error)
+	// SuggestLeadCC offers the lead's likely colleagues: same company name, or
+	// the same email domain when that domain is not a personal mail service.
+	SuggestLeadCC(ctx context.Context, orgID, campaignID, contactID uuid.UUID, limit int) ([]models.CampaignLeadCCSuggestion, error)
 }
 
 // ErrLeadNotInCampaign is returned when a hold is asked for on a contact that
@@ -2295,7 +2313,9 @@ func (r *campaignProgressRepository) CountHeldLeads(ctx context.Context, campaig
 	var n int
 	err := r.db.QueryRow(ctx, `
 		SELECT COUNT(*) FROM campaign_leads cl
-		WHERE cl.campaign_id = $1 AND `+liveHold("cl"),
+		WHERE cl.campaign_id = $1 AND `+liveHold("cl")+`
+		  -- Reached in another lead's thread: nothing is left to wait for.
+		  AND cl.pause_source IS DISTINCT FROM 'cc'`,
 		campaignID).Scan(&n)
 	return n, err
 }

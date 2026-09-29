@@ -641,7 +641,72 @@ func (s *service) unsubscribe(ctx context.Context, expectOrg *uuid.UUID, campaig
 		"contact_email": contact.Email,
 		"source":        via,
 	})
+
+	// The link in a message is the same for everyone it copied and cannot say
+	// who used it, so it opts all of them out. A sequence action is about the
+	// lead alone.
+	if via != "action" {
+		s.unsubscribeLeadCopies(ctx, *campaign.OrganizationID, campaignID, contactID, contact.Email, via, reason)
+	}
 	return nil
+}
+
+// isLeadCopy reports whether sender is one of the contacts copied on the
+// lead's emails rather than the lead answering from another address.
+func (s *service) isLeadCopy(ctx context.Context, campaignID, contactID uuid.UUID, leadEmail, sender string) bool {
+	if s.campaignProgressRepo == nil || sender == "" || strings.EqualFold(leadEmail, sender) {
+		return false
+	}
+	copies, err := s.campaignProgressRepo.ListLeadCC(ctx, campaignID, contactID)
+	if err != nil {
+		return false
+	}
+	for _, cp := range copies {
+		if strings.EqualFold(strings.TrimSpace(cp.Email), sender) {
+			return true
+		}
+	}
+	return false
+}
+
+// unsubscribeLeadCopies suppresses every contact copied on one lead's emails.
+// Best effort: the lead itself is already opted out.
+func (s *service) unsubscribeLeadCopies(ctx context.Context, orgID, campaignID, contactID uuid.UUID, leadEmail, via, reason string) {
+	if s.campaignProgressRepo == nil {
+		return
+	}
+	copies, err := s.campaignProgressRepo.ListLeadCC(ctx, campaignID, contactID)
+	if err != nil {
+		log.Warn().Err(err).Str("contact_id", contactID.String()).Msg("unsubscribe: could not read the lead's copies")
+		return
+	}
+	for _, cp := range copies {
+		addr := strings.ToLower(strings.TrimSpace(cp.Email))
+		if addr == "" {
+			continue
+		}
+		if err := s.repo.UpsertSuppressedRecipient(ctx, &models.SuppressedRecipient{
+			OrganizationID: orgID,
+			Email:          addr,
+			Kind:           models.SuppressionKindEmail,
+			Reason:         reason + " on an email copied to them",
+			Source:         models.DeliverabilityEventUnsubscribe,
+			CampaignID:     &campaignID,
+			Metadata:       map[string]interface{}{"via": via, "copied_on": leadEmail},
+		}); err != nil {
+			log.Warn().Err(err).Str("contact_id", cp.ContactID.String()).Msg("unsubscribe: could not suppress a copied contact")
+			continue
+		}
+		if err := s.contactRepo.SetSubscribedByEmail(ctx, orgID, addr, false); err != nil {
+			log.Warn().Err(err).Str("contact_id", cp.ContactID.String()).Msg("unsubscribe: could not clear a copied contact's subscription flag")
+		}
+		s.emit(ctx, orgID, models.WebhookEventCampaignUnsubscribed, map[string]any{
+			"campaign_id":   campaignID.String(),
+			"contact_id":    cp.ContactID.String(),
+			"contact_email": cp.Email,
+			"source":        via,
+		})
+	}
 }
 
 func (s *service) Resubscribe(ctx context.Context, organizationID, contactID uuid.UUID) *errx.Error {
@@ -1173,6 +1238,10 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 	// contactEmail is the address we mailed, which is not always the one
 	// that answered; an opt-out has to reach both.
 	var contactEmail string
+	// senderIsCopy is a reply from a contact copied on the lead's emails. It
+	// counts as the lead's reply, but the copy's own away message or opt-out
+	// is about the copy, not the lead.
+	var senderIsCopy bool
 
 	// First, try exact message threading via In-Reply-To.
 	for _, mid := range msg.InReplyTo {
@@ -1223,6 +1292,7 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		campaignID = ct.CampaignID
 		contactID = ct.ContactID
 		sequenceID = ct.SequenceID
+		senderIsCopy = s.isLeadCopy(ctx, *ct.CampaignID, *ct.ContactID, contactEmail, sender)
 		break
 	}
 
@@ -1242,6 +1312,24 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		if err == nil && latest != nil {
 			campaignID = &latest.CampaignID
 			sequenceID = &latest.SequenceID
+		}
+	}
+
+	// A copied contact answering further down the thread (to the lead's own
+	// reply, say) names no message of ours; the mailbox that wrote to the
+	// lead is the evidence, and the reply is the lead's.
+	if campaignID == nil && contactID != nil && !referencesCampaignThread {
+		ref, err := s.campaignProgressRepo.LeadForCopiedReply(ctx, *contactID, emailAccountID)
+		if err != nil {
+			return toErrx(err)
+		}
+		if ref != nil {
+			if lead, lerr := s.contactRepo.GetByID(ctx, ref.ContactID); lerr == nil && lead != nil {
+				campaignID, sequenceID = &ref.CampaignID, &ref.SequenceID
+				contactID = &ref.ContactID
+				contactEmail = strings.TrimSpace(lead.Email)
+				senderIsCopy = true
+			}
 		}
 	}
 
@@ -1416,7 +1504,7 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 	}
 
 	var held *time.Time
-	if campaignID != nil && contactID != nil && verdict.Class == replyclassify.ClassOutOfOffice && settings.ReplyIntent.HoldOnOutOfOffice {
+	if campaignID != nil && contactID != nil && !senderIsCopy && verdict.Class == replyclassify.ClassOutOfOffice && settings.ReplyIntent.HoldOnOutOfOffice {
 		held = s.holdForOutOfOffice(ctx, *account.OrganizationID, *contactID, settings.ReplyIntent, msg)
 	}
 
@@ -1446,8 +1534,9 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		if err := s.contactRepo.SetSubscribedByEmail(ctx, *account.OrganizationID, sender, false); err != nil {
 			log.Warn().Err(err).Msg("reply opt-out: could not clear the contact's subscription flag")
 		}
-		// Answered from another address: the one we mailed asked to stop too.
-		if contactEmail != "" && !strings.EqualFold(contactEmail, sender) {
+		// Answered from another address: the one we mailed asked to stop too,
+		// unless it was a copy asking for themselves.
+		if contactEmail != "" && !senderIsCopy && !strings.EqualFold(contactEmail, sender) {
 			_ = s.repo.UpsertSuppressedRecipient(ctx, &models.SuppressedRecipient{
 				OrganizationID: *account.OrganizationID,
 				Email:          strings.ToLower(contactEmail),

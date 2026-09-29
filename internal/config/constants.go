@@ -143,6 +143,10 @@ const (
 	// tick retries it; this bounds that loop for a mailbox that can never send.
 	CampaignSendMaxAttempts = 5
 
+	// CampaignLeadMaxCC caps the contacts copied on one lead's emails. Every
+	// copy is one more recipient who did not ask for the email.
+	CampaignLeadMaxCC = 2
+
 	// CampaignNotDueGraceSeconds is how far in the future a step's hard
 	// constraints (wait_after, start date, sending window, mailbox min-gap)
 	// may sit while a firing task still sends it. Beyond this the scheduler

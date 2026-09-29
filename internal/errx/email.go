@@ -109,6 +109,8 @@ type MailError struct {
 	ResolvedAt    *time.Time             `json:"resolved_at"`
 
 	Message string `json:"message"`
+	// Recipient is the one address a per-recipient refusal was about.
+	Recipient string `json:"recipient,omitempty"`
 
 	// RetryAfter is provider guidance for transient throttles. It stays local
 	// to the worker; persisted error records should not depend on a stale delay.
