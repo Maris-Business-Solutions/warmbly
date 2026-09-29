@@ -10,7 +10,7 @@
 //   Mailboxes / Labels / Tags   (collapsible, searchable past 8 items)
 //
 // Every section header folds, and the fold is remembered. Mail and Views also
-// have an options menu (Edit rows) to hide rows from the rail, Apple-Mail style.
+// have a pencil to hide rows from the rail, Apple-Mail style.
 // Hiding is only visual; the scope, its URL and its shortcuts keep working.
 //
 // Today and This week are not rows: the filter sheet's date range covers
@@ -29,11 +29,11 @@ import {
   MailOpenIcon,
   MoonIcon,
   MoreHorizontalIcon,
+  PencilIcon,
   OctagonAlertIcon,
   ReplyIcon,
   SearchIcon,
   SendIcon,
-  SlidersHorizontalIcon,
   SparklesIcon,
   Trash2Icon,
   ClockIcon,
@@ -400,8 +400,8 @@ interface RailRow {
 
 // The header every rail section shares, so the five of them look and behave
 // alike: a fold toggle, an optional "highlighted count folded away" dot, and on the
-// right either a count or (Mail, Views) the options menu, which becomes Done
-// while rows are being edited.
+// right either a count or (Mail, Views) a pencil, with how many rows are
+// hidden beside it; the pencil becomes Done while rows are being edited.
 function SectionHeader({
   label,
   panelId,
@@ -411,6 +411,7 @@ function SectionHeader({
   count,
   editing,
   onEdit,
+  hiddenCount,
   optionsRef,
 }: {
   label: string;
@@ -421,6 +422,7 @@ function SectionHeader({
   count?: number;
   editing?: boolean;
   onEdit?: () => void;
+  hiddenCount?: number;
   optionsRef?: React.Ref<HTMLDivElement>;
 }) {
   return (
@@ -461,6 +463,13 @@ function SectionHeader({
           </span>
         )}
       </button>
+      {/* Non-interactive: a reminder that rows are missing, so a rail that
+          looks short is not mistaken for a bug. */}
+      {!!hiddenCount && (
+        <span className="shrink-0 text-[10.5px] text-slate-300 tabular-nums">
+          {hiddenCount} hidden
+        </span>
+      )}
       {onEdit &&
         (editing ? (
           <button
@@ -473,28 +482,17 @@ function SectionHeader({
           </button>
         ) : (
           // Always visible, unlike the folder menu: this is the only way in to
-          // hiding rows, so it cannot wait for a hover to be found. The
-          // trigger stops propagation, so opening it never also folds.
-          <PopoverMenu align="end">
-            <PopoverMenuTrigger asChild>
-              <button
-                type="button"
-                data-rail-options
-                aria-label={`${label} section options`}
-                className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-300 hover:text-slate-600 focus-visible:text-slate-600 hover:bg-slate-200/70 transition-colors"
-              >
-                <MoreHorizontalIcon className="w-3.5 h-3.5" />
-              </button>
-            </PopoverMenuTrigger>
-            <PopoverMenuContent>
-              <PopoverMenuItem
-                icon={<SlidersHorizontalIcon className="w-3 h-3" />}
-                onSelect={onEdit}
-              >
-                Edit rows
-              </PopoverMenuItem>
-            </PopoverMenuContent>
-          </PopoverMenu>
+          // hiding rows, so it cannot wait for a hover to be found.
+          <button
+            type="button"
+            data-rail-options
+            onClick={onEdit}
+            title={`Edit ${label} rows`}
+            aria-label={`Edit ${label} rows`}
+            className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-300 hover:text-slate-600 focus-visible:text-slate-600 hover:bg-slate-200/70 transition-colors"
+          >
+            <PencilIcon className="w-3.5 h-3.5" />
+          </button>
         ))}
     </div>
   );
@@ -566,6 +564,7 @@ function RailSection({
         dot={dot}
         editing={editing}
         onEdit={() => setEditing((v) => !v)}
+        hiddenCount={editing ? 0 : rows.filter((r) => hiddenKeys.includes(r.key)).length}
         optionsRef={headerRef}
       />
       <div id={panelId} className="px-2 space-y-px">

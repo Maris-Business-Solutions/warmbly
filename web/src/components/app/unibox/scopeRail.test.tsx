@@ -60,10 +60,9 @@ vi.mock("@/components/ui/AnimatedNumber", () => ({
 const MAIL_TOGGLE = /^Mail(?!boxes| section)/;
 const DOT = /highlighted count folded away/;
 
-// The header's always-visible three-dot button -> "Edit rows".
+// The header's always-visible pencil.
 function startEditing(section: "Mail" | "Views") {
-  fireEvent.click(screen.getByRole("button", { name: `${section} section options` }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Edit rows" }));
+  fireEvent.click(screen.getByRole("button", { name: `Edit ${section} rows` }));
 }
 
 function mountRail(scope: UniboxScope = { kind: "all" }) {
@@ -200,12 +199,39 @@ describe("ScopeRail edit mode", () => {
     expect(screen.getByText("Trash")).toBeTruthy();
   });
 
-  it("opens the options menu without folding the section", () => {
+  it("the pencil does not fold the section", () => {
     mountRail();
-    fireEvent.click(screen.getByRole("button", { name: "Mail section options" }));
-    expect(screen.getByRole("menuitem", { name: "Edit rows" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Mail rows" }));
     expect(useAppStore.getState().uniboxRailFolded.mail).toBeUndefined();
     expect(screen.getByText("Spam")).toBeTruthy();
+    // One click enters edit mode: no menu in between.
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(screen.getByRole("button", { name: "Done editing Mail" })).toBeTruthy();
+  });
+
+  it("counts hidden rows beside the pencil, open or folded, and drops the count when they are shown", () => {
+    mountRail();
+    expect(screen.queryByText(/\d+ hidden/)).toBeNull();
+
+    startEditing("Mail");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Spam" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Trash" }));
+    // Not shown while editing: every row is on screen then.
+    expect(screen.queryByText("2 hidden")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Done editing Mail" }));
+    expect(screen.getByText("2 hidden")).toBeTruthy();
+    // Views has none of its own.
+    expect(screen.queryByText("1 hidden")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: MAIL_TOGGLE }));
+    expect(screen.getByText("2 hidden")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: MAIL_TOGGLE }));
+
+    startEditing("Mail");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Spam" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Trash" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done editing Mail" }));
+    expect(screen.queryByText(/\d+ hidden/)).toBeNull();
   });
 
   it("does not navigate while editing and drops the folder menu", () => {
@@ -236,7 +262,7 @@ describe("ScopeRail edit mode", () => {
 
     fireEvent.keyDown(screen.getByRole("checkbox", { name: "Inbox" }), { key: "Escape" });
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
-    expect(screen.getByRole("button", { name: "Mail section options" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Mail rows" })).toBeTruthy();
   });
 
   it("holds the fold while editing, so Done never folds by surprise", () => {
@@ -257,11 +283,11 @@ describe("ScopeRail edit mode", () => {
     expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "All mail" }));
 
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Mail section options" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit Mail rows" }));
 
     startEditing("Mail");
     fireEvent.click(screen.getByRole("button", { name: "Done editing Mail" }));
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Mail section options" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit Mail rows" }));
   });
 
   it("edits Views separately from Mail", () => {
@@ -283,7 +309,7 @@ describe("ScopeRail edit mode", () => {
     });
     mountRail({ kind: "mailbox", mailboxId: "m1" });
     expect(screen.queryByText("Inbox")).toBeNull();
-    expect(screen.getByRole("button", { name: "Mail section options" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Mail rows" })).toBeTruthy();
   });
 });
 
