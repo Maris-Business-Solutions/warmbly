@@ -98,6 +98,18 @@ const (
 	SyncSkipFoldersMax              = 50    // folders one mailbox may exclude from sync
 	SyncSkipFolderNameMax           = 255   // characters in one excluded folder name
 
+	// Gmail folder reconciliation: how often stored Gmail mail is checked
+	// against where Gmail has it now, how many rows one pass checks, how many
+	// inbox listing pages it reads, how many messages it looks up, how long a
+	// message found still in the inbox is not looked up again, and how soon a
+	// pass that failed is tried again.
+	GmailFolderReconcileInterval = 6 * time.Hour
+	GmailFolderReconcileRetry    = 15 * time.Minute
+	GmailFolderReconcileMessages = 1_000
+	GmailFolderReconcilePages    = 10
+	GmailFolderReconcileLookups  = 100
+	GmailFolderReconcileRecheck  = 24 * time.Hour
+
 	// Forms. Funnel events feed analytics ranges up to 90 days, so the default
 	// window keeps double coverage. Operator-editable under Instance settings.
 	FormEventsRetentionDaysDefault = 180

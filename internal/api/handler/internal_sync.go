@@ -7,6 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/observability/errs"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -82,6 +84,61 @@ func (h *Handler) InternalSyncFolderMessages(c *gin.Context) {
 	messages, err := h.EmailSyncState.ListFolderMessages(c.Request.Context(), userID, emailID, folderPath, uint32(uidValidity))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
+}
+
+// maxProviderFolderMessages bounds one provider-folder listing.
+const maxProviderFolderMessages = 1000
+
+// InternalSyncProviderFolderMessages answers the Gmail folder reconciliation:
+// which rows does the platform still believe the provider has in these
+// folders? The worker checks each against Gmail's labels and reports the ones
+// that moved.
+//
+//	GET /api/v1/internal/sync/provider-folder-messages?user_id=&email_id=&folders=inbox,archive&limit=
+//	    -> 200 {"messages":[{"id":"...","provider_id":"...","provider_folder":"inbox","internal_date":"..."}]}
+func (h *Handler) InternalSyncProviderFolderMessages(c *gin.Context) {
+	if h.EmailSyncState == nil {
+		c.JSON(http.StatusOK, gin.H{"messages": []repository.ProviderFolderMessage{}})
+		return
+	}
+	userID, err := uuid.Parse(c.Query("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+		return
+	}
+	emailID, err := uuid.Parse(c.Query("email_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email_id"})
+		return
+	}
+	var folders []string
+	for _, raw := range strings.Split(c.Query("folders"), ",") {
+		f := strings.TrimSpace(raw)
+		if f == "" {
+			continue
+		}
+		if !models.ValidFolder(f) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid folder"})
+			return
+		}
+		folders = append(folders, f)
+	}
+	if len(folders) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "folders required"})
+		return
+	}
+	limit, err := strconv.Atoi(c.Query("limit"))
+	if err != nil || limit < 1 || limit > maxProviderFolderMessages {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+		return
+	}
+	messages, err := h.EmailSyncState.ListProviderFolderMessages(c.Request.Context(), userID, emailID, folders, limit)
+	if err != nil {
+		errs.CaptureException(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not list stored messages"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})

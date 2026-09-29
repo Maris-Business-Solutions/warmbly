@@ -25,6 +25,17 @@ type StoredFolderMessage struct {
 	MessageID string    `json:"message_id"`
 }
 
+// ProviderFolderMessage is one message the platform holds for a mailbox whose
+// provider keys messages by id (Gmail): the row, that id, the folder the
+// provider last had it in, and its date. The Gmail folder reconciliation
+// checks these against where Gmail has each message now.
+type ProviderFolderMessage struct {
+	ID             uuid.UUID `json:"id"`
+	ProviderID     string    `json:"provider_id"`
+	ProviderFolder string    `json:"provider_folder"`
+	InternalDate   time.Time `json:"internal_date"`
+}
+
 // SyncContextRepository is the worker's view of the control plane's answer to
 // "is this a conversation the mailbox owns?" and "what does the platform still
 // hold for this folder?". Workers cannot reach Postgres, so the only
@@ -36,6 +47,9 @@ type SyncContextRepository interface {
 	// UIDs a UIDVALIDITY change voided are not compared, and therefore not
 	// deleted.
 	ListFolderMessages(ctx context.Context, userID, emailID uuid.UUID, folderPath string, uidValidity uint32) ([]StoredFolderMessage, error)
+	// ListProviderFolderMessages returns the newest rows the provider last
+	// placed in one of folders, at most limit of them.
+	ListProviderFolderMessages(ctx context.Context, userID, emailID uuid.UUID, folders []string, limit int) ([]ProviderFolderMessage, error)
 }
 
 type httpSyncContextRepository struct {
@@ -45,8 +59,9 @@ type httpSyncContextRepository struct {
 }
 
 // NewHTTPSyncContextRepository returns the worker-side proxy for
-// GET {BaseURL}/api/v1/internal/sync/own-conversation and
-// GET {BaseURL}/api/v1/internal/sync/folder-messages.
+// GET {BaseURL}/api/v1/internal/sync/own-conversation,
+// GET {BaseURL}/api/v1/internal/sync/folder-messages and
+// GET {BaseURL}/api/v1/internal/sync/provider-folder-messages.
 func NewHTTPSyncContextRepository(baseURL, token string) (SyncContextRepository, error) {
 	if baseURL == "" {
 		return nil, errors.New("sync_context.http: baseURL is required")
@@ -115,6 +130,38 @@ func (r *httpSyncContextRepository) ListFolderMessages(ctx context.Context, user
 	}
 	var out struct {
 		Messages []StoredFolderMessage `json:"messages"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Messages, nil
+}
+
+// ListProviderFolderMessages asks the control plane which rows the provider
+// last placed in folders.
+func (r *httpSyncContextRepository) ListProviderFolderMessages(ctx context.Context, userID, emailID uuid.UUID, folders []string, limit int) ([]ProviderFolderMessage, error) {
+	q := url.Values{}
+	q.Set("user_id", userID.String())
+	q.Set("email_id", emailID.String())
+	q.Set("folders", strings.Join(folders, ","))
+	q.Set("limit", strconv.Itoa(limit))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.baseURL+"/api/v1/internal/sync/provider-folder-messages?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+r.token)
+	req.Header.Set("User-Agent", "warmbly-worker/sync-context-http")
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("sync_context.http: provider folder messages: %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	var out struct {
+		Messages []ProviderFolderMessage `json:"messages"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err

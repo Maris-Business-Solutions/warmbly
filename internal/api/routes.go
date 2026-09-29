@@ -191,6 +191,10 @@ func Run(
 		// folder, so the worker can drop the rows the server no longer reports.
 		internal.GET("/sync/folder-messages", h.InternalSyncFolderMessages)
 
+		// Gmail folder reconciliation: the rows the platform believes Gmail
+		// has in a folder, so the worker can report the ones that moved.
+		internal.GET("/sync/provider-folder-messages", h.InternalSyncProviderFolderMessages)
+
 		// Worker bootstrap config + heartbeat. Workers POST their identity
 		// on boot (worker_id + bind_ip + tag) and pull their runtime config
 		// instead of carrying it all in the install-time env file.
