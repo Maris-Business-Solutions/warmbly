@@ -399,7 +399,7 @@ interface RailRow {
 }
 
 // The header every rail section shares, so the five of them look and behave
-// alike: a fold toggle, an optional "unread is hiding in here" dot, and on the
+// alike: a fold toggle, an optional "highlighted count folded away" dot, and on the
 // right either a count or (Mail, Views) the options menu, which becomes Done
 // while rows are being edited.
 function SectionHeader({
@@ -632,7 +632,7 @@ function CollapsibleSection<T extends { id: string }>({
     showCollapse && !expanded ? filtered.slice(0, COLLAPSED_VISIBLE) : filtered;
   const hidden = filtered.length - visible.length;
   // Folded, only the row you are on stays, even if the list would have tucked
-  // it behind "Show all"; unread mail folded away leaves a dot instead.
+  // it behind "Show all"; a highlighted count folded away leaves a dot instead.
   const foldedVisible = sectionOpen ? [] : items.filter(isActive);
   const dot = !sectionOpen && items.some((it) => !isActive(it) && hasAccent(it));
 
