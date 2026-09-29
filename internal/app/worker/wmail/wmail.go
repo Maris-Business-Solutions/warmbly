@@ -2,6 +2,7 @@ package wmail
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/app/cipher"
@@ -95,6 +96,11 @@ type WMail struct {
 	laneCache  laneCache
 	googleTick *tickStats
 	graphTick  *tickStats
+	// googleReconciledAt is when the Gmail folder reconciliation last ran;
+	// googleInboxChecked is when it last looked up an id and found it still
+	// in the inbox (or gone), so the next passes spend lookups elsewhere.
+	googleReconciledAt time.Time
+	googleInboxChecked map[string]time.Time
 	// flagScan is the previous flag snapshot per folder name, used only on
 	// IMAP servers without CONDSTORE, which cannot say what changed.
 	flagScan map[string]*folderFlagScan

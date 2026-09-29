@@ -71,12 +71,12 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 				}
 			}
 			for _, m := range h.LabelsAdded {
-				if err := c.OnLabelAdd(ctx, m.Message.Id, m.LabelIds); err != nil {
+				if err := c.OnLabelAdd(ctx, m.Message.Id, m.LabelIds, m.Message.LabelIds); err != nil {
 					return checkpoint, err
 				}
 			}
 			for _, m := range h.LabelsRemoved {
-				if err := c.OnLabelRemove(ctx, m.Message.Id, m.LabelIds); err != nil {
+				if err := c.OnLabelRemove(ctx, m.Message.Id, m.LabelIds, m.Message.LabelIds); err != nil {
 					return checkpoint, err
 				}
 			}
@@ -111,6 +111,20 @@ func (c *Client) GetMessage(ctx context.Context, id string) (*models.EmailMessag
 		return nil, HandleError(err)
 	}
 	return GmailMessageToEmailData(full), nil
+}
+
+// MessageLabels returns a message's current label ids. found is false when
+// Gmail no longer has the message.
+func (c *Client) MessageLabels(ctx context.Context, id string) (labels []string, found bool, err error) {
+	msg, err := c.srv.Users.Messages.Get("me", id).Format("minimal").Context(ctx).Do()
+	if err != nil {
+		var gerr *googleapi.Error
+		if errors.As(err, &gerr) && gerr.Code == 404 {
+			return nil, false, nil
+		}
+		return nil, false, HandleError(err)
+	}
+	return msg.LabelIds, true, nil
 }
 
 // ListMessages is one page of the backfill: message ids matching q, newest

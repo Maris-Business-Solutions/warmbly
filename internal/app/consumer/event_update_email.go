@@ -87,6 +87,43 @@ func (s *JobsService) HandleUpdateEmail(ctx context.Context, e *models.JobEventE
 	return nil
 }
 
+// HandleFolderUpdate files a message where the provider moved it. Like a full
+// rescan, it only moves the stored folder when the provider's own placement
+// changed, so a message filed in Warmbly stays filed.
+func (s *JobsService) HandleFolderUpdate(ctx context.Context, e *models.JobEventFolderUpdate) error {
+	if !models.ValidFolder(e.Folder) {
+		return nil
+	}
+	email, err := s.emailForSyncUpdate(ctx, e.UserID, e.ID, func(message *models.EmailMessageStoreData) {
+		// A pending row is not visible yet, so nothing has filed it locally.
+		message.Folder = e.Folder
+	})
+	if err != nil {
+		CaptureError(e.UserID, e.EmailID, fmt.Errorf("Email (%s): %w", e.ID.String(), err))
+		return err
+	}
+	if email == nil {
+		return nil
+	}
+
+	folder, provider, providerMoved := models.ResolveFolderSync(email.Folder, email.ProviderFolder, e.Folder)
+	if !providerMoved {
+		return nil
+	}
+	update := repository.UpdateUniboxEntry{ProviderFolder: &provider}
+	if folder != email.Folder {
+		update.Folder = &folder
+	}
+	if err := s.UniboxRepository.UpdateEntry(ctx, e.UserID, e.EmailID, e.ID, &update); err != nil {
+		return err
+	}
+
+	email.Folder = folder
+	email.ProviderFolder = provider
+	s.publishEmailUpdated(ctx, e.UserID, email)
+	return nil
+}
+
 // emailForSyncUpdate rechecks visible mail if verification won the pending-row lock.
 func (s *JobsService) emailForSyncUpdate(ctx context.Context, userID, id uuid.UUID, updatePending func(*models.EmailMessageStoreData)) (*models.EmailMessageStoreData, error) {
 	message, err := s.UniboxRepository.GetByID(ctx, userID, id)

@@ -213,33 +213,44 @@ export default function UniboxPage() {
     }
   }, [urlScope, urlScopeRef]);
 
+  // Switching scope closes the open conversation: it may not be in the new
+  // list, and a reader showing a thread the list does not have reads as a
+  // misfiled message.
   const setScope = React.useCallback(
     (s: UniboxScope) => {
       switch (s.kind) {
         case "folder":
-          goTo({ scope: s.folder, ref: null });
+          goTo({ scope: s.folder, ref: null, threadId: null });
           return;
         case "mailbox":
-          goTo({ scope: "mailbox", ref: s.mailboxId });
+          goTo({ scope: "mailbox", ref: s.mailboxId, threadId: null });
           return;
         case "tag":
-          goTo({ scope: "tag", ref: s.tagId });
+          goTo({ scope: "tag", ref: s.tagId, threadId: null });
           return;
         case "category":
-          goTo({ scope: "category", ref: s.categoryId });
+          goTo({ scope: "category", ref: s.categoryId, threadId: null });
           return;
         case "view":
-          goTo({ scope: "view", ref: s.view });
+          goTo({ scope: "view", ref: s.view, threadId: null });
           return;
         case "all":
-          goTo({ scope: "all", ref: null });
+          goTo({ scope: "all", ref: null, threadId: null });
           return;
         default:
-          goTo({ scope: s.kind, ref: null });
+          goTo({ scope: s.kind, ref: null, threadId: null });
       }
     },
     [goTo],
   );
+
+  // The same as Escape on the list: the store moves, the reconciler above
+  // clears the URL.
+  const setSelectedAccountId = useAppStore((s) => s.setSelectedAccountId);
+  const closeThread = React.useCallback(() => {
+    setSelectedThreadId(null);
+    setSelectedAccountId(null);
+  }, [setSelectedThreadId, setSelectedAccountId]);
 
   // ── Scope → server search params ───────────────────────────────
   // Derived synchronously (initial state + render-phase reset), NOT in
@@ -504,18 +515,18 @@ export default function UniboxPage() {
                   <>
                     <button
                       type="button"
-                      onClick={() => goTo({ threadId: null })}
+                      onClick={closeThread}
                       className="md:hidden flex items-center gap-1 px-3 h-10 shrink-0 border-b border-slate-200 text-[12.5px] font-medium text-slate-600 hover:text-slate-900 active:bg-slate-50"
                     >
-                      <ChevronLeftIcon className="w-4 h-4" />
-                      Inbox
+                      <ChevronLeftIcon className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{scopeLabel}</span>
                     </button>
                     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                       {/* Keyed: the list is what has to survive a thread
                           change, the reader is what has to start clean, so a
                           half-typed reply never follows you to the next
                           conversation. */}
-                      <ThreadView key={urlThread} threadId={urlThread} />
+                      <ThreadView key={urlThread} threadId={urlThread} onClose={closeThread} />
                     </div>
                   </>
                 ) : (

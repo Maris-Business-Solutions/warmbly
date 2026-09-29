@@ -31,6 +31,9 @@ type EmailSyncStateRepository interface {
 	// folder in the current UIDVALIDITY generation, keyed by UID. The IMAP
 	// drafts reconciliation uses it to find the rows the server expunged.
 	ListFolderMessages(ctx context.Context, userID, emailID uuid.UUID, folderPath string, uidValidity uint32) ([]StoredFolderMessage, error)
+	// ListProviderFolderMessages returns the newest rows the provider last
+	// placed in one of folders, for providers that key messages by id.
+	ListProviderFolderMessages(ctx context.Context, userID, emailID uuid.UUID, folders []string, limit int) ([]ProviderFolderMessage, error)
 }
 
 type pgEmailSyncStateRepository struct {
@@ -184,6 +187,34 @@ func (r *pgEmailSyncStateRepository) ListFolderMessages(ctx context.Context, use
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("email_sync_state: list folder messages: %w", err)
+	}
+	return out, nil
+}
+
+func (r *pgEmailSyncStateRepository) ListProviderFolderMessages(ctx context.Context, userID, emailID uuid.UUID, folders []string, limit int) ([]ProviderFolderMessage, error) {
+	const q = `
+		SELECT id, gmail_id, provider_folder, internal_date
+		FROM unibox_emails
+		WHERE user_id = $1 AND email_id = $2 AND provider_folder = ANY($3) AND gmail_id <> ''
+		ORDER BY internal_date DESC
+		LIMIT $4
+	`
+	rows, err := r.db.Query(ctx, q, userID, emailID, folders, limit)
+	if err != nil {
+		return nil, fmt.Errorf("email_sync_state: list provider folder messages: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]ProviderFolderMessage, 0)
+	for rows.Next() {
+		var m ProviderFolderMessage
+		if err := rows.Scan(&m.ID, &m.ProviderID, &m.ProviderFolder, &m.InternalDate); err != nil {
+			return nil, fmt.Errorf("email_sync_state: scan provider folder message: %w", err)
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("email_sync_state: list provider folder messages: %w", err)
 	}
 	return out, nil
 }

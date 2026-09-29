@@ -33,6 +33,7 @@ func (w *JobsService) InitEvents() {
 	Register(w, models.JobEventTypeRemoveEmail, w.HandleRemoveEmail)
 	Register(w, models.JobEventTypeFlagsAdd, w.HandleFlagsAdd)
 	Register(w, models.JobEventTypeFlagsRemove, w.HandleFlagsRemove)
+	Register(w, models.JobEventTypeFolderUpdate, w.HandleFolderUpdate)
 	Register(w, models.JobEventTypeMailboxUpdate, w.HandleMailboxUpdate)
 	Register(w, models.JobEventTypeMailboxDelete, w.HandleMailboxDelete)
 	Register(w, models.JobEventTypeMailboxRename, w.HandleMailboxRename)
