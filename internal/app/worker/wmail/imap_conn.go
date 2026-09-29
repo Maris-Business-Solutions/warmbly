@@ -68,6 +68,9 @@ type ImapConn interface {
 	// expunge scoped to the UID, or a move into trashName where the server
 	// cannot scope one.
 	DeleteUID(ctx context.Context, mailboxName, trashName string, uid uint32) error
+	// LocateMessageID lists which folders hold a message: the search behind
+	// a warmup removal's verdict.
+	LocateMessageID(ctx context.Context, mailboxes []string, rfcMessageID string) (held []string, unsearched int, err error)
 }
 
 var _ ImapConn = (*imap.Client)(nil)

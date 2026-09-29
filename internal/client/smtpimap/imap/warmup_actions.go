@@ -38,16 +38,10 @@ func (c *Client) FindUIDByMessageID(ctx context.Context, mailboxName, rfcMessage
 		return 0, nil
 	}
 
-	// SEARCH HEADER matches on a substring of the header value, so the angle
-	// brackets are kept: a bare id would also match any message whose
-	// References or In-Reply-To names it.
-	data, err := c.client.UIDSearch(&imap.SearchCriteria{
-		Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: "<" + strings.Trim(rfcMessageID, "<>") + ">"}},
-	}, nil).Wait()
+	uids, err := c.searchMessageIDLocked(rfcMessageID)
 	if err != nil {
 		return 0, fmt.Errorf("search %q for message id: %w", name, err)
 	}
-	uids := data.AllUIDs()
 	if len(uids) == 0 {
 		return 0, nil
 	}
@@ -55,6 +49,62 @@ func (c *Client) FindUIDByMessageID(ctx context.Context, mailboxName, rfcMessage
 	// left behind.
 	return uint32(uids[len(uids)-1]), nil
 }
+
+// LocateMessageID lists which mailboxes hold the message in one hold of the
+// session; a folder the server refuses to open is counted as unsearched.
+func (c *Client) LocateMessageID(ctx context.Context, mailboxes []string, rfcMessageID string) (held []string, unsearched int, err error) {
+	rfcMessageID = strings.TrimSpace(rfcMessageID)
+	if rfcMessageID == "" {
+		return nil, 0, errors.New("imap: no message id to look up")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if merr := c.ensureConnected(); merr != nil {
+		return nil, 0, merr
+	}
+	c.lifecycle.RLock()
+	defer c.lifecycle.RUnlock()
+	defer c.begin()()
+	for _, mailbox := range mailboxes {
+		if ctx.Err() != nil {
+			return nil, 0, ctx.Err()
+		}
+		name := c.qualifyMailboxLocked(mailbox)
+		if _, err := c.selectMailbox(name, nil); err != nil {
+			var refused *imap.Error
+			if !errors.As(err, &refused) {
+				return nil, 0, fmt.Errorf("select %q: %w", name, err)
+			}
+			unsearched++
+			continue
+		}
+		uids, err := c.searchMessageIDLocked(rfcMessageID)
+		if err != nil {
+			return nil, 0, fmt.Errorf("search %q for message id: %w", name, err)
+		}
+		if len(uids) > 0 {
+			held = append(held, mailbox)
+		}
+	}
+	return held, unsearched, nil
+}
+
+// searchMessageIDLocked searches the selected folder; brackets stay because
+// SEARCH HEADER matches substrings, and References would match a bare id.
+func (c *Client) searchMessageIDLocked(rfcMessageID string) ([]imap.UID, error) {
+	data, err := c.client.UIDSearch(&imap.SearchCriteria{
+		Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: "<" + strings.Trim(rfcMessageID, "<>") + ">"}},
+	}, nil).Wait()
+	if err != nil {
+		return nil, err
+	}
+	return data.AllUIDs(), nil
+}
+
+// SelectableFolder is false for a folder listed only as hierarchy.
+func SelectableFolder(attrs []string) bool { return selectableFolder(attrs) }
 
 // FindUIDsByMessageIDs is FindUIDByMessageID for many ids against one
 // folder: one SELECT, then one SEARCH per id. It answers only the ids it
@@ -86,13 +136,11 @@ func (c *Client) FindUIDsByMessageIDs(ctx context.Context, mailboxName string, r
 		if id == "" {
 			continue
 		}
-		data, err := c.client.UIDSearch(&imap.SearchCriteria{
-			Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: "<" + strings.Trim(id, "<>") + ">"}},
-		}, nil).Wait()
+		uids, err := c.searchMessageIDLocked(id)
 		if err != nil {
 			return nil, fmt.Errorf("search %q for message id: %w", name, err)
 		}
-		if uids := data.AllUIDs(); len(uids) > 0 {
+		if len(uids) > 0 {
 			found[raw] = uint32(uids[len(uids)-1])
 		}
 	}

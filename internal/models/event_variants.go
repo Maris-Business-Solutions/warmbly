@@ -57,4 +57,6 @@ var JobEventBodies = map[JobEventType]any{
 	JobEventTypeEmailRateLimited: EmailErrorEvent{},
 	JobEventTypeEmailServerError: EmailErrorEvent{},
 	JobEventTypeWorkerHealth:     WorkerHealthSample{},
+
+	JobEventTypeWarmupRemovalChecked: (*JobEventWarmupRemovalChecked)(nil),
 }

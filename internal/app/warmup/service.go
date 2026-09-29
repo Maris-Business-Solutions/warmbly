@@ -67,6 +67,11 @@ const (
 	tamperingQuarantineStrikes = 2
 	tamperingBlockStrikes      = 4
 
+	// Every tampering pause and block reason starts with one of these, which
+	// is how a withdrawn strike finds the hold it imposed.
+	tamperingPausePrefix = "Paused from warmup: "
+	tamperingBlockPrefix = "Blocked from warmup: "
+
 	warmupThrottleDuration   = 3 * 24 * time.Hour
 	warmupQuarantineDuration = 7 * 24 * time.Hour
 	warmupBlockDuration      = 30 * 24 * time.Hour
@@ -96,6 +101,9 @@ type Service interface {
 	// band warns on a first deletion and climbs from there. The owner can
 	// appeal a block.
 	RecordTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (*models.WarmupParticipantHealth, *errx.Error)
+	// WithdrawTampering takes back a strike the mailbox did not earn and
+	// lifts a pause or block that strike imposed and no longer stands.
+	WithdrawTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (*models.WarmupParticipantHealth, *errx.Error)
 
 	// SubmitAppeal lets the mailbox owner appeal a warmup ban with a reason.
 	SubmitAppeal(ctx context.Context, userID, accountID uuid.UUID, reason string) (uuid.UUID, *errx.Error)
@@ -356,6 +364,81 @@ func (s *service) RecordTampering(ctx context.Context, accountID uuid.UUID, mess
 		return s.getParticipantForAnyPool(ctx, accountID)
 	}
 	return s.evaluateAndPersistAnyPool(ctx, accountID)
+}
+
+func (s *service) WithdrawTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (*models.WarmupParticipantHealth, *errx.Error) {
+	exists, err := s.repo.HasWarmupTampering(ctx, accountID, messageID, kind)
+	if err != nil {
+		return nil, errx.InternalError()
+	}
+	if !exists {
+		return nil, nil
+	}
+	// Revised before the strike goes, so a failure leaves it to be retried.
+	if xerr := s.reviseTamperingHold(ctx, accountID, messageID); xerr != nil {
+		return nil, xerr
+	}
+	if _, err := s.repo.WithdrawWarmupTampering(ctx, accountID, messageID, kind); err != nil {
+		return nil, errx.InternalError()
+	}
+	participant, xerr := s.getParticipantForAnyPool(ctx, accountID)
+	if xerr != nil || participant == nil {
+		return nil, xerr
+	}
+	return s.evaluateAndPersist(ctx, participant)
+}
+
+// reviseTamperingHold re-decides a live tampering hold, which the bands never
+// lower, on the strikes other than withdrawn left in the week before it began.
+func (s *service) reviseTamperingHold(ctx context.Context, accountID uuid.UUID, withdrawn string) *errx.Error {
+	hold, err := s.repo.GetWarmupHold(ctx, accountID)
+	if err != nil {
+		return errx.InternalError()
+	}
+	if !isTamperingHold(hold) {
+		return nil
+	}
+	decidedAt := tamperingHoldDecidedAt(hold)
+	deletions, spamFlags, err := s.repo.CountWarmupTamperingBetween(ctx, accountID, decidedAt.Add(-7*24*time.Hour), decidedAt, withdrawn, !hold.InPool)
+	if err != nil {
+		return errx.InternalError()
+	}
+	decision := evaluateTampering(&models.WarmupHealthMetrics{DeletionsLast7d: deletions, SpamFlagsLast7d: spamFlags}, decidedAt)
+	if healthSeverity(decision.State) >= healthSeverity(hold.State) {
+		return nil
+	}
+	state, until, reason := decision.State, decision.BlockedUntil, decision.Reason
+	if until == nil || !until.After(s.now()) {
+		state, until, reason = models.WarmupHealthHealthy, nil, ""
+	}
+	if _, err := s.repo.ReviseWarmupHold(ctx, accountID, hold, state, until, reason); err != nil {
+		return errx.InternalError()
+	}
+	return nil
+}
+
+// isTamperingHold is a live pause or block the tampering band imposed.
+func isTamperingHold(h *repository.WarmupHold) bool {
+	if h == nil || h.BlockedUntil == nil {
+		return false
+	}
+	if h.State != models.WarmupHealthQuarantined && h.State != models.WarmupHealthBlocked {
+		return false
+	}
+	return strings.HasPrefix(h.Reason, tamperingPausePrefix) || strings.HasPrefix(h.Reason, tamperingBlockPrefix)
+}
+
+// tamperingHoldDecidedAt is when the hold was imposed, from its term when the
+// row does not record it.
+func tamperingHoldDecidedAt(h *repository.WarmupHold) time.Time {
+	if h.BlockedAt != nil {
+		return *h.BlockedAt
+	}
+	term := warmupQuarantineDuration
+	if h.State == models.WarmupHealthBlocked {
+		term = warmupBlockDuration
+	}
+	return h.BlockedUntil.Add(-term)
 }
 
 func tamperingVerb(kind string) string {
@@ -689,8 +772,8 @@ func moreSevere(a, b evaluationDecision) evaluationDecision {
 // evaluateTampering needs no sample: each strike is one deliberate act on mail
 // the mailbox verifiably received. A single deletion only warns, because the
 // most likely cause is someone tidying the folder by hand. A deletion is only
-// recorded at all inside config.WarmupDeletionStrikeHours of arrival; past
-// that the platform's own retention would have removed the message anyway.
+// recorded inside config.WarmupDeletionStrikeHours of arrival, and only once a
+// search of the mailbox found the message in the trash or gone.
 func evaluateTampering(metrics *models.WarmupHealthMetrics, now time.Time) evaluationDecision {
 	strikes := metrics.TamperingStrikes()
 	score := maxFloat(float64(strikes)*10, metrics.SpamPlacementRate)
@@ -700,7 +783,7 @@ func evaluateTampering(metrics *models.WarmupHealthMetrics, now time.Time) evalu
 		return evaluationDecision{
 			State:        models.WarmupHealthBlocked,
 			BlockedUntil: &until,
-			Reason:       "Blocked from warmup: " + tamperingSummary(metrics) + " in the last 7 days. Warmup mail has to be left where it is filed. You can appeal this from your dashboard.",
+			Reason:       tamperingBlockPrefix + tamperingSummary(metrics) + " in the last 7 days. Leave warmup mail in the mailbox and out of spam; Warmbly deletes it on its own once its retention window passes. You can appeal this from your dashboard.",
 			Score:        score,
 		}
 	case strikes >= tamperingQuarantineStrikes:
@@ -708,13 +791,13 @@ func evaluateTampering(metrics *models.WarmupHealthMetrics, now time.Time) evalu
 		return evaluationDecision{
 			State:        models.WarmupHealthQuarantined,
 			BlockedUntil: &until,
-			Reason:       "Paused from warmup: " + tamperingSummary(metrics) + " in the last 7 days. Warmup mail has to be left where it is filed.",
+			Reason:       tamperingPausePrefix + tamperingSummary(metrics) + " in the last 7 days. Leave warmup mail in the mailbox and out of spam; Warmbly deletes it on its own once its retention window passes.",
 			Score:        score,
 		}
 	case strikes >= tamperingWatchStrikes:
 		return evaluationDecision{
 			State:  models.WarmupHealthWatch,
-			Reason: "A warmup email was " + tamperingVerb(tamperingKind(metrics)) + " soon after it arrived. Leave warmup mail where it is filed; Warmbly clears it on its own once its retention window passes. A second one within 7 days pauses warmup.",
+			Reason: "A warmup email was " + tamperingVerb(tamperingKind(metrics)) + " soon after it arrived. Leave warmup mail in the mailbox; Warmbly deletes it on its own once its retention window passes. A second one within 7 days pauses warmup.",
 			Score:  score,
 		}
 	}

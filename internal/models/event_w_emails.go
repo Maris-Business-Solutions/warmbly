@@ -26,6 +26,16 @@ type JobEventRemoveEmail struct {
 	SkippedFolder string `json:"skipped_folder,omitempty" avro:"skipped_folder"`
 }
 
+// JobEventWarmupRemovalChecked is where the worker found a warmup message
+// after the sync reported it removed.
+type JobEventWarmupRemovalChecked struct {
+	UserID       uuid.UUID `json:"user_id" avro:"user_id"`
+	EmailID      uuid.UUID `json:"email_id" avro:"email_id"`
+	RFCMessageID string    `json:"rfc_message_id" avro:"rfc_message_id"`
+	Outcome      string    `json:"outcome" avro:"outcome"`
+	Recheck      bool      `json:"recheck,omitempty" avro:"recheck"`
+}
+
 type JobEventFlags struct {
 	UserID  uuid.UUID `json:"user_id" avro:"user_id"`
 	EmailID uuid.UUID `json:"email_id" avro:"email_id"`

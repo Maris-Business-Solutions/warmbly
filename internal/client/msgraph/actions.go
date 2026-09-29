@@ -2,6 +2,7 @@ package msgraph
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -127,8 +128,7 @@ func (c *Client) move(ctx context.Context, messageID, destinationID string) (str
 // ids change on move, so warmup actions re-resolve against this stable key.
 // Returns an empty string (no error) when the message can't be found.
 func (c *Client) ResolveMessageID(ctx context.Context, internetMessageID string) (string, error) {
-	filter := "internetMessageId eq '" + strings.ReplaceAll(internetMessageID, "'", "''") + "'"
-	u := c.root() + "/messages?$select=id&$top=1&$filter=" + url.QueryEscape(filter)
+	u := c.messagesByInternetID(internetMessageID, "id", 1)
 	var resp struct {
 		Value []struct {
 			ID string `json:"id"`
@@ -141,6 +141,51 @@ func (c *Client) ResolveMessageID(ctx context.Context, internetMessageID string)
 		return "", nil
 	}
 	return resp.Value[0].ID, nil
+}
+
+// LocateRFCMessageID reports whether any folder still holds the message, and
+// whether every copy is in Deleted Items. Delta reports a move as a removal.
+func (c *Client) LocateRFCMessageID(ctx context.Context, internetMessageID string) (found, trashed bool, err error) {
+	id := strings.TrimSpace(internetMessageID)
+	if id == "" {
+		return false, false, errors.New("msgraph: no message id to look up")
+	}
+	deletedID, err := c.wellKnownFolderID(ctx, FolderDeletedItems)
+	if err != nil {
+		return false, false, err
+	}
+	// Graph stores the id bracketed; a bare one is tried both ways.
+	forms := []string{id}
+	if !strings.HasPrefix(id, "<") {
+		forms = append(forms, "<"+id+">")
+	}
+	for _, form := range forms {
+		u := c.messagesByInternetID(form, "id,parentFolderId", 10)
+		var resp struct {
+			Value []struct {
+				ParentFolderID string `json:"parentFolderId"`
+			} `json:"value"`
+		}
+		if err := c.doJSON(ctx, "GET", u, nil, &resp); err != nil {
+			return false, false, err
+		}
+		for _, m := range resp.Value {
+			found = true
+			if m.ParentFolderID != deletedID {
+				return true, false, nil
+			}
+		}
+		if found {
+			return true, true, nil
+		}
+	}
+	return false, false, nil
+}
+
+// messagesByInternetID lists the mailbox's messages carrying one internetMessageId.
+func (c *Client) messagesByInternetID(internetMessageID, fields string, top int) string {
+	filter := "internetMessageId eq '" + strings.ReplaceAll(internetMessageID, "'", "''") + "'"
+	return c.root() + "/messages?$select=" + fields + "&$top=" + itoa(top) + "&$filter=" + url.QueryEscape(filter)
 }
 
 func (c *Client) messageURL(messageID string) string {
