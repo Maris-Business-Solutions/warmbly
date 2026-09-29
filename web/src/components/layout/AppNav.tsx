@@ -35,9 +35,10 @@ import {
     ZapIcon,
 } from "lucide-react";
 import { type ReactElement, type ReactNode, useId, useMemo, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAppStore } from "@/stores";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
-import { usePermission, type PermissionKey } from "@/hooks/usePermission";
+import { orgHasPermission, usePermission, type PermissionKey } from "@/hooks/usePermission";
 import { useUpgradeDialog } from "@/hooks/context/upgrade";
 import { PLAN_ACCENT_CLASSES, getPlan, type PlanID } from "@/lib/plans";
 import AccessLockedDialog from "./AccessLockedDialog";
@@ -59,6 +60,7 @@ import useAPIKeys from "@/lib/api/hooks/app/api-keys/useAPIKeys";
 import useIntegrationConnections from "@/lib/api/hooks/app/integrations/useIntegrationConnections";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
 import AdvisorNavBadge from "@/components/app/advisor/AdvisorNavBadge";
+import { useAdvisorSummary } from "@/lib/api/hooks/app/advisor/useAdvisor";
 import type { AdvisorSurface } from "@/lib/api/models/app/advisor/Advisor";
 import { UserNav } from "./UserNav";
 import { Logo } from "@/components/svg";
@@ -127,6 +129,8 @@ const REQUIRES_TO_MIN_PLAN: Record<NonNullable<NavItem["requires"]>, PlanID> = {
 };
 
 interface NavSection {
+    /** Stable key for the persisted fold state, so renaming a label keeps it. */
+    id: string;
     label: string;
     items: NavItem[];
 }
@@ -145,6 +149,7 @@ const topItems: NavItem[] = [
 
 const sections: NavSection[] = [
     {
+        id: "email",
         label: "Email",
         items: [
             { title: "Accounts", url: "/app/emails", icon: MailIcon, indicator: "accounts", advisorSurface: "emails", permission: "MANAGE_EMAILS", permissionLabel: "Manage mailboxes" },
@@ -157,6 +162,7 @@ const sections: NavSection[] = [
         ],
     },
     {
+        id: "crm",
         label: "CRM",
         items: [
             { title: "Pipelines", requires: "subscription", url: "/app/crm/pipelines", icon: GitBranchIcon, indicator: "pipelines", permission: "VIEW_CONTACTS", permissionLabel: "View contacts" },
@@ -166,6 +172,7 @@ const sections: NavSection[] = [
         ],
     },
     {
+        id: "resources",
         label: "Resources",
         items: [
             { title: "Templates", requires: "subscription", url: "/app/templates", icon: FileTextIcon, indicator: "templates" },
@@ -680,6 +687,31 @@ function IntegrationsActivity() {
     );
 }
 
+// The same urgency the rows badge, summed over the rows a folded section hides,
+// so folding Email cannot bury a critical deliverability finding.
+function FoldedAdvisorDot({ surfaces }: { surfaces: AdvisorSurface[] }) {
+    const { data } = useAdvisorSummary(surfaces.length > 0);
+    let critical = 0;
+    let urgent = 0;
+    for (const entry of data?.surfaces ?? []) {
+        if (!surfaces.includes(entry.surface)) continue;
+        critical += entry.critical;
+        urgent += entry.critical + entry.high;
+    }
+    if (urgent === 0) return null;
+    const label = `${urgent} ${urgent === 1 ? "issue" : "issues"} needing attention in this section`;
+    return (
+        <span
+            title={label}
+            className={cn("size-1.5 shrink-0 rounded-full", critical > 0 ? "bg-rose-500" : "bg-orange-500")}
+        >
+            <span className="sr-only">{label}</span>
+        </span>
+    );
+}
+
+const FOLD_EASE = [0.2, 0, 0, 1] as const;
+
 function Section({
     section,
     first = false,
@@ -691,51 +723,90 @@ function Section({
 }) {
     const id = useId();
     const { pathname } = useLocation();
-    const sectionCollapsed = useAppStore((s) => s.navCollapsedSections[section.label] ?? false);
+    const folded = useAppStore((s) => s.navCollapsedSections[section.id] ?? false);
     const toggleNavSection = useAppStore((s) => s.toggleNavSection);
-    const { canManage } = useFeatureAccess();
-    const active = section.items.some((item) => isNavItemActive(pathname, item));
-    const hidden = !collapsed && sectionCollapsed;
-    const visibleItems = collapsed
-        ? section.items.filter((item) =>
-            (!sectionCollapsed || isNavItemActive(pathname, item)) &&
-            (item.rolesAllowed !== "manage" || canManage),
-        )
-        : section.items;
+    const org = useAppStore((s) => s.currentOrganization);
+    const access = useFeatureAccess();
+    const reduceMotion = useReducedMotion();
 
-    if (collapsed && visibleItems.length === 0) return null;
+    // Folded, a section keeps only the row you are on, in the rail and the
+    // full sidebar alike, so where you are never folds away with the rest.
+    const permitted = section.items.filter((item) => item.rolesAllowed !== "manage" || access.canManage);
+    const shown = folded ? permitted.filter((item) => isNavItemActive(pathname, item)) : permitted;
+    const hiddenSurfaces = folded
+        ? permitted.flatMap((item) =>
+            !isNavItemActive(pathname, item) &&
+            item.advisorSurface &&
+            !(item.requires === "subscription" && access.locked) &&
+            (!item.permission || orgHasPermission(org, item.permission))
+                ? [item.advisorSurface]
+                : [],
+        )
+        : [];
+
+    if (collapsed && shown.length === 0) return null;
+
+    const transition = reduceMotion ? { duration: 0 } : { duration: 0.22, ease: FOLD_EASE };
 
     return (
         <div className={first ? "" : "mt-4 pt-4 border-t border-slate-200/50"}>
             {/* Collapsed, the hairline above the group carries the grouping on
                 its own — a tracked-uppercase label does not fit in 56px. */}
             {!collapsed && (
-                <div className="px-4 mb-1.5">
-                    <button
-                        type="button"
-                        aria-expanded={!hidden}
-                        aria-controls={id}
-                        onClick={() => toggleNavSection(section.label)}
-                        className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium inline-flex items-center gap-1.5 rounded-sm hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-                    >
-                        {section.label}
-                        {hidden && active && (
-                            <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" aria-hidden />
-                                <span className="sr-only">(contains current page)</span>
-                            </>
+                <button
+                    type="button"
+                    aria-expanded={!folded}
+                    aria-controls={id}
+                    onClick={() => toggleNavSection(section.id)}
+                    className="group/section mx-2 mb-1 flex h-6 w-[calc(100%-1rem)] items-center gap-1.5 rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400 transition-colors duration-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                >
+                    <span>{section.label}</span>
+                    {/* Always shown while folded so the state reads at a glance;
+                        expanded it appears on hover (always on touch). */}
+                    <ChevronDownIcon
+                        aria-hidden
+                        strokeWidth={2}
+                        className={cn(
+                            "size-3 shrink-0 transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none",
+                            folded
+                                ? "-rotate-90 opacity-100"
+                                : "opacity-100 md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-visible/section:opacity-100",
                         )}
-                        <ChevronDownIcon
-                            className={cn("w-3 h-3 transition-transform", hidden && "-rotate-90")}
-                            aria-hidden
-                        />
-                    </button>
-                </div>
+                    />
+                    <span className="ml-auto flex items-center">
+                        <AnimatePresence initial={false}>
+                            {folded && hiddenSurfaces.length > 0 && (
+                                <motion.span
+                                    key="attention"
+                                    className="flex"
+                                    initial={{ opacity: 0, scale: 0.5 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.5 }}
+                                    transition={transition}
+                                >
+                                    <FoldedAdvisorDot surfaces={hiddenSurfaces} />
+                                </motion.span>
+                            )}
+                        </AnimatePresence>
+                    </span>
+                </button>
             )}
-            <div id={id} hidden={hidden} className="space-y-px">
-                {visibleItems.map((it) => (
-                    <NavRow key={it.url} item={it} collapsed={collapsed} />
-                ))}
+            <div id={id} className="space-y-px">
+                {/* Each row folds its own height, so the rows around the one
+                    you are on close in on it instead of the block snapping. */}
+                <AnimatePresence initial={false}>
+                    {shown.map((it) => (
+                        <motion.div
+                            key={it.url}
+                            initial={{ height: 0, opacity: 0, overflow: "hidden" }}
+                            animate={{ height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } }}
+                            exit={{ height: 0, opacity: 0, overflow: "hidden" }}
+                            transition={transition}
+                        >
+                            <NavRow item={it} collapsed={collapsed} />
+                        </motion.div>
+                    ))}
+                </AnimatePresence>
             </div>
         </div>
     );
@@ -1179,7 +1250,7 @@ export function AppNav({ open = false, onClose }: { open?: boolean; onClose?: ()
                 </div>
                 {sections.map((s, i) => (
                     <Section
-                        key={s.label}
+                        key={s.id}
                         section={s}
                         first={i === 0 && topItems.length === 0}
                         collapsed={iconOnly}
