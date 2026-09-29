@@ -18,7 +18,7 @@ import (
 func TestLivePlacementBatchLifecycle(t *testing.T) {
 	f := newPlacementFixture(t)
 	handle, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 230)
+	requireSchemaVersion(t, pool, 232)
 	batches := NewPlacementBatchRepository(handle)
 	ctx := context.Background()
 	now := time.Now()
@@ -262,7 +262,7 @@ func TestLivePlacementBatchLifecycle(t *testing.T) {
 func TestLivePlacementBatchImportedLandsClosed(t *testing.T) {
 	f := newPlacementFixture(t)
 	handle, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 230)
+	requireSchemaVersion(t, pool, 232)
 	batches := NewPlacementBatchRepository(handle)
 	ctx := context.Background()
 
@@ -309,7 +309,7 @@ func ptrTime(t time.Time) *time.Time { return &t }
 func TestLivePlacementBatchCancelResolvesRunningSenders(t *testing.T) {
 	f := newPlacementFixture(t)
 	handle, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 230)
+	requireSchemaVersion(t, pool, 232)
 	batches := NewPlacementBatchRepository(handle)
 	ctx := context.Background()
 
