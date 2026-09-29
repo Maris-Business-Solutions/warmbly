@@ -175,14 +175,14 @@ describe("unibox desktop layout (#473)", SUITE, () => {
 
             expect(useAppStore.getState().navCollapsed).toBe(true);
             expect(aside.className).toContain("md:w-14");
-            // Same destination, no VISIBLE label: the name moves into a
-            // visually hidden span, because lucide marks its svg aria-hidden
-            // and the link would otherwise announce as nothing at all. It must
-            // not become an aria-label: that would override the whole subtree
-            // and silence the unread count nested in the same link.
+            // Same destination, no VISIBLE label: the label column is faded and
+            // clipped but stays in the link, because lucide marks its svg
+            // aria-hidden and the link would otherwise announce as nothing at
+            // all. It must not become an aria-label: that would override the
+            // whole subtree and silence the unread count nested in the same link.
             expect(settingsLink().getAttribute("aria-label")).toBeNull();
             expect(settingsLink().textContent).toBe("Settings");
-            expect(settingsLink().querySelector("span")?.className).toContain("sr-only");
+            expect(settingsLink().querySelector("span")?.className).toContain("opacity-0");
 
             // `b` is the documented shortcut for the same thing. It was wired to
             // the store while nothing rendered from it; this is what makes it

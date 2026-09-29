@@ -349,6 +349,7 @@ function NavRow({ item, collapsed = false }: { item: NavItem; collapsed?: boolea
         <NavTip collapsed={collapsed} label={item.title}>
             <Link
                 to={item.url}
+                aria-current={active ? "page" : undefined}
                 title={!collapsed && planBadge ? `${item.title} · ${planBadge.label} plan` : undefined}
                 className={cn(
                     rowClass(collapsed),
