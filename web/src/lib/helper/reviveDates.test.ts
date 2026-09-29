@@ -24,6 +24,23 @@ describe("reviveDates", () => {
         expect(r).toEqual({ date: "2026-09-27", custom_fields: { renewal: "2026-09-27T00:00:00Z" } });
     });
 
+    it("keeps the cells of an uploaded file as text", () => {
+        const cell = "2026-09-23T08:16:51+00:00";
+        const body = {
+            created_at: cell,
+            preview: {
+                columns: [cell],
+                sample_rows: [["John", cell]],
+                column_stats: [{ filled: 1, distinct: 1, samples: [cell] }],
+            },
+            failures: [{ line: 2, email: cell, values: ["John", cell], reason: "invalid email" }],
+            columns: [{ index: 0, header: cell, samples: [cell] }],
+        };
+        const r = reviveDates(body) as unknown as { created_at: Date };
+        expect(r.created_at).toBeInstanceOf(Date);
+        expect({ ...r, created_at: cell }).toEqual(body);
+    });
+
     it("revives inside arrays and nested objects", () => {
         const r = reviveDates({ data: [{ created_at: "2026-09-27T00:00:00Z" }] }) as unknown as { data: { created_at: Date }[] };
         expect(r.data[0].created_at).toBeInstanceOf(Date);
