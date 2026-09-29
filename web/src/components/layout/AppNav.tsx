@@ -213,11 +213,11 @@ function NavTip({
 }
 
 // The two row shapes share one element and transition between each other in
-// step with the sidebar's width: the icon holds its place (it drifts 3px into
-// the rail's centre) while the label column fades and is clipped.
-const ROW_BASE = "group relative flex items-center rounded-md text-[12.5px] transition-[margin,width,height,padding,gap,background-color,color] duration-200 ease-out motion-reduce:transition-none";
+// step with the sidebar's width. Margin and padding match, so the icon sits at
+// the rail's centre in both and never moves while the label fades and clips.
+const ROW_BASE = "group relative flex items-center rounded-md text-[12.5px] transition-[width,height,gap,background-color,color] duration-200 ease-out motion-reduce:transition-none";
 const ICON_ROW = `${ROW_BASE} mx-3 w-8 h-8 px-[9px] gap-0`;
-const LABEL_ROW = `${ROW_BASE} mx-2 w-[calc(100%-1rem)] h-7 px-2.5 gap-2.5`;
+const LABEL_ROW = `${ROW_BASE} mx-3 w-[calc(100%-1.5rem)] h-7 px-[9px] gap-2.5`;
 const rowClass = (collapsed: boolean) => (collapsed ? ICON_ROW : LABEL_ROW);
 
 // Fades out fast on collapse, and back in once the column has room again.
@@ -769,7 +769,7 @@ function Section({
                     onClick={() => toggleNavSection(section.id)}
                     inert={collapsed}
                     className={cn(
-                        "group/section mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400 transition-[height,margin,opacity,color] duration-200 ease-out hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 motion-reduce:transition-none",
+                        "group/section mx-3 flex w-[calc(100%-1.5rem)] items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-[9px] text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400 transition-[height,margin,opacity,color] duration-200 ease-out hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 motion-reduce:transition-none",
                         collapsed ? "mb-0 h-0 opacity-0" : "mb-1 h-6 opacity-100",
                     )}
                 >
