@@ -47,6 +47,8 @@ export default function EstimateTimeline({
     className?: string;
 }) {
     const [hover, setHover] = React.useState<number | null>(null);
+    // The hovered bar's centre and the row's width, so the tooltip sits on the bar.
+    const [anchor, setAnchor] = React.useState<{ x: number; width: number } | null>(null);
     const shown = React.useMemo(() => {
         // Trailing idle days after the last send add nothing.
         let last = -1;
@@ -67,7 +69,10 @@ export default function EstimateTimeline({
     const labelEvery = Math.max(1, Math.ceil(shown.length / 5));
 
     return (
-        <div className={cn("relative", className)} onMouseLeave={() => setHover(null)}>
+        <div className={cn("relative", className)} onMouseLeave={() => {
+                setHover(null);
+                setAnchor(null);
+            }}>
             <div className="flex items-center gap-3 text-[10.5px] text-slate-500 mb-2">
                 <span className="inline-flex items-center gap-1.5">
                     <span className={cn("size-2 rounded-sm", FIRST)} />
@@ -97,7 +102,11 @@ export default function EstimateTimeline({
                     return (
                         <div
                             key={d.date}
-                            onMouseEnter={() => setHover(i)}
+                            onMouseEnter={(ev) => {
+                                const bar = ev.currentTarget;
+                                setHover(i);
+                                setAnchor({ x: bar.offsetLeft + bar.offsetWidth / 2, width: bar.parentElement?.offsetWidth ?? 0 });
+                            }}
                             className="relative flex-1 max-w-6 h-full flex flex-col justify-end cursor-default"
                         >
                             {d.sending_day && d.capacity > 0 && (
@@ -131,12 +140,12 @@ export default function EstimateTimeline({
                     </div>
                 ))}
             </div>
-            {h && hover !== null && (
+            {h && anchor && (
                 <div
                     className="pointer-events-none absolute z-10 top-0 rounded-md border border-slate-200 bg-white px-2.5 py-2 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.18)] text-[11px] min-w-[150px]"
                     style={{
-                        left: `${((hover + 0.5) / shown.length) * 100}%`,
-                        transform: `translate(${hover > shown.length / 2 ? "-100%" : "0"}, -100%)`,
+                        left: anchor.x,
+                        transform: `translate(${anchor.x > anchor.width / 2 ? "-100%" : "0"}, -100%)`,
                     }}
                 >
                     <p className="text-slate-900 font-medium mb-1">
