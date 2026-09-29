@@ -21,7 +21,7 @@ import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
 import type { DraftMeta } from "./serverDraft";
 import EmailContentEditor from "@/components/app/campaigns/sequences/EmailContentEditor";
 import { useSegments } from "@/lib/api/hooks/app/segments";
-import { CheckSquare } from "@/components/ui/check-square";
+import { Checkbox } from "@/components/ui/checkbox";
 import TagSelector from "@/components/app/popup/select/TagSelector";
 import ScrollStrip from "@/components/ui/scroll-strip";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
@@ -148,20 +148,14 @@ export function LeadsStep({
                         {shown.map((l) => {
                             const on = picked.has(l.id);
                             return (
-                                <button
+                                <label
                                     key={l.id}
-                                    type="button"
-                                    role="checkbox"
-                                    aria-checked={on}
-                                    onClick={() => toggle(l.id)}
                                     className={cn(
-                                        "text-left rounded-md border px-3 py-2.5 flex items-start gap-2.5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sky-100",
+                                        "cursor-pointer select-none rounded-md border px-3 py-2.5 flex items-start gap-2.5 transition-colors",
                                         on ? "border-sky-400 bg-sky-50/60 ring-1 ring-inset ring-sky-400" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
                                     )}
                                 >
-                                    <span className="mt-[3px]">
-                                        <CheckSquare checked={on} />
-                                    </span>
+                                    <Checkbox className="mt-[3px]" checked={on} onChange={() => toggle(l.id)} />
                                     <span className="min-w-0 flex-1">
                                         <span className="flex items-center gap-1.5">
                                             <span className="size-2 rounded-full shrink-0" style={{ background: l.color || "#0284c7" }} />
@@ -172,7 +166,7 @@ export function LeadsStep({
                                             {l.description ? ` · ${l.description}` : ""}
                                         </span>
                                     </span>
-                                </button>
+                                </label>
                             );
                         })}
                         {!q && (
