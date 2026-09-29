@@ -241,7 +241,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
         ? "Launching needs the send campaigns permission; a teammate who has it can start it."
         : emailCount === 0
           ? "There is no email to send yet."
-          : !hasLeads
+          : !hasLeads || (e && e.recipients === 0 && draft.segmentIds.length === 0)
             ? "It has no leads yet."
             : e && e.recipients === 0
               ? "The chosen lists are empty right now."
@@ -250,11 +250,10 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                 : null;
 
     const busy = busyWith !== null;
-    // A new flow is compared with a fresh one in the same zone, so a zone
-    // that follows the workspace does not count as an edit.
+    // A new flow with only a zone picked is still empty.
     const changed = existing
         ? draftSignature(draft) !== baseline
-        : tzTouched.current || draftSignature({ ...draft, nameTouched: false }) !== draftSignature({ ...initialDraft(draft.timezone), nameTouched: false });
+        : draftSignature({ ...draft, timezone: "", nameTouched: false }) !== draftSignature(initialDraft(""));
 
     // Writes the draft and refreshes every view of it.
     const persist = React.useCallback(async (): Promise<string> => {
@@ -365,7 +364,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                 navigate(`/app/campaigns/${id}?launch=1`);
             } else {
                 toast.success(
-                    draft.segmentIds.length > 0 ? "Draft saved. Launch it when you are ready." : "Draft saved. Add leads, then launch it.",
+                    hasLeads ? "Draft saved. Launch it when you are ready." : "Draft saved. Add leads, then launch it.",
                 );
             }
         } catch (err) {

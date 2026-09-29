@@ -39,8 +39,8 @@ vi.mock("@/lib/api/client/app/campaigns/sequences/updateSequence", () => ({
 vi.mock("@/lib/api/client/app/campaigns/sequences/deleteSequence", () => ({
     default: (c: string, sid: string) => api.deleteSequence(c, sid),
 }));
-vi.mock("@/lib/api/client/app/analytics/getCampaignAnalytics", () => ({
-    default: async () => ({ summary: { total_contacts: 7 } }),
+vi.mock("@/lib/api/client/app/campaigns/estimateCampaign", () => ({
+    default: async () => ({ recipients: 7 }),
 }));
 vi.mock("@/lib/api/client/app/segments", () => ({
     listCampaignSegments: (id: string) => api.listCampaignSegments(id),
@@ -142,6 +142,24 @@ describe("server drafts", () => {
         const { draft } = await loadServerDraft("c1");
         await expect(saveServerDraft(draft, "Founders", null, (id) => created.push(id))).rejects.toThrow("boom");
         expect(created).toEqual(["new-campaign"]);
+    });
+
+    it("renumbers automatic step names when a step moves up", async () => {
+        api.getSequences.mockResolvedValue([step("s1", "Hi", "s2", { name: "Step 1", wait_after: 0 }), step("s2", "Bump", "s3", { name: "Step 2" }), step("s3", "Last", null, { name: "Step 3" })]);
+        const loaded = await loadServerDraft("c1");
+        await saveServerDraft({ ...loaded.draft, emails: [loaded.draft.emails[0], loaded.draft.emails[2]] }, "Founders", { id: "c1", meta: loaded.meta });
+        expect(api.updateSequence).toHaveBeenCalledWith("c1", "s3", expect.objectContaining({ name: "Step 2" }));
+    });
+
+    it("keeps a branch added on the Steps tab after the flow opened", async () => {
+        api.getSequences.mockResolvedValueOnce([step("s1", "Hi", null)]);
+        const loaded = await loadServerDraft("c1");
+        api.getSequences.mockResolvedValueOnce([
+            step("s1", "Hi", "s2", { conditions: { branches: [{ branch_id: "b", target_step_id: "s2", conditions: [{ field: "opened", operator: "ever" }] }] } }),
+            step("s2", "Opened", null),
+        ]);
+        await saveServerDraft({ ...loaded.draft, emails: [{ ...loaded.draft.emails[0], subject: "Changed" }] }, "Founders", { id: "c1", meta: loaded.meta });
+        expect(calls).toEqual(["campaign c1"]);
     });
 
     it("leaves an unchanged chain and its lists alone", async () => {

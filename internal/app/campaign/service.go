@@ -129,7 +129,7 @@ type campaignService struct {
 // SegmentCounter is the slice of the segment service Estimate needs.
 // Satisfied structurally by segment.Service.
 type SegmentCounter interface {
-	Preview(ctx context.Context, orgID uuid.UUID, in *models.SegmentPreview) (int, *errx.Error)
+	CountAudience(ctx context.Context, orgID uuid.UUID, segmentIDs []string, campaignID *uuid.UUID) (int, *errx.Error)
 }
 
 // SegmentAware lets main hand the campaign service the segment counter.

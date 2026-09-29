@@ -13,7 +13,7 @@ import createSequence from "@/lib/api/client/app/campaigns/sequences/createSeque
 import updateSequence from "@/lib/api/client/app/campaigns/sequences/updateSequence";
 import deleteSequence from "@/lib/api/client/app/campaigns/sequences/deleteSequence";
 import { listCampaignSegments, setCampaignSegments } from "@/lib/api/client/app/segments";
-import getCampaignAnalytics from "@/lib/api/client/app/analytics/getCampaignAnalytics";
+import estimateCampaign from "@/lib/api/client/app/campaigns/estimateCampaign";
 import { htmlToPlain } from "@/components/app/campaigns/sequences/emailPreview";
 import { hasContent, initialDraft, scheduledDate, toCreateInput, writtenEmails, type Draft, type EmailDraft } from "./draft";
 
@@ -27,7 +27,7 @@ export type DraftMeta = {
     explicitSenders: boolean;
     steps: Sequence[];
     segmentIds: string[];
-    // Leads already on the campaign, however they got there.
+    // Leads on the campaign that no list link enrolled.
     leadCount: number;
 };
 
@@ -51,6 +51,14 @@ function localInput(d: Date): string {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// Only plain email steps with at most one unconditional link: nothing a rewrite could lose.
+function isRewritable(steps: Sequence[]): boolean {
+    return steps.every((s) => {
+        const branches = s.conditions?.branches ?? [];
+        return (s.kind ?? "email") === "email" && branches.length <= 1 && branches.every((b) => (b.conditions ?? []).length === 0);
+    });
+}
+
 // A straight chain: every step an email, each connected unconditionally to
 // the next in order, the last to nothing.
 function isLinear(steps: Sequence[]): boolean {
@@ -69,8 +77,7 @@ export async function loadServerDraft(id: string): Promise<LoadedDraft> {
         getCampaign(id),
         getSequences(id),
         listCampaignSegments(id),
-        // Analytics may be off for this member; the count is a hint, not a gate.
-        getCampaignAnalytics(id).then((a) => a.summary?.total_contacts ?? 0, () => 0),
+        estimateCampaign({ segment_ids: [], campaign_id: id }).then((e) => e.recipients, () => 0),
     ]);
     const stepsLocked = !isLinear(steps);
     const customWindows = (campaign.schedule_windows ?? []).some((d) => Array.isArray(d) && d.length > 0);
@@ -122,9 +129,7 @@ export async function loadServerDraft(id: string): Promise<LoadedDraft> {
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
-// Creates the draft, or writes the flow's answers back onto it. Returns the id.
-// onCreated fires the moment a new campaign exists, so a save that fails
-// after it retries as an update instead of creating a second campaign.
+// Creates the draft or writes the flow back onto it; onCreated lets a failed save retry as an update.
 export async function saveServerDraft(
     d: Draft,
     name: string,
@@ -154,8 +159,11 @@ export async function saveServerDraft(
     if (!meta.customWindows) Object.assign(patch, { days: d.days, start_time: d.startTime, end_time: d.endTime });
     if (!meta.explicitSenders) patch.email_tags = d.emailTagIds;
     await updateCampaign(id, patch);
-    // Read fresh, so steps a failed earlier save left behind are swept up.
-    if (!meta.stepsLocked) await syncSteps(id, writtenEmails(d), await getSequences(id));
+    if (!meta.stepsLocked) {
+        // Fresh, so a failed save's leftovers are swept up and a branch added meanwhile is kept.
+        const current = await getSequences(id);
+        if (isRewritable(current)) await syncSteps(id, writtenEmails(d), current);
+    }
     if (!sameSet(d.segmentIds, meta.segmentIds)) await setCampaignSegments(id, d.segmentIds);
     return id;
 }
@@ -174,8 +182,8 @@ async function syncSteps(id: string, emails: EmailDraft[], before: Sequence[]) {
         const next = ids[i + 1] ?? null;
         const branch = prev?.conditions?.branches?.[0];
         const content = {
-            // A name given on the Steps tab stays.
-            name: prev?.name || `Step ${i + 1}`,
+            // A name given on the Steps tab stays; an automatic one follows the position.
+            name: prev?.name && !/^Step \d+$/.test(prev.name) ? prev.name : `Step ${i + 1}`,
             subject: e.subject.trim(),
             body_html: e.body_html,
             body_plain: e.body_plain || htmlToPlain(e.body_html),

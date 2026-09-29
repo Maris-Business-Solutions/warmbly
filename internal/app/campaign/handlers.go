@@ -1067,17 +1067,13 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 		}
 		saved = c
 	}
-	// One preview over "in any of these segments, or already a lead" counts
-	// each contact once however many of them they belong to.
-	conditions := []models.SegmentCondition{}
-	if len(segmentIDs) > 0 {
-		conditions = append(conditions, models.SegmentCondition{Field: "segment", Operator: models.SegOpIn, Values: segmentIDs})
-	}
-	if saved != nil {
-		conditions = append(conditions, models.SegmentCondition{Field: "campaign", Operator: models.SegOpIn, Values: []string{saved.ID.String()}})
-	}
-	if len(conditions) > 0 && s.segments != nil {
-		n, xerr := s.segments.Preview(ctx, orgID, &models.SegmentPreview{Match: models.SegmentMatchAny, Conditions: conditions})
+	// Each contact once, whether on several segments or already a lead.
+	if (len(segmentIDs) > 0 || saved != nil) && s.segments != nil {
+		var savedID *uuid.UUID
+		if saved != nil {
+			savedID = &saved.ID
+		}
+		n, xerr := s.segments.CountAudience(ctx, orgID, segmentIDs, savedID)
 		if xerr != nil {
 			return nil, xerr
 		}
@@ -1085,6 +1081,9 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 	}
 
 	dailyLimit := config.CampaignLimitDefault
+	if saved != nil && saved.DailyLimit > 0 {
+		dailyLimit = saved.DailyLimit
+	}
 	if in.DailyLimit != nil {
 		if xerr := validate.CampaignDailyLimit(*in.DailyLimit); xerr != nil {
 			return nil, xerr
@@ -1099,13 +1098,17 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 			return nil, errx.New(errx.BadRequest, "step_waits must be between 0 and 365 days")
 		}
 	}
-	// The window a new campaign gets when none is sent.
+	// Unsent times fall back to the saved campaign's, then to a new campaign's.
 	startTime, endTime := "08:00", "18:00"
+	if saved != nil && saved.StartTime != "" && saved.EndTime != "" {
+		startTime, endTime = saved.StartTime, saved.EndTime
+	}
+	timesSent := false
 	if in.StartTime != nil && *in.StartTime != "" {
-		startTime = *in.StartTime
+		startTime, timesSent = *in.StartTime, true
 	}
 	if in.EndTime != nil && *in.EndTime != "" {
-		endTime = *in.EndTime
+		endTime, timesSent = *in.EndTime, true
 	}
 	startMin, endMin := models.ClockMinutes(startTime, -1), models.ClockMinutes(endTime, -1)
 	if startMin < 0 || endMin < 0 {
@@ -1115,9 +1118,7 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 		return nil, errx.New(errx.BadRequest, "end_time must be after start_time")
 	}
 
-	// Same pool resolution as the scheduler: a saved campaign with mailboxes
-	// picked one by one sends from those, otherwise tags when given, otherwise
-	// every active mailbox in the workspace.
+	// Same pool as the scheduler: hand-picked senders, else tags, else every active mailbox.
 	scope := repository.NewAccountScope(&orgID)
 	var accounts []models.Email
 	var xerr *errx.Error
@@ -1139,17 +1140,23 @@ func (s *campaignService) Estimate(ctx context.Context, orgID uuid.UUID, in *mod
 	out.Timeline, out.Senders = []models.CampaignEstimateDay{}, []models.CampaignEstimateSender{}
 
 	days := bitmask.DefaultDays()
+	if saved != nil && saved.Days != 0 {
+		days = saved.Days
+	}
 	if in.Days != nil && *in.Days != 0 {
 		days = *in.Days
 	}
 	// No timezone, or an empty one, means the campaign will follow the workspace.
 	zone := s.campaignRepository.WorkspaceTimezone(ctx, orgID)
+	if saved != nil && in.Timezone == nil && saved.Timezone != "" {
+		zone = saved.Timezone
+	}
 	if in.Timezone != nil && *in.Timezone != "" && tz.Valid(*in.Timezone) {
 		zone = *in.Timezone
 	}
 	draft := &models.Campaign{OrganizationID: &orgID, DailyLimit: dailyLimit, Days: days, Timezone: zone, StartDate: in.StartDate, StartTime: startTime, EndTime: endTime}
 	// A saved campaign's own per-day windows stand unless a window is sent.
-	if saved != nil && in.StartTime == nil && in.EndTime == nil && !saved.ScheduleWindows.IsEmpty() {
+	if saved != nil && !timesSent && !saved.ScheduleWindows.IsEmpty() {
 		draft.ScheduleWindows = saved.ScheduleWindows
 	}
 

@@ -35,7 +35,7 @@ func TestLiveEstimateCountsASavedDraftsLeads(t *testing.T) {
 
 	user, org, otherOrg := uuid.New(), uuid.New(), uuid.New()
 	draft, foreign, seg := uuid.New(), uuid.New(), uuid.New()
-	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	a, b, c, d := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	exec(`INSERT INTO users (id, email, first_name, last_name) VALUES ($1, $2, 'Estimate', 'Test')`, user, user.String()+"@test.local")
 	t.Cleanup(func() {
 		exec(`DELETE FROM campaigns WHERE organization_id = ANY($1)`, []uuid.UUID{org, otherOrg})
@@ -48,11 +48,13 @@ func TestLiveEstimateCountsASavedDraftsLeads(t *testing.T) {
 		exec(`INSERT INTO organizations (id, name, slug, owner_user_id) VALUES ($1, 'Estimate', $2, $3)`, id, id.String(), user)
 	}
 	exec(`INSERT INTO campaigns (id, user_id, organization_id, name, description, days, updated_at, created_at) VALUES ($1, $2, $3, 'Draft', '', 31, NOW(), NOW()), ($4, $2, $5, 'Foreign', '', 31, NOW(), NOW())`, draft, user, org, foreign, otherOrg)
-	for _, id := range []uuid.UUID{a, b, c} {
+	for _, id := range []uuid.UUID{a, b, c, d} {
 		exec(`INSERT INTO contacts (id, user_id, organization_id, email, first_name, last_name, company, phone, custom_fields) VALUES ($1, $2, $3, $4, 'L', 'Ead', '', '', '{}')`, id, user, org, id.String()+"@test.local")
 	}
 	// a and b are leads already; a and c are on the segment; three people in all.
+	// d came in through a segment link that is not chosen, so it leaves with it.
 	exec(`INSERT INTO campaign_leads (campaign_id, contact_id) VALUES ($1, $2), ($1, $3)`, draft, a, b)
+	exec(`INSERT INTO campaign_leads (campaign_id, contact_id, source) VALUES ($1, $2, 'segment')`, draft, d)
 	exec(`INSERT INTO segments (id, organization_id, created_by, name) VALUES ($1, $2, $3, 'List')`, seg, org, user)
 	exec(`INSERT INTO segment_members (segment_id, contact_id, mode) VALUES ($1, $2, 'include'), ($1, $3, 'include')`, seg, a, c)
 
@@ -65,7 +67,7 @@ func TestLiveEstimateCountsASavedDraftsLeads(t *testing.T) {
 		t.Fatal(xerr)
 	}
 	if out.Recipients != 3 {
-		t.Fatalf("recipients %d, want the two leads and the segment's one newcomer", out.Recipients)
+		t.Fatalf("recipients %d, want the two direct leads and the segment's one newcomer", out.Recipients)
 	}
 	out, xerr = svc.Estimate(ctx, org, &models.CampaignEstimate{SegmentIDs: []string{}, CampaignID: &id})
 	if xerr != nil || out.Recipients != 2 {
