@@ -465,11 +465,12 @@ function SectionHeader({
         )}
       </button>
       {/* Non-interactive: a reminder that rows are missing, so a rail that
-          looks short is not mistaken for a bug. Slate-400 like the header
-          label (it is information, unlike the quieter slate-300 totals), and
-          it describes the pencil, so tabbing to it also hears the number. */}
+          looks short is not mistaken for a bug. Slate-500 (4.7:1 on white),
+          as is the pencil at rest, because both are new information and the
+          only way in to editing, unlike the quieter slate-300 totals. It also
+          describes the pencil, so tabbing to it hears the number. */}
       {!!hiddenCount && (
-        <span id={hiddenId} className="shrink-0 text-[10.5px] text-slate-400 tabular-nums">
+        <span id={hiddenId} className="shrink-0 text-[10.5px] text-slate-500 tabular-nums">
           {hiddenCount} hidden
         </span>
       )}
@@ -493,7 +494,7 @@ function SectionHeader({
             title={`Edit ${label} rows`}
             aria-label={`Edit ${label} rows`}
             aria-describedby={hiddenCount ? hiddenId : undefined}
-            className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-400 hover:text-slate-600 focus-visible:text-slate-600 hover:bg-slate-200/70 transition-colors"
+            className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-500 hover:text-slate-700 focus-visible:text-slate-700 hover:bg-slate-200/70 transition-colors"
           >
             <PencilIcon className="w-3.5 h-3.5" />
           </button>
