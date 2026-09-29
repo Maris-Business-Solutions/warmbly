@@ -13,7 +13,6 @@ import (
 )
 
 // verifyWarmupRemoval reports where a warmup message the sync saw removed is.
-// A search that cannot tell reports nothing, so nothing is charged.
 func (w *WorkerService) verifyWarmupRemoval(ctx context.Context, mail *wmail.WMail, action models.WarmupEmailAction) error {
 	outcome, err := locateWarmupMessage(ctx, mail, action.RFCMessageID)
 	if err != nil {
@@ -24,19 +23,17 @@ func (w *WorkerService) verifyWarmupRemoval(ctx context.Context, mail *wmail.WMa
 		Str("rfc_message_id", action.RFCMessageID).
 		Str("outcome", outcome).
 		Msg("Checked where a removed warmup message went")
-	if outcome == "" {
-		return nil
-	}
 	return w.Produce(models.JobEventTypeWarmupRemovalChecked, action.EmailID.String(), &models.JobEventWarmupRemovalChecked{
 		UserID:       action.UserID,
 		EmailID:      action.EmailID,
 		RFCMessageID: action.RFCMessageID,
 		Outcome:      outcome,
+		Recheck:      action.Recheck,
 	})
 }
 
-// locateWarmupMessage searches the whole mailbox by Message-ID. Trashed means
-// every copy found is in the trash; "" means the search cannot tell.
+// locateWarmupMessage searches the whole mailbox by Message-ID; trashed means
+// every copy found is in the trash.
 func locateWarmupMessage(ctx context.Context, mail *wmail.WMail, rfcMessageID string) (string, error) {
 	switch {
 	case mail.GoogleData != nil && mail.GoogleData.Client != nil:
@@ -91,5 +88,5 @@ func locateImapMessage(ctx context.Context, client imapMessageLocator, boxes []*
 	if len(held) > 0 && unsearched == 0 {
 		return models.WarmupRemovalTrashed, nil
 	}
-	return "", nil
+	return models.WarmupRemovalUnknown, nil
 }

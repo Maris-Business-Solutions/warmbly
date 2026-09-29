@@ -48,8 +48,8 @@ func TestLocateImapMessageReportsWhereTheMessageIs(t *testing.T) {
 		{"moved to another folder", map[string]bool{"Warmbly": true}, "", models.WarmupRemovalPresent, false},
 		{"a copy outside the trash wins", map[string]bool{"Trash": true, "INBOX": true}, "", models.WarmupRemovalPresent, false},
 		{"only in the trash", map[string]bool{"Trash": true}, "", models.WarmupRemovalTrashed, false},
-		{"only in the trash with a folder unsearched is inconclusive", map[string]bool{"Trash": true}, "Warmbly", "", false},
-		{"nowhere synced is inconclusive", nil, "", "", false},
+		{"only in the trash with a folder unsearched is inconclusive", map[string]bool{"Trash": true}, "Warmbly", models.WarmupRemovalUnknown, false},
+		{"nowhere synced is inconclusive", nil, "", models.WarmupRemovalUnknown, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

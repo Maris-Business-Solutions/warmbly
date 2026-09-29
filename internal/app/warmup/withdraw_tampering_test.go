@@ -16,9 +16,12 @@ import (
 type withdrawRepo struct {
 	ownPoolRepo
 	hold      *repository.WarmupHold
+	exists    bool
 	removed   bool
 	deletions int
 	spamFlags int
+	excluded  string
+	byAddress bool
 
 	revised      bool
 	revisedState models.WarmupHealthState
@@ -26,21 +29,27 @@ type withdrawRepo struct {
 	window       [2]time.Time
 }
 
+func (r *withdrawRepo) HasWarmupTampering(context.Context, uuid.UUID, string, string) (bool, error) {
+	return r.exists, nil
+}
+
 func (r *withdrawRepo) WithdrawWarmupTampering(context.Context, uuid.UUID, string, string) (bool, error) {
-	return r.removed, nil
+	r.removed = true
+	return true, nil
 }
 
 func (r *withdrawRepo) GetWarmupHold(context.Context, uuid.UUID) (*repository.WarmupHold, error) {
 	return r.hold, nil
 }
 
-func (r *withdrawRepo) CountWarmupTamperingBetween(_ context.Context, _ uuid.UUID, from, to time.Time) (int, int, error) {
+func (r *withdrawRepo) CountWarmupTamperingBetween(_ context.Context, _ uuid.UUID, from, to time.Time, exclude string, byAddress bool) (int, int, error) {
 	r.window = [2]time.Time{from, to}
+	r.excluded, r.byAddress = exclude, byAddress
 	return r.deletions, r.spamFlags, nil
 }
 
-func (r *withdrawRepo) ReviseWarmupHold(_ context.Context, _ uuid.UUID, reason string, state models.WarmupHealthState, until *time.Time, _ string) (bool, error) {
-	if reason != r.hold.Reason {
+func (r *withdrawRepo) ReviseWarmupHold(_ context.Context, _ uuid.UUID, hold *repository.WarmupHold, state models.WarmupHealthState, until *time.Time, _ string) (bool, error) {
+	if hold != r.hold {
 		return false, nil
 	}
 	r.revised, r.revisedState, r.revisedUntil = true, state, until
@@ -80,10 +89,16 @@ func TestWithdrawTamperingRevisesOnTheWindowThatDecidedTheHold(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &withdrawRepo{
 				ownPoolRepo: ownPoolRepo{health: &models.WarmupParticipantHealth{PoolType: "premium", HealthState: tc.hold.State}},
-				hold:        tc.hold, removed: true, deletions: tc.deletions,
+				hold:        tc.hold, exists: true, deletions: tc.deletions,
 			}
 			if _, err := NewService(repo).WithdrawTampering(context.Background(), uuid.New(), "<m@example.test>", "deletion"); err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if !repo.window[1].IsZero() && (repo.excluded != "<m@example.test>" || repo.byAddress) {
+				t.Fatalf("counted excluding %q by address %v; want the withdrawn strike left out of this mailbox's count", repo.excluded, repo.byAddress)
+			}
+			if !repo.removed {
+				t.Fatal("the strike was not withdrawn")
 			}
 			if tc.want == "" {
 				if repo.revised {
@@ -107,21 +122,32 @@ func TestWithdrawTamperingRevisesOnTheWindowThatDecidedTheHold(t *testing.T) {
 	}
 }
 
-// A retry after the strike is already gone still finishes the revision, and a
-// mailbox out of every pool has its ledger standing revised.
-func TestWithdrawTamperingRetriesAndLedger(t *testing.T) {
+// A mailbox out of every pool has its address's ledger standing revised, on
+// the strikes of every mailbox sharing the address.
+func TestWithdrawTamperingRevisesTheLedger(t *testing.T) {
 	pause := tamperingPausePrefix + "2 warmup emails deleted in the last 7 days."
 	hold := tamperingHold(models.WarmupHealthQuarantined, 24*time.Hour, pause)
 	hold.InPool = false
-	repo := &withdrawRepo{hold: hold, removed: false, deletions: 1}
+	repo := &withdrawRepo{hold: hold, exists: true, deletions: 1}
 	health, err := NewService(repo).WithdrawTampering(context.Background(), uuid.New(), "<m@example.test>", "deletion")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !repo.revised || repo.revisedState != models.WarmupHealthHealthy {
-		t.Fatalf("revised %v to %v, want the ledger hold lifted", repo.revised, repo.revisedState)
+	if !repo.revised || repo.revisedState != models.WarmupHealthHealthy || !repo.byAddress {
+		t.Fatalf("revised %v to %v by address %v, want the ledger hold lifted on the address's strikes", repo.revised, repo.revisedState, repo.byAddress)
 	}
 	if health != nil {
 		t.Fatalf("a mailbox in no pool came back with a standing: %+v", health)
+	}
+}
+
+// Nothing to withdraw touches nothing.
+func TestWithdrawTamperingWithoutAStrikeIsANoop(t *testing.T) {
+	repo := &withdrawRepo{hold: tamperingHold(models.WarmupHealthQuarantined, time.Hour, tamperingPausePrefix+"x")}
+	if _, err := NewService(repo).WithdrawTampering(context.Background(), uuid.New(), "<m@example.test>", "deletion"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.revised || repo.removed || repo.updated {
+		t.Fatalf("revised %v, removed %v, evaluated %v; want nothing", repo.revised, repo.removed, repo.updated)
 	}
 }

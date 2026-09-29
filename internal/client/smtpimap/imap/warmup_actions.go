@@ -50,9 +50,8 @@ func (c *Client) FindUIDByMessageID(ctx context.Context, mailboxName, rfcMessage
 	return uint32(uids[len(uids)-1]), nil
 }
 
-// LocateMessageID lists which of mailboxes hold the message, in one hold of
-// the session. A folder that cannot be selected is counted as unsearched, not
-// as not holding it.
+// LocateMessageID lists which mailboxes hold the message in one hold of the
+// session; a folder the server refuses to open is counted as unsearched.
 func (c *Client) LocateMessageID(ctx context.Context, mailboxes []string, rfcMessageID string) (held []string, unsearched int, err error) {
 	rfcMessageID = strings.TrimSpace(rfcMessageID)
 	if rfcMessageID == "" {
@@ -74,6 +73,10 @@ func (c *Client) LocateMessageID(ctx context.Context, mailboxes []string, rfcMes
 		}
 		name := c.qualifyMailboxLocked(mailbox)
 		if _, err := c.selectMailbox(name, nil); err != nil {
+			var refused *imap.Error
+			if !errors.As(err, &refused) {
+				return nil, 0, fmt.Errorf("select %q: %w", name, err)
+			}
 			unsearched++
 			continue
 		}
@@ -88,9 +91,8 @@ func (c *Client) LocateMessageID(ctx context.Context, mailboxes []string, rfcMes
 	return held, unsearched, nil
 }
 
-// searchMessageIDLocked searches the selected folder for one Message-ID. The
-// brackets are kept because SEARCH HEADER matches substrings, and a bare id
-// would also match a message whose References names it.
+// searchMessageIDLocked searches the selected folder; brackets stay because
+// SEARCH HEADER matches substrings, and References would match a bare id.
 func (c *Client) searchMessageIDLocked(rfcMessageID string) ([]imap.UID, error) {
 	data, err := c.client.UIDSearch(&imap.SearchCriteria{
 		Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: "<" + strings.Trim(rfcMessageID, "<>") + ">"}},

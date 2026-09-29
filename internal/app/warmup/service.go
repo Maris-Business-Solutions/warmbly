@@ -367,53 +367,54 @@ func (s *service) RecordTampering(ctx context.Context, accountID uuid.UUID, mess
 }
 
 func (s *service) WithdrawTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (*models.WarmupParticipantHealth, *errx.Error) {
-	removed, err := s.repo.WithdrawWarmupTampering(ctx, accountID, messageID, kind)
+	exists, err := s.repo.HasWarmupTampering(ctx, accountID, messageID, kind)
 	if err != nil {
 		return nil, errx.InternalError()
 	}
-	// Run even when the strike is already gone, so a retry finishes a revision
-	// an earlier attempt did not.
-	revised, xerr := s.reviseTamperingHold(ctx, accountID)
-	if xerr != nil {
+	if !exists {
+		return nil, nil
+	}
+	// Revised before the strike goes, so a failure leaves it to be retried.
+	if xerr := s.reviseTamperingHold(ctx, accountID, messageID); xerr != nil {
 		return nil, xerr
 	}
+	if _, err := s.repo.WithdrawWarmupTampering(ctx, accountID, messageID, kind); err != nil {
+		return nil, errx.InternalError()
+	}
 	participant, xerr := s.getParticipantForAnyPool(ctx, accountID)
-	if xerr != nil || participant == nil || (!removed && !revised) {
-		return participant, xerr
+	if xerr != nil || participant == nil {
+		return nil, xerr
 	}
 	return s.evaluateAndPersist(ctx, participant)
 }
 
-// reviseTamperingHold re-decides a live tampering hold on the strikes left in
-// the seven days before it was imposed, and lowers it when they decide less.
-// The bands never lower a hold on their own, so this is the only way a
-// withdrawn strike reaches one.
-func (s *service) reviseTamperingHold(ctx context.Context, accountID uuid.UUID) (bool, *errx.Error) {
+// reviseTamperingHold re-decides a live tampering hold, which the bands never
+// lower, on the strikes other than withdrawn left in the week before it began.
+func (s *service) reviseTamperingHold(ctx context.Context, accountID uuid.UUID, withdrawn string) *errx.Error {
 	hold, err := s.repo.GetWarmupHold(ctx, accountID)
 	if err != nil {
-		return false, errx.InternalError()
+		return errx.InternalError()
 	}
 	if !isTamperingHold(hold) {
-		return false, nil
+		return nil
 	}
 	decidedAt := tamperingHoldDecidedAt(hold)
-	deletions, spamFlags, err := s.repo.CountWarmupTamperingBetween(ctx, accountID, decidedAt.Add(-7*24*time.Hour), decidedAt)
+	deletions, spamFlags, err := s.repo.CountWarmupTamperingBetween(ctx, accountID, decidedAt.Add(-7*24*time.Hour), decidedAt, withdrawn, !hold.InPool)
 	if err != nil {
-		return false, errx.InternalError()
+		return errx.InternalError()
 	}
 	decision := evaluateTampering(&models.WarmupHealthMetrics{DeletionsLast7d: deletions, SpamFlagsLast7d: spamFlags}, decidedAt)
 	if healthSeverity(decision.State) >= healthSeverity(hold.State) {
-		return false, nil
+		return nil
 	}
 	state, until, reason := decision.State, decision.BlockedUntil, decision.Reason
 	if until == nil || !until.After(s.now()) {
 		state, until, reason = models.WarmupHealthHealthy, nil, ""
 	}
-	revised, err := s.repo.ReviseWarmupHold(ctx, accountID, hold.Reason, state, until, reason)
-	if err != nil {
-		return false, errx.InternalError()
+	if _, err := s.repo.ReviseWarmupHold(ctx, accountID, hold, state, until, reason); err != nil {
+		return errx.InternalError()
 	}
-	return revised, nil
+	return nil
 }
 
 // isTamperingHold is a live pause or block the tampering band imposed.

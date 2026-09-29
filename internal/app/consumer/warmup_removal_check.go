@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/jobrun"
 	"github.com/warmbly/warmbly/internal/models"
@@ -31,15 +32,16 @@ func (s *JobsService) checkWarmupRemoval(ctx context.Context, userID, accountID 
 		log.Info().Str("email_id", accountID.String()).Msg("Warmup removal not checked: mailbox has no worker; nothing charged")
 		return nil
 	}
-	return s.publishRemovalCheck(ctx, *account.WorkerID, userID, accountID, rfcMessageID)
+	return s.publishRemovalCheck(ctx, *account.WorkerID, userID, accountID, rfcMessageID, false)
 }
 
-func (s *JobsService) publishRemovalCheck(ctx context.Context, workerID, userID, accountID uuid.UUID, rfcMessageID string) error {
+func (s *JobsService) publishRemovalCheck(ctx context.Context, workerID, userID, accountID uuid.UUID, rfcMessageID string, recheck bool) error {
 	if err := s.Publisher.PublishWarmupAction(ctx, workerID, &models.WarmupEmailAction{
 		UserID:       userID,
 		EmailID:      accountID,
 		RFCMessageID: rfcMessageID,
 		Actions:      []string{models.WarmupActionVerifyRemoval},
+		Recheck:      recheck,
 	}); err != nil {
 		return fmt.Errorf("warmup removal check: publish: %w", err)
 	}
@@ -47,39 +49,58 @@ func (s *JobsService) publishRemovalCheck(ctx context.Context, workerID, userID,
 }
 
 // HandleWarmupRemovalChecked judges a removal on where the worker found the
-// message: outside the trash withdraws any strike for it, in the trash or
-// nowhere records one.
+// message. A recheck never adds a strike; it confirms or withdraws the one
+// recorded, and withdraws it when retention since removed the message itself.
 func (s *JobsService) HandleWarmupRemovalChecked(ctx context.Context, e *models.JobEventWarmupRemovalChecked) error {
 	if s.WarmupService == nil || e == nil || e.RFCMessageID == "" {
 		return nil
 	}
-	var health *models.WarmupParticipantHealth
-	var xerr *errx.Error
+	withdraw, confirm := false, false
 	switch e.Outcome {
 	case models.WarmupRemovalPresent:
-		health, xerr = s.WarmupService.WithdrawTampering(ctx, e.EmailID, e.RFCMessageID, "deletion")
+		withdraw = true
 	case models.WarmupRemovalTrashed, models.WarmupRemovalGone:
-		health, xerr = s.WarmupService.RecordTampering(ctx, e.EmailID, e.RFCMessageID, "deletion")
-		if xerr == nil && s.WarmupRepo != nil {
-			// Confirms a strike recorded before the search existed.
-			if err := s.WarmupRepo.MarkTamperingVerified(ctx, e.EmailID, e.RFCMessageID, "deletion"); err != nil {
-				return fmt.Errorf("confirm warmup strike: %w", err)
+		if !e.Recheck {
+			health, xerr := s.WarmupService.RecordTampering(ctx, e.EmailID, e.RFCMessageID, "deletion")
+			if xerr != nil {
+				return fmt.Errorf("record warmup strike: %w", xerr)
 			}
+			s.markRiskBandFromWarmupHealth(ctx, e.EmailID, health)
+			return nil
 		}
+		if s.WarmupRepo == nil {
+			return nil
+		}
+		retired, err := s.WarmupRepo.WarmupReceiptRetired(ctx, e.EmailID, e.RFCMessageID)
+		if err != nil {
+			return fmt.Errorf("warmup receipt lookup: %w", err)
+		}
+		withdraw, confirm = retired, !retired
+	case models.WarmupRemovalUnknown:
+		confirm = e.Recheck
 	default:
 		return nil
 	}
+	if confirm && s.WarmupRepo != nil {
+		// The strike stands as recorded; stop asking about it.
+		if err := s.WarmupRepo.MarkTamperingVerified(ctx, e.EmailID, e.RFCMessageID, "deletion"); err != nil {
+			return fmt.Errorf("confirm warmup strike: %w", err)
+		}
+	}
+	if !withdraw {
+		return nil
+	}
+	health, xerr := s.WarmupService.WithdrawTampering(ctx, e.EmailID, e.RFCMessageID, "deletion")
 	if xerr != nil {
-		return fmt.Errorf("judge warmup removal: %w", xerr)
+		return fmt.Errorf("withdraw warmup strike: %w", xerr)
 	}
 	s.markRiskBandFromWarmupHealth(ctx, e.EmailID, health)
 	return nil
 }
 
 const (
-	warmupTamperingRecheckBatch = 100
-	// The seven days a strike counts plus the thirty-day block it can impose.
-	warmupTamperingRecheckWindow = 37 * 24 * time.Hour
+	warmupTamperingRecheckBatch  = 100
+	warmupTamperingRecheckWindow = config.WarmupTamperingKeepDays * 24 * time.Hour
 	// A search nobody answered is asked for again after this.
 	warmupTamperingRecheckRetry = 6 * time.Hour
 )
@@ -105,7 +126,7 @@ func (s *JobsService) recheckTamperingBatch(ctx context.Context) error {
 	var failures []error
 	for i := range rows {
 		r := &rows[i]
-		if err := s.publishRemovalCheck(ctx, r.WorkerID, r.UserID, r.EmailAccountID, r.MessageID); err != nil {
+		if err := s.publishRemovalCheck(ctx, r.WorkerID, r.UserID, r.EmailAccountID, r.MessageID, true); err != nil {
 			failures = append(failures, err)
 			continue
 		}

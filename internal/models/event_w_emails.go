@@ -33,6 +33,7 @@ type JobEventWarmupRemovalChecked struct {
 	EmailID      uuid.UUID `json:"email_id" avro:"email_id"`
 	RFCMessageID string    `json:"rfc_message_id" avro:"rfc_message_id"`
 	Outcome      string    `json:"outcome" avro:"outcome"`
+	Recheck      bool      `json:"recheck,omitempty" avro:"recheck"`
 }
 
 type JobEventFlags struct {

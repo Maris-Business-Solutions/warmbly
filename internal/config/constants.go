@@ -309,6 +309,11 @@ const (
 	// Trash or a server retention rule must not read as harm.
 	WarmupDeletionStrikeHours = 24
 
+	// WarmupTamperingKeepDays is the least a tampering strike is kept: the
+	// seven days it counts plus the thirty-day block it can impose, so the
+	// strikes behind a live hold are always there to re-decide it.
+	WarmupTamperingKeepDays = 37
+
 	// CampaignSendStampAttempts is how many times the control plane retries the
 	// sent_at stamp after a send is already on the bus. The reservation is what
 	// keeps the step from being re-sent, so a lost stamp is a pacing problem,

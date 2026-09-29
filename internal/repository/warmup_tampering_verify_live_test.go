@@ -27,8 +27,11 @@ func TestLiveTamperingHoldRevision(t *testing.T) {
 	if err != nil || hold == nil || !hold.InPool || hold.State != models.WarmupHealthQuarantined || hold.Reason != "Paused from warmup: x" {
 		t.Fatalf("pool hold = %+v, %v", hold, err)
 	}
-	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, "something else", models.WarmupHealthHealthy, nil, ""); err != nil || ok {
-		t.Fatalf("revised a hold whose reason changed: %v %v", ok, err)
+	stale := *hold
+	moved := hold.BlockedUntil.Add(time.Hour)
+	stale.BlockedUntil = &moved
+	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, &stale, models.WarmupHealthHealthy, nil, ""); err != nil || ok {
+		t.Fatalf("revised a hold whose term changed since it was read: %v %v", ok, err)
 	}
 
 	// Out of every pool, the ledger speaks for the mailbox.
@@ -40,10 +43,13 @@ func TestLiveTamperingHoldRevision(t *testing.T) {
 		t.Fatalf("ledger hold = %+v, %v", hold, err)
 	}
 	shorter := time.Now().Add(time.Hour)
-	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, "Paused from warmup: x", models.WarmupHealthQuarantined, &shorter, "Paused from warmup: y"); err != nil || !ok {
+	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, hold, models.WarmupHealthQuarantined, &shorter, "Paused from warmup: y"); err != nil || !ok {
 		t.Fatalf("ledger revision: %v %v", ok, err)
 	}
-	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, "Paused from warmup: y", models.WarmupHealthHealthy, nil, ""); err != nil || !ok {
+	if hold, err = f.warmups.GetWarmupHold(ctx, id); err != nil || hold == nil || hold.Reason != "Paused from warmup: y" {
+		t.Fatalf("ledger after revision = %+v, %v", hold, err)
+	}
+	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, hold, models.WarmupHealthHealthy, nil, ""); err != nil || !ok {
 		t.Fatalf("ledger lift: %v %v", ok, err)
 	}
 	if hold, err = f.warmups.GetWarmupHold(ctx, id); err != nil || hold != nil {
@@ -54,7 +60,10 @@ func TestLiveTamperingHoldRevision(t *testing.T) {
 	f.join(t, id)
 	f.exec(t, `UPDATE warmup_pool_participants SET health_state = 'blocked', blocked_at = now(),
 	           blocked_until = $2, blocked_reason = 'Blocked from warmup: x' WHERE email_account_id = $1`, id, until)
-	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, "Blocked from warmup: x", models.WarmupHealthHealthy, nil, ""); err != nil || !ok {
+	if hold, err = f.warmups.GetWarmupHold(ctx, id); err != nil || hold == nil || !hold.InPool {
+		t.Fatalf("pool hold = %+v, %v", hold, err)
+	}
+	if ok, err := f.warmups.ReviseWarmupHold(ctx, id, hold, models.WarmupHealthHealthy, nil, ""); err != nil || !ok {
 		t.Fatalf("pool lift: %v %v", ok, err)
 	}
 	var ledger int
@@ -114,8 +123,25 @@ func TestLiveTamperingUnverifiedListing(t *testing.T) {
 	if rows = list(); len(rows) != 0 {
 		t.Fatalf("listed a confirmed strike: %+v", rows)
 	}
-	d, s, err := f.warmups.CountWarmupTamperingBetween(ctx, id, time.Now().Add(-time.Hour), time.Now().Add(time.Minute))
-	if err != nil || d != 2 || s != 0 {
-		t.Fatalf("counted %d deletions, %d flags, %v", d, s, err)
+	d, s, err := f.warmups.CountWarmupTamperingBetween(ctx, id, time.Now().Add(-time.Hour), time.Now().Add(time.Minute), "<new@t>", false)
+	if err != nil || d != 1 || s != 0 {
+		t.Fatalf("counted %d deletions, %d flags excluding one, %v", d, s, err)
+	}
+	// A second mailbox on the same address counts only by address.
+	sib := f.addMailbox(t, f.user)
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(ctx, `DELETE FROM warmup_tampering_events WHERE email_account_id = $1`, sib)
+	})
+	if _, err := f.warmups.RecordWarmupTampering(ctx, sib, "<sib@t>", "spam_flag"); err != nil {
+		t.Fatal(err)
+	}
+	if _, s, _ = f.warmups.CountWarmupTamperingBetween(ctx, id, time.Now().Add(-time.Hour), time.Now().Add(time.Minute), "", false); s != 0 {
+		t.Fatalf("counted a sibling's flag for the mailbox alone")
+	}
+	if _, s, _ = f.warmups.CountWarmupTamperingBetween(ctx, id, time.Now().Add(-time.Hour), time.Now().Add(time.Minute), "", true); s != 1 {
+		t.Fatalf("by address counted %d flags, want the sibling's", s)
+	}
+	if retired, err := f.warmups.WarmupReceiptRetired(ctx, id, "<old@t>"); err != nil || retired {
+		t.Fatalf("retired = %v, %v with no receipt", retired, err)
 	}
 }

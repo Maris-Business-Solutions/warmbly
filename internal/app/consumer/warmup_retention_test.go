@@ -128,7 +128,7 @@ func TestRemoveEmailChecksOnlyFreshWarmupMail(t *testing.T) {
 			if tc.checks == 1 {
 				a := pub.actions[0]
 				if len(a.Actions) != 1 || a.Actions[0] != models.WarmupActionVerifyRemoval ||
-					a.RFCMessageID != tc.rec.MessageID || pub.workers[0] != worker {
+					a.RFCMessageID != tc.rec.MessageID || a.Recheck || pub.workers[0] != worker {
 					t.Fatalf("check carried %+v to %v", a, pub.workers[0])
 				}
 			}
@@ -151,27 +151,36 @@ func TestRemoveEmailWithNowhereToCheckChargesNothing(t *testing.T) {
 	}
 }
 
-// The strike follows where the worker found the message: anywhere outside the
-// trash withdraws it, the trash or nowhere records and confirms it.
+// The strike follows where the worker found the message. A fresh check
+// records a strike for the trash or nowhere; a recheck never adds one, it
+// confirms the recorded strike or withdraws it when the message is still
+// there or retention removed it since.
 func TestRemovalCheckedJudgesOnWhereTheMessageIs(t *testing.T) {
 	cases := []struct {
 		name     string
 		outcome  string
+		recheck  bool
+		retired  bool
 		want     []string
 		verified int
 	}{
-		{"moved to another folder", models.WarmupRemovalPresent, []string{"withdraw:deletion"}, 0},
-		{"in the trash", models.WarmupRemovalTrashed, []string{"deletion"}, 1},
-		{"gone for good", models.WarmupRemovalGone, []string{"deletion"}, 1},
-		{"an answer this consumer does not know", "sideways", nil, 0},
+		{"moved to another folder", models.WarmupRemovalPresent, false, false, []string{"withdraw:deletion"}, 0},
+		{"in the trash", models.WarmupRemovalTrashed, false, false, []string{"deletion"}, 0},
+		{"gone for good", models.WarmupRemovalGone, false, false, []string{"deletion"}, 0},
+		{"a fresh search that cannot tell charges nothing", models.WarmupRemovalUnknown, false, false, nil, 0},
+		{"recheck: still in the mailbox", models.WarmupRemovalPresent, true, false, []string{"withdraw:deletion"}, 0},
+		{"recheck: in the trash confirms without a new strike", models.WarmupRemovalTrashed, true, false, nil, 1},
+		{"recheck: gone after retention retired it", models.WarmupRemovalGone, true, true, []string{"withdraw:deletion"}, 0},
+		{"recheck: cannot tell leaves it and stops asking", models.WarmupRemovalUnknown, true, false, nil, 1},
+		{"an answer this consumer does not know", "sideways", false, false, nil, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s, svc := retentionService(receivedAgo(time.Hour))
-			repo := &verifiedRepo{}
+			repo := &verifiedRepo{retired: tc.retired}
 			s.WarmupRepo = repo
 			if err := s.HandleWarmupRemovalChecked(context.Background(), &models.JobEventWarmupRemovalChecked{
-				UserID: uuid.New(), EmailID: uuid.New(), RFCMessageID: "<m@example.test>", Outcome: tc.outcome,
+				UserID: uuid.New(), EmailID: uuid.New(), RFCMessageID: "<m@example.test>", Outcome: tc.outcome, Recheck: tc.recheck,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -204,7 +213,12 @@ func TestRemovalCheckedRedeliversAFailedStrike(t *testing.T) {
 // verifiedRepo counts the strikes a search confirmed.
 type verifiedRepo struct {
 	repository.WarmupRepository
+	retired  bool
 	verified int
+}
+
+func (r *verifiedRepo) WarmupReceiptRetired(context.Context, uuid.UUID, string) (bool, error) {
+	return r.retired, nil
 }
 
 func (r *verifiedRepo) MarkTamperingVerified(context.Context, uuid.UUID, string, string) error {
@@ -246,7 +260,7 @@ func TestRecheckTamperingSearchesEachOldStrike(t *testing.T) {
 		t.Fatalf("published %d, marked %d; want 2 and 2", len(pub.actions), len(repo.requested))
 	}
 	if pub.actions[1].RFCMessageID != rows[1].MessageID || pub.workers[1] != rows[1].WorkerID ||
-		pub.actions[1].Actions[0] != models.WarmupActionVerifyRemoval {
+		pub.actions[1].Actions[0] != models.WarmupActionVerifyRemoval || !pub.actions[1].Recheck {
 		t.Fatalf("checks carried %+v to %v", pub.actions, pub.workers)
 	}
 
