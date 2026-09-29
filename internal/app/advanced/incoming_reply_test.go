@@ -84,6 +84,17 @@ type incomingReplyProgressRepo struct {
 	receivingSent bool
 	completeErr   error
 	advanced      *incomingReplyAdvancedRepo
+	copies        []models.CampaignLeadCC
+	copiedLead    *repository.CopiedLeadRef
+	copiesErr     error
+}
+
+func (r *incomingReplyProgressRepo) ListLeadCC(context.Context, uuid.UUID, uuid.UUID) ([]models.CampaignLeadCC, error) {
+	return r.copies, r.copiesErr
+}
+
+func (r *incomingReplyProgressRepo) LeadForCopiedReply(context.Context, uuid.UUID, uuid.UUID) (*repository.CopiedLeadRef, error) {
+	return r.copiedLead, nil
 }
 
 func (r *incomingReplyProgressRepo) IsInboundReplySource(context.Context, uuid.UUID, uuid.UUID) (bool, error) {

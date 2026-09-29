@@ -319,6 +319,46 @@ the hold. Resuming a lead that is not held succeeds and changes nothing.`,
 				},
 			},
 			{
+				Name: "lead-cc", Short: "Contacts copied on one lead's emails",
+				Method: http.MethodGet, Path: "/campaigns/{id}/leads/{contact}/cc",
+				Args: []argSpec{
+					{Name: "id", Help: "The campaign's id"},
+					{Name: "contact", Help: "The lead's contact id"},
+				},
+				Table: output.Table{Root: "cc", Columns: []output.Column{
+					col("CONTACT", "contact_id"), col("EMAIL", "email"), col("STATUS", "status"),
+				}, Empty: "This lead copies nobody."},
+			},
+			{
+				Name: "set-lead-cc", Short: "Replace the contacts copied on one lead's emails",
+				Long: `Copy up to two contacts on every email this campaign sends one lead, follow-ups
+included, so colleagues at one company share a single thread. The list replaces
+the current one. A copied contact who is also a lead of the campaign has their
+own sequence held while any lead copies them, so they never get two threads.`,
+				Example: "  $ warmbly campaign set-lead-cc CAMPAIGN_ID CONTACT_ID --cc COLLEAGUE_ID\n" +
+					"  $ warmbly campaign set-lead-cc CAMPAIGN_ID CONTACT_ID --input '{\"contact_ids\":[]}'   # copy nobody",
+				Method: http.MethodPut, Path: "/campaigns/{id}/leads/{contact}/cc", Body: bodyRequired,
+				Args: []argSpec{
+					{Name: "id", Help: "The campaign's id"},
+					{Name: "contact", Help: "The lead's contact id"},
+				},
+				Flag: []flagSpec{
+					{Name: "cc", Help: "A contact id to copy (repeatable, at most 2)", Kind: flagStrings, Key: "contact_ids"},
+				},
+				Success: "Lead CC replaced.",
+			},
+			{
+				Name: "lead-cc-suggestions", Short: "The lead's likely colleagues to copy",
+				Method: http.MethodGet, Path: "/campaigns/{id}/leads/{contact}/cc/suggestions",
+				Args: []argSpec{
+					{Name: "id", Help: "The campaign's id"},
+					{Name: "contact", Help: "The lead's contact id"},
+				},
+				Table: output.Table{Root: "data", Columns: []output.Column{
+					col("CONTACT", "contact_id"), col("EMAIL", "email"), col("COMPANY", "company"), col("MATCH", "reason"),
+				}, Empty: "No contacts share the lead's company or email domain."},
+			},
+			{
 				Name: "logs", Short: "The campaign's send log",
 				Method: http.MethodGet, Path: "/campaigns/{id}/logs", Paginate: true,
 				Args: []argSpec{{Name: "id", Help: "The campaign's id"}},

@@ -563,5 +563,6 @@ func MailErrorToSendError(err *errx.MailError) *models.EmailSendError {
 		UserTitle:      userInfo.Title,
 		UserMessage:    userInfo.Message,
 		ActionRequired: userInfo.ActionRequired,
+		Recipient:      err.Recipient,
 	}
 }

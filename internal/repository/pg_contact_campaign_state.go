@@ -76,6 +76,12 @@ func (r *contactRepository) ListCampaignStates(ctx context.Context, orgID, conta
 		}
 		st.Steps = steps
 		st.TotalSteps = len(steps)
+		cc, err := listLeadCC(ctx, r.DB.Pool, st.CampaignID, contactID)
+		if err != nil {
+			db.CaptureError(err, "", nil, "ListCampaignStates cc")
+			return nil, errx.InternalError()
+		}
+		st.CC = cc
 
 		var sent, replied, bounced, failed bool
 		var emailSteps, emailSent int

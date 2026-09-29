@@ -78,6 +78,9 @@ Campaigns, steps and activity logs are scoped to the selected organization for s
 | GET | `/campaigns/:id/leads/:contactId/hold` | `READ_CAMPAIGNS` |
 | POST | `/campaigns/:id/leads/:contactId/pause` | `WRITE_CAMPAIGNS` |
 | POST | `/campaigns/:id/leads/:contactId/resume` | `WRITE_CAMPAIGNS` |
+| GET | `/campaigns/:id/leads/:contactId/cc` | `READ_CAMPAIGNS` + `READ_CONTACTS` |
+| PUT | `/campaigns/:id/leads/:contactId/cc` | `WRITE_CAMPAIGNS` + `READ_CONTACTS` |
+| GET | `/campaigns/:id/leads/:contactId/cc/suggestions` | `READ_CAMPAIGNS` + `READ_CONTACTS` |
 | GET | `/campaigns/:id/logs` | `READ_CAMPAIGNS` |
 | GET | `/campaigns/:id/send-plan` | `READ_CAMPAIGNS` |
 | GET | `/campaigns/:id/forms` | `READ_CAMPAIGNS` |
@@ -90,7 +93,9 @@ Campaigns, steps and activity logs are scoped to the selected organization for s
 | POST | `/email-images` | `WRITE_CAMPAIGNS` |
 | DELETE | `/email-images/:id` | `WRITE_CAMPAIGNS` |
 
-The three `/campaigns/:id/leads/:contactId/…` calls hold one contact's flow inside one campaign: an out-of-office auto-reply writes one automatically, and a member can write one by hand. The contact stays subscribed and stays a lead, so this is not an unsubscribe and not a suppression. Both writes state an absolute hold rather than applying a delta, and replacing a live hold keeps its original start, so a retry lands on the same row and neither needs an `Idempotency-Key`. See [pause a lead](/api/reference/campaigns/#pause-a-lead).
+The `hold`, `pause` and `resume` calls under `/campaigns/:id/leads/:contactId/` hold one contact's flow inside one campaign: an out-of-office auto-reply writes one automatically, and a member can write one by hand. The contact stays subscribed and stays a lead, so this is not an unsubscribe and not a suppression. Both writes state an absolute hold rather than applying a delta, and replacing a live hold keeps its original start, so a retry lands on the same row and neither needs an `Idempotency-Key`. See [pause a lead](/api/reference/campaigns/#pause-a-lead).
+
+The `cc` calls under the same path set the contacts copied on every email to one lead. Their answers carry contact names and addresses, so they need contact read access as well as the campaign scope. `PUT` sends the whole list, so a retry lands on the same state and needs no `Idempotency-Key`. See [set a lead's CC](/api/reference/campaigns/#set-a-leads-cc).
 
 `GET /campaigns/:id/forms` reports the forms this campaign links to and what its recipients did with them: personalized links handed out, who opened one, who started filling it in and who submitted. See the [forms guide](/guides/forms/).
 

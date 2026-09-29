@@ -1,4 +1,4 @@
-import type { LeadHold, LeadStatus } from "./Contact";
+import type { LeadCC, LeadHold, LeadStatus } from "./Contact";
 
 // One campaign a contact belongs to, as the Activity tab's campaign panel
 // shows it: the flow with this contact's progress, the derived lead status,
@@ -67,6 +67,9 @@ export default interface ContactCampaignState {
     // The live per-lead hold: an out-of-office auto-reply parked the contact,
     // or a member paused them. Absent when the lead is not held.
     hold?: LeadHold | null;
+
+    // Contacts copied on every email to this lead in this campaign.
+    cc?: LeadCC[];
 
     next?: ContactNextAction | null;
     ended_reason?: string;

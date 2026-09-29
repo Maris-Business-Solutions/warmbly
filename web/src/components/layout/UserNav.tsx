@@ -47,12 +47,12 @@ export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
                 <button
                     aria-label={collapsed ? displayName : undefined}
                     // One element in both shapes so it eases with the sidebar's
-                    // width: the avatar drifts to the rail's centre, the name fades.
+                    // width: the avatar keeps its place at the rail's centre, the name fades.
                     className={cn(
-                        "flex items-center mx-3 my-2 rounded-md hover:bg-slate-200/40 cursor-pointer transition-[width,padding,gap,background-color] duration-200 ease-out motion-reduce:transition-none",
+                        "flex items-center mx-3 my-2 pl-0.5 rounded-md hover:bg-slate-200/40 cursor-pointer transition-[width,padding,gap,background-color] duration-200 ease-out motion-reduce:transition-none",
                         collapsed
-                            ? "w-8 gap-0 p-0.5"
-                            : "w-[calc(100%-1.5rem)] gap-2.5 px-1.5 py-1",
+                            ? "w-8 gap-0 pr-0.5 py-0.5"
+                            : "w-[calc(100%-1.5rem)] gap-2.5 pr-1.5 py-1",
                     )}
                 >
                     <div className="w-7 h-7 rounded-full bg-slate-900 flex items-center justify-center shrink-0 overflow-hidden">

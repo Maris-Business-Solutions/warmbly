@@ -37,6 +37,9 @@ type ContactCampaignState struct {
 	// hand. The drawer renders it with "resume now" and "stop" next to it.
 	Hold *LeadHold `json:"hold,omitempty"`
 
+	// CC is the contacts copied on every email to this lead in this campaign.
+	CC []CampaignLeadCC `json:"cc"`
+
 	// Next is nil once the flow has ended for the contact; EndedReason says why.
 	Next        *ContactNextAction `json:"next,omitempty"`
 	EndedReason string             `json:"ended_reason,omitempty"`

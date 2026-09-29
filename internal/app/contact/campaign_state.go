@@ -114,8 +114,15 @@ func holdCopy(hold *models.LeadHold) string {
 		return "Paused for this contact"
 	}
 	what := "Paused for this contact"
-	if hold.Source == models.LeadHoldSourceOutOfOffice {
+	switch hold.Source {
+	case models.LeadHoldSourceOutOfOffice:
 		what = "Out of office"
+	case models.LeadHoldSourceCC:
+		// The reason is the lead they are copied on; no end is expected.
+		if r := strings.TrimSpace(hold.Reason); r != "" {
+			return "Copied on the emails to " + r + ", so none of their own are sent"
+		}
+		return "Copied on another lead's emails, so none of their own are sent"
 	}
 	if r := strings.TrimSpace(hold.Reason); r != "" {
 		what += ": " + r

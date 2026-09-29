@@ -540,6 +540,18 @@ func (s *tasksService) HandleCampaignTask(task *proto.ProcessTask) (result *errx
 		taskRecord.EmailAccountID = account.ID
 	}
 
+	// Who else the email copies, read for an email step before the send is
+	// reserved. Fail closed: copies that cannot be checked against suppression
+	// are not sent, and neither is the email without the copies chosen.
+	copyCC, copyBCC, cerr := s.campaignCopies(ctx, orgID, campaign, contact)
+	if cerr != nil {
+		errs.CaptureException(cerr)
+		s.taskRepo.RecordTaskFailure(ctx, taskID, "Could not read who the email copies", cerr.Error())
+		s.retryCampaignTickLater(ctx, taskRecord)
+		executionStatus = "failed"
+		return errx.InternalError()
+	}
+
 	// STEP 9.4: The conversation this step joins. A follow-up is a nudge on the
 	// email the contact already has, not a second cold email, so every step
 	// after their first is threaded onto the last one they received: the
@@ -815,8 +827,8 @@ func (s *tasksService) HandleCampaignTask(task *proto.ProcessTask) (result *errx
 	emailMsg := EmailMessage{
 		From:           account.Email,
 		To:             []string{contact.Email},
-		CC:             campaign.CC,
-		BCC:            campaign.BCC,
+		CC:             copyCC,
+		BCC:            copyBCC,
 		Subject:        subject,
 		BodyHTML:       bodyHTML,
 		BodyPlain:      bodyPlain,

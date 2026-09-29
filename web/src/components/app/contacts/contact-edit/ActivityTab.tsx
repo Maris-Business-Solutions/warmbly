@@ -60,8 +60,9 @@ import { holdSummary } from "@/lib/api/models/app/contacts/Contact";
 import type { LeadHold } from "@/lib/api/models/app/contacts/Contact";
 import LeadStatusPill from "@/components/app/contacts/LeadStatusPill";
 import { usePauseLead } from "@/lib/api/hooks/app/campaigns/useLeadHold";
-import { leadCanBePaused } from "@/lib/leadHold";
+import { CC_RESUME_CONFIRM, leadCanBePaused } from "@/lib/leadHold";
 import { PauseLeadButton, ResumeLeadButton } from "@/components/app/contacts/LeadHoldButtons";
+import LeadCCBar from "./LeadCCBar";
 import toast from "react-hot-toast";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
@@ -385,6 +386,17 @@ function CampaignCard({
                 leadCanBePaused(state) && <PauseBar state={state} contactId={contactId} contactName={contactName} />
             )}
 
+            {/* A lead reached in someone else's thread sends nothing to copy anyone on. */}
+            {state.hold?.source !== "cc" && (
+                <LeadCCBar
+                    campaignId={state.campaign_id}
+                    contactId={contactId}
+                    contactName={contactName}
+                    cc={state.cc ?? []}
+                    sending={!state.ended_reason && state.campaign_status !== "completed"}
+                />
+            )}
+
             <AnimatePresence initial={false}>
                 {open && (
                     <motion.div
@@ -446,7 +458,8 @@ function HoldBar({
                     <ResumeLeadButton
                         campaignId={campaignId}
                         contactId={contactId}
-                        label="Resume now"
+                        label={hold.source === "cc" ? "Send their own too" : "Resume now"}
+                        confirmText={hold.source === "cc" ? CC_RESUME_CONFIRM : undefined}
                         disabled={pause.isPending}
                         onBusyChange={setResuming}
                     />
