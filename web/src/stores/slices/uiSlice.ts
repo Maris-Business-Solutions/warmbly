@@ -33,6 +33,11 @@ export interface UISlice {
   // Folded sidebar sections, keyed by the section's stable id (not its label).
   navCollapsedSections: Record<string, boolean>
 
+  // Unibox scope rail: folded sections (stable ids, same shape as the nav map)
+  // and the rows the user hid, as the rail's scopeKey values.
+  uniboxRailFolded: Record<string, boolean>
+  uniboxRailHidden: string[]
+
   // Theme
   theme: Theme
   resolvedTheme: 'light' | 'dark'
@@ -58,6 +63,10 @@ export interface UISlice {
   setSidebarCollapsed: (collapsed: boolean) => void
   setSidebarMobileOpen: (open: boolean) => void
   toggleNavSection: (id: string) => void
+
+  // Actions - Unibox scope rail
+  toggleUniboxRailSection: (id: string) => void
+  toggleUniboxRailRow: (key: string) => void
 
   // Actions - Theme
   setTheme: (theme: Theme) => void
@@ -89,6 +98,14 @@ export const sanitizeNavCollapsedSections = (v: unknown): Record<string, boolean
   return Object.fromEntries(Object.entries(v).filter(([, folded]) => typeof folded === 'boolean'))
 }
 
+// Same rehydration gap for the rail's hidden rows: anything that is not a
+// string would never match a scope key, and a duplicate would make one click
+// on the row's checkbox appear to do nothing.
+export const sanitizeUniboxRailHidden = (v: unknown): string[] => {
+  if (!Array.isArray(v)) return []
+  return [...new Set(v.filter((k): k is string => typeof k === 'string'))]
+}
+
 // The dashboard is light-only today: every surface is styled on white, so a
 // resolved dark theme would flip only the CSS-variable components (command
 // palette, toasts) and look broken. 'dark'/'system' are accepted but resolve
@@ -102,6 +119,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   navCollapsed: false,
   sidebarMobileOpen: false,
   navCollapsedSections: {},
+  uniboxRailFolded: {},
+  uniboxRailHidden: [],
 
   // Theme
   theme: getInitialTheme(),
@@ -129,6 +148,18 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   toggleNavSection: (id) =>
     set((state) => ({
       navCollapsedSections: { ...state.navCollapsedSections, [id]: !state.navCollapsedSections[id] },
+    })),
+
+  // Actions - Unibox scope rail
+  toggleUniboxRailSection: (id) =>
+    set((state) => ({
+      uniboxRailFolded: { ...state.uniboxRailFolded, [id]: !state.uniboxRailFolded[id] },
+    })),
+  toggleUniboxRailRow: (key) =>
+    set((state) => ({
+      uniboxRailHidden: state.uniboxRailHidden.includes(key)
+        ? state.uniboxRailHidden.filter((k) => k !== key)
+        : [...state.uniboxRailHidden, key],
     })),
 
   // Actions - Theme
