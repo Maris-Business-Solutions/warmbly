@@ -1,5 +1,14 @@
 import type {
     CreatePlacementTestRequest,
+    PlacementBatch,
+    PlacementBatchDetail,
+    PlacementBatchList,
+    PlacementBatchPreview,
+    PlacementBatchRequest,
+    PlacementBatchSenderList,
+    PlacementBatchSenderSort,
+    PlacementBatchSenderStatus,
+    PlacementCoverage,
     PlacementMonitor,
     PlacementMonitorInput,
     PlacementOverview,
@@ -115,4 +124,84 @@ export async function deletePlacementMonitor(campaignId: string): Promise<void> 
         url: `/campaigns/${campaignId}/placement-monitor`,
         authorization: true,
     });
+}
+
+// Batches: one placement test run from many senders.
+
+export async function previewPlacementBatch(body: PlacementBatchRequest): Promise<PlacementBatchPreview> {
+    const res = await Request<{ data: PlacementBatchPreview }>({
+        method: "POST",
+        url: "/placement/batches/preview",
+        data: body,
+        authorization: true,
+    });
+    return res.data;
+}
+
+// The key makes a retried submit land on the batch the first attempt queued.
+export async function createPlacementBatch(body: PlacementBatchRequest, idempotencyKey?: string): Promise<PlacementBatch> {
+    const res = await Request<{ data: PlacementBatch }>({
+        method: "POST",
+        url: "/placement/batches",
+        data: body,
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+        authorization: true,
+    });
+    return res.data;
+}
+
+export async function listPlacementBatches(cursor: string | null, limit: number): Promise<PlacementBatchList> {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    if (cursor) params.set("cursor", cursor);
+    return await Request<PlacementBatchList>({
+        method: "GET",
+        url: `/placement/batches?${params.toString()}`,
+        authorization: true,
+    });
+}
+
+export async function getPlacementBatch(id: string): Promise<PlacementBatchDetail> {
+    const res = await Request<{ data: PlacementBatchDetail }>({
+        method: "GET",
+        url: `/placement/batches/${id}`,
+        authorization: true,
+    });
+    return res.data;
+}
+
+export async function listPlacementBatchSenders(
+    id: string,
+    opts: { cursor: string | null; limit: number; sort?: PlacementBatchSenderSort; status?: PlacementBatchSenderStatus | ""; q?: string },
+): Promise<PlacementBatchSenderList> {
+    const params = new URLSearchParams();
+    params.set("limit", String(opts.limit));
+    if (opts.cursor) params.set("cursor", opts.cursor);
+    if (opts.sort) params.set("sort", opts.sort);
+    if (opts.status) params.set("status", opts.status);
+    if (opts.q) params.set("q", opts.q);
+    return await Request<PlacementBatchSenderList>({
+        method: "GET",
+        url: `/placement/batches/${id}/senders?${params.toString()}`,
+        authorization: true,
+    });
+}
+
+// Stops the batch; copies already sent keep being classified.
+export async function cancelPlacementBatch(id: string): Promise<PlacementBatch> {
+    const res = await Request<{ data: PlacementBatch }>({
+        method: "POST",
+        url: `/placement/batches/${id}/cancel`,
+        authorization: true,
+    });
+    return res.data;
+}
+
+export async function getPlacementCoverage(): Promise<PlacementCoverage> {
+    const res = await Request<{ data: PlacementCoverage }>({
+        method: "GET",
+        url: "/placement/coverage",
+        authorization: true,
+    });
+    return res.data;
 }

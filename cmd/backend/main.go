@@ -2004,6 +2004,7 @@ func main() {
 			Notifier:  notificationService,
 			Mailboxes: emailService,
 			Pauser:    guardrailService,
+			Batches:   repository.NewPlacementBatchRepository(primaryDB),
 		}
 		if streamingPublisher != nil {
 			placementDeps.Publisher = streamingPublisher

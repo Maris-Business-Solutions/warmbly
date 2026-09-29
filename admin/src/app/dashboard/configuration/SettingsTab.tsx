@@ -230,6 +230,38 @@ const PLACEMENT_FIELDS = [
         max: 10000,
         help: "What a test costs in credits once a workspace has used its free tests for the month. The workspace agrees to the price before each paid test, and a test that delivers no copy is refunded. 0 turns paid tests off, so a workspace waits for next month instead. Only a hosted (DEPLOYMENT_MODE=cloud) instance charges.",
     },
+    {
+        key: "batchSendersMax",
+        setting: "batch_senders_max",
+        label: "Most senders in one batch",
+        min: 1,
+        max: 100000,
+        help: "The largest sender list one placement batch may hold. It limits how big a batch can be, not how many senders run at once, so it can sit well above any fleet a workspace runs.",
+    },
+    {
+        key: "batchSenderConcurrency",
+        setting: "batch_sender_concurrency",
+        label: "Batch senders sending at once",
+        min: 1,
+        max: 500,
+        help: "How many of one workspace's batch senders may be sending their copies at the same time, across all its batches. The next sender starts when one has sent every copy. Each mailbox still keeps its own daily limit and spacing.",
+    },
+    {
+        key: "batchInstanceConcurrency",
+        setting: "batch_instance_concurrency",
+        label: "Batch senders sending at once, instance-wide",
+        min: 1,
+        max: 5000,
+        help: "The same limit across every workspace together. It bounds how much batch mail the instance seed panel receives at once, so a seed never takes in enough in an hour to trip the sync flood rule that deactivates a mailbox.",
+    },
+    {
+        key: "batchStartsPerMinute",
+        setting: "batch_starts_per_minute",
+        label: "Batch senders started per minute",
+        min: 1,
+        max: 600,
+        help: "How fast one batch starts its senders, so a large batch ramps up instead of starting its whole concurrency at once.",
+    },
 ] as const;
 
 type PlacementFieldKey = (typeof PLACEMENT_FIELDS)[number]["key"];
@@ -241,6 +273,10 @@ const PLACEMENT_DEFAULTS: InstanceSettings["placement"] = {
     seeds_per_test: 20,
     spacing_seconds: 60,
     credits_per_test: 25,
+    batch_senders_max: 10000,
+    batch_sender_concurrency: 20,
+    batch_instance_concurrency: 200,
+    batch_starts_per_minute: 10,
 };
 
 interface FormState {
@@ -285,6 +321,10 @@ function toForm(s: InstanceSettings): FormState {
             seedsPerTest: String(placement.seeds_per_test),
             spacingSeconds: String(placement.spacing_seconds),
             creditsPerTest: String(placement.credits_per_test ?? PLACEMENT_DEFAULTS.credits_per_test),
+            batchSendersMax: String(placement.batch_senders_max ?? PLACEMENT_DEFAULTS.batch_senders_max),
+            batchSenderConcurrency: String(placement.batch_sender_concurrency ?? PLACEMENT_DEFAULTS.batch_sender_concurrency),
+            batchInstanceConcurrency: String(placement.batch_instance_concurrency ?? PLACEMENT_DEFAULTS.batch_instance_concurrency),
+            batchStartsPerMinute: String(placement.batch_starts_per_minute ?? PLACEMENT_DEFAULTS.batch_starts_per_minute),
         },
         enforceDomainAuth: s.deliverability.enforce_domain_auth,
         authGraceHours: String(s.deliverability.auth_grace_hours),
@@ -349,7 +389,7 @@ export function SettingsTab({ onDirtyChange, onSwitchTab }: SettingsTabProps) {
         !!form &&
         PLACEMENT_FIELDS.some(
             (f) =>
-                form.placement[f.key] !== String((server.placement ?? PLACEMENT_DEFAULTS)[f.setting]),
+                form.placement[f.key] !== String(server.placement?.[f.setting] ?? PLACEMENT_DEFAULTS[f.setting]),
         );
     const dirty =
         !!server &&
@@ -463,6 +503,10 @@ export function SettingsTab({ onDirtyChange, onSwitchTab }: SettingsTabProps) {
                 seeds_per_test: Number(form.placement.seedsPerTest),
                 spacing_seconds: Number(form.placement.spacingSeconds),
                 credits_per_test: Number(form.placement.creditsPerTest),
+                batch_senders_max: Number(form.placement.batchSendersMax),
+                batch_sender_concurrency: Number(form.placement.batchSenderConcurrency),
+                batch_instance_concurrency: Number(form.placement.batchInstanceConcurrency),
+                batch_starts_per_minute: Number(form.placement.batchStartsPerMinute),
             },
         });
     }

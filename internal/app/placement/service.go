@@ -51,6 +51,7 @@ type Entitlements interface {
 // satisfies it.
 type Publisher interface {
 	PublishPlacementTest(ctx context.Context, orgID, testID uuid.UUID, campaignID *uuid.UUID, status string)
+	PublishPlacementBatch(ctx context.Context, orgID, batchID uuid.UUID, status string)
 }
 
 // Notifier reaches people about a finished test or a monitor alert.
@@ -99,6 +100,8 @@ type Deps struct {
 	// Credits pays for tests past the monthly free allowance; nil turns
 	// paid tests off.
 	Credits Credits
+	// Batches stores placement batches; nil turns batches off.
+	Batches repository.PlacementBatchRepository
 }
 
 // Credits is the slice of the credit ledger a paid test uses.
@@ -132,6 +135,14 @@ type Service interface {
 	RemoteStart(ctx context.Context, inst *models.PoolLinkInstance, req models.PlacementCloudStartRequest) (*models.PlacementCloudStart, *errx.Error)
 	RemoteSends(ctx context.Context, inst *models.PoolLinkInstance, testID uuid.UUID, sends []models.PlacementCloudSend) *errx.Error
 	RemoteGet(ctx context.Context, inst *models.PoolLinkInstance, testID uuid.UUID) (*models.PlacementCloudTest, *errx.Error)
+
+	PreviewBatch(ctx context.Context, in BatchInput) (*BatchPreview, *errx.Error)
+	CreateBatch(ctx context.Context, in BatchInput) (*BatchView, *errx.Error)
+	ListBatches(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]BatchView, int, *errx.Error)
+	GetBatch(ctx context.Context, orgID, id uuid.UUID) (*BatchDetail, *errx.Error)
+	ListBatchSenders(ctx context.Context, orgID, id uuid.UUID, f repository.PlacementBatchSenderFilter) ([]BatchSenderView, int, *errx.Error)
+	CancelBatch(ctx context.Context, orgID, id uuid.UUID) (*BatchView, *errx.Error)
+	Coverage(ctx context.Context, orgID uuid.UUID) (*repository.PlacementCoverage, *errx.Error)
 
 	// Tick classifies delivered probes, closes finished tests, syncs cloud
 	// tests and runs due monitors. The poller calls it.
@@ -172,6 +183,9 @@ type CreateInput struct {
 	MaxCredits int
 	Origin     string
 	MonitorID  *uuid.UUID
+	// BatchID and BatchSenderID tie a batch's test to its sender row.
+	BatchID       *uuid.UUID
+	BatchSenderID *uuid.UUID
 }
 
 func (s *service) policy(ctx context.Context) instancesettings.Placement {
@@ -245,86 +259,17 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 		return nil, placementErr(errx.Conflict, "placement_sender_unavailable", "A seed mailbox receives tests; it cannot send one.")
 	}
 
-	// The copy: a campaign step (snapshotted now, so an edit mid-test does not
-	// change what the later seeds get) or an ad-hoc template.
-	var campaign *models.Campaign
-	if in.CampaignID != nil {
-		c, err := s.Campaigns.GetByID(ctx, *in.CampaignID)
-		if err != nil || c == nil || c.OrganizationID == nil || *c.OrganizationID != in.OrgID {
-			return nil, errx.New(errx.NotFound, "campaign not found")
-		}
-		campaign = c
-		if in.SequenceID != nil {
-			seq := s.campaignStep(ctx, c.ID, *in.SequenceID)
-			if seq == nil {
-				return nil, errx.New(errx.NotFound, "campaign step not found")
-			}
-			if strings.TrimSpace(in.Subject) == "" && in.BodyHTML == "" && in.BodyPlain == "" {
-				in.Subject, in.BodyHTML, in.BodyPlain = seq.Subject, seq.BodyHTML, seq.BodyPlain
-			}
-			if strings.TrimSpace(in.Subject) == "" {
-				in.Subject = s.threadSubject(ctx, c.ID, seq)
-			}
-		}
-	} else if in.SequenceID != nil {
-		return nil, errx.New(errx.BadRequest, "sequence_id needs campaign_id")
+	spec := copySpec{
+		CampaignID: in.CampaignID, SequenceID: in.SequenceID, ContactID: in.ContactID,
+		Subject: in.Subject, BodyHTML: in.BodyHTML, BodyPlain: in.BodyPlain, Panel: in.Panel,
 	}
-	// A campaign test renders for the campaign's first lead unless told
-	// otherwise, so merge fields and AI blocks read as a lead would get them.
-	// Not on the cloud panel: those copies land in another operator's inboxes,
-	// so a real lead's details go there only when someone chose that lead.
-	if in.ContactID == nil && campaign != nil && in.Panel != models.PlacementPanelCloud {
-		if lead, err := s.Repo.SampleLead(ctx, campaign.ID); err == nil {
-			in.ContactID = lead
-		}
+	if xerr := s.resolveCopy(ctx, in.OrgID, &spec); xerr != nil {
+		return nil, xerr
 	}
-	if in.ContactID != nil {
-		found, xerr := s.contactsInOrg(ctx, in.OrgID, *in.ContactID)
-		if xerr != nil {
-			return nil, xerr
-		}
-		if !found {
-			return nil, errx.New(errx.NotFound, "contact not found")
-		}
-	}
-	in.Subject = strings.TrimSpace(in.Subject)
-	if in.Subject == "" {
-		return nil, errx.New(errx.BadRequest, "subject is required")
-	}
-	if !mailhtml.HasContent(in.BodyHTML) && strings.TrimSpace(in.BodyPlain) == "" {
-		return nil, errx.New(errx.BadRequest, "a plain-text or HTML body is required")
-	}
-	if len(in.Subject) > config.SequenceSubjectLimit*4 || len(in.BodyHTML)+len(in.BodyPlain) > config.SequenceBodyLimit*4 {
-		return nil, errx.New(errx.BadRequest, "the template is too long")
-	}
-
-	// Tracking, resolved to what each test's copies carry.
-	textOnly := campaign != nil && campaign.TextOnly
-	campOpen, campLink := false, false
-	if campaign != nil {
-		campOpen, campLink = campaign.OpenTracking, campaign.LinkTracking
-	}
-	type variant struct{ open, link bool }
-	var variants []variant
-	switch in.Tracking {
-	case models.PlacementTrackingCampaign:
-		variants = []variant{{campOpen, campLink}}
-	case models.PlacementTrackingOn:
-		variants = []variant{{true, true}}
-	case models.PlacementTrackingOff:
-		variants = []variant{{false, false}}
-	case models.PlacementTrackingCompare:
-		tracked := variant{campOpen, campLink}
-		if !tracked.open && !tracked.link {
-			tracked = variant{true, true}
-		}
-		variants = []variant{{false, false}, tracked}
-	}
-	if textOnly && (in.Tracking == models.PlacementTrackingOn || in.Tracking == models.PlacementTrackingCompare) {
-		return nil, placementErr(errx.BadRequest, "placement_invalid_tracking", "This campaign sends plain text, which carries no tracking to compare.")
-	}
-	if textOnly {
-		variants = []variant{{false, false}}
+	in.ContactID, in.Subject, in.BodyHTML, in.BodyPlain = spec.ContactID, spec.Subject, spec.BodyHTML, spec.BodyPlain
+	variants, xerr := trackingVariants(in.Tracking, spec.campaign)
+	if xerr != nil {
+		return nil, xerr
 	}
 
 	// Limits: tests in flight, the sender's own queue, the monthly allowance.
@@ -357,7 +302,7 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 		}
 		if free := usage.Remaining(); free >= 0 && free < len(variants) {
 			paid, price = len(variants)-free, usage.CreditsPerTest
-			if price == 0 || in.Origin != models.PlacementOriginManual {
+			if price == 0 || (in.Origin != models.PlacementOriginManual && in.Origin != models.PlacementOriginBatch) {
 				return nil, placementErr(errx.PaymentRequired, "placement_quota_exceeded",
 					"This workspace has used its free placement tests for the month.")
 			}
@@ -505,6 +450,8 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 			SequenceID:      in.SequenceID,
 			ContactID:       in.ContactID,
 			MonitorID:       in.MonitorID,
+			BatchID:         in.BatchID,
+			BatchSenderID:   in.BatchSenderID,
 			Subject:         in.Subject,
 			BodyHTML:        in.BodyHTML,
 			BodyPlain:       in.BodyPlain,
@@ -584,6 +531,106 @@ func (s *service) CreateTests(ctx context.Context, in CreateInput) ([]TestView, 
 		views = append(views, s.view(b.test, b.results, false))
 	}
 	return views, nil
+}
+
+// copySpec is the email a test sends and where it comes from.
+type copySpec struct {
+	CampaignID, SequenceID, ContactID *uuid.UUID
+	Subject, BodyHTML, BodyPlain      string
+	Panel                             string
+	campaign                          *models.Campaign
+}
+
+// resolveCopy checks that a test's copy belongs to the workspace and fills it
+// in from the campaign step.
+func (s *service) resolveCopy(ctx context.Context, orgID uuid.UUID, c *copySpec) *errx.Error {
+	// The copy: a campaign step (snapshotted now, so an edit mid-test does not
+	// change what the later seeds get) or an ad-hoc template.
+	if c.CampaignID != nil {
+		campaign, err := s.Campaigns.GetByID(ctx, *c.CampaignID)
+		if err != nil || campaign == nil || campaign.OrganizationID == nil || *campaign.OrganizationID != orgID {
+			return errx.New(errx.NotFound, "campaign not found")
+		}
+		c.campaign = campaign
+		if c.SequenceID != nil {
+			seq := s.campaignStep(ctx, campaign.ID, *c.SequenceID)
+			if seq == nil {
+				return errx.New(errx.NotFound, "campaign step not found")
+			}
+			if strings.TrimSpace(c.Subject) == "" && c.BodyHTML == "" && c.BodyPlain == "" {
+				c.Subject, c.BodyHTML, c.BodyPlain = seq.Subject, seq.BodyHTML, seq.BodyPlain
+			}
+			if strings.TrimSpace(c.Subject) == "" {
+				c.Subject = s.threadSubject(ctx, campaign.ID, seq)
+			}
+		}
+	} else if c.SequenceID != nil {
+		return errx.New(errx.BadRequest, "sequence_id needs campaign_id")
+	}
+	// A campaign test renders for the campaign's first lead unless told
+	// otherwise, so merge fields and AI blocks read as a lead would get them.
+	// Not on the cloud panel: those copies land in another operator's inboxes,
+	// so a real lead's details go there only when someone chose that lead.
+	if c.ContactID == nil && c.campaign != nil && c.Panel != models.PlacementPanelCloud {
+		if lead, err := s.Repo.SampleLead(ctx, c.campaign.ID); err == nil {
+			c.ContactID = lead
+		}
+	}
+	if c.ContactID != nil {
+		found, xerr := s.contactsInOrg(ctx, orgID, *c.ContactID)
+		if xerr != nil {
+			return xerr
+		}
+		if !found {
+			return errx.New(errx.NotFound, "contact not found")
+		}
+	}
+	c.Subject = strings.TrimSpace(c.Subject)
+	if c.Subject == "" {
+		return errx.New(errx.BadRequest, "subject is required")
+	}
+	if !mailhtml.HasContent(c.BodyHTML) && strings.TrimSpace(c.BodyPlain) == "" {
+		return errx.New(errx.BadRequest, "a plain-text or HTML body is required")
+	}
+	if len(c.Subject) > config.SequenceSubjectLimit*4 || len(c.BodyHTML)+len(c.BodyPlain) > config.SequenceBodyLimit*4 {
+		return errx.New(errx.BadRequest, "the template is too long")
+	}
+	return nil
+}
+
+// variant is the tracking one test's copies carry.
+type variant struct{ open, link bool }
+
+// trackingVariants resolves a tracking choice to the tests it runs: one, or
+// two for a comparison.
+func trackingVariants(tracking string, campaign *models.Campaign) ([]variant, *errx.Error) {
+	textOnly := campaign != nil && campaign.TextOnly
+	campOpen, campLink := false, false
+	if campaign != nil {
+		campOpen, campLink = campaign.OpenTracking, campaign.LinkTracking
+	}
+	var variants []variant
+	switch tracking {
+	case models.PlacementTrackingCampaign:
+		variants = []variant{{campOpen, campLink}}
+	case models.PlacementTrackingOn:
+		variants = []variant{{true, true}}
+	case models.PlacementTrackingOff:
+		variants = []variant{{false, false}}
+	case models.PlacementTrackingCompare:
+		tracked := variant{campOpen, campLink}
+		if !tracked.open && !tracked.link {
+			tracked = variant{true, true}
+		}
+		variants = []variant{{false, false}, tracked}
+	}
+	if textOnly && (tracking == models.PlacementTrackingOn || tracking == models.PlacementTrackingCompare) {
+		return nil, placementErr(errx.BadRequest, "placement_invalid_tracking", "This campaign sends plain text, which carries no tracking to compare.")
+	}
+	if textOnly {
+		variants = []variant{{false, false}}
+	}
+	return variants, nil
 }
 
 // remainingSends is what is left of the sender's daily campaign limit,
@@ -908,8 +955,10 @@ func (s *service) CancelTest(ctx context.Context, orgID, id uuid.UUID) (*TestVie
 
 // ListTests lists tests newest first; a nil orgID lists every workspace's.
 func (s *service) ListTests(ctx context.Context, orgID *uuid.UUID, campaignID *uuid.UUID, limit, offset int) ([]TestView, int, *errx.Error) {
+	// The operator's list shows every test; a workspace's leaves batch tests
+	// to their batch.
 	tests, total, err := s.Repo.ListTests(ctx, repository.PlacementTestFilter{
-		OrganizationID: orgID, CampaignID: campaignID, Limit: limit, Offset: offset,
+		OrganizationID: orgID, CampaignID: campaignID, IncludeBatch: orgID == nil, Limit: limit, Offset: offset,
 	})
 	if err != nil {
 		errs.CaptureException(err)

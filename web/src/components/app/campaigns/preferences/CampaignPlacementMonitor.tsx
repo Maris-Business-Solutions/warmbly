@@ -5,7 +5,7 @@
 
 import React from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangleIcon, ArrowUpRightIcon, Loader2Icon } from "lucide-react";
+import { AlertTriangleIcon, ArrowUpRightIcon, Layers3Icon, Loader2Icon } from "lucide-react";
 import toast from "react-hot-toast";
 import { Label, NumberInput } from "@/components/ui/field";
 import { SelectMenu } from "@/components/ui/select-menu";
@@ -27,6 +27,7 @@ import {
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { fmtDate } from "@/components/app/placement/tests/placementTests";
+import NewPlacementBatchDialog from "@/components/app/placement/batches/NewPlacementBatchDialog";
 import { SettingRow, Toggle } from "./components/CampaignPreferenceBoolBox";
 
 // Defaults a new monitor starts from, matching the backend's.
@@ -40,6 +41,7 @@ export function PlacementMonitorSection({ campaignId }: { campaignId: string }) 
     const remove = useDeletePlacementMonitor(campaignId);
     const confirm = useConfirm();
     const canEdit = usePermission("SEND_CAMPAIGNS");
+    const [batchOpen, setBatchOpen] = React.useState(false);
 
     const m = monitor.data ?? null;
     const [intervalDays, setIntervalDays] = React.useState(m?.interval_days ?? DEFAULT_INTERVAL);
@@ -233,6 +235,17 @@ export function PlacementMonitorSection({ campaignId }: { campaignId: string }) 
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+                {canEdit && (
+                    <button
+                        type="button"
+                        onClick={() => setBatchOpen(true)}
+                        title="Run this placement test from every mailbox the campaign sends from"
+                        className="h-7 px-2.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-[12px] font-medium text-slate-700 hover:text-slate-900 inline-flex items-center gap-1.5 transition-colors"
+                    >
+                        <Layers3Icon className="w-3.5 h-3.5" />
+                        Test sender pool
+                    </button>
+                )}
                 <Link
                     to={`/app/placement?campaign_id=${campaignId}`}
                     className="inline-flex items-center gap-1 text-[12px] text-sky-700 hover:text-sky-800"
@@ -251,6 +264,8 @@ export function PlacementMonitorSection({ campaignId }: { campaignId: string }) 
                     </button>
                 )}
             </div>
+
+            <NewPlacementBatchDialog open={batchOpen} onClose={() => setBatchOpen(false)} prefill={{ campaignId, scope: "campaign" }} />
         </div>
     );
 }

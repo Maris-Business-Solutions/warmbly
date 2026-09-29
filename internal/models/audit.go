@@ -147,10 +147,11 @@ const (
 	AuditEntityPoolLink  AuditEntityType = "pool_link"
 	AuditEntityCloudLink AuditEntityType = "cloud_link"
 
-	// Inbox placement: a test started or cancelled, and a campaign's
+	// Inbox placement: a test or batch started or cancelled, and a campaign's
 	// scheduled test set up, changed or removed.
 	AuditEntityPlacementTest    AuditEntityType = "placement_test"
 	AuditEntityPlacementMonitor AuditEntityType = "placement_monitor"
+	AuditEntityPlacementBatch   AuditEntityType = "placement_batch"
 )
 
 // AuditActor is the minimal identity of the member who performed an action,

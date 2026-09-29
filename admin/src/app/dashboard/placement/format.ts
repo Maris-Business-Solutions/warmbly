@@ -18,6 +18,7 @@ export const ORIGIN_LABEL: Record<string, string> = {
     monitor: "Monitor",
     admin: "Admin",
     remote: "Linked instance",
+    batch: "Batch",
 };
 
 // The backend's `error` field is the HTTP status text; the sentence worth

@@ -1023,6 +1023,14 @@ func Run(
 				placementTests.GET("/tests/:id", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.GetPlacementTest)
 				placementTests.POST("/tests", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CreatePlacementTest)
 				placementTests.POST("/tests/:id/cancel", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CancelPlacementTest)
+				// Batches: one test run from many senders, started a few at a time.
+				placementTests.GET("/batches", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.ListPlacementBatches)
+				placementTests.GET("/batches/:id", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.GetPlacementBatch)
+				placementTests.GET("/batches/:id/senders", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.ListPlacementBatchSenders)
+				placementTests.POST("/batches/preview", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.PreviewPlacementBatch)
+				placementTests.POST("/batches", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CreatePlacementBatch)
+				placementTests.POST("/batches/:id/cancel", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CancelPlacementBatch)
+				placementTests.GET("/coverage", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.GetPlacementCoverage)
 				placementTests.GET("/seeds", m.RequireAccess(models.PermViewCampaigns, models.APIPermReadEmails), h.ListPlacementSeeds)
 				placementTests.PUT("/seeds/:id", m.RequireAccess(models.PermManageEmails, models.APIPermWriteEmails), middleware.RequireAPIKeyEmailAccountParam("id"), h.SetPlacementSeed)
 			}

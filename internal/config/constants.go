@@ -139,6 +139,22 @@ const (
 	PlacementMonitorIntervalDaysDef    = 7
 	PlacementMonitorAlertBelowDefault  = 70 // inbox rate, percent
 
+	// Placement batches run one test from many senders. Membership is bounded
+	// only by an operator ceiling; execution by concurrency and a start rate.
+	PlacementBatchSendersMaxDefault          = 10_000
+	PlacementBatchSendersMaxCeiling          = 100_000
+	PlacementBatchSenderConcurrencyDefault   = 20 // senders of one workspace sending probes at once
+	PlacementBatchSenderConcurrencyMax       = 500
+	PlacementBatchInstanceConcurrencyDefault = 200 // batch senders sending at once across every workspace, so no shared seed floods
+	PlacementBatchInstanceConcurrencyMax     = 5_000
+	PlacementBatchStartsPerMinuteDefault     = 10
+	PlacementBatchStartsPerMinuteMax         = 600
+	PlacementBatchRetryDays                  = 7 // a deferred sender is retried this long, then skipped
+	PlacementBatchOpenPerOrgMax              = 5 // batches one workspace may have open at once
+	PlacementBatchSenderErrorAttemptsMax     = 5 // unexpected errors before a sender fails
+	PlacementBatchRunnerBatchesPerTick       = 20
+	PlacementBatchSenderStaleMinutes         = 10 // a claimed sender with no test after this goes back to the queue
+
 	// Sequences. Empty by default so the editor shows a smart, position-based
 	// label (e.g. "Email 1") until the user names the step themselves.
 	SequenceDefaultName  = ""

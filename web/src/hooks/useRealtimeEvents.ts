@@ -507,6 +507,7 @@ export function useRealtimeEvents() {
           // Placement tests started or stopped and campaign monitors changed.
           placement_test: [['placement']],
           placement_monitor: [['placement']],
+          placement_batch: [['placement']],
           cloud_link: [['cloud-link'], ['emails']],
           pool_link: [['pool-link'], ['emails']],
           // Folders / tags / categories ride the user payload.

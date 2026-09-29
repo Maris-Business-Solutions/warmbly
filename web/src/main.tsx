@@ -31,6 +31,7 @@ import AnalyticsPage from './app/app/analytics/page';
 import DeliverabilityPage from './app/app/deliverability/page';
 import PlacementPage from './app/app/placement/page';
 import PlacementTestPage from './app/app/placement/[id]/page';
+import PlacementBatchPage from './app/app/placement/batches/[id]/page';
 import PipelinesPage from './app/app/crm/pipelines/page';
 import DealsPage from './app/app/crm/deals/page';
 import TasksPage from './app/app/crm/tasks/page';
@@ -332,6 +333,7 @@ const router = createBrowserRouter([
             path: "placement",
             children: [
               { index: true, element: <PlacementPage /> },
+              { path: "batches/:id", element: <PlacementBatchPage /> },
               { path: ":id", element: <PlacementTestPage /> },
             ],
           },
