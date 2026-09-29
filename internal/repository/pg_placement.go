@@ -177,6 +177,14 @@ type PlacementRepository interface {
 	// SampleLead is the campaign's first lead, the contact a test renders the
 	// copy for when none is chosen. Nil for a campaign with no leads.
 	SampleLead(ctx context.Context, campaignID uuid.UUID) (*uuid.UUID, error)
+	// GetPlacementRender is the sealed copy both halves of a tracking
+	// comparison send to one seed; empty when neither has rendered it yet.
+	GetPlacementRender(ctx context.Context, orgID, groupID uuid.UUID, seedAddress string) (string, error)
+	// FreezePlacementRender stores that copy unless one is there already and
+	// returns whichever is stored, so a race between the halves has one winner.
+	FreezePlacementRender(ctx context.Context, orgID, groupID uuid.UUID, seedAddress, content string) (string, error)
+	// PruneRenders drops the copies of comparisons with nothing left running.
+	PruneRenders(ctx context.Context) error
 
 	// Cloud side: a test the cloud runs for a linked instance.
 	RecordRemoteSent(ctx context.Context, instanceID, testID, seedAccountID uuid.UUID, messageID string, sentAt *time.Time, failure string) error
@@ -883,6 +891,46 @@ func (r *placementRepository) SampleLead(ctx context.Context, campaignID uuid.UU
 		return nil, err
 	}
 	return &id, nil
+}
+
+func (r *placementRepository) GetPlacementRender(ctx context.Context, orgID, groupID uuid.UUID, seedAddress string) (string, error) {
+	var content string
+	err := r.db.QueryRow(ctx, `
+		SELECT content FROM placement_renders
+		WHERE organization_id = $1 AND compare_group_id = $2 AND seed_address = lower($3)
+	`, orgID, groupID, seedAddress).Scan(&content)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return content, err
+}
+
+func (r *placementRepository) FreezePlacementRender(ctx context.Context, orgID, groupID uuid.UUID, seedAddress, content string) (string, error) {
+	// Two statements: a row a concurrent half committed mid-insert is not in
+	// the insert's snapshot, but it is in the next one.
+	if _, err := r.db.Exec(ctx, `
+		INSERT INTO placement_renders (compare_group_id, seed_address, organization_id, content)
+		VALUES ($1, lower($2), $3, $4)
+		ON CONFLICT (compare_group_id, seed_address) DO NOTHING
+	`, groupID, seedAddress, orgID, content); err != nil {
+		return "", err
+	}
+	stored, err := r.GetPlacementRender(ctx, orgID, groupID, seedAddress)
+	if err == nil && stored == "" {
+		err = errors.New("placement render not stored")
+	}
+	return stored, err
+}
+
+func (r *placementRepository) PruneRenders(ctx context.Context) error {
+	_, err := r.db.Exec(ctx, `
+		DELETE FROM placement_renders pr
+		WHERE NOT EXISTS (
+			SELECT 1 FROM placement_tests pt
+			WHERE pt.compare_group_id = pr.compare_group_id AND pt.status = 'running'
+		)
+	`)
+	return err
 }
 
 func (r *placementRepository) RecordRemoteSent(ctx context.Context, instanceID, testID, seedAccountID uuid.UUID, messageID string, sentAt *time.Time, failure string) error {

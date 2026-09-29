@@ -123,7 +123,7 @@ Cancelling a running test stops the copies that have not been sent yet. Copies a
 | Off | Neither |
 | Compare | Two linked tests to the same seeds, one without tracking and one with it |
 
-A comparison sends each seed both versions back to back, in a random order per seed, so both see the same filter at the same moment. The difference between the two halves is what the pixel and the wrapped links cost you. It counts as two tests and sends twice as many copies. A campaign that sends plain text carries no tracking, so **On** and **Compare** are refused for it (`placement_invalid_tracking`).
+A comparison sends each seed both versions back to back, in a random order per seed, so both see the same filter at the same moment. The difference between the two halves is what the pixel and the wrapped links cost you. Both halves send a seed the same words: the copy for that seed is rendered once, with its spintax, merge fields, AI blocks, form links, signature and opt-out line resolved, and the tracked half only adds the pixel and wraps the links. Different seeds can still draw different spintax, as different leads would. If a seed's copy cannot be rendered, neither half is sent to that seed. It counts as two tests and sends twice as many copies. A campaign that sends plain text carries no tracking, so **On** and **Compare** are refused for it (`placement_invalid_tracking`).
 
 ## What a test costs
 

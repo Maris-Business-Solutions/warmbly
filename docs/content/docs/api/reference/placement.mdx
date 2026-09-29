@@ -91,7 +91,7 @@ Auth: **Scope** `SEND_CAMPAIGNS` · **Org permission** `send_campaigns`
 | `subject` | string | no | The subject. Required when there is no step to take it from |
 | `body_html` | string | no | HTML body. A test needs this or `body_plain` |
 | `body_plain` | string | no | Plain-text body |
-| `tracking` | string | no | `campaign` (default: the campaign's own open and click tracking, none for an ad-hoc test), `on`, `off`, or `compare` (one untracked and one tracked test to the same seeds) |
+| `tracking` | string | no | `campaign` (default: the campaign's own open and click tracking, none for an ad-hoc test), `on`, `off`, or `compare` (one untracked and one tracked test to the same seeds, each seed getting the same rendered copy from both) |
 | `panel` | string | no | `instance` (default), `workspace` or `cloud` |
 | `families` | string[] | no | Only seeds at these provider families, as `panels[].families[].family` lists them. Works on every panel; on `instance` and `cloud` it is the only way to narrow a test, since their addresses are masked. A panel with no seed at those providers is refused with `placement_no_seeds` |
 | `pace` | string | no | `spaced` (default, about 60 seconds between copies) or `quick` (about 8 seconds, so a test sends in minutes) |
