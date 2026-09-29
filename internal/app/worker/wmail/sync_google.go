@@ -12,6 +12,7 @@ import (
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/repository"
 )
 
 // googleBackfillPage is how many ids one messages.list call returns. Small
@@ -261,20 +262,23 @@ func (w *WMail) googleReconcileFolders(ctx context.Context, now time.Time, stats
 	if err != nil {
 		return w.controlPlaneError(err, stats)
 	}
-	window := inboxRows
-	if len(window) == 0 {
-		window = otherRows
-	}
-	if len(window) == 0 {
+	if len(inboxRows) == 0 && len(otherRows) == 0 {
 		w.googleReconciledAt = now
 		return nil
 	}
 
-	// The rows come newest first; a day of slack covers Gmail reading after:
-	// against its own calendar.
+	// Each set comes newest first, and the listing has to reach the oldest row
+	// of either; a day of slack covers Gmail reading after: against its own
+	// calendar.
+	var oldest time.Time
+	for _, rows := range [][]repository.ProviderFolderMessage{inboxRows, otherRows} {
+		if len(rows) > 0 && (oldest.IsZero() || rows[len(rows)-1].InternalDate.Before(oldest)) {
+			oldest = rows[len(rows)-1].InternalDate
+		}
+	}
 	q := ""
-	if oldest := window[len(window)-1].InternalDate.Add(-24 * time.Hour); oldest.Unix() > 0 {
-		q = fmt.Sprintf("after:%d", oldest.Unix())
+	if after := oldest.Add(-24 * time.Hour); after.Unix() > 0 {
+		q = fmt.Sprintf("after:%d", after.Unix())
 	}
 	inInbox := make(map[string]struct{})
 	token := ""

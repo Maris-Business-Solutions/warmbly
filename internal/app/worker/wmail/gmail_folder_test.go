@@ -227,8 +227,11 @@ func TestGmailReconcileMovesWhatGmailMoved(t *testing.T) {
 	if strings.Join(g.gets, ",") != "archived,trashed,refused,deleted" {
 		t.Errorf("looked up %v, want archived, trashed, refused, deleted", g.gets)
 	}
-	if len(g.queries) != 1 || g.queries[0].Get("labelIds") != "INBOX" || !strings.HasPrefix(g.queries[0].Get("q"), "after:") {
-		t.Errorf("inbox listing queries = %v, want labelIds=INBOX and an after: bound", g.queries)
+	// The bound reaches the oldest row of either set, here an archived one
+	// older than every inbox row, or its move back to the inbox is never seen.
+	wantQ := fmt.Sprintf("after:%d", stillArchived.InternalDate.Add(-24*time.Hour).Unix())
+	if len(g.queries) != 1 || g.queries[0].Get("labelIds") != "INBOX" || g.queries[0].Get("q") != wantQ {
+		t.Errorf("inbox listing queries = %v, want labelIds=INBOX and q=%s", g.queries, wantQ)
 	}
 
 	// Inside the interval nothing runs; after it, a message already found
