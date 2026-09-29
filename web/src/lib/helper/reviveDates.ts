@@ -2,8 +2,8 @@
 // ends so free text that merely starts with a date (a subject, a snippet) stays text.
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
 
-// User-authored string maps: a value that looks like a timestamp is still the text someone typed.
-const VERBATIM_KEYS = new Set(["custom_fields"])
+// User-authored strings and cells read from an uploaded file: a value that looks like a timestamp is still text.
+const VERBATIM_KEYS = new Set(["custom_fields", "sample_rows", "samples", "values", "columns", "header", "email"])
 
 export default function reviveDates<T>(obj: T): T {
     if (obj === null || obj === undefined) return obj
