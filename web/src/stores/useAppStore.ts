@@ -3,7 +3,7 @@ import { devtools, persist } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
 import { createUserSlice, type UserSlice } from './slices/userSlice'
 import { createOrganizationSlice, type OrganizationSlice } from './slices/organizationSlice'
-import { createUISlice, clampUniboxListWidth, type UISlice } from './slices/uiSlice'
+import { createUISlice, clampUniboxListWidth, sanitizeNavCollapsedSections, type UISlice } from './slices/uiSlice'
 import { createShortcutSlice, type ShortcutSlice } from './slices/shortcutSlice'
 import { createDataSlice, type DataSlice } from './slices/dataSlice'
 import { createRealtimeSlice, type RealtimeSlice } from './slices/realtimeSlice'
@@ -47,12 +47,14 @@ export const useAppStore = create<AppStore>()(
             ...current,
             ...p,
             uniboxListWidth: clampUniboxListWidth(p.uniboxListWidth),
+            navCollapsedSections: sanitizeNavCollapsedSections(p.navCollapsedSections),
           }
         },
         partialize: (state) => ({
           // Only persist UI preferences
           theme: state.theme,
           navCollapsed: state.navCollapsed,
+          navCollapsedSections: state.navCollapsedSections,
           // Assistant panel layout (edge + width + floating window geometry)
           agentSide: state.agentSide,
           agentWidth: state.agentWidth,
