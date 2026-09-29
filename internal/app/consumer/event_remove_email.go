@@ -42,7 +42,7 @@ func (s *JobsService) HandleRemoveEmail(ctx context.Context, e *models.JobEventR
 					Str("message_id", rec.MessageID).
 					Msg("Warmup message removed after its engagement window; housekeeping, not tampering")
 			default:
-				checkErr = s.checkWarmupRemoval(ctx, e.UserID, e.EmailID, rec.MessageID, &rec.InternalID)
+				checkErr = s.checkWarmupRemoval(ctx, e.UserID, e.EmailID, rec.MessageID)
 			}
 		}
 	}

@@ -8,68 +8,120 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/repository"
 )
 
-// withdrawRepo holds one participant row and whatever strikes remain after a
-// withdrawal, and records whether the hold was lifted.
+// withdrawRepo holds one standing and the strikes left in its deciding window,
+// and records how the hold was revised.
 type withdrawRepo struct {
 	ownPoolRepo
-	deletionsLeft int
-	lifted        string
+	hold      *repository.WarmupHold
+	removed   bool
+	deletions int
+	spamFlags int
+
+	revised      bool
+	revisedState models.WarmupHealthState
+	revisedUntil *time.Time
+	window       [2]time.Time
 }
 
 func (r *withdrawRepo) WithdrawWarmupTampering(context.Context, uuid.UUID, string, string) (bool, error) {
-	return true, nil
+	return r.removed, nil
 }
 
-func (r *withdrawRepo) HealthMetricCounts(context.Context, uuid.UUID, time.Time, time.Time) (models.WarmupHealthCounts, error) {
-	return models.WarmupHealthCounts{DeletionsLast7d: r.deletionsLeft}, nil
+func (r *withdrawRepo) GetWarmupHold(context.Context, uuid.UUID) (*repository.WarmupHold, error) {
+	return r.hold, nil
 }
 
-func (r *withdrawRepo) LiftTamperingHold(_ context.Context, _ uuid.UUID, reason string) (bool, error) {
-	r.lifted = reason
-	return true, nil
+func (r *withdrawRepo) CountWarmupTamperingBetween(_ context.Context, _ uuid.UUID, from, to time.Time) (int, int, error) {
+	r.window = [2]time.Time{from, to}
+	return r.deletions, r.spamFlags, nil
 }
 
-func heldRow(reason string) *models.WarmupParticipantHealth {
-	until := time.Now().Add(6 * 24 * time.Hour)
-	return &models.WarmupParticipantHealth{
-		PoolType: "premium", HealthState: models.WarmupHealthQuarantined,
-		BlockedUntil: &until, BlockedReason: &reason,
+func (r *withdrawRepo) ReviseWarmupHold(_ context.Context, _ uuid.UUID, reason string, state models.WarmupHealthState, until *time.Time, _ string) (bool, error) {
+	if reason != r.hold.Reason {
+		return false, nil
 	}
+	r.revised, r.revisedState, r.revisedUntil = true, state, until
+	return true, nil
 }
 
-// A pause that rested on a withdrawn strike is lifted; one the remaining
-// strikes still earn, or one something else imposed, stays.
-func TestWithdrawTamperingLiftsOnlyTheHoldItImposed(t *testing.T) {
+func tamperingHold(state models.WarmupHealthState, decidedAgo time.Duration, reason string) *repository.WarmupHold {
+	at := time.Now().Add(-decidedAgo)
+	term := warmupQuarantineDuration
+	if state == models.WarmupHealthBlocked {
+		term = warmupBlockDuration
+	}
+	until := at.Add(term)
+	return &repository.WarmupHold{State: state, BlockedAt: &at, BlockedUntil: &until, Reason: reason, InPool: true}
+}
+
+// A hold is re-decided on the strikes left in the seven days before it was
+// imposed, not on today's window, so strikes that aged out still count.
+func TestWithdrawTamperingRevisesOnTheWindowThatDecidedTheHold(t *testing.T) {
 	pause := tamperingPausePrefix + "2 warmup emails deleted in the last 7 days."
+	block := tamperingBlockPrefix + "5 warmup emails deleted in the last 7 days."
 	cases := []struct {
 		name      string
-		reason    string
-		left      int
-		wantLift  bool
-		wantState models.WarmupHealthState
+		hold      *repository.WarmupHold
+		deletions int
+		want      models.WarmupHealthState // "" means left alone
+		wantUntil bool
 	}{
-		{"one strike left only warns", pause, 1, true, models.WarmupHealthWatch},
-		{"two strikes left still pause", pause, 2, false, models.WarmupHealthQuarantined},
-		{"a complaint quarantine is not ours to lift", "complaint rate 0.20% exceeded quarantine threshold", 0, false, models.WarmupHealthHealthy},
+		{"a pause left with one strike lifts", tamperingHold(models.WarmupHealthQuarantined, 24*time.Hour, pause), 1, models.WarmupHealthHealthy, false},
+		{"a pause left with two strikes stands", tamperingHold(models.WarmupHealthQuarantined, 24*time.Hour, pause), 2, "", false},
+		{"an old block left with four strikes stands", tamperingHold(models.WarmupHealthBlocked, 10*24*time.Hour, block), 4, "", false},
+		{"a block left with three strikes becomes a pause from when it was decided", tamperingHold(models.WarmupHealthBlocked, 2*24*time.Hour, block), 3, models.WarmupHealthQuarantined, true},
+		{"a block whose pause would already have ended lifts", tamperingHold(models.WarmupHealthBlocked, 10*24*time.Hour, block), 3, models.WarmupHealthHealthy, false},
+		{"a complaint quarantine is not ours to lift", tamperingHold(models.WarmupHealthQuarantined, 24*time.Hour, "complaint rate 0.20% exceeded quarantine threshold"), 0, "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &withdrawRepo{ownPoolRepo: ownPoolRepo{health: heldRow(tc.reason)}, deletionsLeft: tc.left}
-			health, err := NewService(repo).WithdrawTampering(context.Background(), uuid.New(), "<m@example.test>", "deletion")
-			if err != nil {
+			repo := &withdrawRepo{
+				ownPoolRepo: ownPoolRepo{health: &models.WarmupParticipantHealth{PoolType: "premium", HealthState: tc.hold.State}},
+				hold:        tc.hold, removed: true, deletions: tc.deletions,
+			}
+			if _, err := NewService(repo).WithdrawTampering(context.Background(), uuid.New(), "<m@example.test>", "deletion"); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if (repo.lifted != "") != tc.wantLift {
-				t.Fatalf("lifted = %q, want lift %v", repo.lifted, tc.wantLift)
+			if tc.want == "" {
+				if repo.revised {
+					t.Fatalf("revised to %v, want the hold left alone", repo.revisedState)
+				}
+				return
 			}
-			if tc.wantLift && repo.lifted != tc.reason {
-				t.Fatalf("lifted the hold with reason %q, want %q", repo.lifted, tc.reason)
+			if !repo.revised || repo.revisedState != tc.want {
+				t.Fatalf("revised %v to %v, want %v", repo.revised, repo.revisedState, tc.want)
 			}
-			if health == nil || health.HealthState != tc.wantState {
-				t.Fatalf("decided %v, want %v", health, tc.wantState)
+			if (repo.revisedUntil != nil) != tc.wantUntil {
+				t.Fatalf("revised until %v, want a term %v", repo.revisedUntil, tc.wantUntil)
+			}
+			if tc.wantUntil && !repo.revisedUntil.Equal(tc.hold.BlockedAt.Add(warmupQuarantineDuration)) {
+				t.Fatalf("pause ends %v, want seven days from when the block was decided", repo.revisedUntil)
+			}
+			if !repo.window[1].Equal(*tc.hold.BlockedAt) || !repo.window[0].Equal(tc.hold.BlockedAt.Add(-7*24*time.Hour)) {
+				t.Fatalf("counted strikes over %v, want the seven days before the hold", repo.window)
 			}
 		})
+	}
+}
+
+// A retry after the strike is already gone still finishes the revision, and a
+// mailbox out of every pool has its ledger standing revised.
+func TestWithdrawTamperingRetriesAndLedger(t *testing.T) {
+	pause := tamperingPausePrefix + "2 warmup emails deleted in the last 7 days."
+	hold := tamperingHold(models.WarmupHealthQuarantined, 24*time.Hour, pause)
+	hold.InPool = false
+	repo := &withdrawRepo{hold: hold, removed: false, deletions: 1}
+	health, err := NewService(repo).WithdrawTampering(context.Background(), uuid.New(), "<m@example.test>", "deletion")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.revised || repo.revisedState != models.WarmupHealthHealthy {
+		t.Fatalf("revised %v to %v, want the ledger hold lifted", repo.revised, repo.revisedState)
+	}
+	if health != nil {
+		t.Fatalf("a mailbox in no pool came back with a standing: %+v", health)
 	}
 }

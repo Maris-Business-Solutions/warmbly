@@ -27,12 +27,10 @@ type JobEventRemoveEmail struct {
 }
 
 // JobEventWarmupRemovalChecked is where the worker found a warmup message
-// after the sync reported it removed. InternalID is empty when the control
-// plane did not know it.
+// after the sync reported it removed.
 type JobEventWarmupRemovalChecked struct {
 	UserID       uuid.UUID `json:"user_id" avro:"user_id"`
 	EmailID      uuid.UUID `json:"email_id" avro:"email_id"`
-	InternalID   string    `json:"internal_id,omitempty" avro:"internal_id"`
 	RFCMessageID string    `json:"rfc_message_id" avro:"rfc_message_id"`
 	Outcome      string    `json:"outcome" avro:"outcome"`
 }

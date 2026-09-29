@@ -8,19 +8,27 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
-// folderHolder answers which folders hold the message, and fails on one.
+// folderHolder answers which folders hold the message, and which it cannot open.
 type folderHolder struct {
-	holds  map[string]bool
-	fails  string
-	opened []string
+	holds    map[string]bool
+	fails    string
+	searched []string
 }
 
-func (h *folderHolder) HoldsMessageID(_ context.Context, mailbox, _ string) (bool, error) {
-	h.opened = append(h.opened, mailbox)
-	if mailbox == h.fails {
-		return false, errors.New("cannot select")
+func (h *folderHolder) LocateMessageID(_ context.Context, mailboxes []string, _ string) ([]string, int, error) {
+	h.searched = mailboxes
+	var held []string
+	unsearched := 0
+	for _, m := range mailboxes {
+		if m == h.fails {
+			unsearched++
+			continue
+		}
+		if h.holds[m] {
+			held = append(held, m)
+		}
 	}
-	return h.holds[mailbox], nil
+	return held, unsearched, nil
 }
 
 func TestLocateImapMessageReportsWhereTheMessageIs(t *testing.T) {
@@ -40,8 +48,8 @@ func TestLocateImapMessageReportsWhereTheMessageIs(t *testing.T) {
 		{"moved to another folder", map[string]bool{"Warmbly": true}, "", models.WarmupRemovalPresent, false},
 		{"a copy outside the trash wins", map[string]bool{"Trash": true, "INBOX": true}, "", models.WarmupRemovalPresent, false},
 		{"only in the trash", map[string]bool{"Trash": true}, "", models.WarmupRemovalTrashed, false},
+		{"only in the trash with a folder unsearched is inconclusive", map[string]bool{"Trash": true}, "Warmbly", "", false},
 		{"nowhere synced is inconclusive", nil, "", "", false},
-		{"a folder that cannot be opened is an error", nil, "Warmbly", "", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -53,7 +61,7 @@ func TestLocateImapMessageReportsWhereTheMessageIs(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("outcome = %q, want %q", got, tc.want)
 			}
-			for _, name := range h.opened {
+			for _, name := range h.searched {
 				if name == "[Parent]" {
 					t.Fatal("searched a folder listed only as hierarchy")
 				}

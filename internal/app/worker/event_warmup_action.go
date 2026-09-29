@@ -44,10 +44,11 @@ func (w *WorkerService) HandleWarmupAction(ctx context.Context, action models.Wa
 	case !exists:
 		// Engagement on a mailbox this worker is not holding is dropped; it
 		// is best effort and a mailbox mid-move earns its signal elsewhere.
-		// A retention delete is redelivered instead, because the control
-		// plane has already retired the row and will not send it again.
+		// A retention delete (its row is already retired) and a removal check
+		// are redelivered instead, in case the mailbox is still loading.
 		log.Warn().Str("email_id", action.EmailID.String()).Msg("Email account not found for warmup action")
-		if hasWarmupAction(action.Actions, models.WarmupActionDelete) {
+		if hasWarmupAction(action.Actions, models.WarmupActionDelete) ||
+			hasWarmupAction(action.Actions, models.WarmupActionVerifyRemoval) {
 			err = errors.New("mailbox not loaded on this worker")
 		}
 	case hasWarmupAction(action.Actions, models.WarmupActionVerifyRemoval):
@@ -67,11 +68,8 @@ func (w *WorkerService) HandleWarmupAction(ctx context.Context, action models.Wa
 		return nil
 	}
 	// Engagement is best effort and never returns here. A retention delete
-	// is not: the control plane has already retired the row, so a failure
-	// here is the only chance the message has of going. A removal check is
-	// retried too, since giving up means the removal is never judged. The
-	// bus redelivers on an error, bounded so a message the provider will
-	// never give up is not retried forever.
+	// (the row is already retired) and a removal check are redelivered, a
+	// bounded number of times.
 	if d := deliveryOf(ctx); d.redelivers && d.attempt < warmupDeleteRedeliveries {
 		return err
 	}

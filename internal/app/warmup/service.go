@@ -371,41 +371,73 @@ func (s *service) WithdrawTampering(ctx context.Context, accountID uuid.UUID, me
 	if err != nil {
 		return nil, errx.InternalError()
 	}
-	participant, xerr := s.getParticipantForAnyPool(ctx, accountID)
-	if xerr != nil || participant == nil || !removed {
-		return participant, xerr
+	// Run even when the strike is already gone, so a retry finishes a revision
+	// an earlier attempt did not.
+	revised, xerr := s.reviseTamperingHold(ctx, accountID)
+	if xerr != nil {
+		return nil, xerr
 	}
-	// A hold is a sentence the bands never lower, so the one this strike
-	// imposed is lifted here, and only when what remains decides less.
-	if reason := tamperingHoldReason(participant); reason != "" {
-		metrics, err := s.loadMetrics(ctx, accountID, participant)
-		if err != nil {
-			return nil, errx.InternalError()
-		}
-		decision := evaluateMetrics(metrics, placementPrior(participant), s.now().UTC())
-		if healthSeverity(decision.State) < healthSeverity(participant.HealthState) {
-			if _, err := s.repo.LiftTamperingHold(ctx, accountID, reason); err != nil {
-				return nil, errx.InternalError()
-			}
-		}
+	participant, xerr := s.getParticipantForAnyPool(ctx, accountID)
+	if xerr != nil || participant == nil || (!removed && !revised) {
+		return participant, xerr
 	}
 	return s.evaluateAndPersist(ctx, participant)
 }
 
-// tamperingHoldReason is the reason on a live pause or block the tampering
-// band imposed, or "" when the row holds nothing or something else holds it.
-func tamperingHoldReason(p *models.WarmupParticipantHealth) string {
-	if p.BlockedReason == nil || p.BlockedUntil == nil {
-		return ""
+// reviseTamperingHold re-decides a live tampering hold on the strikes left in
+// the seven days before it was imposed, and lowers it when they decide less.
+// The bands never lower a hold on their own, so this is the only way a
+// withdrawn strike reaches one.
+func (s *service) reviseTamperingHold(ctx context.Context, accountID uuid.UUID) (bool, *errx.Error) {
+	hold, err := s.repo.GetWarmupHold(ctx, accountID)
+	if err != nil {
+		return false, errx.InternalError()
 	}
-	if p.HealthState != models.WarmupHealthQuarantined && p.HealthState != models.WarmupHealthBlocked {
-		return ""
+	if !isTamperingHold(hold) {
+		return false, nil
 	}
-	reason := *p.BlockedReason
-	if strings.HasPrefix(reason, tamperingPausePrefix) || strings.HasPrefix(reason, tamperingBlockPrefix) {
-		return reason
+	decidedAt := tamperingHoldDecidedAt(hold)
+	deletions, spamFlags, err := s.repo.CountWarmupTamperingBetween(ctx, accountID, decidedAt.Add(-7*24*time.Hour), decidedAt)
+	if err != nil {
+		return false, errx.InternalError()
 	}
-	return ""
+	decision := evaluateTampering(&models.WarmupHealthMetrics{DeletionsLast7d: deletions, SpamFlagsLast7d: spamFlags}, decidedAt)
+	if healthSeverity(decision.State) >= healthSeverity(hold.State) {
+		return false, nil
+	}
+	state, until, reason := decision.State, decision.BlockedUntil, decision.Reason
+	if until == nil || !until.After(s.now()) {
+		state, until, reason = models.WarmupHealthHealthy, nil, ""
+	}
+	revised, err := s.repo.ReviseWarmupHold(ctx, accountID, hold.Reason, state, until, reason)
+	if err != nil {
+		return false, errx.InternalError()
+	}
+	return revised, nil
+}
+
+// isTamperingHold is a live pause or block the tampering band imposed.
+func isTamperingHold(h *repository.WarmupHold) bool {
+	if h == nil || h.BlockedUntil == nil {
+		return false
+	}
+	if h.State != models.WarmupHealthQuarantined && h.State != models.WarmupHealthBlocked {
+		return false
+	}
+	return strings.HasPrefix(h.Reason, tamperingPausePrefix) || strings.HasPrefix(h.Reason, tamperingBlockPrefix)
+}
+
+// tamperingHoldDecidedAt is when the hold was imposed, from its term when the
+// row does not record it.
+func tamperingHoldDecidedAt(h *repository.WarmupHold) time.Time {
+	if h.BlockedAt != nil {
+		return *h.BlockedAt
+	}
+	term := warmupQuarantineDuration
+	if h.State == models.WarmupHealthBlocked {
+		term = warmupBlockDuration
+	}
+	return h.BlockedUntil.Add(-term)
 }
 
 func tamperingVerb(kind string) string {

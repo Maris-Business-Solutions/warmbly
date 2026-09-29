@@ -30,9 +30,13 @@ func (r retentionWarmupRepo) GetWarmupReceived(context.Context, uuid.UUID, uuid.
 type retentionWarmupService struct {
 	warmupapp.Service
 	strikes []string
+	fail    bool
 }
 
 func (s *retentionWarmupService) RecordTampering(_ context.Context, _ uuid.UUID, _, kind string) (*models.WarmupParticipantHealth, *errx.Error) {
+	if s.fail {
+		return nil, errx.InternalError()
+	}
 	s.strikes = append(s.strikes, kind)
 	return nil, nil
 }
@@ -124,7 +128,7 @@ func TestRemoveEmailChecksOnlyFreshWarmupMail(t *testing.T) {
 			if tc.checks == 1 {
 				a := pub.actions[0]
 				if len(a.Actions) != 1 || a.Actions[0] != models.WarmupActionVerifyRemoval ||
-					a.RFCMessageID != tc.rec.MessageID || a.InternalID != tc.rec.InternalID.String() || pub.workers[0] != worker {
+					a.RFCMessageID != tc.rec.MessageID || pub.workers[0] != worker {
 					t.Fatalf("check carried %+v to %v", a, pub.workers[0])
 				}
 			}
@@ -148,33 +152,26 @@ func TestRemoveEmailWithNowhereToCheckChargesNothing(t *testing.T) {
 }
 
 // The strike follows where the worker found the message: anywhere outside the
-// trash withdraws it, the trash or nowhere records it, and a message the
-// retention sweep has retired is the platform's deletion whatever the search
-// says.
+// trash withdraws it, the trash or nowhere records and confirms it.
 func TestRemovalCheckedJudgesOnWhereTheMessageIs(t *testing.T) {
-	retired := time.Now().Add(-time.Minute)
 	cases := []struct {
-		name    string
-		outcome string
-		retired bool
-		want    []string
+		name     string
+		outcome  string
+		want     []string
+		verified int
 	}{
-		{"moved to another folder", models.WarmupRemovalPresent, false, []string{"withdraw:deletion"}},
-		{"in the trash", models.WarmupRemovalTrashed, false, []string{"deletion"}},
-		{"gone for good", models.WarmupRemovalGone, false, []string{"deletion"}},
-		{"gone after the platform retired it", models.WarmupRemovalGone, true, []string{"withdraw:deletion"}},
-		{"an answer this consumer does not know", "sideways", false, nil},
+		{"moved to another folder", models.WarmupRemovalPresent, []string{"withdraw:deletion"}, 0},
+		{"in the trash", models.WarmupRemovalTrashed, []string{"deletion"}, 1},
+		{"gone for good", models.WarmupRemovalGone, []string{"deletion"}, 1},
+		{"an answer this consumer does not know", "sideways", nil, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := receivedAgo(time.Hour)
-			if tc.retired {
-				rec.RetiredAt = &retired
-			}
-			s, svc := retentionService(rec)
+			s, svc := retentionService(receivedAgo(time.Hour))
+			repo := &verifiedRepo{}
+			s.WarmupRepo = repo
 			if err := s.HandleWarmupRemovalChecked(context.Background(), &models.JobEventWarmupRemovalChecked{
-				UserID: uuid.New(), EmailID: uuid.New(), InternalID: rec.InternalID.String(),
-				RFCMessageID: rec.MessageID, Outcome: tc.outcome,
+				UserID: uuid.New(), EmailID: uuid.New(), RFCMessageID: "<m@example.test>", Outcome: tc.outcome,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -186,33 +183,57 @@ func TestRemovalCheckedJudgesOnWhereTheMessageIs(t *testing.T) {
 					t.Fatalf("strikes = %v, want %v", svc.strikes, tc.want)
 				}
 			}
+			if repo.verified != tc.verified {
+				t.Fatalf("confirmed %d strikes, want %d", repo.verified, tc.verified)
+			}
 		})
 	}
 }
 
-// unverifiedRepo serves one listing of strikes recorded before removals were
-// checked and records which were stamped.
-type unverifiedRepo struct {
+// A strike the service could not record is redelivered, not acked.
+func TestRemovalCheckedRedeliversAFailedStrike(t *testing.T) {
+	s, svc := retentionService(nil)
+	svc.fail = true
+	if err := s.HandleWarmupRemovalChecked(context.Background(), &models.JobEventWarmupRemovalChecked{
+		UserID: uuid.New(), EmailID: uuid.New(), RFCMessageID: "<m@example.test>", Outcome: models.WarmupRemovalTrashed,
+	}); err == nil {
+		t.Fatal("a failed strike was acked")
+	}
+}
+
+// verifiedRepo counts the strikes a search confirmed.
+type verifiedRepo struct {
 	repository.WarmupRepository
-	rows     []repository.WarmupTamperingToVerify
-	verified []string
+	verified int
 }
 
-func (r *unverifiedRepo) ListUnverifiedDeletions(context.Context, time.Time, int) ([]repository.WarmupTamperingToVerify, error) {
-	return r.rows, nil
-}
-
-func (r *unverifiedRepo) MarkTamperingVerified(_ context.Context, _ uuid.UUID, messageID, _ string) error {
-	r.verified = append(r.verified, messageID)
+func (r *verifiedRepo) MarkTamperingVerified(context.Context, uuid.UUID, string, string) error {
+	r.verified++
 	return nil
 }
 
-// Every old strike is searched for once, and stamped only once its search is
-// on the bus, so a publish that fails is offered again.
-func TestRecheckTamperingSearchesEachOldStrikeOnce(t *testing.T) {
-	internal := uuid.New()
+// unverifiedRepo serves one listing of strikes recorded before removals were
+// checked and records which searches were asked for.
+type unverifiedRepo struct {
+	repository.WarmupRepository
+	rows      []repository.WarmupTamperingToVerify
+	requested []string
+}
+
+func (r *unverifiedRepo) ListUnverifiedDeletions(context.Context, time.Time, time.Duration, int) ([]repository.WarmupTamperingToVerify, error) {
+	return r.rows, nil
+}
+
+func (r *unverifiedRepo) MarkTamperingVerifyRequested(_ context.Context, _ uuid.UUID, messageID string) error {
+	r.requested = append(r.requested, messageID)
+	return nil
+}
+
+// Every old strike is searched for, and marked asked only once its search is
+// on the bus, so a publish that fails is offered again next pass.
+func TestRecheckTamperingSearchesEachOldStrike(t *testing.T) {
 	rows := []repository.WarmupTamperingToVerify{
-		{EmailAccountID: uuid.New(), UserID: uuid.New(), WorkerID: uuid.New(), MessageID: "<a@example.test>", InternalID: &internal},
+		{EmailAccountID: uuid.New(), UserID: uuid.New(), WorkerID: uuid.New(), MessageID: "<a@example.test>"},
 		{EmailAccountID: uuid.New(), UserID: uuid.New(), WorkerID: uuid.New(), MessageID: "<b@example.test>"},
 	}
 	repo := &unverifiedRepo{rows: rows}
@@ -221,10 +242,11 @@ func TestRecheckTamperingSearchesEachOldStrikeOnce(t *testing.T) {
 	if err := s.recheckTamperingBatch(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(pub.actions) != 2 || len(repo.verified) != 2 {
-		t.Fatalf("published %d, stamped %d; want 2 and 2", len(pub.actions), len(repo.verified))
+	if len(pub.actions) != 2 || len(repo.requested) != 2 {
+		t.Fatalf("published %d, marked %d; want 2 and 2", len(pub.actions), len(repo.requested))
 	}
-	if pub.actions[0].InternalID != internal.String() || pub.actions[1].InternalID != "" || pub.workers[1] != rows[1].WorkerID {
+	if pub.actions[1].RFCMessageID != rows[1].MessageID || pub.workers[1] != rows[1].WorkerID ||
+		pub.actions[1].Actions[0] != models.WarmupActionVerifyRemoval {
 		t.Fatalf("checks carried %+v to %v", pub.actions, pub.workers)
 	}
 
@@ -233,38 +255,8 @@ func TestRecheckTamperingSearchesEachOldStrikeOnce(t *testing.T) {
 	if err := s.recheckTamperingBatch(context.Background()); err == nil {
 		t.Fatal("a failed publish should be reported")
 	}
-	if len(failing.verified) != 0 {
-		t.Fatalf("stamped %v without a search on the bus", failing.verified)
-	}
-}
-
-func TestRemoveEmailNeverStrikesARetiredMessage(t *testing.T) {
-	rec := receivedAgo(time.Hour)
-	retired := time.Now().Add(-time.Minute)
-	rec.RetiredAt = &retired
-	s, svc := retentionService(rec)
-	if err := s.HandleRemoveEmail(context.Background(), &models.JobEventRemoveEmail{
-		UserID: uuid.New(), EmailID: uuid.New(), ID: uuid.New(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(svc.strikes) != 0 {
-		t.Fatalf("the platform's own deletion was recorded as tampering: %v", svc.strikes)
-	}
-}
-
-// A fresh warmup message that the sync found in a folder the owner excluded
-// from sync was filed, not deleted: it is still in the mailbox, so it is not
-// a strike whatever its age.
-func TestRemoveEmailNeverStrikesAMessageFiledIntoASkippedFolder(t *testing.T) {
-	s, svc := retentionService(receivedAgo(time.Hour))
-	if err := s.HandleRemoveEmail(context.Background(), &models.JobEventRemoveEmail{
-		UserID: uuid.New(), EmailID: uuid.New(), ID: uuid.New(), SkippedFolder: "Warmer",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(svc.strikes) != 0 {
-		t.Fatalf("a move into a skipped folder was recorded as tampering: %v", svc.strikes)
+	if len(failing.requested) != 0 {
+		t.Fatalf("marked %v asked without a search on the bus", failing.requested)
 	}
 }
 

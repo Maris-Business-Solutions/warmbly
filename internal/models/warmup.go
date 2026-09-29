@@ -62,10 +62,8 @@ const (
 	// by the retention sweep alone, and only for a message it has retired
 	// first, so the removal the sync then observes is never a strike.
 	WarmupActionDelete = "delete"
-	// WarmupActionVerifyRemoval asks the worker where a warmup message the
-	// sync reported gone actually is. It changes nothing in the mailbox; the
-	// answer comes back as WARMUP_REMOVAL_CHECKED, and only a message in the
-	// trash or gone for good is held against the mailbox.
+	// WarmupActionVerifyRemoval asks where a removed warmup message went,
+	// answered by WARMUP_REMOVAL_CHECKED; it changes nothing in the mailbox.
 	WarmupActionVerifyRemoval = "verify_removal"
 )
 

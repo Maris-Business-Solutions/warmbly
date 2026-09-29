@@ -240,18 +240,23 @@ type WarmupRepository interface {
 	GetWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID) (*WarmupReceived, error)
 	RecordWarmupTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (bool, error)
 	CountWarmupTamperingSince(ctx context.Context, accountID uuid.UUID, since time.Time) (int, error)
-	// WithdrawWarmupTampering deletes a strike the mailbox turned out not to
-	// have earned, reporting whether there was one.
+	// WithdrawWarmupTampering deletes a strike the mailbox did not earn,
+	// reporting whether there was one.
 	WithdrawWarmupTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (bool, error)
-	// ListUnverifiedDeletions is deletion strikes since the given time that
-	// were recorded before removals were checked against the mailbox, on
-	// active mailboxes with a worker to search them. MarkTamperingVerified
-	// stamps one once its search is on the bus.
-	ListUnverifiedDeletions(ctx context.Context, since time.Time, limit int) ([]WarmupTamperingToVerify, error)
+	// CountWarmupTamperingBetween is the strikes a hold decided at `to` read.
+	CountWarmupTamperingBetween(ctx context.Context, accountID uuid.UUID, from, to time.Time) (deletions, spamFlags int, err error)
+	// ListUnverifiedDeletions is deletion strikes since `since` that no search
+	// has confirmed and none was asked for within `retryAfter`, on active
+	// mailboxes with a worker.
+	ListUnverifiedDeletions(ctx context.Context, since time.Time, retryAfter time.Duration, limit int) ([]WarmupTamperingToVerify, error)
+	MarkTamperingVerifyRequested(ctx context.Context, accountID uuid.UUID, messageID string) error
 	MarkTamperingVerified(ctx context.Context, accountID uuid.UUID, messageID, kind string) error
-	// LiftTamperingHold clears a live pause or block whose reason is still
-	// the given one, so a hold set since by something else is left alone.
-	LiftTamperingHold(ctx context.Context, accountID uuid.UUID, reason string) (bool, error)
+	// GetWarmupHold is the mailbox's pool row standing, else the ledger row
+	// that would seed one; nil when neither holds anything.
+	GetWarmupHold(ctx context.Context, accountID uuid.UUID) (*WarmupHold, error)
+	// ReviseWarmupHold replaces a hold still carrying reason, on the pool row
+	// or, with none, on the ledger. A healthy state clears it.
+	ReviseWarmupHold(ctx context.Context, accountID uuid.UUID, reason string, state models.WarmupHealthState, until *time.Time, newReason string) (bool, error)
 
 	// Retention: warmup mail is deleted from the mailbox once its window has
 	// passed, the platform's own copy of the body with it, and the
@@ -1915,35 +1920,38 @@ func (r *warmupRepository) WithdrawWarmupTampering(ctx context.Context, accountI
 	return cmd.RowsAffected() > 0, nil
 }
 
-// WarmupTamperingToVerify is one unverified deletion strike and what the
-// worker needs to search the mailbox for its message.
+func (r *warmupRepository) CountWarmupTamperingBetween(ctx context.Context, accountID uuid.UUID, from, to time.Time) (int, int, error) {
+	var deletions, spamFlags int
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FILTER (WHERE kind = 'deletion'), COUNT(*) FILTER (WHERE kind = 'spam_flag')
+		FROM warmup_tampering_events
+		WHERE email_account_id = $1 AND created_at >= $2 AND created_at <= $3`,
+		accountID, from, to).Scan(&deletions, &spamFlags)
+	return deletions, spamFlags, err
+}
+
+// WarmupTamperingToVerify is one unverified deletion strike and where to ask.
 type WarmupTamperingToVerify struct {
 	EmailAccountID uuid.UUID
 	UserID         uuid.UUID
 	WorkerID       uuid.UUID
 	MessageID      string
-	// InternalID is the receipt's message id; nil once the receipt is pruned.
-	InternalID *uuid.UUID
 }
 
-func (r *warmupRepository) ListUnverifiedDeletions(ctx context.Context, since time.Time, limit int) ([]WarmupTamperingToVerify, error) {
+func (r *warmupRepository) ListUnverifiedDeletions(ctx context.Context, since time.Time, retryAfter time.Duration, limit int) ([]WarmupTamperingToVerify, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT t.email_account_id, ea.user_id, ea.worker_id, t.message_id, wr.internal_id
+		SELECT t.email_account_id, ea.user_id, ea.worker_id, t.message_id
 		FROM warmup_tampering_events t
 		JOIN email_accounts ea ON ea.id = t.email_account_id
-		LEFT JOIN LATERAL (
-			SELECT r.internal_id FROM warmup_received r
-			WHERE r.email_account_id = t.email_account_id AND r.message_id = t.message_id
-			LIMIT 1
-		) wr ON true
-		WHERE t.kind = 'deletion'
-		  AND t.verified_at IS NULL
+		WHERE t.verified_at IS NULL
+		  AND t.kind = 'deletion'
 		  AND t.created_at >= $1
+		  AND (t.verify_requested_at IS NULL OR t.verify_requested_at < NOW() - make_interval(secs => $2))
 		  AND t.message_id <> ''
 		  AND ea.status = 'active'
 		  AND ea.worker_id IS NOT NULL
 		ORDER BY t.created_at
-		LIMIT $2`, since, limit)
+		LIMIT $3`, since, retryAfter.Seconds(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1951,12 +1959,20 @@ func (r *warmupRepository) ListUnverifiedDeletions(ctx context.Context, since ti
 	var out []WarmupTamperingToVerify
 	for rows.Next() {
 		var v WarmupTamperingToVerify
-		if err := rows.Scan(&v.EmailAccountID, &v.UserID, &v.WorkerID, &v.MessageID, &v.InternalID); err != nil {
+		if err := rows.Scan(&v.EmailAccountID, &v.UserID, &v.WorkerID, &v.MessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+func (r *warmupRepository) MarkTamperingVerifyRequested(ctx context.Context, accountID uuid.UUID, messageID string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE warmup_tampering_events SET verify_requested_at = NOW()
+		WHERE email_account_id = $1 AND message_id = $2 AND kind = 'deletion' AND verified_at IS NULL`,
+		accountID, messageID)
+	return err
 }
 
 func (r *warmupRepository) MarkTamperingVerified(ctx context.Context, accountID uuid.UUID, messageID, kind string) error {
@@ -1967,18 +1983,81 @@ func (r *warmupRepository) MarkTamperingVerified(ctx context.Context, accountID 
 	return err
 }
 
-func (r *warmupRepository) LiftTamperingHold(ctx context.Context, accountID uuid.UUID, reason string) (bool, error) {
+// WarmupHold is a mailbox's standing as a pool row or ledger row holds it.
+type WarmupHold struct {
+	State        models.WarmupHealthState
+	BlockedAt    *time.Time
+	BlockedUntil *time.Time
+	Reason       string
+	// InPool is false when the standing is only on the ledger.
+	InPool bool
+}
+
+func (r *warmupRepository) GetWarmupHold(ctx context.Context, accountID uuid.UUID) (*WarmupHold, error) {
+	var h WarmupHold
+	var state string
+	err := r.db.QueryRow(ctx, `
+		SELECT health_state, blocked_at, blocked_until, COALESCE(blocked_reason, ''), true
+		FROM warmup_pool_participants WHERE email_account_id = $1
+		UNION ALL
+		SELECT l.health_state, l.blocked_at, l.blocked_until, COALESCE(l.blocked_reason, ''), false
+		FROM warmup_reputation_ledger l
+		JOIN email_accounts a ON a.organization_id = l.organization_id AND lower(btrim(a.email)) = l.email
+		WHERE a.id = $1
+		  AND NOT EXISTS (SELECT 1 FROM warmup_pool_participants WHERE email_account_id = $1)
+		LIMIT 1`, accountID).Scan(&state, &h.BlockedAt, &h.BlockedUntil, &h.Reason, &h.InPool)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	h.State = models.WarmupHealthState(state)
+	return &h, nil
+}
+
+func (r *warmupRepository) ReviseWarmupHold(ctx context.Context, accountID uuid.UUID, reason string, state models.WarmupHealthState, until *time.Time, newReason string) (bool, error) {
+	held := state == models.WarmupHealthQuarantined || state == models.WarmupHealthBlocked
+	if !held {
+		until, newReason = nil, ""
+	}
 	cmd, err := r.db.Exec(ctx, `
 		UPDATE warmup_pool_participants
-		SET health_state = 'healthy',
-		    blocked_at = NULL,
-		    blocked_until = NULL,
-		    blocked_reason = NULL
+		SET health_state = $3::text,
+		    blocked_until = $4::timestamptz,
+		    blocked_reason = NULLIF($5::text, ''),
+		    blocked_at = CASE WHEN $4::timestamptz IS NULL THEN NULL ELSE blocked_at END
 		WHERE email_account_id = $1
 		  AND blocked_reason = $2
-		  AND health_state IN ('quarantined', 'blocked')
-		  AND blocked_until IS NOT NULL`,
-		accountID, reason)
+		  AND health_state IN ('quarantined', 'blocked')`,
+		accountID, reason, string(state), until, newReason)
+	if err != nil {
+		return false, err
+	}
+	if cmd.RowsAffected() > 0 {
+		return true, nil
+	}
+	// The pool row is the standing whenever there is one; the ledger only
+	// speaks for a mailbox out of every pool.
+	if !held {
+		cmd, err = r.db.Exec(ctx, `
+			DELETE FROM warmup_reputation_ledger l
+			USING email_accounts a
+			WHERE a.id = $1 AND l.organization_id = a.organization_id AND l.email = lower(btrim(a.email))
+			  AND l.blocked_reason = $2
+			  AND NOT EXISTS (SELECT 1 FROM warmup_pool_participants WHERE email_account_id = $1)`,
+			accountID, reason)
+	} else {
+		cmd, err = r.db.Exec(ctx, `
+			UPDATE warmup_reputation_ledger l
+			SET health_state = $3::text, blocked_until = $4::timestamptz, blocked_reason = $5::text,
+			    standing_until = GREATEST($4::timestamptz, NOW())
+			FROM email_accounts a
+			WHERE a.id = $1 AND l.organization_id = a.organization_id AND l.email = lower(btrim(a.email))
+			  AND l.blocked_reason = $2
+			  AND NOT EXISTS (SELECT 1 FROM warmup_pool_participants WHERE email_account_id = $1)`,
+			accountID, reason, string(state), until, newReason)
+	}
 	if err != nil {
 		return false, err
 	}

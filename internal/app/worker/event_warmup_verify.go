@@ -12,10 +12,8 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
-// verifyWarmupRemoval looks for a warmup message the sync reported removed and
-// reports where it is. A failed lookup is an error so the bus offers it again;
-// one that never succeeds, or cannot tell, reports nothing and nothing is
-// charged.
+// verifyWarmupRemoval reports where a warmup message the sync saw removed is.
+// A search that cannot tell reports nothing, so nothing is charged.
 func (w *WorkerService) verifyWarmupRemoval(ctx context.Context, mail *wmail.WMail, action models.WarmupEmailAction) error {
 	outcome, err := locateWarmupMessage(ctx, mail, action.RFCMessageID)
 	if err != nil {
@@ -32,7 +30,6 @@ func (w *WorkerService) verifyWarmupRemoval(ctx context.Context, mail *wmail.WMa
 	return w.Produce(models.JobEventTypeWarmupRemovalChecked, action.EmailID.String(), &models.JobEventWarmupRemovalChecked{
 		UserID:       action.UserID,
 		EmailID:      action.EmailID,
-		InternalID:   action.InternalID,
 		RFCMessageID: action.RFCMessageID,
 		Outcome:      outcome,
 	})
@@ -64,40 +61,35 @@ func removalOutcome(found, trashed bool, err error) (string, error) {
 	return models.WarmupRemovalPresent, nil
 }
 
-// imapMessageHolder is the slice of the IMAP client the search needs.
-type imapMessageHolder interface {
-	HoldsMessageID(ctx context.Context, mailboxName, rfcMessageID string) (bool, error)
+// imapMessageLocator is the slice of the IMAP client the search needs.
+type imapMessageLocator interface {
+	LocateMessageID(ctx context.Context, mailboxes []string, rfcMessageID string) (held []string, unsearched int, err error)
 }
 
-// locateImapMessage asks every synced folder, trash last. Not finding it is
-// inconclusive: the synced list leaves out folders the owner excluded and
-// folders past the sync's cap.
-func locateImapMessage(ctx context.Context, client imapMessageHolder, boxes []*models.Mailbox, rfcMessageID string) (string, error) {
-	var trash []string
+// locateImapMessage searches every synced folder. Not found, or found only in
+// the trash with a folder left unsearched, cannot be told apart from a move
+// into a folder the sync does not list.
+func locateImapMessage(ctx context.Context, client imapMessageLocator, boxes []*models.Mailbox, rfcMessageID string) (string, error) {
+	var names []string
+	trash := map[string]bool{}
 	for _, b := range boxes {
 		if b == nil || !imap.SelectableFolder(b.Attrs) {
 			continue
 		}
-		if imap.IsTrashMailbox(b.Name, b.Attrs) {
-			trash = append(trash, b.Name)
-			continue
-		}
-		held, err := client.HoldsMessageID(ctx, b.Name, rfcMessageID)
-		if err != nil {
-			return "", err
-		}
-		if held {
+		names = append(names, b.Name)
+		trash[b.Name] = imap.IsTrashMailbox(b.Name, b.Attrs)
+	}
+	held, unsearched, err := client.LocateMessageID(ctx, names, rfcMessageID)
+	if err != nil {
+		return "", err
+	}
+	for _, name := range held {
+		if !trash[name] {
 			return models.WarmupRemovalPresent, nil
 		}
 	}
-	for _, name := range trash {
-		held, err := client.HoldsMessageID(ctx, name, rfcMessageID)
-		if err != nil {
-			return "", err
-		}
-		if held {
-			return models.WarmupRemovalTrashed, nil
-		}
+	if len(held) > 0 && unsearched == 0 {
+		return models.WarmupRemovalTrashed, nil
 	}
 	return "", nil
 }

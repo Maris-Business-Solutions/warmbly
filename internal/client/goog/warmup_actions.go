@@ -282,9 +282,8 @@ func (c *Client) FindByRFCMessageID(ctx context.Context, rfcMessageID string) (s
 	return ids[0], nil
 }
 
-// LocateRFCMessageID reports whether the mailbox still holds the message
-// carrying this RFC 5322 Message-ID, and whether every copy it holds is in
-// Trash. Spam is searched too: a message filed there was moved, not deleted.
+// LocateRFCMessageID reports whether the mailbox still holds the message, and
+// whether every copy is in Trash. Spam counts as held: it was moved there.
 func (c *Client) LocateRFCMessageID(ctx context.Context, rfcMessageID string) (found, trashed bool, err error) {
 	rfcMessageID = strings.Trim(strings.TrimSpace(rfcMessageID), "<>")
 	if rfcMessageID == "" || c.srv == nil {
