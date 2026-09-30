@@ -130,9 +130,9 @@ Tick a row's checkbox to select it, or the one in the table header to select eve
 
 When more contacts match than are loaded, a bar appears under the header: **Select all N matching**. Clicking it hands the whole filtered set to the next action, however many pages that is, and the selection bar counts the full number rather than the loaded rows. Unticking a row afterwards takes just that contact out and the count follows. **Clear selection** in the bar, or the header checkbox, drops back to nothing.
 
-The set is the one the list is showing: search, filters, the subscription facet, and the campaign or segment the list is scoped to all narrow it. Changing any of them clears the selection, because it would no longer mean what it did when you made it. A selection past `50,000` contacts is refused rather than half-applied; add a filter and work through it in parts.
+The set is the one the list is showing: search, filters, the subscription facet, and the campaign or segment the list is scoped to all narrow it. Changing any of them clears the selection, because it would no longer mean what it did when you made it. A selection past `250,000` contacts is refused rather than half-applied; add a filter and work through it in parts.
 
-Every bulk action reads the selection: **Edit**, **Segment**, **Remove from segment**, **Remove from campaign**, **Research**, **Verify**, **Mark deliverable** and **Delete**. **Push to CRM** is the exception: it calls the CRM once per contact while you wait, so it stays capped at `500` at a time.
+Every bulk action reads the selection: **Edit**, **Segment**, **Remove from segment**, **Remove from campaign**, **Research**, **Verify**, **Mark deliverable** and **Delete**. **Push to CRM** and **Research** are the exceptions: a push calls the CRM once per contact while you wait, and each research run spends AI credits, so both stay capped at `500` at a time.
 
 **Select all matching** is in the **From contacts** picker too, on a campaign's Leads tab and a segment page, so a whole search can be added as leads or members in one step.
 

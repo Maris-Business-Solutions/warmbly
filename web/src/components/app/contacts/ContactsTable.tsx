@@ -125,6 +125,8 @@ type SubFilter = "all" | "subscribed" | "unsubscribed";
 // Mirrors maxIntegrationPushSize on the backend: one synchronous push is a
 // live call per contact against the CRM's API.
 const MAX_CRM_PUSH = 500;
+// Mirrors research.MaxBatch: every contact is a metered AI run.
+const MAX_RESEARCH_BATCH = 500;
 
 export default function ContactsTable({
     current_campaign,
@@ -499,6 +501,10 @@ export default function ContactsTable({
     const metered = useAiMetered();
     function bulkResearch() {
         if (selectionCount === 0) return;
+        if (selectionCount > MAX_RESEARCH_BATCH) {
+            toast.error(`Research takes up to ${MAX_RESEARCH_BATCH.toLocaleString()} contacts at a time. Narrow the selection and try again.`);
+            return;
+        }
         confirm?.show(
             `Research ${selectionCount.toLocaleString()} ${selectionCount === 1 ? "contact" : "contacts"}? ${
                 metered

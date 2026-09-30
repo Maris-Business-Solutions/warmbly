@@ -5,7 +5,7 @@
 // the contact list (query + categories), shows who is already a lead, and
 // attaches the selection through the bulk contact update (add_campaigns), the
 // same path the import wizard uses. "Select all matching" hands the server the
-// search itself, so a whole category is one request with no cap.
+// search itself, so a whole category is one request.
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -32,11 +32,11 @@ import type ContactSelection from "@/lib/api/models/app/contacts/ContactSelectio
 import * as rowSelection from "./selection";
 import type { RowSelection } from "./selection";
 
-// Backend caps: 100 rows per search page, 1000 contacts per explicit batch.
+// Backend caps: 100 rows per search page, 10,000 contacts per explicit batch.
 // "Select all matching" sends the filter instead, so it is not bound by the
 // second one.
 const PAGE = 100;
-const MAX_SELECTION = 1000;
+const MAX_SELECTION = 10_000;
 
 // The target is either a campaign (contacts become leads) or a segment
 // (contacts are pinned in as manual includes).

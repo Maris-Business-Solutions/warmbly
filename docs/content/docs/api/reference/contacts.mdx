@@ -212,16 +212,16 @@ Returns the created contacts as a bare JSON array (same contact shape as search)
 
 Every endpoint that acts on a set of contacts (`PATCH /contacts`, `DELETE /contacts`, `POST /contacts/verification`, `POST /contacts/research/batch`, `POST /segments/:id/members` and `POST /integrations/connections/:id/push`) names that set one of two ways.
 
-**By id.** A `contacts` array of up to 1000 ids, the original shape. Nothing about it has changed.
+**By id.** A `contacts` array of up to 10,000 ids, the original shape.
 
 **By filter.** Set `all` to `true` and pass the same body `POST /contacts/search` takes as `filters`. The server resolves that search and applies the action to every contact it matches, so one call can cover far more than a page. `exclude` drops ids back out of the resolved set, which is how the dashboard handles rows unticked after a select-all.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `contacts` | string[] | Yes, unless `all` | Contact ids, up to 1000. |
+| `contacts` | string[] | Yes, unless `all` | Contact ids, up to 10,000 (`too_many_contacts` past that). |
 | `all` | boolean | No | Resolve the selection from `filters` instead of `contacts`. |
 | `filters` | object | Yes when `all` | A [contact search](#search-contacts) body. The action applies to everything it matches. |
-| `exclude` | string[] | No | Contact ids to drop from the resolved set, up to 50,000 (`too_many_contacts` past that). Ignored unless `all`. |
+| `exclude` | string[] | No | Contact ids to drop from the resolved set, up to 250,000 (`too_many_contacts` past that). Ignored unless `all`. |
 
 ```json
 {
@@ -231,7 +231,7 @@ Every endpoint that acts on a set of contacts (`PATCH /contacts`, `DELETE /conta
 }
 ```
 
-A filter selection that matches more than 50,000 contacts is refused with `selection_too_large` rather than truncated; narrow it and repeat. One that matches nothing is a `400`. `POST /integrations/connections/:id/push` accepts the same shape and answers the same way, but still caps the resolved set at 500, because it calls the CRM once per contact inside the request.
+A filter selection that matches more than 250,000 contacts is refused with `selection_too_large` rather than truncated; narrow it and repeat. One that matches nothing is a `400`. `POST /integrations/connections/:id/push` and `POST /contacts/research/batch` accept the same shape and answer the same way, but still cap the resolved set at 500: a push calls the CRM once per contact inside the request, and each research run spends AI credits.
 
 ## Bulk update contacts
 
@@ -245,7 +245,7 @@ Auth: **Scope** `BULK_CONTACTS` · **Org permission** `manage_contacts`
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `contacts` | string[] | Yes, unless `all` | Contact IDs to edit (1 to 1000). |
+| `contacts` | string[] | Yes, unless `all` | Contact IDs to edit (1 to 10,000). |
 | `all`, `filters`, `exclude` | — | No | Select by filter instead; see [selecting contacts](#selecting-contacts-for-a-bulk-action). |
 | `add_campaigns` | string[] | No | Campaign IDs to add. |
 | `remove_campaigns` | string[] | No | Campaign IDs to remove. |
@@ -1287,7 +1287,7 @@ Counts the contacts an unsaved definition would match. Send `match` and `conditi
 { "contacts": ["…", "…"], "mode": "include" }
 ```
 
-`mode` is `include` (pin in), `exclude` (pin out) or `auto` (clear the override). Up to 1,000 contact ids per call; ids outside the organization are ignored. Returns `{ "updated": n }`. The body also takes a [filter selection](#selecting-contacts-for-a-bulk-action) (`all`, `filters`, `exclude`) instead of `contacts`, for pinning everything a search matches.
+`mode` is `include` (pin in), `exclude` (pin out) or `auto` (clear the override). Up to 10,000 contact ids per call, or a filter selection of up to 250,000; ids outside the organization are ignored. Returns `{ "updated": n }`. The body also takes a [filter selection](#selecting-contacts-for-a-bulk-action) (`all`, `filters`, `exclude`) instead of `contacts`, for pinning everything a search matches.
 
 `POST /segments/:id/members/lookup` takes `{ "contacts": [...] }` and returns `{ "data": { "<contact id>": "include" | "exclude" } }` for the contacts that carry an override.
 

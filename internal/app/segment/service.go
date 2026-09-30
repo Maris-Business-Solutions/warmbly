@@ -283,12 +283,13 @@ func (s *service) CountAudience(ctx context.Context, orgID uuid.UUID, segmentIDs
 	return s.repo.CountAudience(ctx, orgID, ids, campaignID)
 }
 
-func parseContactIDs(raw []string) ([]uuid.UUID, *errx.Error) {
+func parseContactIDs(raw []string, max int) ([]uuid.UUID, *errx.Error) {
 	if len(raw) == 0 {
 		return nil, errx.New(errx.BadRequest, "no contacts provided")
 	}
-	if len(raw) > 1000 {
-		return nil, errx.New(errx.BadRequest, "at most 1000 contacts per request")
+	if len(raw) > max {
+		return nil, errx.NewWithIdentifier(errx.BadRequest, "too_many_contacts",
+			fmt.Sprintf("too many contacts, maximum is %d per request", max))
 	}
 	out := make([]uuid.UUID, 0, len(raw))
 	for _, r := range raw {
@@ -307,7 +308,9 @@ func (s *service) SetMembers(ctx context.Context, orgID, id uuid.UUID, in *model
 	default:
 		return 0, errx.New(errx.BadRequest, "mode must be include, exclude or auto")
 	}
-	ids, xerr := parseContactIDs(in.Contacts)
+	// The handler already bounded the selection by its shape; this is the
+	// ceiling for callers that pass ids straight in.
+	ids, xerr := parseContactIDs(in.Contacts, models.MaxContactBulkSelection)
 	if xerr != nil {
 		return 0, xerr
 	}
@@ -326,7 +329,7 @@ func (s *service) SetMembers(ctx context.Context, orgID, id uuid.UUID, in *model
 }
 
 func (s *service) MemberModes(ctx context.Context, orgID, id uuid.UUID, contactIDs []string) (map[uuid.UUID]models.SegmentMemberMode, *errx.Error) {
-	ids, xerr := parseContactIDs(contactIDs)
+	ids, xerr := parseContactIDs(contactIDs, models.MaxContactBatchIDs)
 	if xerr != nil {
 		return nil, xerr
 	}
