@@ -26,6 +26,8 @@ type UpdateUniboxEntry struct {
 	// ProviderFolder is the provider's own placement. It moves on every real
 	// provider move; Folder only follows when the message was not filed here.
 	ProviderFolder *string `json:"provider_folder"`
+	// ProviderID is the provider's message id (gmail_id), which a Graph move changes.
+	ProviderID *string `json:"provider_id"`
 	// Seen is the provider's read state. Set whenever a sync event carries a
 	// change to it, so mail read in the customer's own client stops showing
 	// as unread here.
@@ -58,12 +60,16 @@ type UniboxRepository interface {
 	// folder for the whole workspace (the sidebar's "mark all as read").
 	MarkSeenByFolder(ctx context.Context, orgID uuid.UUID, folder string, seen bool) ([]uuid.UUID, error)
 	// MoveToFolderBulk re-files the given messages into one canonical folder,
-	// org-scoped like MarkSeenBulk.
-	MoveToFolderBulk(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, folder string) error
+	// org-scoped like MarkSeenBulk, and returns every row it matched.
+	MoveToFolderBulk(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, folder string) ([]models.FiledMessage, error)
 	// MoveThreadsToFolder files whole conversations. Filing part of one leaves
 	// it in the view it was filed out of, which reads as the action having
 	// done nothing.
-	MoveThreadsToFolder(ctx context.Context, orgID uuid.UUID, threadIDs []string, folder string) error
+	MoveThreadsToFolder(ctx context.Context, orgID uuid.UUID, threadIDs []string, folder string) ([]models.FiledMessage, error)
+	// FolderRelayTargets resolves filed messages for the folder relay: only
+	// mailboxes with a worker and relay_folder_moves on, and never a warmup
+	// receipt, whose removal the warmup ladder would read as tampering.
+	FolderRelayTargets(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) ([]models.FolderRelayTarget, error)
 	// SeenRelayTargets names the given messages the way their provider does,
 	// with the worker holding each mailbox. Rows whose mailbox has no worker
 	// are left out: there is nothing to relay through.
@@ -305,6 +311,11 @@ func (r *uniboxRepository) UpdateEntry(ctx context.Context, userID, emailID, id 
 	if e.ProviderFolder != nil {
 		setClauses = append(setClauses, fmt.Sprintf("provider_folder = $%d", argPos))
 		args = append(args, *e.ProviderFolder)
+		argPos++
+	}
+	if e.ProviderID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("gmail_id = $%d", argPos))
+		args = append(args, *e.ProviderID)
 		argPos++
 	}
 	if e.Seen != nil {
@@ -920,32 +931,92 @@ func (r *uniboxRepository) SeenRelayTargets(ctx context.Context, orgID uuid.UUID
 	return out, rows.Err()
 }
 
-func (r *uniboxRepository) MoveToFolderBulk(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, folder string) error {
+func (r *uniboxRepository) MoveToFolderBulk(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, folder string) ([]models.FiledMessage, error) {
 	if len(ids) == 0 {
-		return nil
+		return nil, nil
 	}
-	_, err := r.db.Exec(ctx,
-		`UPDATE unibox_emails SET folder = $1, updated_at = NOW()
-		 WHERE id = ANY($3) AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)`,
+	return r.fileRows(ctx,
+		`UPDATE unibox_emails u SET folder = $1, updated_at = NOW()
+		 FROM unibox_emails prev
+		 WHERE prev.id = u.id AND u.id = ANY($3)
+		   AND u.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)
+		 RETURNING u.id, prev.folder <> $1`,
 		folder, orgID, ids,
 	)
-	return err
 }
 
 // MoveThreadsToFolder files every message in the named conversations. Filing
 // by thread rather than by id is what makes a list row able to archive what it
 // shows: the row knows the conversation, not the messages inside it.
-func (r *uniboxRepository) MoveThreadsToFolder(ctx context.Context, orgID uuid.UUID, threadIDs []string, folder string) error {
+func (r *uniboxRepository) MoveThreadsToFolder(ctx context.Context, orgID uuid.UUID, threadIDs []string, folder string) ([]models.FiledMessage, error) {
 	if len(threadIDs) == 0 {
-		return nil
+		return nil, nil
 	}
-	_, err := r.db.Exec(ctx,
-		`UPDATE unibox_emails SET folder = $1, updated_at = NOW()
-		 WHERE COALESCE(NULLIF(thread_id, ''), id::text) = ANY($3)
-		   AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)`,
+	return r.fileRows(ctx,
+		`UPDATE unibox_emails u SET folder = $1, updated_at = NOW()
+		 FROM unibox_emails prev
+		 WHERE prev.id = u.id AND COALESCE(NULLIF(u.thread_id, ''), u.id::text) = ANY($3)
+		   AND u.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)
+		 RETURNING u.id, prev.folder <> $1`,
 		folder, orgID, threadIDs,
 	)
-	return err
+}
+
+// fileRows runs a filing UPDATE. Rows already in the folder come back too,
+// unmoved: the provider may still disagree with them. prev is the row as the
+// statement found it, which is how the folder it left is read.
+func (r *uniboxRepository) fileRows(ctx context.Context, query string, args ...any) ([]models.FiledMessage, error) {
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var filed []models.FiledMessage
+	for rows.Next() {
+		var f models.FiledMessage
+		if err := rows.Scan(&f.ID, &f.Moved); err != nil {
+			return nil, err
+		}
+		filed = append(filed, f)
+	}
+	return filed, rows.Err()
+}
+
+// FolderRelayTargets reads back where each filed row sits now, and where its
+// provider last had it, so the relay moves only what the provider disagrees on.
+func (r *uniboxRepository) FolderRelayTargets(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) ([]models.FolderRelayTarget, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT ue.email_id, ea.worker_id, ea.provider::text, ue.folder, ue.provider_folder,
+		        ue.id, ue.gmail_id, ue.uid, ue.folder_path, ue.message_id, ue.thread_id
+		 FROM unibox_emails ue
+		 JOIN email_accounts ea ON ea.id = ue.email_id
+		 WHERE ue.id = ANY($2) AND ea.organization_id = $1
+		   AND ea.worker_id IS NOT NULL AND ea.relay_folder_moves
+		   AND NOT EXISTS (
+		       SELECT 1 FROM warmup_received wr
+		       WHERE wr.email_account_id = ue.email_id AND wr.internal_id = ue.id)
+		 ORDER BY ue.email_id`,
+		orgID, ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.FolderRelayTarget
+	for rows.Next() {
+		var t models.FolderRelayTarget
+		if err := rows.Scan(&t.EmailID, &t.WorkerID, &t.Provider, &t.Folder, &t.Ref.ProviderFolder,
+			&t.Ref.ID, &t.Ref.ProviderID, &t.Ref.UID, &t.Ref.FolderPath, &t.Ref.RFCMessageID, &t.Ref.ThreadID); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 func (r *uniboxRepository) Delete(ctx context.Context, userID, id uuid.UUID) error {

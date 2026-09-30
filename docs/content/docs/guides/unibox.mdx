@@ -59,7 +59,7 @@ The rail is two short groups and then your mailboxes. The first group is where y
 
 Opening **Inbox** from the main navigation starts in the Inbox folder. Sent messages live in **Sent**; choose **All mail** when you want inbound and outbound messages together. An Inbox conversation still shows its complete history, including your replies, when you open it.
 
-Each message starts in the folder the provider has it in: IMAP special-use folder attributes, Gmail labels, and Outlook well-known folders all map to the same six. Moves at the provider (archiving, deleting, junking a message, clearing it out of spam, moving it back to the inbox) follow on the next sync. In Gmail each of those is a label change, and Warmbly files the message by the labels it ends up with, so a conversation archived in Gmail leaves Inbox here too. Gmail mailboxes are also rechecked against Gmail every few hours, which catches a move the live sync missed. Drafts are also reconciled: a draft the mailbox no longer holds is removed here too, so the fresh copy Gmail saves on every autosave does not leave the previous ones behind. You can also file a conversation yourself, which moves it here without moving it at the provider; see [filing a conversation](#filing-a-conversation). The active row is highlighted grey, unread counts sit on the right in blue, and hovering a folder reveals a three-dot menu with **Mark all as read**.
+Each message starts in the folder the provider has it in: IMAP special-use folder attributes, Gmail labels, and Outlook well-known folders all map to the same six. Moves at the provider (archiving, deleting, junking a message, clearing it out of spam, moving it back to the inbox) follow on the next sync. In Gmail each of those is a label change, and Warmbly files the message by the labels it ends up with, so a conversation archived in Gmail leaves Inbox here too. Gmail mailboxes are also rechecked against Gmail every few hours, which catches a move the live sync missed. Drafts are also reconciled: a draft the mailbox no longer holds is removed here too, so the fresh copy Gmail saves on every autosave does not leave the previous ones behind. You can also file a conversation yourself, which moves it in the mailbox too; see [filing a conversation](#filing-a-conversation). The active row is highlighted grey, unread counts sit on the right in blue, and hovering a folder reveals a three-dot menu with **Mark all as read**.
 
 Spam and Trash stay out of every other view, and so does Archive: filing a conversation is how you take it out of the way, so it leaves Unread, Awaiting reply, every mailbox, label and tag view, and the unread badge. **All mail** and the **Archive** folder are the two places it stays, which is where you go to find it again.
 
@@ -175,9 +175,21 @@ Each row has a tick box in its left gutter, in place of the unread dot. Hover a 
 
 With anything ticked, a bar appears along the bottom of the screen with the count and the actions that apply to all of them: **Mark read**, **Mark unread**, **Snooze**, **Archive** (or **Move to inbox**) and **Delete**. Each one is a single request, so filing a screenful is as quick as filing one. **Clear** drops the selection, and so does `Escape`; changing view drops it too, since the rows it applied to are no longer the rows on screen.
 
-<Callout type="info" title="Filing here does not move the message at the provider">
-Unlike read state, Archive and Delete are Warmbly's own filing. The message keeps its place in Gmail, Outlook, or whatever mail client the mailbox belongs to, and deleting a conversation here never deletes mail there. The next sync will not undo your filing either: Warmbly records where the provider has each message separately from where you filed it, and follows the provider only when the provider itself moves the message. So archiving or junking a message in Gmail still reaches Warmbly, and an ordinary sync pass does not.
-</Callout>
+### Filing in the mailbox too
+
+Like read state, filing travels to the mailbox itself, so a conversation you clean up here is cleaned up in Gmail, Outlook or your IMAP client as well:
+
+| Here | Gmail | Outlook | IMAP |
+| --- | --- | --- | --- |
+| Archive | Takes off the Inbox label | Moves to Archive | Moves to the Archive folder |
+| Delete | Moves to Trash | Moves to Deleted Items | Moves to the Trash folder |
+| Move to inbox | Puts the Inbox label back | Moves to Inbox | Moves to INBOX |
+
+Delete never removes mail for good: it lands in the mailbox's own trash, where Undo, **Move to inbox** or the mail client can bring it back until the provider empties it. An IMAP server with no Archive folder gets one, named Archive, as Apple Mail and Outlook do; a server with no Trash folder keeps its copy where it is. Your own sent copies stay in Sent on Outlook and IMAP, as their own clients leave them when you archive a conversation; Gmail files a conversation as a whole, so there they follow it into the trash or back to the inbox. Drafts are never moved, and neither is warmup mail.
+
+The move runs on the worker that holds the mailbox, just after Warmbly's own copy is filed, so the list never waits on it. The worker then reports where the provider has each message, which is how the next sync knows the move was yours and not the provider's. If the mailbox is between workers at that moment, or the provider refuses, the conversation stays filed here and keeps its place at the provider; nothing retries.
+
+To keep filing inside Warmbly for one mailbox, turn off **Mirror Archive and Delete** on its Settings tab (see [mailboxes](/guides/mailboxes/#filing-in-the-mailbox)). Filing then only moves the conversation here, and the next sync will not undo it: Warmbly records where the provider has each message separately from where you filed it, and follows the provider only when the provider itself moves the message. So archiving or junking a message in Gmail still reaches Warmbly either way, and an ordinary sync pass does not.
 
 ## Replying
 

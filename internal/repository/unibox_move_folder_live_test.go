@@ -121,7 +121,7 @@ func TestLiveUniboxMoveFolderLeavesTheProviderPlacementAlone(t *testing.T) {
 	ctx := context.Background()
 
 	id := f.message(t, repo, models.FolderInbox)
-	if err := repo.MoveToFolderBulk(ctx, f.org, []uuid.UUID{id}, models.FolderTrash); err != nil {
+	if _, err := repo.MoveToFolderBulk(ctx, f.org, []uuid.UUID{id}, models.FolderTrash); err != nil {
 		t.Fatalf("MoveToFolderBulk: %v", err)
 	}
 
@@ -157,7 +157,7 @@ func TestLiveUniboxMoveFolderIsOrgScoped(t *testing.T) {
 	ctx := context.Background()
 
 	id := theirs.message(t, repo, models.FolderInbox)
-	if err := repo.MoveToFolderBulk(ctx, mine.org, []uuid.UUID{id}, models.FolderTrash); err != nil {
+	if _, err := repo.MoveToFolderBulk(ctx, mine.org, []uuid.UUID{id}, models.FolderTrash); err != nil {
 		t.Fatalf("MoveToFolderBulk: %v", err)
 	}
 

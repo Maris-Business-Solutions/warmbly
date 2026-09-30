@@ -27,7 +27,7 @@ import {
 import { SNOOZE_MAX_MS } from "@/lib/unibox/snooze";
 
 // Filing copy, per destination. "Deleted" is deliberately not said anywhere:
-// the message is moved to Trash here and still sits in the mail client.
+// Delete moves the message to Trash, here and in the mailbox.
 const FILE_COPY: Record<FilableFolder, { done: string; failed: string }> = {
     archive: { done: "Archived", failed: "Couldn't archive" },
     trash: { done: "Moved to Trash", failed: "Couldn't move to Trash" },

@@ -32,6 +32,8 @@ export default interface Inbox {
     reply_to: string;
     /** SMTP/IMAP only: file a copy of each sent message in the mailbox Sent folder. */
     save_to_sent: boolean;
+    /** Archive, Delete and Move to inbox in the unibox move the message in the mailbox too. */
+    relay_folder_moves?: boolean;
     tracking_domain: string;
     tracking_domain_verified: boolean;
     tracking_domain_verified_at?: Date | null;

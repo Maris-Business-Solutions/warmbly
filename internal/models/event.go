@@ -11,6 +11,9 @@ const (
 	// WorkerEventTypeMessageSeen relays a read/unread change a person made in
 	// the unibox out to the mailbox provider, so the two agree.
 	WorkerEventTypeMessageSeen WorkerEventType = "MESSAGE_SEEN"
+	// WorkerEventTypeMessageFolder relays an Archive, Delete or Move to inbox
+	// made in the unibox out to the mailbox provider.
+	WorkerEventTypeMessageFolder WorkerEventType = "MESSAGE_FOLDER"
 	// WorkerEventTypeMailboxIdentity asks the worker holding a mailbox to read
 	// its send-as identities (and one signature) from the provider. The
 	// control plane never calls a customer's provider itself.

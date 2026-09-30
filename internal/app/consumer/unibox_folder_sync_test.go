@@ -51,3 +51,42 @@ func TestFolderUpdateFollowsOnlyProviderMoves(t *testing.T) {
 		})
 	}
 }
+
+// A relayed filing's answer records the provider's placement and the new
+// handles, and never the folder: the filing may have been undone meanwhile.
+func TestRelayedFolderUpdateLeavesTheFolderAlone(t *testing.T) {
+	s, repo := seenSyncService(&models.EmailMessageStoreData{
+		Folder: models.FolderInbox, ProviderFolder: models.FolderInbox, GmailID: "old",
+	})
+	if err := s.HandleFolderUpdate(context.Background(), &models.JobEventFolderUpdate{
+		UserID: uuid.New(), EmailID: uuid.New(), ID: uuid.New(),
+		Folder: models.FolderArchive, Relayed: true, ProviderID: "new",
+		FolderPath: "Archive", UID: 12, Mailbox: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.updates) != 1 {
+		t.Fatalf("wrote %d updates, want 1", len(repo.updates))
+	}
+	u := repo.updates[0]
+	if u.Folder != nil {
+		t.Errorf("folder written to %q", *u.Folder)
+	}
+	if u.ProviderFolder == nil || *u.ProviderFolder != models.FolderArchive {
+		t.Errorf("provider_folder = %v", u.ProviderFolder)
+	}
+	if u.ProviderID == nil || *u.ProviderID != "new" || u.UID == nil || *u.UID != 12 || u.FolderPath == nil || *u.FolderPath != "Archive" {
+		t.Errorf("handles not moved: %+v", u)
+	}
+
+	// The sync then reports the same placement, which is no provider move.
+	s, repo = seenSyncService(&models.EmailMessageStoreData{Folder: models.FolderInbox, ProviderFolder: models.FolderArchive})
+	if err := s.HandleFolderUpdate(context.Background(), &models.JobEventFolderUpdate{
+		UserID: uuid.New(), EmailID: uuid.New(), ID: uuid.New(), Folder: models.FolderArchive,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.updates) != 0 {
+		t.Fatalf("the relayed move's echo refiled the message: %+v", repo.updates)
+	}
+}

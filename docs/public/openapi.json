@@ -10410,7 +10410,7 @@
       "patch": {
         "operationId": "unibox_move_folder",
         "summary": "Move conversations between folders",
-        "description": "Re-files messages into Inbox, Archive or Trash, org-wide. Name them with `email_ids`, whole conversations with `thread_ids`, or both; up to 500 of each. Prefer `thread_ids`: filing part of a conversation leaves it listed.\n\nThis is a move in Warmbly only. The copy at the mail provider stays where it is, and a later sync will not undo the move: Warmbly tracks the provider's own placement separately and follows it only when the provider itself moves the message. `sent`, `drafts` and `spam` are placements the provider reaches, so they are rejected here with a `400`.",
+        "description": "Re-files messages into Inbox, Archive or Trash, org-wide. Name them with `email_ids`, whole conversations with `thread_ids`, or both; up to 500 of each. Prefer `thread_ids`: filing part of a conversation leaves it listed.\n\nThe move is then relayed to each mailbox with `relay_folder_moves` on (the default): after the response and best-effort, the provider's copy is archived, moved to its trash, or put back in its inbox. A later sync will not undo a filing either way: Warmbly tracks the provider's own placement separately and follows it only when the provider itself moves the message. `sent`, `drafts` and `spam` are placements the provider reaches, so they are rejected here with a `400`.",
         "tags": [
           "unibox"
         ],
@@ -28154,6 +28154,10 @@
             "type": "boolean",
             "description": "SMTP/IMAP mailboxes only: file a copy of each sent message in the mailbox's Sent folder. Ignored for Gmail and Outlook, whose APIs file their own copy."
           },
+          "relay_folder_moves": {
+            "type": "boolean",
+            "description": "Whether filing a conversation with PATCH /unibox/folder also moves it in the mailbox: Archive, Delete (to the mailbox's trash) and Move to inbox. Defaults to true."
+          },
           "tracking_domain": {
             "type": "string"
           },
@@ -28380,6 +28384,10 @@
           "save_to_sent": {
             "type": "boolean",
             "description": "SMTP/IMAP mailboxes only: file a copy of each sent message in the mailbox's Sent folder. Ignored for Gmail and Outlook, whose APIs file their own copy."
+          },
+          "relay_folder_moves": {
+            "type": "boolean",
+            "description": "Whether filing a conversation with PATCH /unibox/folder also moves it in the mailbox: Archive, Delete (to the mailbox's trash) and Move to inbox. Defaults to true."
           },
           "warmup": {
             "type": "boolean",

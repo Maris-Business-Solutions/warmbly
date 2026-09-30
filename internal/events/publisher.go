@@ -38,6 +38,9 @@ type Publisher interface {
 	// PublishMessageSeen relays a read/unread change made in the unibox out to
 	// the mailbox provider.
 	PublishMessageSeen(ctx context.Context, workerID uuid.UUID, action *models.MessageSeenAction) error
+	// PublishMessageFolder relays an Archive, Delete or Move to inbox made in
+	// the unibox out to the mailbox provider.
+	PublishMessageFolder(ctx context.Context, workerID uuid.UUID, action *models.MessageFolderAction) error
 	// PublishMailboxIdentity asks the worker holding a mailbox to read its
 	// sending identity from the provider.
 	PublishMailboxIdentity(ctx context.Context, workerID uuid.UUID, body models.EventWorkerMailboxIdentity) error
@@ -322,6 +325,18 @@ func (p *publisher) PublishWarmupAction(ctx context.Context, workerID uuid.UUID,
 func (p *publisher) PublishMessageSeen(ctx context.Context, workerID uuid.UUID, action *models.MessageSeenAction) error {
 	workerEvent := models.WorkerEvent{
 		Type: models.WorkerEventTypeMessageSeen,
+		Body: action,
+	}
+
+	workerTopic := kafka.GetWorkerTopic(workerID.String())
+	return p.publish(workerTopic, action.EmailID.String(), workerEvent)
+}
+
+// PublishMessageFolder relays a unibox folder move to the worker holding the
+// mailbox, keyed by mailbox so it stays ordered with that mailbox's other relays.
+func (p *publisher) PublishMessageFolder(ctx context.Context, workerID uuid.UUID, action *models.MessageFolderAction) error {
+	workerEvent := models.WorkerEvent{
+		Type: models.WorkerEventTypeMessageFolder,
 		Body: action,
 	}
 

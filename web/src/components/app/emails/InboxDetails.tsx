@@ -392,7 +392,7 @@ export default function InboxDetails({
 const EDITABLE: (keyof Inbox)[] = [
     "name", "signature_html", "signature_plain", "signature_sync", "signature_code",
     "send_as_email",
-    "tags", "campaign_limit", "min_wait_time", "reply_to", "save_to_sent", "timezone",
+    "tags", "campaign_limit", "min_wait_time", "reply_to", "save_to_sent", "relay_folder_moves", "timezone",
     "warmup_base", "warmup_max", "warmup_increase", "warmup_reply_rate",
     "warmup_tag", "warmup_start_time", "warmup_end_time", "warmup_days",
     "warmup_placement", "warmup_folder", "warmup_retention_days",
@@ -2040,6 +2040,7 @@ function SettingsTab({ form, update, mailbox, onDisconnected }: { form: Inbox; u
         ],
         [timezones, workspaceZone, form.timezone],
     );
+    const mirrorTarget = mailbox.provider === "gmail" ? "Gmail" : mailbox.provider === "outlook" ? "Outlook" : "the mailbox";
     return (
         <div className="divide-y divide-slate-200/60">
             <div className="px-5 py-5 space-y-4">
@@ -2092,6 +2093,28 @@ function SettingsTab({ form, update, mailbox, onDisconnected }: { form: Inbox; u
                     </div>
                 </div>
             )}
+
+            <div className="px-5 py-5 space-y-3">
+                <Eyebrow>Unibox</Eyebrow>
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-[12.5px] font-medium text-slate-900">
+                            Mirror Archive and Delete to {mirrorTarget}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                            Archive, Delete and Move to inbox in the unibox move the message in
+                            the mailbox too, so a conversation is only cleaned up once. Delete
+                            moves it to the mailbox's Trash and never removes it for good. Turn
+                            it off to keep filing inside Warmbly.
+                        </div>
+                    </div>
+                    <Toggle
+                        value={form.relay_folder_moves ?? true}
+                        onChange={(v) => update({ relay_folder_moves: v })}
+                        ariaLabel="Mirror Archive and Delete to the mailbox"
+                    />
+                </div>
+            </div>
 
             <SendIdentityCard
                 mailbox={mailbox}

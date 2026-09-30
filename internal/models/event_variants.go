@@ -25,6 +25,7 @@ var WorkerEventBodies = map[WorkerEventType]any{
 	WorkerEventTypeEmailValidation: EventWorkerEmailValidation{},
 	WorkerEventTypeWarmupAction:    (*WarmupEmailAction)(nil),
 	WorkerEventTypeMessageSeen:     (*MessageSeenAction)(nil),
+	WorkerEventTypeMessageFolder:   (*MessageFolderAction)(nil),
 	WorkerEventTypeMailboxIdentity: EventWorkerMailboxIdentity{},
 }
 

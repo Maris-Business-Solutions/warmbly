@@ -254,8 +254,8 @@ export function ThreadView({ threadId, emailId, onClose }: ThreadViewProps) {
     setSelectedThreadId(null);
   };
 
-  // Filing is store-side: the message keeps its place at the provider, and
-  // the sync knows not to undo this (migration 000146).
+  // Filing moves the message here first; the backend then moves it in the
+  // mailbox too, unless the mailbox turned that off.
   // The row leaves the list and the reader closes at once; the request runs
   // behind the toast, and a failure re-reads the list, which brings it back.
   // The copy, the undo and the cache handling are shared with the list row.

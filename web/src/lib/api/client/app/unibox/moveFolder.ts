@@ -6,8 +6,8 @@ import { pairedChunks, UNIBOX_BULK_MAX } from "./chunks";
 export type FilableFolder = "inbox" | "archive" | "trash";
 
 // PATCH /unibox/folder re-files messages. Archive in the thread header is
-// "archive", Delete is "trash", Move to inbox is "inbox". Store-side only: the
-// provider copy stays put, and the sync knows not to undo it.
+// "archive", Delete is "trash", Move to inbox is "inbox". The mailbox follows
+// unless it has relay_folder_moves off.
 //
 // Address it by thread wherever the caller has one. A list row knows its
 // conversation and not the message ids inside it, and filing part of a

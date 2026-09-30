@@ -88,7 +88,7 @@ type UniboxService interface {
 	StartBodyTextBackfill(ctx context.Context)
 
 	// WireProviderRelay attaches the worker bus, after which a read/unread
-	// change made here is carried out to the mailbox provider too.
+	// change or a filing made here is carried out to the mailbox provider too.
 	WireProviderRelay(p events.Publisher)
 }
 
@@ -98,9 +98,9 @@ type uniboxService struct {
 	tasksClient      tasksched.Scheduler
 	cache            *cache.Cache
 	blob             storage.Store
-	// publisher relays read/unread changes out to the mailbox providers.
-	// Optional: without it the unibox still works and only Warmbly's own copy
-	// of the read state changes.
+	// publisher relays read/unread changes and filings out to the mailbox
+	// providers. Optional: without it the unibox still works and only
+	// Warmbly's own copy changes.
 	publisher events.Publisher
 }
 

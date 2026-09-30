@@ -564,6 +564,70 @@
               "type": "string"
             },
             {
+              "default": "",
+              "name": "folder",
+              "type": "string"
+            },
+            {
+              "default": [],
+              "name": "messages",
+              "type": {
+                "items": {
+                  "fields": [
+                    {
+                      "default": "",
+                      "name": "id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "provider_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": 0,
+                      "name": "uid",
+                      "type": "long"
+                    },
+                    {
+                      "default": "",
+                      "name": "folder_path",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "rfc_message_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "thread_id",
+                      "type": "string"
+                    },
+                    {
+                      "default": "",
+                      "name": "provider_folder",
+                      "type": "string"
+                    }
+                  ],
+                  "name": "warmbly.events.MessageFolderRef",
+                  "type": "record"
+                },
+                "type": "array"
+              }
+            }
+          ],
+          "name": "warmbly.events.MessageFolderAction",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
               "default": false,
               "name": "seen",
               "type": "boolean"

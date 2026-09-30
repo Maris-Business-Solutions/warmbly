@@ -95,6 +95,9 @@ func (s *JobsService) HandleFolderUpdate(ctx context.Context, e *models.JobEvent
 	if !models.ValidFolder(e.Folder) {
 		return nil
 	}
+	if e.Relayed {
+		return s.applyRelayedFolder(ctx, e)
+	}
 	email, err := s.emailForSyncUpdate(ctx, e.UserID, e.ID, func(message *models.EmailMessageStoreData) {
 		// A pending row is not visible yet, so nothing has filed it locally.
 		message.Folder = e.Folder
@@ -123,6 +126,26 @@ func (s *JobsService) HandleFolderUpdate(ctx context.Context, e *models.JobEvent
 	email.ProviderFolder = provider
 	s.publishEmailUpdated(ctx, e.UserID, email)
 	return nil
+}
+
+// applyRelayedFolder records where a unibox filing left the message at the
+// provider, and never the folder: the filing may have been undone meanwhile.
+func (s *JobsService) applyRelayedFolder(ctx context.Context, e *models.JobEventFolderUpdate) error {
+	email, err := s.UniboxRepository.GetByID(ctx, e.UserID, e.ID)
+	if errors.Is(err, repository.ErrEmailNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	update := repository.UpdateUniboxEntry{ProviderFolder: &e.Folder}
+	if e.ProviderID != "" && e.ProviderID != email.GmailID {
+		update.ProviderID = &e.ProviderID
+	}
+	if e.FolderPath != "" && e.UID != 0 && e.Mailbox != 0 {
+		update.FolderPath, update.UID, update.Mailbox = &e.FolderPath, &e.UID, &e.Mailbox
+	}
+	return s.UniboxRepository.UpdateEntry(ctx, e.UserID, e.EmailID, e.ID, &update)
 }
 
 // emailForSyncUpdate rechecks visible mail if verification won the pending-row lock.
