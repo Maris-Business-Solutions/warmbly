@@ -408,3 +408,29 @@ func TestARefusedNewLinkedRowDoesNotStayBehind(t *testing.T) {
 		t.Fatalf("a refused row stayed on Cloud, counted against the instance: %d", n)
 	}
 }
+
+func TestAWorkspaceSaveCannotLandOnALinkedRow(t *testing.T) {
+	s, repo := newTest(baseDNS())
+	org := uuid.New()
+	inst := uuid.New()
+	// The row appears between the ownership read and the write.
+	s.redirects = &raceRedirects{memRedirects: repo, plant: &models.DomainRedirect{ID: uuid.New(), OrganizationID: org, Domain: "acme.io",
+		TargetURL: "https://frost.se", ServedBy: models.RedirectServedByInstance, LinkedInstanceID: &inst}}
+	if _, xerr := s.SetRedirect(context.Background(), org, uuid.New(), "acme.io", RedirectInput{TargetURL: "evil.example"}); xerr == nil || xerr.Identifier != ErrIDLinked {
+		t.Fatalf("a racing save = %v", xerr)
+	}
+}
+
+// raceRedirects plants a row right after the service's ownership read.
+type raceRedirects struct {
+	*memRedirects
+	plant *models.DomainRedirect
+}
+
+func (r *raceRedirects) Get(ctx context.Context, org uuid.UUID, domain string) (*models.DomainRedirect, error) {
+	got, err := r.memRedirects.Get(ctx, org, domain)
+	if r.plant != nil {
+		r.rows[r.plant.ID], r.plant = r.plant, nil
+	}
+	return got, err
+}

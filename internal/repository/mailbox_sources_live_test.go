@@ -332,6 +332,17 @@ func TestLiveDomainRedirectServing(t *testing.T) {
 	if list, _ := redirects.List(ctx, f.other); len(list) != 0 {
 		t.Fatalf("the workspace lists the link's row: %+v", list)
 	}
+	// Neither owner's write lands on the other's row, however the reads before it raced.
+	grab := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: linkedDomain, TargetURL: "https://evil.example", VerifyToken: "tok-x"}
+	if err := redirects.Upsert(ctx, grab, &f.owner); !errors.Is(err, ErrRedirectOwned) {
+		t.Fatalf("the workspace rewrote the link's row: %v", err)
+	}
+	ownDomain := "own-" + linkedDomain
+	mustImport(t, redirects.Upsert(ctx, &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: ownDomain, TargetURL: "https://a.example", VerifyToken: "tok-o"}, &f.owner))
+	steal := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: ownDomain, TargetURL: "https://evil.example", VerifyToken: "tok-o", LinkedInstanceID: &instID}
+	if _, err := redirects.UpsertLinked(ctx, steal, nil, 100); !errors.Is(err, ErrRedirectOwned) {
+		t.Fatalf("the link rewrote the workspace's row: %v", err)
+	}
 	if ok, _ := redirects.Delete(ctx, f.other, linkedDomain); ok {
 		t.Fatal("the workspace deleted the link's row")
 	}

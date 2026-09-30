@@ -246,6 +246,9 @@ func (s *Service) SetRedirect(ctx context.Context, orgID, userID uuid.UUID, doma
 	r := &models.DomainRedirect{ID: uuid.New(), OrganizationID: orgID, Domain: domain, TargetURL: target, IncludeWWW: www,
 		VerifyToken: s.proof.Value(orgID, domain), ServedBy: server}
 	if err := s.redirects.Upsert(ctx, r, &userID); err != nil {
+		if errors.Is(err, repository.ErrRedirectOwned) {
+			return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDLinked, "This domain's redirect is managed by a linked self-hosted instance. Change it there.")
+		}
 		return nil, errx.InternalError()
 	}
 	if remote != nil {

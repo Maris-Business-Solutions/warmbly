@@ -28,7 +28,8 @@ export function ServedByPicker({
     onConnect: () => void;
     cloud: CloudServing;
 }) {
-    const cloudOpen = cloud.canServe || current === "cloud";
+    // A redirect already on Cloud stays selectable at the limit, never once the link or the offer is gone.
+    const cloudOpen = cloud.canServe || (current === "cloud" && cloud.connected && !!cloud.offer?.available);
     let cloudBody: React.ReactNode;
     if (!cloud.connected) {
         cloudBody = (

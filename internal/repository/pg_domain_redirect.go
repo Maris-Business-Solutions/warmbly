@@ -17,6 +17,9 @@ import (
 // ErrRedirectTaken is returned when another workspace already serves a verified redirect for the domain.
 var ErrRedirectTaken = errors.New("domain redirect already verified elsewhere")
 
+// ErrRedirectOwned is returned when an upsert meets the workspace's row for the domain held by another owner (a linked instance, or none).
+var ErrRedirectOwned = errors.New("domain redirect held by another owner")
+
 // DomainRedirectRepository stores sending-domain redirects. Reads a caller can
 // reach are scoped by organization, or by the linked instance on Cloud; Lookup
 // serves the tracking service by host.
@@ -119,9 +122,13 @@ func upsertRedirect(ctx context.Context, q queryRower, d *models.DomainRedirect,
 		    reach_detail = CASE WHEN domain_redirects.served_by = EXCLUDED.served_by THEN domain_redirects.reach_detail ELSE '' END,
 		    reach_proxy = CASE WHEN domain_redirects.served_by = EXCLUDED.served_by THEN domain_redirects.reach_proxy ELSE '' END,
 		    reach_checked_at = CASE WHEN domain_redirects.served_by = EXCLUDED.served_by THEN domain_redirects.reach_checked_at END
+		WHERE domain_redirects.linked_instance_id IS NOT DISTINCT FROM EXCLUDED.linked_instance_id
 		RETURNING ` + redirectColumns
 	if err := scanRedirect(q.QueryRow(ctx, query, d.ID, d.OrganizationID, strings.ToLower(d.Domain), d.TargetURL, d.IncludeWWW, d.VerifyToken, createdBy,
 		string(servedBy), d.LinkedInstanceID), d); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrRedirectOwned
+		}
 		db.CaptureError(err, query, nil, "queryrow")
 		return err
 	}

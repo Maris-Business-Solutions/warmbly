@@ -245,6 +245,9 @@ func (s *Service) LinkedSet(ctx context.Context, inst *models.PoolLinkInstance, 
 	r := &models.DomainRedirect{ID: uuid.New(), OrganizationID: inst.OrganizationID, Domain: domain, TargetURL: target, IncludeWWW: www,
 		VerifyToken: s.proof.Value(inst.OrganizationID, domain), ServedBy: models.RedirectServedByInstance, LinkedInstanceID: &instanceID}
 	ok, err := s.redirects.UpsertLinked(ctx, r, inst.CreatedBy, config.PoolLinkRedirectLimit)
+	if errors.Is(err, repository.ErrRedirectOwned) {
+		return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDTaken, "Your Warmbly Cloud workspace already has a redirect for this domain. Remove it there first.")
+	}
 	if err != nil {
 		return nil, errx.InternalError()
 	}

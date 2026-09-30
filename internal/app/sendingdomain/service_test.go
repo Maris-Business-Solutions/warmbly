@@ -72,6 +72,9 @@ func (m *memRedirects) Upsert(_ context.Context, r *models.DomainRedirect, _ *uu
 	}
 	for _, e := range m.rows {
 		if e.OrganizationID == r.OrganizationID && e.Domain == r.Domain {
+			if (e.LinkedInstanceID == nil) != (r.LinkedInstanceID == nil) || (e.LinkedInstanceID != nil && *e.LinkedInstanceID != *r.LinkedInstanceID) {
+				return repository.ErrRedirectOwned
+			}
 			if e.ServedBy != r.ServedBy {
 				e.RemoteHost, e.RemoteRecords, e.Reach, e.Verified, e.VerifiedAt, e.LastError = "", nil, nil, false, nil, ""
 			}
