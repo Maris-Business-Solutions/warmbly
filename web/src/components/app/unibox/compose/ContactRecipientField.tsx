@@ -396,7 +396,7 @@ export default function ContactRecipientField({
                                 <span className="size-1.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
                                 <span className="text-[11.5px] text-slate-800 truncate">{c.title}</span>
                                 <span className="ml-auto text-[9.5px] text-slate-400 shrink-0">
-                                    filter by category
+                                    filter by label
                                 </span>
                             </button>
                         ))}
@@ -502,7 +502,7 @@ export default function ContactRecipientField({
                             {allCategories.length > 0 && (
                                 <FilterMenu
                                     icon={TagIcon}
-                                    allLabel="All categories"
+                                    allLabel="All labels"
                                     options={allCategories.map((c) => ({
                                         id: c.id,
                                         label: c.title,

@@ -1,4 +1,4 @@
-// Categories tab: the workspace's contact labels with a live contact count,
+// Labels tab: the workspace's contact labels with a live contact count,
 // inline rename, color, create and delete. Clicking a row opens the contact
 // list filtered to that category.
 
@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 
 const COLORS = ["#0284c7", "#7c3aed", "#db2777", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0d9488", "#475569"];
 
-export default function CategoriesPage() {
+export default function LabelsPage() {
     const { user } = useUserProfile();
     const write = useWriteGuard("MANAGE_CONTACTS");
     const guarded = (fn: () => void) => () => write.guard(fn)({});
@@ -76,14 +76,14 @@ export default function CategoriesPage() {
 
     return (
         <Page>
-            <PageTopbar eyebrow="Categories" subtitle="Labels you put on contacts by hand, on import or from a sequence">
+            <PageTopbar eyebrow="Labels" subtitle="One list for contacts, inbox conversations and forms">
                 <TopbarAction icon={<PlusIcon className="w-3 h-3" />} onClick={guarded(() => setCreating(true))}>
-                    New category
+                    New label
                 </TopbarAction>
             </PageTopbar>
 
-            <SectionBar label="All categories" count={list.length}>
-                <SearchInput value={query} onChange={setQuery} placeholder="Search categories…" className="w-full sm:w-64" />
+            <SectionBar label="All labels" count={list.length}>
+                <SearchInput value={query} onChange={setQuery} placeholder="Search labels…" className="w-full sm:w-64" />
             </SectionBar>
 
             <PageBody>
@@ -95,7 +95,7 @@ export default function CategoriesPage() {
                         }}
                         className="h-11 px-5 flex items-center gap-2 border-b border-slate-200/60 bg-sky-50/40"
                     >
-                        <TextInput value={newTitle} onChange={setNewTitle} placeholder="Category name" autoFocus className="w-64" />
+                        <TextInput value={newTitle} onChange={setNewTitle} placeholder="Label name" autoFocus className="w-64" />
                         <button
                             type="submit"
                             disabled={!newTitle.trim() || create.isPending}
@@ -117,16 +117,16 @@ export default function CategoriesPage() {
                 )}
                 {list.length === 0 ? (
                     <EmptyBlock
-                        title={query ? "No categories match" : "No categories yet"}
+                        title={query ? "No labels match" : "No labels yet"}
                         body={
                             query
                                 ? "Try a different search."
-                                : "Categories are labels on a contact. Create one here, on a contact, or by mapping a column during import."
+                                : "Put a label on a contact or an inbox conversation. Create one here, on a contact, in the inbox, or by mapping a column during import."
                         }
                         cta={
                             query ? undefined : (
                                 <TopbarAction icon={<PlusIcon className="w-3 h-3" />} onClick={guarded(() => setCreating(true))}>
-                                    New category
+                                    New label
                                 </TopbarAction>
                             )
                         }
@@ -164,7 +164,7 @@ function CategoryRow({ category, count }: { category: Category; count?: number }
         }
         try {
             await update.mutateAsync({ title: next });
-            toast.success("Category renamed");
+            toast.success("Label renamed");
             setRenaming(false);
         } catch (err) {
             toast.error(buildError(err as AppError));
@@ -181,10 +181,10 @@ function CategoryRow({ category, count }: { category: Category; count?: number }
     }
 
     function askDelete() {
-        confirm.show(`Delete the category "${category.title}"? It is removed from every contact and inbox thread; the contacts themselves are kept.`, async () => {
+        confirm.show(`Delete the label "${category.title}"? It is removed from every contact and inbox conversation; the contacts themselves are kept.`, async () => {
             try {
                 await remove.mutateAsync();
-                toast.success("Category deleted");
+                toast.success("Label deleted");
             } catch (err) {
                 toast.error(buildError(err as AppError));
             }

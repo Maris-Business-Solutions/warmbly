@@ -2,7 +2,7 @@
 //
 // The Leads tab could import a file, sync a sheet, or type a new contact, but
 // had no way to pull in people already in the workspace. This dialog searches
-// the contact list (query + categories), shows who is already a lead, and
+// the contact list (query + labels), shows who is already a lead, and
 // attaches the selection through the bulk contact update (add_campaigns), the
 // same path the import wizard uses. "Select all matching" hands the server the
 // search itself, so a whole category is one request.
@@ -234,7 +234,7 @@ export default function AddFromContactsDialog({ open, onClose, campaign: campaig
                                 <CategoryPicker
                                     value={categoryIds}
                                     onChange={setCategoryIds}
-                                    placeholder="Filter by category…"
+                                    placeholder="Filter by label…"
                                     allowCreate={false}
                                 />
                             </div>
@@ -290,7 +290,7 @@ export default function AddFromContactsDialog({ open, onClose, campaign: campaig
                                     </p>
                                     <p className="text-[11.5px] text-slate-400 mt-0.5">
                                         {debounced || categoryIds.length > 0
-                                            ? "Try a different search or category."
+                                            ? "Try a different search or label."
                                             : "Import a file or add contacts first."}
                                     </p>
                                 </div>

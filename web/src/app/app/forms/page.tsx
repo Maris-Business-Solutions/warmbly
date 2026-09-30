@@ -282,10 +282,10 @@ function FormsList() {
                             value={category}
                             onChange={setCategory}
                             options={[
-                                { value: "", label: "All categories" },
+                                { value: "", label: "All labels" },
                                 ...categories.map((c) => ({ value: c.id, label: c.title })),
                             ]}
-                            aria-label="Filter by category"
+                            aria-label="Filter by label"
                         />
                     )}
                     <SearchInput value={query} onChange={setQuery} placeholder="Search forms…" className="w-full sm:w-56" />
@@ -310,7 +310,7 @@ function FormsList() {
                                 body={
                                     filtered
                                         ? "Try a different search or filter."
-                                        : "Build a form, style it to match your site, and every submission becomes a contact — filed under your categories and optionally dropped straight into a campaign."
+                                        : "Build a form, style it to match your site, and every submission becomes a contact — filed under your labels and optionally dropped straight into a campaign."
                                 }
                                 cta={
                                     filtered ? undefined : (
@@ -333,7 +333,7 @@ function FormsList() {
                                     />
                                 </th>
                                 <SortTh label="Name" k="name" sort={sort} onSort={sortBy} className="max-w-0 w-full md:max-w-none md:w-auto" />
-                                <Th className="w-40 hidden lg:table-cell">Categories</Th>
+                                <Th className="w-40 hidden lg:table-cell">Labels</Th>
                                 <Th className="w-24 hidden lg:table-cell">Trend</Th>
                                 <SortTh label="Views" k="views" sort={sort} onSort={sortBy} className="w-16 text-right" right />
                                 <SortTh label="Starts" k="starts" sort={sort} onSort={sortBy} className="w-16 text-right hidden md:table-cell" right />

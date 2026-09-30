@@ -39,7 +39,7 @@ const labelMap: Record<string, string> = {
     unibox: "Inbox",
     contacts: "Contacts",
     segments: "Segments",
-    categories: "Categories",
+    labels: "Labels",
     campaigns: "Campaigns",
     analytics: "Analytics",
     crm: "CRM",

@@ -16,11 +16,11 @@ Every mode takes a plain-language **instruction**, templated so you can drop eve
 | Classify | Picks exactly one of your labels | `ai_class` |
 | Extract fields | Pulls the fields you name out of the event text | One variable per field |
 
-**Agent** is the default. Check which reversible actions it may take: add or remove a tag, label the email, create a task, create a deal, move a deal stage, set variables, and unsubscribe. It decides which fit, can chain several, and writes the details itself (task title, deal name, variable value). It only ever takes the actions you enable, and **never sends email or replies**. Billed one credit per step it takes.
+**Agent** is the default. Check which reversible actions it may take: add or remove a label, label the conversation, create a task, create a deal, move a deal stage, set variables, and unsubscribe. It decides which fit, can chain several, and writes the details itself (task title, deal name, variable value). It only ever takes the actions you enable, and **never sends email or replies**. Billed one credit per step it takes.
 
-For tag and label actions, an optional **pool** limits which tags it may choose. An empty pool lets it use any of yours, and optionally create a new one when nothing fits.
+For the label actions, an optional **pool** limits which labels it may choose: the labels it can add or remove on the contact, and the conversation labels it can apply. An empty pool lets it use any of yours, and optionally create a new one when nothing fits.
 
-On a Reply received trigger, an instruction like "If they ask about pricing, tag them and open a follow-up task; if they ask to stop, unsubscribe them" with those three actions enabled handles all three outcomes in one step.
+On a Reply received trigger, an instruction like "If they ask about pricing, label them and open a follow-up task; if they ask to stop, unsubscribe them" with those three actions enabled handles all three outcomes in one step.
 
 **Classify** needs at least two labels and returns exactly one, stored in `ai_class`. A non-exact answer resolves to the closest match; if none is close, the raw answer is stored so you can see what happened in run history.
 

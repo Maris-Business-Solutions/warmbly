@@ -1162,7 +1162,7 @@ function detailsFor(e: ContactTimelineEvent): [string, React.ReactNode][] {
                 : e.email_account_email,
         );
     }
-    add("Category", e.category_title);
+    add("Label", e.category_title);
     add("Intent", e.intent);
     if (e.type === "deliverability" || e.type === "suppressed") {
         add("Type", e.source);
@@ -1608,9 +1608,9 @@ function visualFor(e: ContactTimelineEvent): {
         case "campaign_removed":
             return { Icon: MegaphoneIcon, label: "Removed from campaign" };
         case "category_added":
-            return { Icon: TagIcon, label: "Added to category" };
+            return { Icon: TagIcon, label: "Label added" };
         case "category_removed":
-            return { Icon: TagIcon, label: "Removed from category" };
+            return { Icon: TagIcon, label: "Label removed" };
         case "form_submitted":
             return { Icon: ClipboardListIcon, label: "Submitted a form" };
         case "page_hit":

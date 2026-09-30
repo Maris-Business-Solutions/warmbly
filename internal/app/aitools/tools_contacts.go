@@ -25,7 +25,7 @@ func (d Deps) registerContactTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "get_contact",
-		Description: "Get one contact by id, including custom fields, categories, subscription state, and engagement summary.",
+		Description: "Get one contact by id, including custom fields, labels (categories), subscription state, and engagement summary.",
 		InputSchema: objectSchema(map[string]any{
 			"contact_id": strProp("The contact's UUID."),
 		}, "contact_id"),
@@ -55,10 +55,10 @@ func (d Deps) registerContactTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "add_tag",
-		Description: "Add a category (tag) to a contact. The category_id comes from a contact's categories in get_contact/search results.",
+		Description: "Add a label to a contact. Labels are called categories in the API; the category_id comes from a contact's categories in get_contact/search results.",
 		InputSchema: objectSchema(map[string]any{
 			"contact_id":  strProp("The contact's UUID."),
-			"category_id": strProp("The category (tag) UUID to add."),
+			"category_id": strProp("The label (category) UUID to add."),
 		}, "contact_id", "category_id"),
 		Risk:            generation.RiskWrite,
 		RequiredOrgPerm: models.PermManageContacts,
@@ -68,10 +68,10 @@ func (d Deps) registerContactTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "remove_tag",
-		Description: "Remove a category (tag) from a contact.",
+		Description: "Remove a label (category) from a contact.",
 		InputSchema: objectSchema(map[string]any{
 			"contact_id":  strProp("The contact's UUID."),
-			"category_id": strProp("The category (tag) UUID to remove."),
+			"category_id": strProp("The label (category) UUID to remove."),
 		}, "contact_id", "category_id"),
 		Risk:            generation.RiskWrite,
 		RequiredOrgPerm: models.PermManageContacts,
@@ -114,8 +114,8 @@ func (d Deps) registerContactTools(r *Registry) {
 		Description: "Apply the same change (add/remove tags, set subscription) to many contacts at once.",
 		InputSchema: objectSchema(map[string]any{
 			"contact_ids":       arrProp("Contact UUIDs to edit (required).", strProp("Contact UUID.")),
-			"add_categories":    arrProp("Category (tag) UUIDs to add to each contact.", strProp("Category UUID.")),
-			"remove_categories": arrProp("Category (tag) UUIDs to remove from each contact.", strProp("Category UUID.")),
+			"add_categories":    arrProp("Label (category) UUIDs to add to each contact.", strProp("Label UUID.")),
+			"remove_categories": arrProp("Label (category) UUIDs to remove from each contact.", strProp("Label UUID.")),
 			"subscribe":         boolProp("Set subscription state on each contact."),
 		}, "contact_ids"),
 		Risk:            generation.RiskWrite,

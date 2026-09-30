@@ -20,7 +20,7 @@ export const STANDARD_TARGETS: { id: string; label: string }[] = [
     { id: "company", label: "Company" },
     { id: "phone", label: "Phone" },
     { id: "subscribed", label: "Subscribed" },
-    { id: "categories", label: "Categories" },
+    { id: "categories", label: "Labels" },
     { id: "verification_status", label: "Verification status" },
 ];
 
@@ -44,7 +44,7 @@ export const DEDUP_OPTIONS: { id: ImportDedupStrategy; label: string; hint: stri
     {
         id: "skip",
         label: "Skip existing",
-        hint: "Leave their details alone. They still join the campaigns, categories and segments you pick.",
+        hint: "Leave their details alone. They still join the campaigns, labels and segments you pick.",
     },
     {
         id: "update",
@@ -247,7 +247,7 @@ export function fillRate(preview: ImportPreview, idx: number): number | null {
 // from scratch.
 export function sampleCSV(): string {
     return [
-        "Email,First name,Last name,Company,Phone,Categories,Job title",
+        "Email,First name,Last name,Company,Phone,Labels,Job title",
         "dana@acme.com,Dana,Reyes,Acme,+1 555 0100,Prospects;Q3,Head of Growth",
         "sam@northwind.io,Sam,Okafor,Northwind,,Prospects,Founder",
     ].join("\n") + "\n";

@@ -37,7 +37,7 @@ Triggers poll on your scenario's schedule. Make remembers what it has seen, so a
 | **Campaigns** | Create, Update, Start, Stop, Delete |
 | **Templates** | Create, Update, Delete, Render Reply Template |
 | **Meetings** | Log Meeting, Delete Meeting |
-| **Organization** | Create Contact Category, Mailbox Tag, or Campaign Folder |
+| **Organization** | Create Contact Category (a contact label), Mailbox Tag, or Campaign Folder |
 
 Campaign, mailbox, pipeline, stage, template, and contact fields use live dropdowns from your workspace, so you pick real records instead of pasting ids.
 
@@ -56,7 +56,7 @@ Pair a search with an action for idempotent flows: Find Contact, then Create or 
 Facebook and Instagram Lead Ads, LinkedIn Lead Gen Forms and TikTok Lead Generation all deliver new form submissions to Make in real time, which makes Make the shortest route from an ad to a follow-up sent from your own mailbox.
 
 1. **Trigger:** *Facebook Lead Ads: Watch Leads* (or the LinkedIn or TikTok equivalent), picking the Page and form.
-2. **Module:** Warmbly *Create or Update Contact*. Map the form's email and name fields, put every other question into a custom field, and pick the categories. Then *Add to Campaign* with the campaign that follows up. Re-running the same lead updates the contact rather than duplicating it.
+2. **Module:** Warmbly *Create or Update Contact*. Map the form's email and name fields, put every other question into a custom field, and pick the labels. Then *Add to Campaign* with the campaign that follows up. Re-running the same lead updates the contact rather than duplicating it.
 
 Prefer to keep the mapping inside Warmbly? Use the *HTTP: Make a request* module to POST the lead as JSON to an [inbound webhook automation](/guides/automations/#lead-intake) instead. The automation's **Create or update contact** action maps the JSON keys onto contact fields with templates, and the same flow can tag, notify Slack and open a task.
 

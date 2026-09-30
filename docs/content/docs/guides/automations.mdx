@@ -3,7 +3,7 @@ title: Automations
 description: "A visual flow builder: a trigger event connected to action steps across your integrations."
 ---
 
-An automation is a flow on a canvas: one **trigger** (a reply arrives, a meeting is booked) runs one or more **actions** (post to Slack, push to your CRM, tag a contact), with **IF conditions** in between to branch. No code, though an advanced mode accepts a free-form condition.
+An automation is a flow on a canvas: one **trigger** (a reply arrives, a meeting is booked) runs one or more **actions** (post to Slack, push to your CRM, label a contact), with **IF conditions** in between to branch. No code, though an advanced mode accepts a free-form condition.
 
 <Mermaid
   chart={`
@@ -97,12 +97,12 @@ Slack, Discord, and webhook actions take an optional message template. Slack and
 
 | Built-in action | What it does |
 | --- | --- |
-| Create or update contact | Makes a contact from the event's fields, or enriches the one with that email, then tags it and enrols it in a campaign. See [Lead intake](#lead-intake) |
+| Create or update contact | Makes a contact from the event's fields, or enriches the one with that email, then labels it and enrols it in a campaign. See [Lead intake](#lead-intake) |
 | Add to campaign | Enrols the event's contact in a campaign; a finished campaign restarts through the usual launch checks (a refusal is noted in its activity log and the lead waits), one waiting for leads picks up straight away |
 
 Saving an automation with either of these actions turns on the picked campaign's **Keep running for new leads** setting, so the campaign waits for the next run instead of finishing between them.
-| Add / remove a tag | Adds or removes a contact category |
-| Label the email | Applies inbox labels to the replied-on conversation |
+| Add / remove a label | Adds or removes a label on the contact |
+| Label the conversation | Applies labels to the conversation the contact replied on |
 | Create a task | Assigned to the workspace owner |
 | Create a deal | In a chosen pipeline and stage |
 | Move the deal stage | Moves the contact's most recent open deal in that pipeline |
@@ -111,7 +111,7 @@ Saving an automation with either of these actions turns on the picked campaign's
 | Fire event | Publishes a `CUSTOM_EVENT` to the realtime gateway |
 | AI step / AI switch | An agent or single-shot AI node, and AI-decided routing. See [AI steps](/guides/ai-steps-in-automations/) |
 
-Three constraints worth knowing: **Move the deal stage** does nothing if the contact has no open deal in that pipeline, **Unsubscribe** needs an event carrying a campaign, and **Label the email** works only on a Reply received automation, since it needs a thread to label.
+Three constraints worth knowing: **Move the deal stage** does nothing if the contact has no open deal in that pipeline, **Unsubscribe** needs an event carrying a campaign, and **Label the conversation** works only on a Reply received automation, since it needs a thread to label.
 
 **Add to campaign** and every other contact action need a contact to act on: the event must carry `contact_id` or `contact_email`, which every Warmbly trigger does. On an inbound webhook, put **Create or update contact** first and the contact it writes becomes the event's contact for the steps after it.
 
@@ -120,7 +120,7 @@ Three constraints worth knowing: **Move the deal stage** does nothing if the con
 Any system that can send an HTTP request can create contacts in Warmbly without an API client: an **Inbound webhook** trigger followed by a **Create or update contact** action.
 
 1. Pick the Inbound webhook trigger, save, and copy the URL.
-2. Add **Create or update contact**. Each field is a template over the JSON the caller sends: an email of `{{.email}}`, a first name of `{{.first_name}}`, a custom field `team_size` set to `{{.answers.team_size}}`. Pick the tags and the campaign the lead lands in.
+2. Add **Create or update contact**. Each field is a template over the JSON the caller sends: an email of `{{.email}}`, a first name of `{{.first_name}}`, a custom field `team_size` set to `{{.answers.team_size}}`. Pick the labels and the campaign the lead lands in.
 3. Point the sender at the URL. Zapier's *Webhooks by Zapier*, Make's *HTTP* module, n8n's *HTTP Request* node, a Typeform or Tally webhook, or your own code.
 
 The action matches an existing contact by email, so re-sending the same lead updates it instead of duplicating it. A blank rendered value never erases a field the contact already has. **If the contact already exists** decides whether an existing contact is enriched and enrolled (the default) or left alone. New contacts carry `automation` as their first-touch source, with the automation's name as the detail.

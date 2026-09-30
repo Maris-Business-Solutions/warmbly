@@ -1123,7 +1123,7 @@ Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`.
 | `column_mapping` | array | Yes | Column-to-target mappings ([same shape as contact import](/api/reference/contacts/)). Validated on save, not on the next sync: a mapping with no `email` column, or a custom field whose name Warmbly cannot use, is a `400` here. |
 | `dedup` | string | No | Collision strategy: `skip`, `update`, or `create_duplicate`. |
 | `target_campaign_id` | uuid | No | Enrol new/updated leads into this campaign on each sync. |
-| `category_ids` | string[] | No | Categories to assign to synced leads. |
+| `category_ids` | string[] | No | Label IDs to put on synced leads. |
 | `segment_ids` | string[] | No | Segments every synced row is pinned into as a manual include override, on every run. Each id must name a segment in the organization or the save is a `400`; a segment deleted later is dropped from the run instead of failing it. |
 | `subscribed_default` | boolean | No | Default subscription state for new contacts. |
 | `label` | string | No | Friendly name. |
@@ -1215,7 +1215,7 @@ Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`.
 | `dedup` | string | No | Collision strategy. |
 | `target_campaign_id` | uuid | No | New target campaign. |
 | `clear_campaign` | boolean | No | When `true`, unsets the target campaign. |
-| `category_ids` | string[] | No | Replacement category set. |
+| `category_ids` | string[] | No | Replacement set of label IDs. |
 | `segment_ids` | string[] | No | Replacement segment target set. An unknown id is a `400`; an empty array clears the targets. |
 | `subscribed_default` | boolean | No | Default subscription state. |
 | `label` | string | No | New label. |
