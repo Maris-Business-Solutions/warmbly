@@ -14,8 +14,6 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
-const maxBulkOperationSize = 1000
-
 func (h *Handler) AddContacts(c *gin.Context) {
 	userIDStr := middleware.GetUserID(c)
 

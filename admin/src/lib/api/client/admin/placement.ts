@@ -5,7 +5,7 @@
 import { Request } from "@/lib/api/client";
 
 export type PlacementPanel = "instance" | "workspace" | "cloud";
-export type PlacementOrigin = "manual" | "monitor" | "admin" | "remote";
+export type PlacementOrigin = "manual" | "monitor" | "admin" | "remote" | "batch";
 export type PlacementStatus = "running" | "completed" | "cancelled" | "failed";
 export type PlacementTracking = "campaign" | "on" | "off" | "compare";
 export type PlacementFolder =

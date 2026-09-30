@@ -475,7 +475,9 @@ func (c *Client) sendRaw(ctx context.Context, from string, to []string, data []b
 			if !permanentReply(err) {
 				return errx.ErrMailServerUnreachableAt("rcpt to", err)
 			}
-			return errx.ErrMailRecipientRejected(err.Error())
+			refused := errx.ErrMailRecipientRejected(err.Error())
+			refused.Recipient = r
+			return refused
 		}
 	}
 	w, err := client.Data()

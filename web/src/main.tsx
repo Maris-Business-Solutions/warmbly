@@ -17,7 +17,7 @@ import FormsPage from './app/app/forms/page';
 import FormBuilderPage from './app/app/forms/[id]/page';
 import ContactsLayout from './app/app/contacts/layout';
 import SegmentsPage from './app/app/contacts/segments/page';
-import CategoriesPage from './app/app/contacts/categories/page';
+import LabelsPage from './app/app/contacts/labels/page';
 import SuppressionsPage from './app/app/contacts/suppressions/page';
 import SegmentPage from './app/app/contacts/segments/[id]/page';
 import CampaignsPage from './app/app/campaigns/page';
@@ -31,6 +31,7 @@ import AnalyticsPage from './app/app/analytics/page';
 import DeliverabilityPage from './app/app/deliverability/page';
 import PlacementPage from './app/app/placement/page';
 import PlacementTestPage from './app/app/placement/[id]/page';
+import PlacementBatchPage from './app/app/placement/batches/[id]/page';
 import PipelinesPage from './app/app/crm/pipelines/page';
 import DealsPage from './app/app/crm/deals/page';
 import TasksPage from './app/app/crm/tasks/page';
@@ -274,7 +275,8 @@ const router = createBrowserRouter([
                   { path: ":id", element: <SegmentPage /> },
                 ],
               },
-              { path: "categories", element: <CategoriesPage /> },
+              { path: "labels", element: <LabelsPage /> },
+              { path: "categories", element: <Navigate to="/app/contacts/labels" replace /> },
               { path: "suppressions", element: <SuppressionsPage /> },
             ],
           },
@@ -332,6 +334,7 @@ const router = createBrowserRouter([
             path: "placement",
             children: [
               { index: true, element: <PlacementPage /> },
+              { path: "batches/:id", element: <PlacementBatchPage /> },
               { path: ":id", element: <PlacementTestPage /> },
             ],
           },

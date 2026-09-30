@@ -15,6 +15,7 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/pubsub"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -167,7 +168,7 @@ func (s *JobsService) HandleEmailFailed(ctx context.Context, result models.SendE
 
 	switch task.TaskType {
 	case "campaign":
-		return s.failCampaignSend(ctx, task, reason, code, nil)
+		return s.failCampaignSend(ctx, task, reason, code, refusedRecipient(result), nil)
 	case "email":
 		s.notifyUserSendFailed(ctx, task, reason)
 	case "placement":
@@ -194,7 +195,7 @@ func (s *JobsService) failWarmupSend(ctx context.Context, task *repository.Task,
 // day the send was counted against, for giving the daily counters back; nil
 // reads it off the task, which is right for a worker result but not for the
 // reclaimer, whose sends can be counted on an earlier day.
-func (s *JobsService) failCampaignSend(ctx context.Context, task *repository.Task, reason, code string, countedOn *time.Time) error {
+func (s *JobsService) failCampaignSend(ctx context.Context, task *repository.Task, reason, code, refused string, countedOn *time.Time) error {
 	ct, err := s.TaskRepo.GetCampaignTask(ctx, task.ID)
 	if err != nil {
 		return err
@@ -216,6 +217,11 @@ func (s *JobsService) failCampaignSend(ctx context.Context, task *repository.Tas
 		}
 	}
 
+	// A copy the server refused is not the lead's bounce: it is dropped from
+	// later emails and the lead's step is retried without it.
+	copyRefused := code == string(errx.MailErrorCodeRecipientRejected) && refused != "" &&
+		recipient != "" && !strings.EqualFold(mailhdr.Bare(refused), recipient)
+
 	// A refusal on the SENDING DOMAIN's authentication is not about this lead:
 	// the recipient received nothing, and every retry from that domain fails
 	// identically until its DNS is fixed. Give the reservation back without
@@ -234,14 +240,22 @@ func (s *JobsService) failCampaignSend(ctx context.Context, task *repository.Tas
 	}
 
 	// Only permanent recipient refusals are bounce evidence; deferrals may use the same wording.
-	if s.Evidence != nil && ct.ContactID != nil && ct.SequenceID != nil &&
+	if s.Evidence != nil && ct.ContactID != nil && ct.SequenceID != nil && !copyRefused &&
 		code != string(errx.MailErrorCodeServerUnreachable) && emailverify.NamesRecipient(reason) {
 		s.Evidence.RecordEvidence(ctx, *ct.ContactID, models.Step(&campaignID, ct.SequenceID), "bounced_recipient", "send:"+ct.SequenceID.String(), reason)
 	}
 
+	// A refused copy that the retry will leave off costs the lead no attempt;
+	// one that could not be recorded is counted, so it cannot loop forever.
+	copyExcluded := copyRefused && s.recordRefusedCopy(ctx, task, ct, campaign, refused, reason)
+
 	attempts, exhausted, rolledBack := 0, false, false
 	if ct.ContactID != nil && ct.SequenceID != nil && s.CampaignProgressRepo != nil {
-		attempts, exhausted, rolledBack, err = s.CampaignProgressRepo.RecordSendFailure(ctx, campaignID, *ct.ContactID, *ct.SequenceID, reason)
+		if copyExcluded {
+			attempts, exhausted, rolledBack, err = s.CampaignProgressRepo.WalkBackSend(ctx, campaignID, *ct.ContactID, *ct.SequenceID, reason, false)
+		} else {
+			attempts, exhausted, rolledBack, err = s.CampaignProgressRepo.RecordSendFailure(ctx, campaignID, *ct.ContactID, *ct.SequenceID, reason)
+		}
 		if err != nil {
 			return err
 		}
@@ -271,7 +285,7 @@ func (s *JobsService) failCampaignSend(ctx context.Context, task *repository.Tas
 	// reputation, so it goes through the bounce pipeline (progress, optional
 	// suppression, guardrails, warmup health, webhooks) and the lead is
 	// dropped as bounced instead of being offered again.
-	if rolledBack && code == string(errx.MailErrorCodeRecipientRejected) {
+	if rolledBack && !copyRefused && code == string(errx.MailErrorCodeRecipientRejected) {
 		if s.recordSynchronousBounce(ctx, task, ct, campaign, recipient, reason) {
 			s.logCampaignSendFailure(ctx, campaignID, ct, recipient, reason, code, attempts, false, false, false)
 			s.publishCampaignUpdated(ctx, campaign, campaignID, "")
@@ -333,6 +347,52 @@ func (s *JobsService) recordSynchronousBounce(ctx context.Context, task *reposit
 		return false
 	}
 	return true
+}
+
+// recordRefusedCopy feeds a copied address the server refused at RCPT into
+// the bounce pipeline under its own name, and reports whether the next send
+// is sure to leave it off: a lead's copy through its bounced mark, a
+// campaign-wide one through the recorded bounce the send path reads.
+func (s *JobsService) recordRefusedCopy(ctx context.Context, task *repository.Task, ct *repository.CampaignTask, campaign *models.Campaign, refused, reason string) bool {
+	if campaign == nil || campaign.OrganizationID == nil || ct.CampaignID == nil || ct.ContactID == nil {
+		return false
+	}
+	address := strings.ToLower(mailhdr.Bare(refused))
+	var owner *uuid.UUID
+	if s.CampaignProgressRepo != nil {
+		id, err := s.CampaignProgressRepo.MarkLeadCCBounced(ctx, *ct.CampaignID, *ct.ContactID, address)
+		if err != nil {
+			log.Warn().Err(err).Str("task_id", task.ID.String()).Msg("could not mark a refused copy bounced")
+		}
+		owner = id
+	}
+	if s.AdvancedService == nil {
+		return owner != nil
+	}
+	taskID := task.ID
+	req := &models.IngestDeliverabilityEventRequest{
+		EventType:      models.DeliverabilityEventBounce,
+		Provider:       "smtp_reject",
+		TaskID:         &taskID,
+		CampaignID:     ct.CampaignID,
+		ContactID:      owner,
+		RecipientEmail: address,
+		Reason:         reason,
+		IdempotencyKey: "reject:" + taskID.String() + ":" + address,
+	}
+	if xerr := s.AdvancedService.IngestDeliverabilityEvent(ctx, *campaign.OrganizationID, req); xerr != nil {
+		log.Warn().Str("task_id", taskID.String()).Str("error", xerr.Message).Msg("could not record a refused copy as a bounce")
+		return owner != nil
+	}
+	return true
+}
+
+// refusedRecipient is the address the server refused, when the worker knew.
+func refusedRecipient(result models.SendEmailResult) string {
+	if result.Error == nil {
+		return ""
+	}
+	return result.Error.Recipient
 }
 
 // publishCampaignUpdated pulses the campaign for every teammate (status "" keeps

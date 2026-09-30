@@ -1,6 +1,6 @@
 ---
 title: "Inbox placement tests"
-description: "Send a campaign step or a template from one of your mailboxes to seed inboxes at the major providers, and see where each copy landed."
+description: "Send a campaign step or a template from one of your mailboxes, or from a whole fleet at once, to seed inboxes at the major providers, and see where each copy landed."
 ---
 
 A placement test answers one question before your prospects do: when this mailbox sends this email, where does it land? Warmbly sends a copy from a real mailbox of yours to a panel of seed inboxes spread across providers, then reads each seed's mail to see whether the copy reached the primary inbox, a Gmail tab, spam, or nowhere at all.
@@ -168,6 +168,78 @@ A monitor only tests a campaign that is running. When a run cannot start (the ca
 
 **When a monitor's test lands below its threshold**, everyone in the workspace who can view campaigns gets a **Placement monitor alert**, with the result and a link to the test. With **Pause on alert** on, the campaign is also paused automatically, with the reason in its activity log. Like every [auto-pause](/guides/campaigns/#auto-pause-guardrails), it does not resume on its own: find out what changed, then start the campaign again yourself.
 
+## Testing a fleet with batches
+
+A test answers where one mailbox lands. With hundreds or thousands of sending mailboxes the question is different: is the fleet healthy, and if not, is the problem one mailbox, one domain, or one provider? A **placement batch** runs the same test from many mailboxes and reads the results together. Start one with **New batch** on the placement tests page, with **Test sender pool** on a campaign's settings, or with **Test untested mailboxes** from the coverage line.
+
+Each mailbox in a batch gets its own ordinary placement test with its own results, so everything above about how a test runs, what it costs and how to read it applies to every one of them. The batch adds shared settings, one progress view, results grouped across the fleet, and one cancel button.
+
+### Choosing the senders
+
+| Senders | What it selects |
+|---------|-----------------|
+| **Choose mailboxes** | The mailboxes you tick, by hand (`sender_account_ids` in the API) |
+| **A campaign's senders** | Every mailbox the campaign sends from, the same set its scheduler uses (`sender_scope.type` `campaign`) |
+| **All mailboxes** | Every mailbox in the workspace (`sender_scope.type` `workspace`) |
+
+A campaign's senders and all mailboxes can be narrowed by provider (Google Workspace, Microsoft 365, SMTP and the rest), by sending domain, by mailbox tag, and to mailboxes with no finished placement test in the last so many days. Disconnected mailboxes are left out unless you include them; a mailbox you tick by hand is always kept, and is reported by name if it cannot send when its turn comes. Seed inboxes never send.
+
+The senders are resolved on the server and written down when the batch starts. A mailbox tagged or added to the campaign afterwards does not join a batch that is already running, and one removed from it does not leave.
+
+### Sampling
+
+Testing every mailbox is thorough but spends a test and a day's sends from each. A sample tests part of the fleet instead:
+
+| Sample | Result |
+|--------|--------|
+| **All** | Every selected mailbox |
+| **Random** | That many mailboxes, picked at random |
+| **Percent** | That share of the mailboxes, rounded up. **Spread across providers** splits the sample in proportion to each provider's share of the fleet, so 10% of 800 Google Workspace, 400 SMTP and 147 Microsoft 365 mailboxes is 80, 40 and 15, rather than 135 picked at random |
+| **Per domain** | Up to that many mailboxes from every sending domain, so a large domain is not over-represented |
+| **Per provider** | Up to that many mailboxes from every sending provider |
+
+### How a batch runs
+
+A batch can hold thousands of mailboxes, but only a few send at once. Warmbly starts the next mailbox when one has sent every copy of its test, so at most `20` of a workspace's batch mailboxes are sending at the same time, a batch starts at most `10` mailboxes a minute, and the instance as a whole runs at most `200` batch mailboxes at once, which keeps the shared seed panel from receiving a burst (the operator can change all three). Every batch test runs at the spaced pace; quick is for a single test. Consecutive starts rotate across sending providers and domains, so a batch never works through one provider's mailboxes back to back. The number of mailboxes in a batch has no effect on how many run together; the operator's ceiling on batch size, `10,000` by default, exists only to protect the instance.
+
+Nothing is reserved when the batch starts. Each mailbox is checked when its turn comes, against its own daily limit, minimum gap, connection, worker and the workspace's standing, exactly as a single test is. So campaigns keep sending while a batch works through the fleet, and a batch never gets around a safeguard a single test would hit.
+
+A mailbox that cannot run when its turn comes is handled by the batch's policy:
+
+| Policy | A mailbox without room today, disconnected or offline |
+|--------|------------------------------------------------------|
+| **Retry until every sender has been tested** (default, `defer`) | Waits and is tried again: early the next UTC day when its daily limit ran out, an hour later when it was disconnected. The batch keeps going with the other mailboxes, and retries for up to seven days from when it started |
+| **Skip senders that can't send right away** (`skip`) | Skipped, with the reason, and the batch moves on |
+
+A mailbox still sending another test is always retried a quarter of an hour later. A mailbox with no seed it can reach (every seed is on its own domain) is skipped under either policy. One mailbox failing never fails the batch: every mailbox keeps its own result or its own reason, such as its daily limit, its connection or its worker.
+
+A batch ends **completed** when every mailbox finished a test, **completed with warnings** when some were skipped or failed, **failed** when none finished, or **cancelled**. When the free tests or the credits you agreed to run out partway, or the campaign or step being tested is deleted, the mailboxes not yet started are skipped with that reason and the batch ends with the results it has.
+
+Cancelling a batch stops it starting mailboxes, cancels the copies not sent yet, and leaves the copies already sent to be classified, so a cancelled batch keeps every result it had.
+
+### Reading a batch
+
+The batch page shows its progress and the overall placement, then four views:
+
+- **Mailboxes**, worst inbox rate first, with the reason for any that was skipped, deferred or failed. Each opens its own test.
+- **Domains**, each sending domain's placement across its mailboxes, worst first. One bad mailbox on an otherwise healthy domain is a mailbox problem; a whole domain low is that domain's reputation or authentication.
+- **Providers**, the same by sending provider, which shows a problem with one kind of mailbox.
+- **Recipient providers**, a table of sending domains against the providers that received the copies, which shows a domain that only one provider is filtering.
+
+For a tracking comparison the overall figure is the tracked half, the copy the campaign really sends, with the untracked half beside it.
+
+The batch does not group by worker. A worker signs in to your mailbox provider, and the provider delivers the mail from its own servers, so recipients' filters never see which worker handled a mailbox.
+
+### What a batch costs
+
+Before a batch starts, the dialog states the workload: how many tests, the most copies it can send (seeds per test times mailboxes, doubled for a tracking comparison), and how many mailboxes send at once. Each mailbox's daily limit can only make the real number smaller.
+
+Every mailbox's test counts as one test against the monthly free tests (two for a comparison), exactly like a single test. When a batch needs more tests than are free, you agree up front to the most the rest can cost, which the API takes as `max_credits` for the whole batch; the batch never spends more than that, and a test that delivers nothing is refunded as usual. When the tests cannot be paid for (a trial, or a panel without paid tests), a batch larger than the free tests left is refused; take a smaller sample or test on your own seed inboxes, which are never counted.
+
+### Fleet coverage
+
+The placement tests page shows how much of your connected fleet finished a placement test in the last 30 days, and how many mailboxes never did. **Test untested mailboxes** starts a batch of exactly those.
+
 ## Reading the results honestly
 
 A placement test is a signal, not a verdict. Read it with its limits in mind:
@@ -184,16 +256,22 @@ Tests also feed the seed placement figures on the [Deliverability](/guides/deliv
 
 | Notification | Who gets it | Default |
 |--------------|-------------|---------|
-| Placement test finished | Whoever started the test by hand, once every copy has a verdict. A tracking comparison reports once, with both halves | On, in-app and push, no email |
+| Placement test finished | Whoever started the test by hand, once every copy has a verdict. A tracking comparison reports once, with both halves. For a batch, whoever started it, once, when the whole batch ends | On, in-app and push, no email |
 | Placement monitor alert | Everyone who can view campaigns, when a monitor's test lands below its threshold | On, including email |
 
-Both open the test. Change them under **Settings > Notifications**; see [notifications](/guides/notifications/).
+Both open the test, or the batch. Change them under **Settings > Notifications**; see [notifications](/guides/notifications/).
 
 ## Limits
 
 | Limit | Value |
 |-------|-------|
-| Tests running at once per workspace | `3` (a comparison counts as two) |
+| Tests running at once per workspace | `3` (a comparison counts as two). A batch's tests are paced by the batch instead |
+| Mailboxes in one batch | up to `10,000` by default, at most `100,000` (operator setting) |
+| Batch mailboxes sending at once per workspace | `20` by default, at most `500` (operator setting) |
+| Batch mailboxes sending at once across the instance | `200` by default, at most `5,000` (operator setting) |
+| Batch mailboxes started per minute | `10` per batch by default (operator setting) |
+| Batches running at once per workspace | `5` |
+| How long a batch retries a deferred mailbox | `7` days from when it started |
 | Tests sending from one mailbox at once | `1` |
 | Seeds per test | up to `20` by default, at most `100` (operator setting). Seeds you chose by hand all get a copy, up to `50` |
 | Your own seed inboxes | `50` per workspace |
@@ -202,7 +280,7 @@ Both open the test. Change them under **Settings > Notifications**; see [notific
 
 ## Moving a workspace
 
-Placement tests and their results travel in a [workspace export](/guides/workspace-export-import/) as a record, under Delivery events (without what a paid test cost, since credits do not travel), and campaign placement monitors travel with the campaigns. Which mailboxes are seed inboxes does not travel, so mark them again on the destination. A test that is still sending leaves its unsent copies behind.
+Placement tests and their results travel in a [workspace export](/guides/workspace-export-import/) as a record, under Delivery events (without what a paid test cost, since credits do not travel), and so do placement batches with their mailboxes and results. A batch still running when it is exported arrives cancelled, so the destination never starts sending it. Campaign placement monitors travel with the campaigns. Which mailboxes are seed inboxes does not travel, so mark them again on the destination. A test that is still sending leaves its unsent copies behind.
 
 ## Related guides
 

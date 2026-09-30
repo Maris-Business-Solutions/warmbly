@@ -286,7 +286,7 @@ var Tables = []Table{
 	{
 		Name: "categories", Group: models.OrgDataGroupContacts,
 		Scope: scopeOrg,
-		Note:  "The whole category registry travels, including ones no contact or conversation carries yet.",
+		Note:  "The whole label registry travels, including ones no contact or conversation carries yet.",
 	},
 	{
 		Name: "contacts", Group: models.OrgDataGroupContacts,
@@ -461,6 +461,12 @@ var Tables = []Table{
 		// require, so both ends of the link exist by the time this applies.
 		Name: "campaign_segments", Group: models.OrgDataGroupCampaigns,
 		Scope: `campaign_id IN ` + orgCampaigns,
+	},
+	{
+		// Both contacts are in the contacts group, which campaigns require.
+		Name: "campaign_lead_cc", Group: models.OrgDataGroupCampaigns,
+		Scope: `campaign_id IN ` + orgCampaigns,
+		Note:  "Must travel with the leads, or a copied contact held on their own lead is released into a second sequence.",
 	},
 	{
 		Name: "campaign_lead_removals", Group: models.OrgDataGroupCampaigns,
@@ -768,6 +774,17 @@ var Tables = []Table{
 		Scope: scopeOrg,
 	},
 	{
+		// A batch travels as a record of its senders and results. It lands
+		// inactive, so the destination never resumes sending it.
+		Name: "placement_batches", Group: models.OrgDataGroupEvents,
+		Scope:         scopeOrg,
+		ResetOnImport: []string{"active", "lease_until", "last_tick_at"},
+	},
+	{
+		Name: "placement_batch_senders", Group: models.OrgDataGroupEvents,
+		Scope: `batch_id IN (SELECT id FROM placement_batches WHERE organization_id = $1)`,
+	},
+	{
 		// The results travel as a record. The link to a cloud-run test and the
 		// seeds on the source instance's panel do not, and neither does a
 		// credit charge, whose ledger stays behind.
@@ -888,6 +905,8 @@ var ExcludedTables = map[string]string{
 	"oauth_authorization_codes":    "Single-use authorization codes, valid for seconds.",
 	"scheduled_deletions":          "Instance lifecycle state. Importing a pending deletion would schedule the destination workspace for destruction.",
 	"dedicated_worker_assignments": "Worker topology, which is a property of the instance rather than the workspace.",
+	"warmup_spam_moves":            "Per-message attribution evidence for warmup mail this instance synced, kept only to decide recent tampering; the destination judges its own.",
+	"mailbox_owner_activity":       "Five-minute buckets of sync-observed owner activity on this instance, read only to attribute recent spam moves.",
 	"warmup_pools":                 "Instance-global pool definitions shared by every workspace on the instance.",
 	"pool_link_codes":              "In-flight link handshakes between a self-hosted instance and this cloud, valid for minutes.",
 	"cli_auth_codes":               "In-flight `warmbly auth login` handshakes, valid for minutes. The API key an approval mints does travel, with the api_keys rows.",

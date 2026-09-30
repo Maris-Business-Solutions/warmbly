@@ -11,10 +11,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry"
+	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/rest"
 	"github.com/hamba/avro/v2"
+	"github.com/rs/zerolog/log"
 	"github.com/warmbly/warmbly/internal/models"
 )
 
@@ -92,6 +95,37 @@ func (c *AvroCodec) Serialize(_ context.Context, topic string, value any) ([]byt
 	return append(out, body...), nil
 }
 
+// RegisterSchemas satisfies SchemaRegistrar.
+func (c *AvroCodec) RegisterSchemas(_ context.Context, schemas map[string]avro.Schema) error {
+	var all []string
+	var errs []error
+	for topic, schema := range schemas {
+		topics := []string{topic}
+		if prefix, ok := strings.CutSuffix(topic, "*"); ok {
+			if all == nil {
+				var err error
+				if all, err = c.client.GetAllSubjects(); err != nil {
+					return fmt.Errorf("codec: list subjects: %w", err)
+				}
+			}
+			topics = topics[:0]
+			for _, subject := range all {
+				if t, ok := strings.CutSuffix(subject, "-value"); ok && strings.HasPrefix(t, prefix) {
+					topics = append(topics, t)
+				}
+			}
+		}
+		for _, t := range topics {
+			if _, err := c.register(subjectFor(t), schema); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+var _ SchemaRegistrar = (*AvroCodec)(nil)
+
 // Deserialize decodes with the schema the payload names, which is the writer's
 // rather than whatever this process happens to hold. That is the whole point of
 // carrying the id: a consumer reads what was actually written.
@@ -132,6 +166,9 @@ func (c *AvroCodec) register(subject string, schema avro.Schema) (int, error) {
 		return id, nil
 	}
 	id, err = c.client.Register(subject, schemaregistry.SchemaInfo{Schema: string(doc)}, true)
+	if isIncompatible(err) && c.pinBackward(subject) {
+		id, err = c.client.Register(subject, schemaregistry.SchemaInfo{Schema: string(doc)}, true)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("codec: register %s: %w", subject, err)
 	}
@@ -139,6 +176,36 @@ func (c *AvroCodec) register(subject string, schema avro.Schema) (int, error) {
 	c.ids[key] = id
 	c.mu.Unlock()
 	return id, nil
+}
+
+// isIncompatible is the registry refusing a schema against an earlier version.
+func isIncompatible(err error) bool {
+	var rerr *rest.Error
+	return errors.As(err, &rerr) && rerr.Code == 409
+}
+
+// pinBackward sets the subject to BACKWARD when its effective level refuses a
+// new union branch, since every new event type adds one to the envelope. A
+// level that already admits it is left alone, and so is the refusal.
+func (c *AvroCodec) pinBackward(subject string) bool {
+	level, err := c.client.GetCompatibility(subject)
+	if err != nil {
+		if level, err = c.client.GetDefaultCompatibility(); err != nil {
+			return false
+		}
+	}
+	switch level {
+	case schemaregistry.Forward, schemaregistry.ForwardTransitive,
+		schemaregistry.Full, schemaregistry.FullTransitive:
+	default:
+		return false
+	}
+	if _, err := c.client.UpdateCompatibility(subject, schemaregistry.Backward); err != nil {
+		return false
+	}
+	log.Warn().Str("subject", subject).Str("was", level.String()).
+		Msg("schema registry: subject set to BACKWARD so a new event type can be registered")
+	return true
 }
 
 func (c *AvroCodec) schemaByID(subject string, id int) (avro.Schema, error) {

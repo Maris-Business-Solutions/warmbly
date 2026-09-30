@@ -414,6 +414,9 @@ export default function LoginPage() {
                 } else if (e.reason === "timeout") {
                     setPasskeyStatus("timeout");
                     toast.error("Safari didn't show a passkey prompt. Try again, or use password sign-in.");
+                } else {
+                    // Aborted: nothing to explain, but the button has to be usable again.
+                    setPasskeyStatus("ready");
                 }
             } else {
                 setPasskeyStatus("error");

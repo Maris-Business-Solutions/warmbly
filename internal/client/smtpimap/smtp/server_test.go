@@ -412,4 +412,8 @@ func TestRecipientRejectionCarriesTheServersReason(t *testing.T) {
 	if !strings.Contains(err.Message, "no such user here") {
 		t.Errorf("message = %q, want the server's own reason in it", err.Message)
 	}
+	// Named apart from the message, so a refused copy is not read as the lead.
+	if err.Recipient != "to@example.test" {
+		t.Errorf("recipient = %q, want the refused address", err.Recipient)
+	}
 }

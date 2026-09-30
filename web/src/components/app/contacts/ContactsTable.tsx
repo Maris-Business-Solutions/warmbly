@@ -69,6 +69,7 @@ import type { CampaignLeadCounts } from "@/lib/api/models/app/contacts/SearchCon
 import ContactsEditBulk from "./ContactsEditBulk";
 import PauseLeadDialog from "./PauseLeadDialog";
 import { useResumeLead } from "@/lib/api/hooks/app/campaigns/useLeadHold";
+import { CC_RESUME_CONFIRM } from "@/lib/leadHold";
 import { selectionOf } from "@/lib/api/models/app/contacts/ContactSelection";
 import type ContactSelection from "@/lib/api/models/app/contacts/ContactSelection";
 import * as rowSelection from "./selection";
@@ -124,6 +125,8 @@ type SubFilter = "all" | "subscribed" | "unsubscribed";
 // Mirrors maxIntegrationPushSize on the backend: one synchronous push is a
 // live call per contact against the CRM's API.
 const MAX_CRM_PUSH = 500;
+// Mirrors research.MaxBatch: every contact is a metered AI run.
+const MAX_RESEARCH_BATCH = 500;
 
 export default function ContactsTable({
     current_campaign,
@@ -498,6 +501,10 @@ export default function ContactsTable({
     const metered = useAiMetered();
     function bulkResearch() {
         if (selectionCount === 0) return;
+        if (selectionCount > MAX_RESEARCH_BATCH) {
+            toast.error(`Research takes up to ${MAX_RESEARCH_BATCH.toLocaleString()} contacts at a time. Narrow the selection and try again.`);
+            return;
+        }
         confirm?.show(
             `Research ${selectionCount.toLocaleString()} ${selectionCount === 1 ? "contact" : "contacts"}? ${
                 metered
@@ -549,22 +556,26 @@ export default function ContactsTable({
     const [pauseTarget, setPauseTarget] = React.useState<{ id: string; name: string } | null>(null);
     const resumeLead = useResumeLead();
     const resumeOne = React.useCallback(
-        async (contactId: string) => {
+        (contactId: string, copied?: boolean) => {
             if (!current_campaign) return;
-            try {
-                await toast.promise(
-                    resumeLead.mutateAsync({ campaignId: current_campaign.id, contactId }),
-                    {
-                        loading: "Resuming lead…",
-                        success: "Lead resumed",
-                        error: (err: AppError) => buildError(err),
-                    },
-                );
-            } catch {
-                /* toast.promise already surfaced it */
-            }
+            const run = async () => {
+                try {
+                    await toast.promise(
+                        resumeLead.mutateAsync({ campaignId: current_campaign.id, contactId }),
+                        {
+                            loading: "Resuming lead…",
+                            success: "Lead resumed",
+                            error: (err: AppError) => buildError(err),
+                        },
+                    );
+                } catch {
+                    /* toast.promise already surfaced it */
+                }
+            };
+            if (copied) confirm.show(CC_RESUME_CONFIRM, run);
+            else void run();
         },
-        [current_campaign, resumeLead],
+        [current_campaign, resumeLead, confirm],
     );
 
     // Leads-view scope chips write straight into the search request, so the
@@ -1185,7 +1196,7 @@ function ContactsTableBody({
     // member without campaign write access, which takes the control off the
     // row rather than offering one that fails.
     onPauseLead?: (id: string, name: string) => void;
-    onResumeLead?: (id: string) => void;
+    onResumeLead?: (id: string, copied?: boolean) => void;
     emptyTitle: string;
     emptyBody: string;
     emptyCta: React.ReactNode;
@@ -1405,7 +1416,7 @@ function ContactsTableBody({
                                                 type="button"
                                                 aria-label="Resume lead"
                                                 title={`${holdSummary(lead.hold)}. Resume now`}
-                                                onClick={() => onResumeLead(c.id)}
+                                                onClick={() => onResumeLead(c.id, lead.hold?.source === "cc")}
                                                 className="size-6 rounded text-violet-500 hover:text-violet-700 hover:bg-violet-50 flex items-center justify-center transition-colors"
                                             >
                                                 <PlayIcon className="w-3 h-3" />

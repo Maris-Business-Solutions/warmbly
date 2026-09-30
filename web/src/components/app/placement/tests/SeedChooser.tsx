@@ -103,7 +103,6 @@ export default function SeedChooser({
                             )}
                         >
                             <Checkbox
-                                tone="slate"
                                 checked={!blocker && chosen.has(s.email_account_id)}
                                 disabled={!!blocker}
                                 onChange={() => toggle(s.email_account_id)}

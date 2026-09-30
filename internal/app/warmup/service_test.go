@@ -187,10 +187,11 @@ func TestEvaluateMetricsTamperingLadder(t *testing.T) {
 		{"nothing", 0, 0, models.WarmupHealthHealthy, 0},
 		{"one deletion warns", 1, 0, models.WarmupHealthWatch, 0},
 		{"two deletions pause", 2, 0, models.WarmupHealthQuarantined, warmupQuarantineDuration},
-		{"one spam flag pauses", 0, 1, models.WarmupHealthQuarantined, warmupQuarantineDuration},
+		{"one spam flag warns", 0, 1, models.WarmupHealthWatch, 0},
+		{"two spam flags pause", 0, 2, models.WarmupHealthQuarantined, warmupQuarantineDuration},
 		{"four deletions block", 4, 0, models.WarmupHealthBlocked, warmupBlockDuration},
-		{"two spam flags block", 0, 2, models.WarmupHealthBlocked, warmupBlockDuration},
-		{"a flag and two deletions block", 2, 1, models.WarmupHealthBlocked, warmupBlockDuration},
+		{"four spam flags block", 0, 4, models.WarmupHealthBlocked, warmupBlockDuration},
+		{"a flag and three deletions block", 3, 1, models.WarmupHealthBlocked, warmupBlockDuration},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -238,7 +239,7 @@ func TestEvaluateMetricsTamperingCombinesWithRates(t *testing.T) {
 		{"one deletion does not mask a placement throttle", models.WarmupHealthMetrics{DeletionsLast7d: 1, PlacementSample: 20, SpamPlacementRate: 50}, models.WarmupHealthThrottled, func() *time.Time { u := now.Add(warmupThrottleDuration); return &u }()},
 		{"a placement watch does not mask a tampering quarantine", models.WarmupHealthMetrics{DeletionsLast7d: 2, PlacementSample: 20, SpamPlacementRate: 10}, models.WarmupHealthQuarantined, &quarantine},
 		{"a complaint-rate quarantine does not mask a tampering block", models.WarmupHealthMetrics{DeletionsLast7d: 4, DeliveredLast30d: 100, ComplaintRate: complaintRateQuarantinePct}, models.WarmupHealthBlocked, &block},
-		{"a bounce-rate quarantine does not mask a tampering block", models.WarmupHealthMetrics{SpamFlagsLast7d: 2, DeliveredLast30d: 100, BounceRate: bounceRateQuarantinePct}, models.WarmupHealthBlocked, &block},
+		{"a bounce-rate quarantine does not mask a tampering block", models.WarmupHealthMetrics{SpamFlagsLast7d: 4, DeliveredLast30d: 100, BounceRate: bounceRateQuarantinePct}, models.WarmupHealthBlocked, &block},
 		{"a warmup-complaint quarantine does not mask a tampering block", models.WarmupHealthMetrics{DeletionsLast7d: 4, SentLast7d: 20, WarmupComplaintRate: warmupComplaintQuarantinePct}, models.WarmupHealthBlocked, &block},
 		{"a placement throttle does not mask a tampering quarantine", models.WarmupHealthMetrics{DeletionsLast7d: 2, PlacementSample: 20, SpamPlacementRate: spamPlacementThrottlePct}, models.WarmupHealthQuarantined, &quarantine},
 		{"heavy placement does not soften a tampering block", models.WarmupHealthMetrics{DeletionsLast7d: 4, PlacementSample: 20, SpamPlacementRate: 90}, models.WarmupHealthBlocked, &block},

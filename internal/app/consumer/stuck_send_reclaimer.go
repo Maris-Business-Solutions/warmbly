@@ -109,7 +109,7 @@ func (s *JobsService) reclaimStuckSend(ctx context.Context, d repository.StuckDi
 		return "", err
 	}
 	dispatchedAt := d.DispatchedAt
-	if err := s.failCampaignSend(ctx, task, reason, "SEND_OUTCOME_LOST", &dispatchedAt); err != nil {
+	if err := s.failCampaignSend(ctx, task, reason, "SEND_OUTCOME_LOST", "", &dispatchedAt); err != nil {
 		return "", err
 	}
 	return "reclaimed", nil

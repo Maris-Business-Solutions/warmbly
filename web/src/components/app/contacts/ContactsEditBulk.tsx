@@ -232,7 +232,7 @@ export default function ContactsEditBulk({
                                 </PickerRow>
                             </Section>
 
-                            <Section title="Categories" subtitle="Labels put on the contacts themselves.">
+                            <Section title="Labels" subtitle="Labels put on the contacts themselves.">
                                 <PickerRow direction="add" label="Add">
                                     <CategoryPicker value={categoriesAdd} onChange={setCategoriesAdd} />
                                 </PickerRow>
@@ -241,7 +241,7 @@ export default function ContactsEditBulk({
                                         value={categoriesRemove}
                                         onChange={setCategoriesRemove}
                                         allowCreate={false}
-                                        placeholder="Pick categories to strip…"
+                                        placeholder="Pick labels to strip…"
                                     />
                                 </PickerRow>
                             </Section>

@@ -44,7 +44,7 @@ interface Props {
 export default function CategoryPicker({
     value,
     onChange,
-    placeholder = "Click to add categories…",
+    placeholder = "Click to add labels…",
     className,
     allowCreate = true,
 }: Props) {
@@ -101,7 +101,7 @@ export default function CategoryPicker({
             onChange([...value, c.id]);
             setQuery("");
         } catch (err) {
-            toast.error(errorMessage(err, "Failed to create category"));
+            toast.error(errorMessage(err, "Failed to create label"));
         }
     }
 
@@ -160,7 +160,7 @@ export default function CategoryPicker({
                         <div className="max-h-56 overflow-y-auto py-1">
                             {filtered.length === 0 && !allowCreate && (
                                 <div className="px-3 py-3 text-[11.5px] text-slate-400 text-center">
-                                    No categories.
+                                    No labels.
                                 </div>
                             )}
                             {filtered.map((c) => {

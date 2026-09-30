@@ -191,6 +191,10 @@ func Run(
 		// folder, so the worker can drop the rows the server no longer reports.
 		internal.GET("/sync/folder-messages", h.InternalSyncFolderMessages)
 
+		// Gmail folder reconciliation: the rows the platform believes Gmail
+		// has in a folder, so the worker can report the ones that moved.
+		internal.GET("/sync/provider-folder-messages", h.InternalSyncProviderFolderMessages)
+
 		// Worker bootstrap config + heartbeat. Workers POST their identity
 		// on boot (worker_id + bind_ip + tag) and pull their runtime config
 		// instead of carrying it all in the install-time env file.
@@ -704,6 +708,14 @@ func Run(
 				campaigns.POST("/:id/leads/:contactId/pause", m.RequireOrganization(), m.RequireAccess(models.PermManageCampaigns, models.APIPermWriteCampaigns), h.PauseCampaignLead)
 				campaigns.POST("/:id/leads/:contactId/resume", m.RequireOrganization(), m.RequireAccess(models.PermManageCampaigns, models.APIPermWriteCampaigns), h.ResumeCampaignLead)
 
+				// Contacts copied on every email to one lead, so colleagues
+				// share one thread. The answers carry contact details, hence
+				// the contacts gate too. PUT replaces the list, so retries are
+				// safe.
+				campaigns.GET("/:id/leads/:contactId/cc", m.RequireOrganization(), m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.GetCampaignLeadCC)
+				campaigns.PUT("/:id/leads/:contactId/cc", m.RequireOrganization(), m.RequireAccess(models.PermManageCampaigns, models.APIPermWriteCampaigns), m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.SetCampaignLeadCC)
+				campaigns.GET("/:id/leads/:contactId/cc/suggestions", m.RequireOrganization(), m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.SuggestCampaignLeadCC)
+
 				sequences := campaigns.Group("/:id/steps")
 				{
 					sequences.GET("", m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), h.GetSequences)
@@ -1011,6 +1023,14 @@ func Run(
 				placementTests.GET("/tests/:id", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.GetPlacementTest)
 				placementTests.POST("/tests", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CreatePlacementTest)
 				placementTests.POST("/tests/:id/cancel", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CancelPlacementTest)
+				// Batches: one test run from many senders, started a few at a time.
+				placementTests.GET("/batches", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.ListPlacementBatches)
+				placementTests.GET("/batches/:id", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.GetPlacementBatch)
+				placementTests.GET("/batches/:id/senders", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.ListPlacementBatchSenders)
+				placementTests.POST("/batches/preview", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.PreviewPlacementBatch)
+				placementTests.POST("/batches", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CreatePlacementBatch)
+				placementTests.POST("/batches/:id/cancel", m.RequireAccess(models.PermSendCampaigns, models.APIPermSendCampaigns), h.CancelPlacementBatch)
+				placementTests.GET("/coverage", m.RateLimitMiddleware(models.RateLimitAnalytics), m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.GetPlacementCoverage)
 				placementTests.GET("/seeds", m.RequireAccess(models.PermViewCampaigns, models.APIPermReadEmails), h.ListPlacementSeeds)
 				placementTests.PUT("/seeds/:id", m.RequireAccess(models.PermManageEmails, models.APIPermWriteEmails), middleware.RequireAPIKeyEmailAccountParam("id"), h.SetPlacementSeed)
 			}

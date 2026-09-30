@@ -1,13 +1,13 @@
 ---
 title: Inbox placement tests
-description: Start placement tests, read where each copy landed, manage the workspace's seed inboxes, and schedule a campaign's placement monitor.
+description: Start placement tests and batches, read where each copy landed, manage the workspace's seed inboxes, and schedule a campaign's placement monitor.
 ---
 
 An inbox placement test sends a template or a campaign step from one of the workspace's mailboxes to a panel of seed inboxes and reports where each copy landed: the primary inbox, a Gmail tab, spam, or nowhere. The [placement tests guide](/guides/placement-tests/) explains how copies are rendered, sent and found, and how to read a result.
 
 Every route is scoped to the selected organization (API keys are always bound to one), and every id in a request is checked against it: a sending mailbox, campaign, step or contact from another workspace is a `404`. Errors follow the shared `{error, message, code, request_id}` envelope; the codes these routes add are listed under [placement test refusals](/api/error-codes/#placement-test-refusals).
 
-Changes are pushed live as a `PLACEMENT_TEST_UPDATED` event on the organization's [realtime](/api/realtime/) channel when a test starts, on every new verdict, and when it finishes or is cancelled.
+Changes are pushed live as a `PLACEMENT_TEST_UPDATED` event on the organization's [realtime](/api/realtime/) channel when a test starts, on every new verdict, and when it finishes or is cancelled. A batch sends the same event with `batch_id` instead of `test_id` when it starts, skips or defers a mailbox, and finishes.
 
 ## Get the overview
 
@@ -163,6 +163,8 @@ Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`
 | `cursor` | query | string | Opaque cursor from a previous `pagination.next_cursor`. One this API did not issue is a `400` |
 | `campaign_id` | query | uuid | Only tests of this campaign |
 
+Tests a [batch](#start-a-batch) started are left out; read them through their batch.
+
 ### Response
 
 ```json
@@ -202,7 +204,8 @@ Each test carries the fields shown under [start a test](#start-a-test); the exam
 | Field | Description |
 |-------|-------------|
 | `status` | `running`, `completed`, `cancelled` or `failed`. A test fails when no copy was delivered at all, with the reason in `error` |
-| `origin` | `manual` (started by a person or a key), `monitor` (a campaign's placement monitor), `admin` (an operator) or `remote` |
+| `origin` | `manual` (started by a person or a key), `monitor` (a campaign's placement monitor), `batch` (a [placement batch](#start-a-batch), named by `batch_id`), `admin` (an operator) or `remote` |
+| `batch_id` | The batch that started the test, `null` otherwise |
 | `pace` | `spaced` or `quick` |
 | `credits_charged` | Credits the test cost past the month's free tests, `0` for a free test |
 | `credits_refunded` | Credits a paid test that delivered no copy got back. Monthly credits whose allowance has reset since the charge are not returned, so this can be less than `credits_charged` |
@@ -271,6 +274,235 @@ Auth: **Scope** `SEND_CAMPAIGNS` · **Org permission** `send_campaigns`
 ### Response
 
 `200 OK` with the test, in the list shape. A test that has already finished answers `409` with `placement_not_running`.
+
+## Start a batch
+
+`POST /placement/batches`
+
+Runs the same test from many sending mailboxes. The request is validated as a whole (the copy, panel, tracking, allowance and credits agreed), the senders are resolved and written down, and the batch is answered `queued` right away. Nothing is sent by the request itself: the backend starts the senders a few at a time, each with its own test, checking each one's daily limit, connection and worker when its turn comes. See [testing a fleet with batches](/guides/placement-tests/#testing-a-fleet-with-batches). Supports `Idempotency-Key`.
+
+Auth: **Scope** `SEND_CAMPAIGNS` · **Org permission** `send_campaigns`
+
+### Request body
+
+The copy fields are the ones [start a test](#start-a-test) takes: `campaign_id`, `sequence_id`, `contact_id`, `subject`, `body_html`, `body_plain`, `tracking`, `panel`, `families` and `seed_ids`. `pace` is always `spaced` for a batch; `quick` is a `400`. The copy is resolved once, when the batch is created, so every sender tests the same email. Instead of `sender_account_id` a batch takes exactly one of:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sender_account_ids` | uuid[] | These mailboxes. Duplicates are dropped; one that is not in the workspace, or is a seed inbox, is a `404`, and one an API key with a mailbox allowlist may not use is a `403`. A disconnected one is kept and deferred or skipped when its turn comes |
+| `sender_scope` | object | Mailboxes resolved on the server, so a fleet of thousands needs no id list |
+| `sender_scope.type` | string | `campaign` (every mailbox `campaign_id`'s scheduler sends from) or `workspace` (every mailbox of the workspace) |
+| `sender_scope.campaign_id` | uuid | Required with `type` `campaign` |
+| `sender_scope.providers` | string[] | Only mailboxes hosted by these families, such as `google_workspace`, `gmail`, `microsoft365`, `outlook` or `other` |
+| `sender_scope.domains` | string[] | Only mailboxes sending from these domains |
+| `sender_scope.tag_ids` | uuid[] | Only mailboxes carrying one of these tags |
+| `sender_scope.include_inactive` | boolean | Keep disconnected mailboxes. Default `false` |
+| `sender_scope.untested_days` | integer | Only mailboxes with no finished placement test in this many days, `1` to `365` |
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sample` | object | no | Which of the resolved mailboxes to keep. Default `{"mode": "all"}` |
+| `sample.mode` | string | no | `all`, `random` (`count` mailboxes), `percent` (`percent` of them, rounded up), `per_domain` or `per_provider` (up to `count` from each) |
+| `sample.stratify` | string | no | With `random` or `percent` only: `provider` or `domain` splits the sample in proportion to each group's share |
+| `on_unavailable` | string | no | `defer` (default: retry a mailbox that cannot send when its turn comes, for up to seven days) or `skip` |
+| `max_credits` | integer | no | The most credits you agree to pay across the whole batch for tests past the month's free ones. Needed only when the batch needs more tests than are free: the request is refused with `placement_quota_exceeded`, naming the most it can cost, when it is lower. The batch never spends more |
+
+```json
+{
+  "sender_scope": { "type": "campaign", "campaign_id": "b1f2c3d4-0000-0000-0000-000000000001", "providers": ["google_workspace"] },
+  "sample": { "mode": "percent", "percent": 10, "stratify": "domain" },
+  "campaign_id": "b1f2c3d4-0000-0000-0000-000000000001",
+  "sequence_id": "c7d8e9f0-0000-0000-0000-000000000002",
+  "tracking": "compare"
+}
+```
+
+### Response
+
+`201 Created` with the batch.
+
+```json
+{
+  "data": {
+    "id": "a9b8c7d6-0000-0000-0000-000000000030",
+    "created_by": "9c2a0000-0000-0000-0000-000000000001",
+    "campaign_id": "b1f2c3d4-0000-0000-0000-000000000001",
+    "sequence_id": "c7d8e9f0-0000-0000-0000-000000000002",
+    "contact_id": "e5f6a7b8-0000-0000-0000-000000000004",
+    "subject": "Quick question about outbound at Acme",
+    "tracking": "compare",
+    "panel": "instance",
+    "pace": "spaced",
+    "families": [],
+    "seed_ids": [],
+    "on_unavailable": "defer",
+    "selection": {
+      "sender_scope": { "type": "campaign", "campaign_id": "b1f2c3d4-0000-0000-0000-000000000001", "providers": ["google_workspace"] },
+      "sample": { "mode": "percent", "percent": 10, "stratify": "domain" },
+      "matched": 1126
+    },
+    "sender_count": 113,
+    "max_credits": 0,
+    "credits_spent": 0,
+    "status": "queued",
+    "retry_until": "2026-10-02T14:00:00Z",
+    "created_at": "2026-09-25T14:00:00Z",
+    "started_at": null,
+    "finished_at": null,
+    "progress": { "total": 113, "queued": 113, "deferred": 0, "running": 0, "completed": 0, "skipped": 0, "failed": 0, "cancelled": 0 },
+    "summary": { "total": 0, "pending": 0, "inbox": 0, "promotions": 0, "other": 0, "spam": 0, "missing": 0, "failed": 0, "cancelled": 0, "delivered": 0, "inbox_rate": null, "tabs_rate": null, "spam_rate": null, "missing_rate": null }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `status` | `queued` until the first mailbox starts, then `running`; at the end `completed`, `completed_with_warnings` (some mailboxes were skipped or failed), `failed` (none finished a test, with `error`) or `cancelled` |
+| `selection` | How the mailboxes were chosen, and how many the scope `matched` before sampling. The mailboxes themselves are the snapshot under [list a batch's senders](#list-a-batchs-senders) |
+| `progress` | The batch's mailboxes by status. `running` is a mailbox whose test has not finished yet |
+| `summary` | Where the batch's copies landed so far, over the copy the campaign really sends: the tracked half of a tracking comparison |
+| `retry_until` | Deferred mailboxes are retried until then, then skipped |
+
+## Preview a batch
+
+`POST /placement/batches/preview`
+
+Takes the body of [start a batch](#start-a-batch) and returns what it would come to, without writing anything or sending anything. The copy fields may be left out to count the mailboxes alone; once any is given, the copy is checked as on start. A random sample is drawn again when the batch starts, so the counts are the same but the mailboxes can differ.
+
+Auth: **Scope** `SEND_CAMPAIGNS` · **Org permission** `send_campaigns`
+
+### Response
+
+```json
+{
+  "data": {
+    "matched": 1347, "selected": 135, "inactive": 2, "domains": 41,
+    "providers": [
+      { "key": "google_workspace", "label": "Google Workspace", "senders": 80 },
+      { "key": "other", "label": "Other provider", "senders": 40 },
+      { "key": "microsoft365", "label": "Microsoft 365", "senders": 15 }
+    ],
+    "variants": 2, "tests": 270, "seeds_per_test": 20, "max_sends": 5400,
+    "metered": true, "free_tests": 40, "paid_tests": 230, "credits": 5750,
+    "usage": { "used": 0, "limit": 40, "credits_per_test": 25, "credit_balance": 9000, "period_start": "2026-09-01T00:00:00Z", "period_end": "2026-10-01T00:00:00Z" },
+    "senders_max": 10000, "concurrency": 20
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `variants` | `2` for a tracking comparison, which doubles `tests` and `max_sends` |
+| `max_sends` | The most copies the batch sends: `tests` times `seeds_per_test`. Each mailbox's daily limit can only make it fewer |
+| `free_tests`, `paid_tests`, `credits` | How `tests` splits against the month's free tests, and the most the paid ones cost. All `0` on an unmetered panel |
+| `concurrency` | How many of the workspace's batch mailboxes send at once |
+
+## List batches
+
+`GET /placement/batches`
+
+Returns the workspace's batches, newest first, in the shape above. Takes `limit` (`1` to `100`, default `25`) and an opaque `cursor`, and returns `data` plus `pagination`.
+
+Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`
+
+## Get a batch
+
+`GET /placement/batches/:id`
+
+Returns one batch with its placement grouped across the fleet.
+
+Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`
+
+### Response
+
+The batch's fields as above, plus:
+
+| Field | Description |
+|-------|-------------|
+| `untracked` | On a tracking comparison only: the untracked half's counts. `summary` is the tracked half |
+| `domains` | Per sending domain, worst inbox rate first: `key` (the domain), `senders` in the batch, `tested` (senders that finished a test) and `counts` |
+| `providers` | The same per sending provider, `key` a host family and `label` its name |
+| `recipients` | Counts per recipient provider family, like a test's `families` |
+| `matrix` | Per sending domain, in the order of `domains`, its counts per recipient provider in the order of `recipients` |
+| `content` | The content score of the batch's copy |
+
+The groups read the same copy as `summary`. They are not broken down by worker: a worker signs in to the mailbox provider, which delivers from its own servers, so a recipient's filter never sees it.
+
+## List a batch's senders
+
+`GET /placement/batches/:id/senders`
+
+Returns the batch's mailboxes with where each one's copies landed.
+
+Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`
+
+| Parameter | In | Type | Description |
+|-----------|----|------|-------------|
+| `limit` | query | integer | `1` to `100`, default `25` |
+| `cursor` | query | string | Opaque cursor from a previous `pagination.next_cursor` |
+| `sort` | query | string | `worst` (default: lowest inbox rate first, untested last), `best`, `email` or `status` |
+| `status` | query | string | Only mailboxes in this status: `queued`, `deferred`, `running`, `completed`, `skipped`, `failed` or `cancelled` |
+| `q` | query | string | Only addresses containing this text |
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "c0c1c2c3-0000-0000-0000-000000000040",
+      "batch_id": "a9b8c7d6-0000-0000-0000-000000000030",
+      "email_account_id": "a0a1a2a3-0000-0000-0000-000000000003",
+      "sender_email": "john@domain2.com",
+      "sender_domain": "domain2.com",
+      "sender_family": "google_workspace",
+      "sender_family_label": "Google Workspace",
+      "status": "completed",
+      "attempts": 1,
+      "next_attempt_at": "2026-09-25T14:00:00Z",
+      "started_at": "2026-09-25T14:02:00Z",
+      "finished_at": "2026-09-25T16:40:00Z",
+      "summary": { "total": 20, "pending": 0, "inbox": 8, "promotions": 0, "other": 0, "spam": 12, "missing": 0, "failed": 0, "cancelled": 0, "delivered": 20, "inbox_rate": 0.4, "tabs_rate": 0, "spam_rate": 0.6, "missing_rate": 0 },
+      "test_ids": ["d1e2f3a4-0000-0000-0000-000000000011", "d1e2f3a4-0000-0000-0000-000000000012"]
+    }
+  ],
+  "pagination": { "total": 113, "has_more": true, "next_cursor": "MjU" }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `status` | `queued`, `deferred` (waiting to retry at `next_attempt_at`), `running`, `completed`, `skipped`, `failed` or `cancelled` |
+| `reason`, `detail` | Why a mailbox was deferred, skipped or failed: a code from [placement test refusals](/api/error-codes/#placement-test-refusals) and its sentence |
+| `test_ids` | The mailbox's tests, readable with [get a test](#get-a-test): the untracked half first on a comparison |
+
+## Cancel a batch
+
+`POST /placement/batches/:id/cancel`
+
+Stops the batch: no mailbox starts again, copies not sent yet are cancelled, and copies already sent keep being classified.
+
+Auth: **Scope** `SEND_CAMPAIGNS` · **Org permission** `send_campaigns`
+
+### Response
+
+`200 OK` with the batch. A batch that has already finished answers `409` with `placement_batch_not_running`.
+
+## Get fleet coverage
+
+`GET /placement/coverage`
+
+How many of the workspace's connected sending mailboxes finished a placement test recently.
+
+Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`
+
+### Response
+
+```json
+{
+  "data": { "mailboxes": 1347, "tested_7d": 312, "tested_30d": 947, "never_tested": 126 }
+}
+```
 
 ## List seed inboxes
 

@@ -238,7 +238,7 @@ func setFormCategories(ctx context.Context, tx pgx.Tx, orgID, formID uuid.UUID, 
 		return nil
 	}
 	if len(categoryIDs) > models.FormMaxCategories {
-		return errx.New(errx.BadRequest, fmt.Sprintf("at most %d categories per form", models.FormMaxCategories))
+		return errx.New(errx.BadRequest, fmt.Sprintf("at most %d labels per form", models.FormMaxCategories))
 	}
 	_, err := tx.Exec(ctx, `
 		INSERT INTO form_categories (form_id, category_id)

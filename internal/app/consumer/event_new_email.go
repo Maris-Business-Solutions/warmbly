@@ -45,6 +45,7 @@ func (s *JobsService) ingestNewEmail(ctx context.Context, e *models.JobEventNewE
 		log.Warn().Msg("NEW_EMAIL event without a message body, dropping")
 		return nil
 	}
+	e.Message.ValidText()
 	warmupToken := warmupTokenFromMessage(e.Message)
 	if warmupToken != "" {
 		handled, err := s.handleWarmupEmail(ctx, e, warmupToken)
@@ -446,18 +447,19 @@ func firstSenderAddress(from []string) string {
 func (s *JobsService) acceptWarmupEmail(ctx context.Context, e *models.JobEventNewEmail, token *models.WarmupToken) {
 	s.WarmupRepo.ConsumeWarmupToken(ctx, token.Token)
 
+	landed := models.ClassifyWarmupLanding(e.Message.Folder, e.Message.Flags)
+
 	// Record the receipt so a later deletion or spam-flag of THIS message can be
 	// attributed back to warmup and to the sender. Verified warmup mail is not
 	// stored in the unibox, so this is the only record that the message was a
 	// warmup email.
 	if e.Message != nil {
-		if err := s.WarmupRepo.RecordWarmupReceived(ctx, e.Message.EmailID, e.Message.ID, e.Message.MessageID, token.SenderAccountID); err != nil {
+		if err := s.WarmupRepo.RecordWarmupReceived(ctx, e.Message.EmailID, e.Message.ID, e.Message.MessageID, token.SenderAccountID, landed == models.WarmupLandedSpam); err != nil {
 			log.Warn().Err(err).Str("email_id", e.Message.EmailID.String()).Msg("Failed to record warmup receipt")
 		}
 	}
 
 	recipient := s.recipientAccount(ctx, e.Message.EmailID)
-	landed := models.ClassifyWarmupLanding(e.Message.Folder, e.Message.Flags)
 
 	// If the warmup mail arrived in a Junk/Spam state, record a
 	// spam_placement event against the sender. This is distinct from a

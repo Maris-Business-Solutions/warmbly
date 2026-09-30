@@ -69,8 +69,12 @@ type PlacementFinished struct {
 type PlacementTestFilter struct {
 	OrganizationID *uuid.UUID
 	CampaignID     *uuid.UUID
-	Limit          int
-	Offset         int
+	// BatchID lists one batch's tests. Without it a workspace listing leaves
+	// batch tests out, so a batch of thousands does not bury the rest.
+	BatchID      *uuid.UUID
+	IncludeBatch bool
+	Limit        int
+	Offset       int
 }
 
 // PlacementBundle is one test with its probes and their tasks.
@@ -217,14 +221,14 @@ func NewPlacementRepository(db *db.DB) PlacementRepository {
 const placementTestCols = `id, organization_id, sender_account_id, sender_email, created_by, campaign_id,
 	sequence_id, contact_id, monitor_id, subject, body_plain, body_html, open_tracking, link_tracking,
 	compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged,
-	credits_refunded, credits_settled_at, created_at, finished_at`
+	credits_refunded, credits_settled_at, created_at, finished_at, batch_id, batch_sender_id`
 
 func scanPlacementTest(row pgx.Row) (*models.PlacementTest, error) {
 	var t models.PlacementTest
 	err := row.Scan(&t.ID, &t.OrganizationID, &t.SenderAccountID, &t.SenderEmail, &t.CreatedBy, &t.CampaignID,
 		&t.SequenceID, &t.ContactID, &t.MonitorID, &t.Subject, &t.BodyPlain, &t.BodyHTML, &t.OpenTracking, &t.LinkTracking,
 		&t.CompareGroupID, &t.Origin, &t.Panel, &t.Status, &t.Error, &t.RemoteInstanceID, &t.RemoteTestID, &t.Pace, &t.CreditsCharged,
-		&t.CreditsRefunded, &t.CreditsSettledAt, &t.CreatedAt, &t.FinishedAt)
+		&t.CreditsRefunded, &t.CreditsSettledAt, &t.CreatedAt, &t.FinishedAt, &t.BatchID, &t.BatchSenderID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -264,12 +268,14 @@ func (r *placementRepository) CreateTests(ctx context.Context, bundles []Placeme
 		err = tx.QueryRow(ctx, `
 			INSERT INTO placement_tests (id, organization_id, sender_account_id, sender_email, created_by, campaign_id,
 				sequence_id, contact_id, monitor_id, subject, body_plain, body_html, open_tracking, link_tracking,
-				compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW())
+				compare_group_id, origin, panel, status, error, remote_instance_id, remote_test_id, pace, credits_charged,
+				batch_id, batch_sender_id, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW())
 			RETURNING created_at
 		`, t.ID, t.OrganizationID, t.SenderAccountID, t.SenderEmail, t.CreatedBy, t.CampaignID,
 			t.SequenceID, t.ContactID, t.MonitorID, t.Subject, t.BodyPlain, t.BodyHTML, t.OpenTracking, t.LinkTracking,
-			t.CompareGroupID, t.Origin, t.Panel, t.Status, t.Error, t.RemoteInstanceID, t.RemoteTestID, pace, t.CreditsCharged).Scan(&t.CreatedAt)
+			t.CompareGroupID, t.Origin, t.Panel, t.Status, t.Error, t.RemoteInstanceID, t.RemoteTestID, pace, t.CreditsCharged,
+			t.BatchID, t.BatchSenderID).Scan(&t.CreatedAt)
 		if err != nil {
 			return err
 		}
@@ -326,10 +332,12 @@ func (r *placementRepository) ListTests(ctx context.Context, f PlacementTestFilt
 	if f.Limit <= 0 {
 		f.Limit = 25
 	}
-	where := `($1::uuid IS NULL OR organization_id = $1) AND ($2::uuid IS NULL OR campaign_id = $2)`
+	where := `($1::uuid IS NULL OR organization_id = $1) AND ($2::uuid IS NULL OR campaign_id = $2)
+		AND (CASE WHEN $3::uuid IS NOT NULL THEN batch_id = $3 ELSE $4 OR batch_id IS NULL END)`
 
 	var total int
-	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM placement_tests WHERE `+where, f.OrganizationID, f.CampaignID).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM placement_tests WHERE `+where,
+		f.OrganizationID, f.CampaignID, f.BatchID, f.IncludeBatch).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.db.Query(ctx, `
@@ -337,8 +345,8 @@ func (r *placementRepository) ListTests(ctx context.Context, f PlacementTestFilt
 		FROM placement_tests
 		WHERE `+where+`
 		ORDER BY created_at DESC, id DESC
-		LIMIT $3 OFFSET $4
-	`, f.OrganizationID, f.CampaignID, f.Limit, f.Offset)
+		LIMIT $5 OFFSET $6
+	`, f.OrganizationID, f.CampaignID, f.BatchID, f.IncludeBatch, f.Limit, f.Offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -749,7 +757,7 @@ func (r *placementRepository) CountMeteredTests(ctx context.Context, orgID uuid.
 		SELECT COUNT(*) FROM placement_tests pt
 		WHERE pt.organization_id = $1
 		  AND pt.panel IN ('instance', 'cloud')
-		  AND pt.origin IN ('manual', 'monitor', 'remote')
+		  AND pt.origin IN ('manual', 'monitor', 'remote', 'batch')
 		  AND pt.credits_charged = 0
 		  AND pt.created_at >= $2
 		  AND (pt.finished_at IS NULL OR EXISTS (

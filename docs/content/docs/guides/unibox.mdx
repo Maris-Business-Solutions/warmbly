@@ -1,6 +1,6 @@
 ---
 title: "Unibox"
-description: "A unified inbox across all connected mailboxes, with categories and threading."
+description: "A unified inbox across all connected mailboxes, with labels and threading."
 ---
 
 One inbox for every connected mailbox. Read, sort, and reply from a single screen instead of logging into each account. Three columns: a **scope rail** for picking what to look at, a **conversation list**, and a **thread view** where you read and reply.
@@ -16,6 +16,7 @@ The columns are yours to size. Every choice here is remembered in the browser yo
 | The divider between the list and the thread | Drag it to widen the conversation list so long subjects fit, or to give the space back to the thread. It also takes the keyboard once it has focus: arrow keys nudge it (hold `Shift` for a bigger step), `Home` and `End` go to the narrowest and widest the window allows, `Enter` (or a double-click) puts it back to the default. |
 | **Collapse** at the bottom of the left navigation, or `b` | Shrinks Warmbly's own navigation to an icon rail and gives the width to the page. Row labels become tooltips; unread mail keeps its count badge and an open [Advisor](/guides/advisor/) finding shows as a coloured dot on the icon. The same control expands it again. |
 | The section headers in the left navigation (Email, CRM, Resources) | Click one to fold its section away, and again to bring it back. Like the other layout choices, it is remembered in this browser. A folded section still shows the page you are on, and a coloured dot beside its header flags an open [Advisor](/guides/advisor/) finding on one of the pages it hides. The icon rail follows the same choice. |
+| The section headers in the scope rail (Mail, Views, Mailboxes, Labels, Tags) | Click one to fold its section away, and again to bring it back. A folded section still shows the scope you are looking at, and a small blue dot beside its header means a row it folds away has a highlighted count (rows you hid never raise it). The **…** beside a header (or a right-click on it) folds every other section, unfolds them all, or moves the section up or down the rail. The pencil on **Mail** and **Views** puts the rows in edit mode: untick a row to hide it, drag it by its handle (or focus the handle and use the arrow keys) to reorder, and press **Done**, `Escape`, or click anywhere else. **Reset** puts that section back the way it shipped. Each row also has its own **…** menu and right-click menu to move it, hide it (with an undo), or mark a folder read, and `Alt` with an arrow key moves the focused row. A small "2 hidden" beside the pencil tells you rows are off the rail. Hiding a row only takes it off the rail, so its shortcuts and links keep working, and the scope you are in always stays visible. All of it is remembered in this browser. |
 | The contact button in the thread header | Shows or hides the contact panel on the right. It starts closed when no preference is saved. Opening or closing it sticks across conversations, and existing preferences are preserved. |
 
 How wide the list can get depends on the window: the thread always keeps enough room to read a message, and the contact panel counts toward that when it is open, so the widest setting is narrower on a laptop than on a large monitor.
@@ -58,7 +59,7 @@ The rail is two short groups and then your mailboxes. The first group is where y
 
 Opening **Inbox** from the main navigation starts in the Inbox folder. Sent messages live in **Sent**; choose **All mail** when you want inbound and outbound messages together. An Inbox conversation still shows its complete history, including your replies, when you open it.
 
-Each message starts in the folder the provider has it in: IMAP special-use folder attributes, Gmail labels, and Outlook well-known folders all map to the same six. Moves at the provider (junking a message, clearing it out of spam) follow on the next sync. Drafts are also reconciled: a draft the mailbox no longer holds is removed here too, so the fresh copy Gmail saves on every autosave does not leave the previous ones behind. You can also file a conversation yourself, which moves it here without moving it at the provider; see [filing a conversation](#filing-a-conversation). The active row is highlighted grey, unread counts sit on the right in blue, and hovering a folder reveals a three-dot menu with **Mark all as read**.
+Each message starts in the folder the provider has it in: IMAP special-use folder attributes, Gmail labels, and Outlook well-known folders all map to the same six. Moves at the provider (archiving, deleting, junking a message, clearing it out of spam, moving it back to the inbox) follow on the next sync. In Gmail each of those is a label change, and Warmbly files the message by the labels it ends up with, so a conversation archived in Gmail leaves Inbox here too. Gmail mailboxes are also rechecked against Gmail every few hours, which catches a move the live sync missed. Drafts are also reconciled: a draft the mailbox no longer holds is removed here too, so the fresh copy Gmail saves on every autosave does not leave the previous ones behind. You can also file a conversation yourself, which moves it here without moving it at the provider; see [filing a conversation](#filing-a-conversation). The active row is highlighted grey, unread counts sit on the right in blue, and hovering a folder reveals a three-dot menu with **Mark all as read**.
 
 Spam and Trash stay out of every other view, and so does Archive: filing a conversation is how you take it out of the way, so it leaves Unread, Awaiting reply, every mailbox, label and tag view, and the unread badge. **All mail** and the **Archive** folder are the two places it stays, which is where you go to find it again.
 
@@ -108,6 +109,8 @@ Each row is a conversation, not a message, with a count next to the sender when 
 
 The list loads more conversations as you reach the end of it, and it keeps its place: opening a conversation, or leaving the inbox and coming back, returns you to the row you were on rather than the top of the list.
 
+Picking another folder or view closes the open conversation, since it may not be in the new list. To close it yourself, use the **X** at the right of the conversation header on a wide screen, the back link above it on a phone (it names the list you came from), or `Escape`.
+
 Threading applies on both sides. A reply carries an `In-Reply-To` header naming the last message in the conversation, which is what nests it for the recipient. From a Gmail mailbox that holds the conversation it also carries Gmail's thread id, which nests it in your own mailbox. The recipient's mail client only ever sees the header: a thread id means nothing outside the mailbox that issued it, so a reply sent [from another mailbox](#choosing-the-sending-mailbox) goes without one.
 
 <Callout type="info" title="Keyboard navigation">
@@ -130,14 +133,14 @@ Recognized quoted history collapses behind **Show quoted text**. Click it to rea
 
 Every open message has a details toggle on its recipient line, the `to` under the sender's name, and the sender's name and address open the same panel. It shows the message envelope in place: every From, Reply-To, To, Cc and Bcc address, when it was sent and, if that differs, when the mailbox received it, both in your own time zone, the mailbox and folder it lives in, its size, and the Message-ID and In-Reply-To headers. Click any address or identifier to copy it. The info icon next to Reply and Forward opens the same panel, including on a message that is still collapsed.
 
-## Categories and labels
+## Labels
 
-Categories are the workspace's conversation labels, shared with the rest of Warmbly, so `Interested` means the same thing on a contact as it does here. They are shared with the rest of the team too: a category anyone creates is available to everyone, and a conversation one member labels shows that label to the next. Label with the tag button in the conversation header or `c`: search existing categories, tick what applies, or type a name and **Create**. A conversation can carry several.
+Labels are one workspace list, used on [contacts](/guides/contacts-crm/#labels), on conversations here and by [forms](/guides/forms/), so `Interested` means the same thing on a contact as it does on a conversation. The list is shared with the rest of the team too: a label anyone creates is available to everyone, and a conversation one member labels shows that label to the next. Label with the tag button in the conversation header or `c`: search existing labels, tick what applies, or type a name and **Create**. A conversation can carry several.
 
-Labeled conversations show colored chips on the row and in the header, and each category appears in the rail with its own count for one-click filtering. Labels you apply are never touched by the system. [Automatic inbox tagging](/guides/inbox-tagging/) adds its own labels alongside them, additively, and never removes one a person applied.
+Labeled conversations show colored chips on the row and in the header, and each label appears in the rail with its own count for one-click filtering. Labels you apply are never touched by the system. [Automatic inbox tagging](/guides/inbox-tagging/) adds its own labels alongside them, additively, and never removes one a person applied.
 
-<Callout type="info" title="Categories vs tags">
-Categories label conversations. Tags label the mailboxes themselves (grouping accounts by client or domain). Both filter from the rail, but they describe different things.
+<Callout type="info" title="Labels vs mailbox tags">
+Labels mark conversations and contacts. Mailbox tags mark the mailboxes themselves (grouping accounts by client or domain). Both filter from the rail, but they describe different things.
 </Callout>
 
 ## Read state
@@ -173,7 +176,7 @@ Each row has a tick box in its left gutter, in place of the unread dot. Hover a 
 With anything ticked, a bar appears along the bottom of the screen with the count and the actions that apply to all of them: **Mark read**, **Mark unread**, **Snooze**, **Archive** (or **Move to inbox**) and **Delete**. Each one is a single request, so filing a screenful is as quick as filing one. **Clear** drops the selection, and so does `Escape`; changing view drops it too, since the rows it applied to are no longer the rows on screen.
 
 <Callout type="info" title="Filing here does not move the message at the provider">
-Unlike read state, Archive and Delete are Warmbly's own filing. The message keeps its place in Gmail, Outlook, or whatever mail client the mailbox belongs to, and deleting a conversation here never deletes mail there. The next sync will not undo your filing either: Warmbly records where the provider has each message separately from where you filed it, and follows the provider only when the provider itself moves the message. So junking a message in Gmail still reaches Warmbly, and an ordinary sync pass does not.
+Unlike read state, Archive and Delete are Warmbly's own filing. The message keeps its place in Gmail, Outlook, or whatever mail client the mailbox belongs to, and deleting a conversation here never deletes mail there. The next sync will not undo your filing either: Warmbly records where the provider has each message separately from where you filed it, and follows the provider only when the provider itself moves the message. So archiving or junking a message in Gmail still reaches Warmbly, and an ordinary sync pass does not.
 </Callout>
 
 ## Replying
@@ -194,7 +197,7 @@ The composer shows the message it will forward under your note; expand **Forward
 
 ### Pausing their follow-ups
 
-The contact panel lists every campaign the sender is a lead of, with their status in it and what happens next: the next step and when, the hold and when it lifts, or why the flow ended. A campaign with a step still to send has **Pause**, which opens the same dialog as the campaign's Leads list (until a date, or until you resume them, with an optional note). A held lead has **Resume** instead. Neither appears on a lead whose flow has ended, and both need the **Manage campaigns** permission. See [Out of office and pausing one lead](/guides/campaigns/#out-of-office-and-pausing-one-lead).
+The contact panel lists every campaign the sender is a lead of, with their status in it and what happens next: the next step and when, the hold and when it lifts, or why the flow ended. A campaign with a step still to send has **Pause**, which opens the same dialog as the campaign's Leads list (until a date, or until you resume them, with an optional note). A held lead has **Resume** instead; for a contact held because they are [copied on another lead's emails](/guides/campaigns/#copying-colleagues-on-one-lead) it asks first, since it starts a second thread to them. Neither appears on a lead whose flow has ended, and both need the **Manage campaigns** permission. See [Out of office and pausing one lead](/guides/campaigns/#out-of-office-and-pausing-one-lead).
 
 The reply composer offers the same thing for the moment you answer. When the recipient still has a follow-up queued, **Pause follow-ups** next to **Schedule** holds them for 3 days, 1 week, 2 weeks, 30 days or until you resume them. When they are a lead of more than one such campaign, the menu lists each one, all ticked, and you untick the ones to leave running (at least one stays ticked). Nothing is paused until the reply is accepted, and a send that fails pauses nothing. A scheduled reply pauses the follow-ups straight away and counts the length from when the reply goes out, so a follow-up cannot overtake it. Undoing or cancelling the reply does not lift the pause, so use **Resume** in the contact panel if you change your mind. A lead already on hold, for example after an away message arrived while you were writing, keeps that hold.
 

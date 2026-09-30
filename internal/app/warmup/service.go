@@ -59,10 +59,10 @@ const (
 
 	minComplaintSample = 100
 
-	// Tampering: harm done to warmup mail the mailbox received, as weighted
-	// strikes over the seven-day window (a deletion is one, a spam flag two).
-	// One deletion is housekeeping until proven otherwise, so it only warns;
-	// the ladder climbs from there and every step lapses on its own.
+	// Tampering: harm done to warmup mail the mailbox received, one strike per
+	// deletion or spam move over the seven-day window. One is housekeeping or a
+	// provider's filter until proven otherwise, so it only warns; the ladder
+	// climbs from there and every step lapses on its own.
 	tamperingWatchStrikes      = 1
 	tamperingQuarantineStrikes = 2
 	tamperingBlockStrikes      = 4
@@ -446,7 +446,7 @@ func tamperingVerb(kind string) string {
 	case "deletion":
 		return "deleted"
 	case "spam_flag":
-		return "marked as spam"
+		return "moved to spam"
 	default:
 		return "tampered with"
 	}
@@ -464,7 +464,7 @@ func tamperingKind(m *models.WarmupHealthMetrics) string {
 func tamperingSummary(m *models.WarmupHealthMetrics) string {
 	parts := []string{}
 	if m.SpamFlagsLast7d > 0 {
-		parts = append(parts, fmt.Sprintf("%d warmup %s marked as spam", m.SpamFlagsLast7d, plural(m.SpamFlagsLast7d, "email", "emails")))
+		parts = append(parts, fmt.Sprintf("%d warmup %s moved to spam", m.SpamFlagsLast7d, plural(m.SpamFlagsLast7d, "email", "emails")))
 	}
 	if m.DeletionsLast7d > 0 {
 		parts = append(parts, fmt.Sprintf("%d warmup %s deleted", m.DeletionsLast7d, plural(m.DeletionsLast7d, "email", "emails")))
@@ -769,9 +769,9 @@ func moreSevere(a, b evaluationDecision) evaluationDecision {
 	return a
 }
 
-// evaluateTampering needs no sample: each strike is one deliberate act on mail
-// the mailbox verifiably received. A single deletion only warns, because the
-// most likely cause is someone tidying the folder by hand. A deletion is only
+// evaluateTampering needs no sample: each strike is one act on mail the mailbox
+// verifiably received. A single one only warns, because the likeliest cause is
+// someone tidying the folder or a provider filing it as spam. A deletion is only
 // recorded inside config.WarmupDeletionStrikeHours of arrival, and only once a
 // search of the mailbox found the message in the trash or gone.
 func evaluateTampering(metrics *models.WarmupHealthMetrics, now time.Time) evaluationDecision {

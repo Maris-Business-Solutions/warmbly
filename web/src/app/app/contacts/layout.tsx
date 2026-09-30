@@ -1,5 +1,5 @@
 // Contacts area: one tab strip over the contact list, saved segments and
-// categories, since all three are views of the same contact database.
+// labels, since all three are views of the same contact database.
 
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -11,7 +11,7 @@ import { usePermission } from "@/hooks/usePermission";
 const TABS = [
     { label: "All contacts", path: "", Icon: UsersIcon },
     { label: "Segments", path: "/segments", Icon: LayersIcon },
-    { label: "Categories", path: "/categories", Icon: TagIcon },
+    { label: "Labels", path: "/labels", Icon: TagIcon },
     { label: "Suppression list", path: "/suppressions", Icon: BanIcon },
 ] as const;
 

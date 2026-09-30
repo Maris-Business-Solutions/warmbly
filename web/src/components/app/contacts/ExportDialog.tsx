@@ -71,7 +71,7 @@ const STANDARD_FIELDS: { id: string; label: string; preset: "basic" | "full" | "
     { id: "company",      label: "Company",       preset: "basic" },
     { id: "phone",        label: "Phone",         preset: "basic" },
     { id: "subscribed",   label: "Subscribed",    preset: "basic" },
-    { id: "categories",   label: "Categories",    preset: "full" },
+    { id: "categories",   label: "Labels",        preset: "full" },
     { id: "campaigns",    label: "Campaigns",     preset: "full" },
     { id: "created_at",   label: "Created at",    preset: "full" },
     { id: "updated_at",   label: "Updated at",    preset: "full" },
@@ -89,7 +89,7 @@ const CAMPAIGN_FIELDS: { id: string; label: string }[] = [
 
 const PRESETS: { id: "basic" | "full" | "campaign-ready" | "custom"; label: string; hint: string }[] = [
     { id: "basic",          label: "Basic",          hint: "Core contact details — what most CRMs expect." },
-    { id: "full",           label: "Full",           hint: "Every standard column including categories + campaigns." },
+    { id: "full",           label: "Full",           hint: "Every standard column including labels + campaigns." },
     { id: "campaign-ready", label: "Campaign-ready", hint: "Email, names and company, plus lead status and engagement inside a campaign." },
     { id: "custom",         label: "Custom",         hint: "Pick exactly what you need." },
 ];

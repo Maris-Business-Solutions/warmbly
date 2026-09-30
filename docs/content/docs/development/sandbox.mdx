@@ -44,7 +44,7 @@ Two other entry points:
 - a CRM pipeline with five stages, five deals across them, tasks, contact notes, and per-contact activity timelines
 - the analytics tables behind the deliverability and reporting views: deliverability events (opens, clicks, replies, bounces, complaints, unsubscribes), reply-intent classifications, a suppression list, and resolved and open mailbox errors
 - an org audit trail (campaign created and started, mailbox connected, member invited, deal created, key created) so the audit log has depth
-- reply templates, notifications (some unread), and labels everywhere they appear: folders (Outbound, Nurture), mailbox tags (VIP, Cold, Agency), and categories (Lead, Customer, Churn risk) bound to the campaigns, senders, several contacts, and inbox threads
+- reply templates, notifications (some unread), and labels everywhere they appear: folders (Outbound, Nurture), mailbox tags (VIP, Cold, Agency), and workspace labels (Lead, Customer, Churn risk) bound to the campaigns, senders, several contacts, and inbox threads
 - working credentials for every `smtp_imap` account in the database, including the older `make seed` fixtures, sealed with `CREDENTIALS_ENCRYPTION_KEY` so the worker can decrypt and use them
 - an [Advisor](/guides/advisor/) showcase (see below), and one evaluation run at the end of seeding so the recommendations exist before you log in
 

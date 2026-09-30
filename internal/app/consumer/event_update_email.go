@@ -45,6 +45,7 @@ func (s *JobsService) HandleUpdateEmail(ctx context.Context, e *models.JobEventE
 	// provider: mail read in the customer's own client is read here too.
 	if seen := models.SeenFromFlags(e.Flags); seen != email.Seen {
 		updateData.Seen = &seen
+		s.noteOwnerActivity(ctx, e.EmailID, email.InternalDate)
 	}
 	if email.UID != e.UID {
 		updateData.UID = &e.UID
@@ -83,6 +84,43 @@ func (s *JobsService) HandleUpdateEmail(ctx context.Context, e *models.JobEventE
 		email.Folder = folder
 		email.ProviderFolder = provider
 	}
+	s.publishEmailUpdated(ctx, e.UserID, email)
+	return nil
+}
+
+// HandleFolderUpdate files a message where the provider moved it. Like a full
+// rescan, it only moves the stored folder when the provider's own placement
+// changed, so a message filed in Warmbly stays filed.
+func (s *JobsService) HandleFolderUpdate(ctx context.Context, e *models.JobEventFolderUpdate) error {
+	if !models.ValidFolder(e.Folder) {
+		return nil
+	}
+	email, err := s.emailForSyncUpdate(ctx, e.UserID, e.ID, func(message *models.EmailMessageStoreData) {
+		// A pending row is not visible yet, so nothing has filed it locally.
+		message.Folder = e.Folder
+	})
+	if err != nil {
+		CaptureError(e.UserID, e.EmailID, fmt.Errorf("Email (%s): %w", e.ID.String(), err))
+		return err
+	}
+	if email == nil {
+		return nil
+	}
+
+	folder, provider, providerMoved := models.ResolveFolderSync(email.Folder, email.ProviderFolder, e.Folder)
+	if !providerMoved {
+		return nil
+	}
+	update := repository.UpdateUniboxEntry{ProviderFolder: &provider}
+	if folder != email.Folder {
+		update.Folder = &folder
+	}
+	if err := s.UniboxRepository.UpdateEntry(ctx, e.UserID, e.EmailID, e.ID, &update); err != nil {
+		return err
+	}
+
+	email.Folder = folder
+	email.ProviderFolder = provider
 	s.publishEmailUpdated(ctx, e.UserID, email)
 	return nil
 }

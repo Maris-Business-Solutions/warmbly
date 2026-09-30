@@ -169,6 +169,8 @@ An empty `desired_version` means "no opinion" and must never be read as "downgra
 
 The backend is deliberately excluded from this. It is what tells everyone else their version, and a self-update that goes wrong leaves nothing to recover with.
 
+On an instance that encodes the bus with Avro, the fleet also waits for the backend. A booting backend registers every schema its release publishes, and the fleet only moves to a release once the backend runs it and the Schema Registry has accepted those schemas. A refusal holds the fleet on the release it has and shows in the Fleet section, instead of reaching a worker that would then fail every event it reports.
+
 The release check runs once when the backend boots, and only with `RELEASES_ENABLED=true`: it is off by default, so a self-hosted fleet is never rolled onto a vendor image. An operator moves the fleet by hand from the admin panel's Fleet section or with `warmblyctl fleet version` and `warmblyctl fleet channel`, which set the channel or pin a tag directly. Configuration is env-driven (`RELEASES_ENABLED`, `RELEASES_GITHUB_REPO`, `RELEASES_WORKER_IMAGE_REPO`, `RELEASES_GITHUB_TOKEN`) so self-hosters can point at their own fork and registry.
 
 See `internal/app/releases/service.go`.

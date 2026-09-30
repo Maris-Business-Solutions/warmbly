@@ -1,20 +1,28 @@
-// Inbox placement tests: the workspace's tests, the seed panels it can test
-// against, and its own seed inboxes. Live through PLACEMENT_TEST_UPDATED and
+// Inbox placement tests: the workspace's tests and batches, the seed panels it
+// can test against, and its own seed inboxes. Live through PLACEMENT_TEST_UPDATED and
 // the audit spine; nothing here polls.
 
 import React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { InboxIcon, Loader2Icon, ListIcon, PlusIcon, XIcon } from "lucide-react";
+import { InboxIcon, Layers3Icon, Loader2Icon, ListIcon, PlusIcon, XIcon } from "lucide-react";
 import { EmptyBlock, Page, PageTopbar, SectionBar, TopbarAction } from "@/components/layout/Page";
 import ScrollStrip from "@/components/ui/scroll-strip";
 import { usePermission, showPermissionDenied } from "@/hooks/usePermission";
 import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
-import { usePlacementOverview, usePlacementTests } from "@/lib/api/hooks/app/placement/usePlacement";
-import { PANEL_LABEL, type PlacementTest } from "@/lib/api/models/app/placement/Placement";
+import {
+    usePlacementBatches,
+    usePlacementCoverage,
+    usePlacementOverview,
+    usePlacementTests,
+} from "@/lib/api/hooks/app/placement/usePlacement";
+import { PANEL_LABEL, type PlacementBatch, type PlacementTest } from "@/lib/api/models/app/placement/Placement";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import NewPlacementTestDialog from "@/components/app/placement/tests/NewPlacementTestDialog";
+import NewPlacementBatchDialog, { type NewPlacementBatchPrefill } from "@/components/app/placement/batches/NewPlacementBatchDialog";
+import { BatchProgressBar, BatchStatusChip } from "@/components/app/placement/batches/BatchParts";
+import { scopeSummary } from "@/components/app/placement/batches/placementBatches";
 import SeedInboxes from "@/components/app/placement/tests/SeedInboxes";
 import {
     PanelStrip,
@@ -27,20 +35,25 @@ import {
 import { ORIGIN_LABEL, fmtDate, fmtRate, rateTone, usageLabel } from "@/components/app/placement/tests/placementTests";
 import { cn } from "@/lib/utils";
 
-type Tab = "tests" | "seeds";
+type Tab = "tests" | "batches" | "seeds";
 
 const TABS: { key: Tab; label: string; icon: typeof ListIcon }[] = [
     { key: "tests", label: "Tests", icon: ListIcon },
+    { key: "batches", label: "Batches", icon: Layers3Icon },
     { key: "seeds", label: "Seed inboxes", icon: InboxIcon },
 ];
 
 export default function PlacementPage() {
     const [params, setParams] = useSearchParams();
-    const tab: Tab = params.get("tab") === "seeds" ? "seeds" : "tests";
+    const tabParam = params.get("tab");
+    const tab: Tab = tabParam === "seeds" || tabParam === "batches" ? tabParam : "tests";
     const campaignId = params.get("campaign_id");
     const canStart = usePermission("SEND_CAMPAIGNS");
     const overview = usePlacementOverview();
+    const batches = usePlacementBatches();
     const [dialogOpen, setDialogOpen] = React.useState(false);
+    // Open with this prefill; null is closed.
+    const [batchDialog, setBatchDialog] = React.useState<NewPlacementBatchPrefill | null>(null);
 
     const setTab = (t: Tab) => {
         const next = new URLSearchParams(params);
@@ -55,6 +68,14 @@ export default function PlacementPage() {
             return;
         }
         setDialogOpen(true);
+    };
+
+    const openBatch = (prefill: NewPlacementBatchPrefill = {}) => {
+        if (!canStart) {
+            showPermissionDenied("SEND_CAMPAIGNS");
+            return;
+        }
+        setBatchDialog(campaignId && !prefill.scope ? { campaignId, ...prefill } : prefill);
     };
 
     const usage = overview.data?.usage;
@@ -73,7 +94,18 @@ export default function PlacementPage() {
                             : "Your own seed inboxes are never counted."}
                     </span>
                 )}
-                <TopbarAction icon={<PlusIcon className="w-3.5 h-3.5" />} onClick={openNew}>
+                <TopbarAction
+                    icon={<Layers3Icon className="w-3.5 h-3.5" />}
+                    onClick={() => openBatch()}
+                    variant={tab === "batches" ? "primary" : "ghost"}
+                >
+                    New batch
+                </TopbarAction>
+                <TopbarAction
+                    icon={<PlusIcon className="w-3.5 h-3.5" />}
+                    onClick={openNew}
+                    variant={tab === "batches" ? "ghost" : "primary"}
+                >
                     New test
                 </TopbarAction>
             </PageTopbar>
@@ -97,6 +129,9 @@ export default function PlacementPage() {
                             {t.key === "seeds" && overview.data && (
                                 <span className="font-mono text-[10.5px] text-slate-400 tabular-nums">{overview.data.workspace_seeds}</span>
                             )}
+                            {t.key === "batches" && batches.total != null && batches.total > 0 && (
+                                <span className="font-mono text-[10.5px] text-slate-400 tabular-nums">{batches.total.toLocaleString()}</span>
+                            )}
                             {active && (
                                 <motion.span
                                     layoutId="placement-tab-underline"
@@ -111,9 +146,15 @@ export default function PlacementPage() {
 
             {tab === "seeds" ? (
                 <SeedInboxes />
+            ) : tab === "batches" ? (
+                <>
+                    <CoverageLine onTest={() => openBatch({ scope: "workspace", untestedDays: 30 })} />
+                    <BatchesTable onNew={() => openBatch()} />
+                </>
             ) : (
                 <>
                     {overview.data && <PanelStrip overview={overview.data} />}
+                    <CoverageLine onTest={() => openBatch({ scope: "workspace", untestedDays: 30 })} />
                     <TestsTable
                         campaignId={campaignId}
                         onClearCampaign={() => {
@@ -131,6 +172,7 @@ export default function PlacementPage() {
                 onClose={() => setDialogOpen(false)}
                 prefill={campaignId ? { campaignId } : undefined}
             />
+            <NewPlacementBatchDialog open={batchDialog !== null} onClose={() => setBatchDialog(null)} prefill={batchDialog ?? undefined} />
         </Page>
     );
 }
@@ -272,6 +314,154 @@ function TestRow({ test, onOpen }: { test: PlacementTest; onOpen: () => void }) 
             <td className="px-5 py-2 text-right hidden md:table-cell text-[11px] text-slate-400 whitespace-nowrap">
                 <Link to={`/app/placement/${test.id}`} onClick={(e) => e.stopPropagation()} className="hover:text-slate-700">
                     {fmtDate(test.created_at)}
+                </Link>
+            </td>
+        </tr>
+    );
+}
+
+
+// How much of the sending fleet has a recent placement result, in one line.
+function CoverageLine({ onTest }: { onTest: () => void }) {
+    const coverage = usePlacementCoverage();
+    const c = coverage.data;
+    if (!c || c.mailboxes === 0) return null;
+    const untested30 = Math.max(0, c.mailboxes - c.tested_30d);
+    return (
+        <div className="px-5 min-h-10 py-1.5 border-b border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[12px] text-slate-600">
+                {untested30 === 0 ? (
+                    `Every one of your ${c.mailboxes.toLocaleString()} mailboxes was tested in the last 30 days.`
+                ) : (
+                    <>
+                        Tested in the last 30 days:{" "}
+                        <b className="font-medium text-slate-900">
+                            {c.tested_30d.toLocaleString()} of {c.mailboxes.toLocaleString()}
+                        </b>{" "}
+                        mailboxes
+                        {c.tested_7d > 0 && c.tested_7d < c.tested_30d && ` (${c.tested_7d.toLocaleString()} in the last 7)`}
+                        {c.never_tested > 0 && <span className="text-slate-400"> · {c.never_tested.toLocaleString()} never tested</span>}
+                    </>
+                )}
+            </span>
+            {untested30 > 0 && (
+                <button
+                    type="button"
+                    onClick={onTest}
+                    className="ml-auto h-6 px-2 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-[11.5px] font-medium text-slate-700 hover:text-slate-900 inline-flex items-center gap-1.5 transition-colors"
+                >
+                    <Layers3Icon className="w-3 h-3" />
+                    Test untested mailboxes
+                </button>
+            )}
+        </div>
+    );
+}
+
+function BatchesTable({ onNew }: { onNew: () => void }) {
+    const navigate = useNavigate();
+    const list = usePlacementBatches();
+
+    return (
+        <section className="flex-1 min-h-0 flex flex-col">
+            <SectionBar label="Batches" count={list.total ?? undefined}>
+                <PlacementLegend className="hidden lg:flex" />
+            </SectionBar>
+
+            {list.isLoading ? (
+                <div className="divide-y divide-slate-200/60">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="h-12 px-5 flex items-center gap-4">
+                            <div className="h-3 w-40 rounded bg-slate-100 animate-pulse" />
+                            <div className="h-3 flex-1 rounded bg-slate-50 animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+            ) : list.isError ? (
+                <EmptyBlock title="Batches could not be loaded" body={buildError(list.error as unknown as AppError)} />
+            ) : list.batches.length === 0 ? (
+                <EmptyBlock
+                    title="No placement batches yet"
+                    body="Run the same test from many mailboxes at once, and see whether one mailbox, a whole domain or a provider is landing in spam."
+                    cta={
+                        <button
+                            type="button"
+                            onClick={onNew}
+                            className="h-7 px-2.5 rounded-md inline-flex items-center gap-1.5 text-[12px] font-medium bg-sky-600 hover:bg-sky-700 text-white transition-colors"
+                        >
+                            <Layers3Icon className="w-3.5 h-3.5" />
+                            New batch
+                        </button>
+                    }
+                />
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="h-8 border-b border-slate-200/60 text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                                <th className="px-5 font-medium">Subject and senders</th>
+                                <th className="px-3 font-medium">Status</th>
+                                <th className="px-3 font-medium hidden sm:table-cell w-[18%]">Where it landed</th>
+                                <th className="px-3 font-medium text-right">Inbox</th>
+                                <th className="px-5 font-medium text-right hidden md:table-cell">Started</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200/60">
+                            {list.batches.map((b) => (
+                                <BatchRow key={b.id} batch={b} onOpen={() => navigate(`/app/placement/batches/${b.id}`)} />
+                            ))}
+                        </tbody>
+                    </table>
+                    {list.hasNextPage && (
+                        <div className="px-5 py-3 flex justify-center">
+                            <button
+                                type="button"
+                                onClick={() => list.fetchNextPage()}
+                                disabled={list.isFetchingNextPage}
+                                className="h-7 px-3 rounded-md border border-slate-200 hover:border-slate-300 text-[12px] font-medium text-slate-700 inline-flex items-center gap-1.5 disabled:opacity-60"
+                            >
+                                {list.isFetchingNextPage && <Loader2Icon className="w-3.5 h-3.5 animate-spin" />}
+                                Load more
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {list.batches.length > 0 && <PlacementCaveat className="mx-5 my-4" />}
+        </section>
+    );
+}
+
+function BatchRow({ batch, onOpen }: { batch: PlacementBatch; onOpen: () => void }) {
+    const s = batch.summary;
+    const scope = scopeSummary(batch);
+    const running = batch.status === "running" || batch.status === "queued";
+    return (
+        <tr
+            onClick={onOpen}
+            onKeyDown={(e) => {
+                if (e.key === "Enter") onOpen();
+            }}
+            tabIndex={0}
+            className="h-12 cursor-pointer hover:bg-slate-50/80 transition-colors outline-none focus-visible:bg-slate-50"
+        >
+            <td className="px-5 py-2 max-w-0 w-[40%]">
+                <div className="text-[12.5px] font-medium text-slate-900 truncate">{batch.subject || "(no subject)"}</div>
+                <div className="text-[11.5px] text-slate-500 truncate">
+                    {batch.sender_count.toLocaleString()} sender{batch.sender_count === 1 ? "" : "s"}
+                    {scope && ` · ${scope}`}
+                </div>
+            </td>
+            <td className="px-3 py-2">
+                <BatchStatusChip status={batch.status} progress={batch.progress} />
+                {running && batch.progress.total > 0 && <BatchProgressBar progress={batch.progress} height={3} className="mt-1 w-24" />}
+            </td>
+            <td className="px-3 py-2 hidden sm:table-cell">{s.total > 0 && <PlacementBar counts={s} />}</td>
+            <td className={cn("px-3 py-2 text-right font-mono text-[12px] tabular-nums", rateTone(s.inbox_rate))}>{fmtRate(s.inbox_rate)}</td>
+            <td className="px-5 py-2 text-right hidden md:table-cell text-[11px] text-slate-400 whitespace-nowrap">
+                <Link to={`/app/placement/batches/${batch.id}`} onClick={(e) => e.stopPropagation()} className="hover:text-slate-700">
+                    {fmtDate(batch.started_at ?? batch.created_at)}
                 </Link>
             </td>
         </tr>

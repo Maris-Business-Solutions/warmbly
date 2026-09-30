@@ -549,11 +549,11 @@ function StopNode() {
 
 // Per-type chrome for action nodes (icon + label + accent).
 const ACTION_META: Record<string, { label: string; Icon: typeof ClockIcon; tint: string }> = {
-    add_tag: { label: "Add tag", Icon: TagIcon, tint: "text-emerald-600" },
-    remove_tag: { label: "Remove tag", Icon: TagIcon, tint: "text-amber-600" },
+    add_tag: { label: "Add label", Icon: TagIcon, tint: "text-emerald-600" },
+    remove_tag: { label: "Remove label", Icon: TagIcon, tint: "text-amber-600" },
     add_to_segment: { label: "Add to segment", Icon: LayersIcon, tint: "text-emerald-600" },
     remove_from_segment: { label: "Remove from segment", Icon: LayersIcon, tint: "text-amber-600" },
-    label_email: { label: "Label email", Icon: TagsIcon, tint: "text-fuchsia-600" },
+    label_email: { label: "Label conversation", Icon: TagsIcon, tint: "text-fuchsia-600" },
     create_task: { label: "Create task", Icon: CheckSquareIcon, tint: "text-violet-600" },
     create_deal: { label: "Create deal", Icon: HandshakeIcon, tint: "text-emerald-600" },
     move_deal_stage: { label: "Move deal stage", Icon: ArrowRightLeftIcon, tint: "text-sky-600" },
@@ -569,9 +569,9 @@ function actionSummary(a?: SequenceAction | null): string {
     if (!a) return "Not configured";
     switch (a.type) {
         case "add_tag":
-            return a.category_id ? "Add a tag" : "Pick a tag…";
+            return a.category_id ? "Add a label" : "Pick a label…";
         case "remove_tag":
-            return a.category_id ? "Remove a tag" : "Pick a tag…";
+            return a.category_id ? "Remove a label" : "Pick a label…";
         case "add_to_segment":
             return a.segment_id ? "Pin into a segment" : "Pick a segment…";
         case "remove_from_segment":
@@ -2612,11 +2612,11 @@ function ConnectionEditor({
 // bottom dot unconnected (shows "Ends here") or routing a branch to Stop. That
 // keeps the cleaner Stop/"Ends here" visual instead of a configurable end node.
 const ADD_ACTION_OPTIONS: { type: SequenceActionType; label: string }[] = [
-    { type: "add_tag", label: "Add tag" },
-    { type: "remove_tag", label: "Remove tag" },
+    { type: "add_tag", label: "Add label" },
+    { type: "remove_tag", label: "Remove label" },
     { type: "add_to_segment", label: "Add to segment" },
     { type: "remove_from_segment", label: "Remove from segment" },
-    { type: "label_email", label: "Label email" },
+    { type: "label_email", label: "Label conversation" },
     { type: "create_task", label: "Create task" },
     { type: "create_deal", label: "Create deal" },
     { type: "move_deal_stage", label: "Move deal stage" },
@@ -3052,15 +3052,14 @@ function ActionConfigFields({
         <>
             {(action.type === "add_tag" || action.type === "remove_tag") && (
                 <div>
-                    <Label>{action.type === "add_tag" ? "Tag to add" : "Tag to remove"}</Label>
+                    <Label>{action.type === "add_tag" ? "Label to add" : "Label to remove"}</Label>
                     <CategoryPicker
                         value={action.category_id ? [action.category_id] : []}
                         onChange={(ids) =>
                             setAction((a) => ({ ...a, category_id: ids.length ? ids[ids.length - 1] : null }))
                         }
-                        placeholder="Pick a tag…"
+                        placeholder="Pick a label…"
                     />
-                    <p className="mt-1.5 text-[11px] text-slate-400">Tags are your contact categories.</p>
                 </div>
             )}
 
@@ -3475,7 +3474,7 @@ function TagPoolField({
             <p className="mt-1.5 text-[11px] text-slate-400">
                 {value.length
                     ? "The agent chooses among these for each contact."
-                    : "Empty, so the agent may use any of your tags for each contact."}
+                    : "Empty, so the agent may use any of your labels for each contact."}
             </p>
         </div>
     );
@@ -3512,7 +3511,7 @@ function AIStepFields({
                     value={action.ai_instruction ?? ""}
                     onChange={(e) => setAction((a) => ({ ...a, ai_instruction: e.target.value }))}
                     rows={3}
-                    placeholder="Read the reply. If they ask about pricing, tag them 'pricing' and create a follow-up task."
+                    placeholder="Read the reply. If they ask about pricing, label them 'pricing' and create a follow-up task."
                     className="w-full resize-y rounded-md border border-slate-200 px-2.5 py-1.5 text-[12.5px] text-slate-700 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
                 />
             </div>
@@ -3549,10 +3548,10 @@ function AIStepFields({
                                         <TagPoolField
                                             label={
                                                 id === "add_tag"
-                                                    ? "Tags the agent can add"
+                                                    ? "Labels the agent can add"
                                                     : id === "remove_tag"
-                                                      ? "Tags the agent can remove"
-                                                      : "Labels the agent can apply"
+                                                      ? "Labels the agent can remove"
+                                                      : "Conversation labels the agent can apply"
                                             }
                                             value={action[CAMPAIGN_AI_POOL_KEY[id]!] ?? []}
                                             onChange={(refs) =>
@@ -3578,7 +3577,7 @@ function AIStepFields({
                         >
                             {action.ai_allow_create_tags && <CheckIcon className="w-3 h-3" />}
                         </span>
-                        Let the agent create a new tag/label when none fits
+                        Let the agent create a new label when none fits
                     </button>
                 )}
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
@@ -3779,7 +3778,7 @@ function SwitchStepFields({
 
             <p className="rounded-md bg-slate-50 px-2.5 py-2 text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-200">
                 Every case gets its own dot on the node — drag each dot to the step that path leads to, and the bottom
-                dot is the “otherwise” fallback for contacts no case matched. Put normal action steps (tag, deal, task…)
+                dot is the “otherwise” fallback for contacts no case matched. Put normal action steps (label, deal, task…)
                 on a path to make things happen for the contacts routed down it.
             </p>
         </div>

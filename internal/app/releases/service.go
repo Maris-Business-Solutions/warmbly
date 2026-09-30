@@ -33,6 +33,8 @@ type Config struct {
 	WorkerImageRepo string // "ghcr.io/warmbly/warmbly/worker"
 	GithubToken     string // optional, raises API rate limit
 	HTTPClient      *http.Client
+	// SchemaGate refuses a tag whose bus schemas are not registered; nil allows any.
+	SchemaGate func(ctx context.Context, tag string) error
 }
 
 type Service struct {
@@ -137,6 +139,14 @@ func (s *Service) CheckGitHub(ctx context.Context) (*models.FleetReleaseState, e
 	}
 	if head.TagName == current.Tag {
 		return current, nil
+	}
+
+	if s.cfg.SchemaGate != nil {
+		if err := s.cfg.SchemaGate(ctx, head.TagName); err != nil {
+			s.recordError(err.Error())
+			log.Printf("releases: fleet held at %s: %v", current.Tag, err)
+			return current, nil
+		}
 	}
 
 	next := &models.FleetReleaseState{

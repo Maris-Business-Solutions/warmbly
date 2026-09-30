@@ -110,7 +110,7 @@ function Detail({ test }: { test: PlacementTestDetail }) {
                         <span>{PANEL_LABEL[test.panel] ?? test.panel}</span>
                         <span>Started {fmtDate(test.created_at)}</span>
                         {test.finished_at && <span>Finished {fmtDate(test.finished_at)}</span>}
-                        {test.origin !== "manual" && <span>{ORIGIN_LABEL[test.origin] ?? test.origin}</span>}
+                        {test.origin !== "manual" && test.origin !== "batch" && <span>{ORIGIN_LABEL[test.origin] ?? test.origin}</span>}
                         {test.pace === "quick" && <span>Quick pace</span>}
                         {test.credits_charged > 0 && (
                             <span title={test.credits_refunded > 0 ? "No copy was delivered, so the credits came back." : "Paid past the month's free tests."}>
@@ -122,6 +122,12 @@ function Detail({ test }: { test: PlacementTestDetail }) {
                         {test.campaign_id && (
                             <Link to={`/app/campaigns/${test.campaign_id}/steps`} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
                                 {campaign.data?.name ?? "Campaign"}
+                                <ArrowUpRightIcon className="w-3 h-3" />
+                            </Link>
+                        )}
+                        {test.batch_id && (
+                            <Link to={`/app/placement/batches/${test.batch_id}`} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
+                                Part of a batch
                                 <ArrowUpRightIcon className="w-3 h-3" />
                             </Link>
                         )}

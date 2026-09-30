@@ -37,7 +37,7 @@ Triggers poll on Zapier's schedule (frequency depends on your plan). Zapier reme
 | **Campaigns** | Create, Update, Start, Stop, Delete |
 | **Templates** | Create, Update, Delete, Render Reply Template |
 | **Meetings** | Log Meeting, Delete Meeting |
-| **Organization** | Create Contact Category, Mailbox Tag, or Campaign Folder |
+| **Organization** | Create Contact Category (a contact label), Mailbox Tag, or Campaign Folder |
 
 Campaign, mailbox, pipeline, stage, and contact fields use live dropdowns from your workspace, so you pick real records instead of pasting ids.
 
@@ -56,7 +56,7 @@ Pair a search with an action for idempotent flows: Find Contact, then Create or 
 Facebook and Instagram Lead Ads, LinkedIn Lead Gen Forms and TikTok Lead Generation all deliver new form submissions to Zapier in real time, which makes Zapier the shortest route from an ad to a follow-up sent from your own mailbox.
 
 1. **Trigger:** *Facebook Lead Ads: New Lead* (or the LinkedIn or TikTok equivalent), picking the Page and form.
-2. **Action:** Warmbly *Create or Update Contact*. Map the form's email and name fields, put every other question into a custom field, and pick the categories. Then *Add to Campaign* with the campaign that follows up. Re-running the same lead updates the contact rather than duplicating it.
+2. **Action:** Warmbly *Create or Update Contact*. Map the form's email and name fields, put every other question into a custom field, and pick the labels. Then *Add to Campaign* with the campaign that follows up. Re-running the same lead updates the contact rather than duplicating it.
 
 Prefer to keep the mapping inside Warmbly? Use *Webhooks by Zapier: POST* to an [inbound webhook automation](/guides/automations/#lead-intake) instead, sending the lead as JSON. The automation's **Create or update contact** action maps the JSON keys onto contact fields with templates, and the same flow can tag, notify Slack and open a task.
 

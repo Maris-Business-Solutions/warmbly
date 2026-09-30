@@ -15,7 +15,11 @@
 // in-band marker, this is an operator-level configuration choice.
 package codec
 
-import "context"
+import (
+	"context"
+
+	"github.com/hamba/avro/v2"
+)
 
 // Codec serializes and deserializes event payloads. Implementations may
 // require external services (Schema Registry for Avro) or be standalone
@@ -35,6 +39,14 @@ type Codec interface {
 	// Name returns a short identifier ("avro", "json") used in admin UI,
 	// startup logs, and audit trails.
 	Name() string
+}
+
+// SchemaRegistrar is a codec that resolves schemas against a registry, so a
+// release can register what it publishes before any node publishes it.
+type SchemaRegistrar interface {
+	// RegisterSchemas registers each schema under its topic's subject. A topic
+	// ending in ".*" names every topic already registered under that prefix.
+	RegisterSchemas(ctx context.Context, schemas map[string]avro.Schema) error
 }
 
 // Compile-time interface check. The AvroCodec check lives in avro.go (behind

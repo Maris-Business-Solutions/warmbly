@@ -92,6 +92,9 @@ type WarmupReceived struct {
 	// RetiredAt is when the retention sweep sent the deletion for this
 	// message. A removal observed after that is the platform's own.
 	RetiredAt *time.Time
+	// LandedSpam is set when the message arrived in the spam folder, so a
+	// spam label on it is the provider's filter, not the owner.
+	LandedSpam bool
 }
 
 // WarmupMailToRetire is one warmup message whose retention window has passed,
@@ -236,8 +239,18 @@ type WarmupRepository interface {
 
 	// Tampering protection: track delivered warmup mail so a later deletion or
 	// spam-flag can be attributed, and count "harm" events per mailbox.
-	RecordWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID, messageID string, senderAccountID uuid.UUID) error
+	RecordWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID, messageID string, senderAccountID uuid.UUID, landedSpam bool) error
 	GetWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID) (*WarmupReceived, error)
+	// Spam moves after arrival are held and attributed on the activity around them.
+	RecordWarmupSpamMove(ctx context.Context, m WarmupSpamMove) (bool, error)
+	ListSettledWarmupSpamMoves(ctx context.Context, settledBefore time.Time, limit int) ([]WarmupSpamMove, error)
+	WarmupSpamMoveEvidence(ctx context.Context, m WarmupSpamMove) (WarmupSpamMoveEvidence, error)
+	ClaimWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID string, lease time.Duration) (bool, error)
+	FixWarmupSpamMoveVerdict(ctx context.Context, accountID uuid.UUID, messageID, verdict string, signals []string) (bool, error)
+	CompleteWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID string) error
+	CorrelatedOwnerSpamMoves(ctx context.Context, senderID, exceptAccountID uuid.UUID, at time.Time) ([]WarmupSpamMove, error)
+	ReattributeOwnerSpamMoves(ctx context.Context, senderID, exceptAccountID uuid.UUID, at time.Time) error
+	RecordOwnerActivity(ctx context.Context, accountID uuid.UUID, at time.Time) error
 	RecordWarmupTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (bool, error)
 	CountWarmupTamperingSince(ctx context.Context, accountID uuid.UUID, since time.Time) (int, error)
 	// WithdrawWarmupTampering deletes a strike the mailbox did not earn,
@@ -1749,13 +1762,13 @@ func (r *warmupRepository) GetRecentPartnerCounts(ctx context.Context, accountID
 
 // RecordWarmupReceived stores a delivered warmup email keyed by recipient +
 // internal message id. Idempotent on re-delivery of the same message.
-func (r *warmupRepository) RecordWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID, messageID string, senderAccountID uuid.UUID) error {
+func (r *warmupRepository) RecordWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID, messageID string, senderAccountID uuid.UUID, landedSpam bool) error {
 	query := `
-		INSERT INTO warmup_received (email_account_id, internal_id, message_id, sender_account_id)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO warmup_received (email_account_id, internal_id, message_id, sender_account_id, landed_spam)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (email_account_id, internal_id) DO NOTHING
 	`
-	_, err := r.db.Exec(ctx, query, accountID, internalID, messageID, senderAccountID)
+	_, err := r.db.Exec(ctx, query, accountID, internalID, messageID, senderAccountID, landedSpam)
 	return err
 }
 
@@ -1763,13 +1776,13 @@ func (r *warmupRepository) RecordWarmupReceived(ctx context.Context, accountID, 
 // message id. Returns nil when the message was not a warmup email.
 func (r *warmupRepository) GetWarmupReceived(ctx context.Context, accountID, internalID uuid.UUID) (*WarmupReceived, error) {
 	query := `
-		SELECT email_account_id, internal_id, message_id, sender_account_id, created_at, retired_at
+		SELECT email_account_id, internal_id, message_id, sender_account_id, created_at, retired_at, landed_spam
 		FROM warmup_received
 		WHERE email_account_id = $1 AND internal_id = $2
 	`
 	var w WarmupReceived
 	err := r.db.QueryRow(ctx, query, accountID, internalID).Scan(
-		&w.EmailAccountID, &w.InternalID, &w.MessageID, &w.SenderAccountID, &w.CreatedAt, &w.RetiredAt,
+		&w.EmailAccountID, &w.InternalID, &w.MessageID, &w.SenderAccountID, &w.CreatedAt, &w.RetiredAt, &w.LandedSpam,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -1883,6 +1896,11 @@ func (r *warmupRepository) PruneWarmupEventsBefore(ctx context.Context, before t
 		`DELETE FROM warmup_tampering_events
 		 WHERE created_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`,
 		`DELETE FROM warmup_spam_reports WHERE created_at < $1`,
+		`DELETE FROM warmup_spam_moves
+		 WHERE decided_at IS NOT NULL
+		   AND observed_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`,
+		`DELETE FROM mailbox_owner_activity
+		 WHERE bucket < NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupOwnerActivityKeepDays) + `)`,
 		`DELETE FROM warmup_received WHERE created_at < $1 AND retired_at IS NOT NULL`,
 		`DELETE FROM warmup_tokens
 		 WHERE created_at < $1

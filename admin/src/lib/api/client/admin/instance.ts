@@ -162,6 +162,14 @@ export interface InstanceSettings {
         spacing_seconds: number;
         /** Credits a test past the monthly allowance costs; 0 turns paid tests off. */
         credits_per_test: number;
+        /** Most senders one placement batch may hold. */
+        batch_senders_max: number;
+        /** A workspace's batch senders sending probes at the same time. */
+        batch_sender_concurrency: number;
+        /** Batch senders sending at once across every workspace. */
+        batch_instance_concurrency: number;
+        /** Senders one batch starts per minute. */
+        batch_starts_per_minute: number;
     };
     // Operator notification channels. Targets and secrets are redacted on
     // read: a chat webhook URL is a bearer credential, so the server returns a

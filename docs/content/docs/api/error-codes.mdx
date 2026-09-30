@@ -33,7 +33,7 @@ All errors follow this structure:
 | 404 | Not Found | Resource doesn't exist |
 | 409 | Conflict | Resource already exists |
 | 422 | Unprocessable | Validation failed |
-| 429 | Too Many Requests | Rate limit or AI usage cap exceeded (`rate_limit_exceeded`, `usage_cap_exceeded`), or too many placement tests running at once (`placement_too_many_running`) |
+| 429 | Too Many Requests | Rate limit or AI usage cap exceeded (`rate_limit_exceeded`, `usage_cap_exceeded`), or too many placement tests or batches running at once (`placement_too_many_running`, `placement_too_many_batches`) |
 
 ### Server errors (5xx)
 
@@ -105,12 +105,15 @@ Fields are named by their JSON key, with nested fields as a dotted path (`inner.
 | `no_leads` | `POST /campaigns/:id/start` on a campaign that has never had a lead, with `continuous` off. Add contacts, or set `continuous` so it starts empty and waits for them. A campaign whose leads have all finished is a different case: it starts and waits |
 | `no_remaining_leads` | A platform-initiated restart of a campaign with nothing left to send and `continuous` off found nothing to do; the campaign is `completed` again. A start you request never answers this: it turns `continuous` on and waits |
 | `too_many_tasks` | `PATCH /crm/tasks` or `DELETE /crm/tasks` was given more than `1000` ids in one request, or more than `50,000` exclusions. Split it into batches |
-| `selection_too_large` | A `"all": true` bulk selection resolved to more than `50,000` rows. Narrow the filter and run it in parts; nothing was changed |
+| `too_many_contacts` | A contact bulk action was given more than `10,000` contact ids in one request, or more than `250,000` exclusions. Split it into batches, or send a filter selection instead of ids |
+| `selection_too_large` | A `"all": true` bulk selection resolved to more than its limit: `250,000` contacts, or `50,000` CRM tasks. Narrow the filter and run it in parts; nothing was changed |
 | `invalid_filter` | A task filter carried an id that is not one: `assigned_to`, `contact_id` and `deal_id` name records, and are matched against id columns. Sent by `POST /crm/tasks/search`, `POST /crm/tasks/summary`, and the `filters` of a `"all": true` bulk selection |
 | `invalid_setting` | `PATCH /outreach/settings` (or a campaign's advanced settings) carried a value outside the documented vocabulary, for example a `reply_intent.crm_task_intents` entry that is not a reply intent, or an `inbox_tagging.questions` entry with no question text, a label that is missing, repeated or built in, or a choice question with fewer than two options, or an `inbox_tagging.languages` entry that is not a supported language code |
 | `invalid_slug` | `PATCH /organization/current` was given a `slug` that is not 2 to 80 lowercase letters, numbers or dashes starting and ending with a letter or number |
 | `invalid_sync_folder` | `PUT /emails/:id/sync` was given a folder the sync always follows (`INBOX`, or a sent, drafts, spam, trash or archive folder by attribute or name), a name that is empty after trimming, longer than 255 characters or carrying a control character, more than 50 names, or a mailbox that is not IMAP. The `message` names the entry refused |
 | `no_organization` | The request needs a workspace and the caller has none selected. Every entitlement, limit and suppression rule is scoped to a workspace, so a write that would run unscoped is refused rather than run without those checks. API keys always carry their workspace; a dashboard session picks one at sign-in, so this normally means the session predates the workspace being chosen. Select a workspace and retry |
+| `lead_cc_limit` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) was given more than `2` contacts |
+| `lead_cc_self` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named the lead itself as a copy |
 
 #### Password refusals
 
@@ -247,6 +250,12 @@ The [inbox placement test](/guides/placement-tests/) routes (`/placement/*` and 
 | `placement_seed_unavailable` | 409 | The mailbox cannot be marked as a seed inbox: it is on the instance panel, or a placement test is still sending from it |
 | `placement_seed_limit` | 409 | The workspace already has `50` seed inboxes. Unmark one first |
 | `mailbox_is_seed` | 409 | Warmup was started or resumed on a seed inbox. A seed never warms up; unmark it first with `PUT /placement/seeds/:email_account_id` |
+| `placement_batch_empty` | 400 | `POST /placement/batches` resolved to no sending mailbox: the scope, its filters and the sample left nothing |
+| `placement_batch_too_large` | 400 | The batch would hold more mailboxes than the instance allows in one batch (`10,000` by default, an operator setting). The `message` gives both numbers; narrow the selection or take a sample |
+| `placement_too_many_batches` | 429 | The workspace already has `5` batches running. Wait for one to finish, or cancel one |
+| `placement_batch_not_running` | 409 | `POST /placement/batches/:id/cancel` on a batch that has already finished or been cancelled |
+
+A batch runs every check that applies to the whole batch (the copy, the panel, the tracking, the allowance and the credits agreed) before it is created, and refuses with the codes above. The checks for each mailbox run when its turn comes: a mailbox refused then is deferred or skipped, and its sender row in `GET /placement/batches/:id/senders` carries the code as `reason` with its sentence as `detail`. Besides the single-test codes, a sender row can carry `placement_sender_deleted` (the mailbox was removed from the workspace), `placement_batch_retry_expired` (still unavailable when the seven-day retry window closed), `placement_batch_start_failed` (the test could not be started after several tries) and `placement_batch_copy_unavailable` (the campaign or step being tested was deleted, which skips every mailbox not started yet).
 
 ```json
 {
@@ -257,7 +266,7 @@ The [inbox placement test](/guides/placement-tests/) routes (`/placement/*` and 
 }
 ```
 
-A `400` without one of these codes is a malformed request: an unknown `panel` or `tracking`, a `sequence_id` without its `campaign_id`, a missing subject or body on an ad-hoc test, a monitor `interval_days` outside `1` to `30` or an `alert_below` outside `0` to `100`.
+A `400` without one of these codes is a malformed request: an unknown `panel` or `tracking`, a `sequence_id` without its `campaign_id`, a missing subject or body on an ad-hoc test, a monitor `interval_days` outside `1` to `30` or an `alert_below` outside `0` to `100`, or on a batch `pace` `quick`, both or neither of `sender_account_ids` and `sender_scope`, an unknown `sender_scope.type`, `sample.mode` or `on_unavailable`, or `sample.stratify` on a sample that is not random or percent.
 
 ### 401 Unauthorized
 
@@ -439,6 +448,7 @@ Returned when the requested resource doesn't exist.
 | `code` | Meaning |
 |--------|---------|
 | `unknown_view` | `/me/views/:view` was given a view name other than `contacts` or `campaign_leads` |
+| `lead_cc_contact_not_found` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named a contact that is not in the workspace |
 
 ### 409 Conflict
 
@@ -467,6 +477,8 @@ A few conflicts carry their own `code`. The mailbox import's are under [mailbox 
 | `code` | Status | Meaning |
 |--------|--------|---------|
 | `contact_email_taken` | 409 | The address given to [update a contact](/api/reference/contacts/#update-a-contact) already belongs to another contact |
+| `lead_cc_lead_is_copied` | 409 | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) on a lead that is itself copied on another lead in the campaign, so it sends nothing of its own to copy anyone on |
+| `lead_cc_has_copies` | 409 | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) names a contact that has copies of their own in the campaign |
 | `mailbox_is_seed` | 409 | Warmup was started or resumed on a placement seed inbox. See [placement test refusals](#placement-test-refusals) |
 | `mailbox_not_google_signin` | 409 | `POST /emails/onboarding/app-password/:id` on a mailbox that is not connected with per-mailbox Google sign-in. See [app password switch refusals](#app-password-switch-refusals) |
 | `mailbox_cloud_unenroll_failed` | 409 | The mailbox is linked to [Warmbly Cloud](/guides/warmbly-cloud/) and its link could not be released, so `DELETE /emails/{id}` would leave Warmbly Cloud holding its credential or its claim on it. The mailbox record remains, and restoration onto its worker is attempted |

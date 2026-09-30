@@ -83,3 +83,49 @@ func TestRecordInboundBounceStillAttributesRealSends(t *testing.T) {
 		t.Fatal("a campaign NDR was dropped by the warmup gate")
 	}
 }
+
+type copyBounceProgress struct {
+	repository.CampaignProgressRepository
+	copies map[string]uuid.UUID
+}
+
+func (r copyBounceProgress) MarkLeadCCBounced(_ context.Context, _, _ uuid.UUID, address string) (*uuid.UUID, error) {
+	if id, ok := r.copies[address]; ok {
+		return &id, nil
+	}
+	return nil, nil
+}
+
+type copyBounceCampaigns struct {
+	repository.CampaignRepository
+	cc, bcc []string
+}
+
+func (r copyBounceCampaigns) GetByID(_ context.Context, id uuid.UUID) (*models.Campaign, error) {
+	return &models.Campaign{ID: id, CC: r.cc, BCC: r.bcc}, nil
+}
+
+// A DSN naming someone copied on the send bounces that copy, not the lead; an
+// address nobody copied (a forward, an alias) stays the lead's as before.
+func TestCopyBounceOwnerTellsACopyFromTheLead(t *testing.T) {
+	lead, copied := uuid.New(), uuid.New()
+	s := &service{
+		campaignProgressRepo: copyBounceProgress{copies: map[string]uuid.UUID{"jonas@acme.test": copied}},
+		campaignRepo:         copyBounceCampaigns{cc: []string{"Boss <boss@acme.test>"}, bcc: []string{"crm@acme.test"}},
+	}
+	for _, tc := range []struct {
+		address string
+		owner   *uuid.UUID
+		isCopy  bool
+	}{
+		{"jonas@acme.test", &copied, true},
+		{"BOSS@acme.test", nil, true},
+		{"crm@acme.test", nil, true},
+		{"forwarded@elsewhere.test", &lead, false},
+	} {
+		owner, isCopy := s.copyBounceOwner(context.Background(), uuid.New(), lead, tc.address)
+		if isCopy != tc.isCopy || (owner == nil) != (tc.owner == nil) || (owner != nil && *owner != *tc.owner) {
+			t.Errorf("%s: owner %v copy %v, want %v %v", tc.address, owner, isCopy, tc.owner, tc.isCopy)
+		}
+	}
+}

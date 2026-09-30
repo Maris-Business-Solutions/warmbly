@@ -19,17 +19,24 @@ import (
 // handlers make.
 type retentionWarmupRepo struct {
 	repository.WarmupRepository
-	rec *repository.WarmupReceived
+	rec  *repository.WarmupReceived
+	held *[]repository.WarmupSpamMove
 }
 
 func (r retentionWarmupRepo) GetWarmupReceived(context.Context, uuid.UUID, uuid.UUID) (*repository.WarmupReceived, error) {
 	return r.rec, nil
 }
 
+func (r retentionWarmupRepo) RecordWarmupSpamMove(_ context.Context, m repository.WarmupSpamMove) (bool, error) {
+	*r.held = append(*r.held, m)
+	return true, nil
+}
+
 // retentionWarmupService records which strikes the handlers asked for.
 type retentionWarmupService struct {
 	warmupapp.Service
 	strikes []string
+	held    []repository.WarmupSpamMove
 	fail    bool
 }
 
@@ -54,7 +61,7 @@ func (s *retentionWarmupService) ApplySpamReport(context.Context, uuid.UUID, uui
 func retentionService(rec *repository.WarmupReceived) (*JobsService, *retentionWarmupService) {
 	svc := &retentionWarmupService{}
 	return &JobsService{
-		WarmupRepo:      retentionWarmupRepo{rec: rec},
+		WarmupRepo:      retentionWarmupRepo{rec: rec, held: &svc.held},
 		WarmupService:   svc,
 		EmailRepository: warmupInboxEmailRepo{},
 	}, svc
@@ -275,19 +282,24 @@ func TestRecheckTamperingSearchesEachOldStrike(t *testing.T) {
 }
 
 // Gmail reports Delete as gaining the TRASH label. That is the owner's act
-// and is judged on the same freshness rule; a spam flag is still the graver
-// strike and is never subject to the window.
+// and is judged on the same freshness rule. A spam label charges nobody on
+// sight: a move after arrival is held for attribution, and the label on mail
+// that arrived in spam is the filter's own and is not even held.
 func TestFlagsAddJudgesGmailTrashOnFreshness(t *testing.T) {
+	landedSpam := receivedAgo(time.Second)
+	landedSpam.LandedSpam = true
 	cases := []struct {
 		name  string
 		rec   *repository.WarmupReceived
 		flags []string
 		want  []string
+		held  int
 	}{
-		{"trashed an hour after arrival", receivedAgo(time.Hour), []string{"TRASH"}, []string{"deletion"}},
-		{"trashed a month after arrival", receivedAgo(30 * 24 * time.Hour), []string{"TRASH"}, nil},
-		{"flagged as spam a month after arrival", receivedAgo(30 * 24 * time.Hour), []string{"SPAM"}, []string{"spam_report", "spam_flag"}},
-		{"read is not a strike", receivedAgo(time.Hour), []string{models.FlagSeen}, nil},
+		{"trashed an hour after arrival", receivedAgo(time.Hour), []string{"TRASH"}, []string{"deletion"}, 0},
+		{"trashed a month after arrival", receivedAgo(30 * 24 * time.Hour), []string{"TRASH"}, nil, 0},
+		{"moved to spam a month after arrival is held", receivedAgo(30 * 24 * time.Hour), []string{"SPAM"}, nil, 1},
+		{"spam label on mail that arrived in spam", landedSpam, []string{"SPAM"}, nil, 0},
+		{"read is not a strike", receivedAgo(time.Hour), []string{models.FlagSeen}, nil, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -299,6 +311,9 @@ func TestFlagsAddJudgesGmailTrashOnFreshness(t *testing.T) {
 			}
 			if len(svc.strikes) != len(tc.want) {
 				t.Fatalf("strikes = %v, want %v", svc.strikes, tc.want)
+			}
+			if len(svc.held) != tc.held {
+				t.Fatalf("held %d moves, want %d", len(svc.held), tc.held)
 			}
 			for i := range tc.want {
 				if svc.strikes[i] != tc.want[i] {

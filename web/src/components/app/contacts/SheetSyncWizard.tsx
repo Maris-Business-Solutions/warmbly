@@ -689,10 +689,10 @@ function OptionsStep({
 
             <section>
                 <h2 className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 mb-2">
-                    Apply categories
+                    Apply labels
                 </h2>
                 <p className="text-[11px] text-slate-400 leading-tight mb-2">
-                    Every synced contact gets these categories. Skip to leave them untagged.
+                    Every synced contact gets these labels. Skip to leave them unlabeled.
                 </p>
                 <CategoryPicker value={categoryIds} onChange={setCategoryIds} />
             </section>

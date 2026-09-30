@@ -32,8 +32,11 @@ const (
 	JobEventTypeFlagsAdd         JobEventType = "FLAGS_ADD"
 	JobEventTypeFlagsRemove      JobEventType = "FLAGS_REMOVE"
 	JobEventTypeEmailUpdate      JobEventType = "UPDATE_EMAIL"
-	JobEventTypeMailboxUpdate    JobEventType = "UPDATE_MAILBOX"
-	JobEventTypeMailboxDelete    JobEventType = "DELETE_MAILBOX"
+	// JobEventTypeFolderUpdate is a provider moving a message between folders
+	// without a full rescan of it (a Gmail label change).
+	JobEventTypeFolderUpdate  JobEventType = "UPDATE_FOLDER"
+	JobEventTypeMailboxUpdate JobEventType = "UPDATE_MAILBOX"
+	JobEventTypeMailboxDelete JobEventType = "DELETE_MAILBOX"
 	// JobEventTypeMailboxRename is a folder that kept its UIDVALIDITY under a
 	// new name. Distinct from a delete plus an insert because the folder's
 	// stored mail has to move with it rather than be orphaned.

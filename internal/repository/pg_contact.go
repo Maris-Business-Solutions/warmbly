@@ -1513,6 +1513,14 @@ func (r *contactRepository) buildContactFilter(ctx context.Context, orgID string
 	}, nil
 }
 
+// leadRowJSON is the campaign_leads half of a Leads-list row: the fields read
+// together because they come from one lead row.
+type leadRowJSON struct {
+	Sender *string                 `json:"sender"`
+	CC     []models.CampaignLeadCC `json:"cc"`
+	Hold   *models.LeadHold        `json:"hold"`
+}
+
 func (r *contactRepository) Search(
 	ctx context.Context,
 	orgID string,
@@ -1650,6 +1658,8 @@ func (r *contactRepository) Search(
 				'lead', (
 					SELECT json_build_object(
 						'sender', (SELECT ea.email FROM email_accounts ea WHERE ea.id = hl.email_account_id),
+						-- Contacts copied on every email to this lead.
+						'cc', %[5]s,
 						'hold', CASE WHEN %[4]s THEN json_build_object(
 							'since', hl.paused_at, 'until', hl.paused_until,
 							'reason', COALESCE(hl.pause_reason, ''), 'source', COALESCE(hl.pause_source, '')
@@ -1689,7 +1699,7 @@ func (r *contactRepository) Search(
 			)
 			FROM campaign_contact_progress p
 			WHERE p.campaign_id = %[1]s AND p.contact_id = c.id
-		)`, singleCampaignPlaceholder, config.CampaignSendMaxAttempts, undeliverableClause(singleCampaignPlaceholder), liveHold("hl"))
+		)`, singleCampaignPlaceholder, config.CampaignSendMaxAttempts, undeliverableClause(singleCampaignPlaceholder), liveHold("hl"), leadCCJSONSQL(singleCampaignPlaceholder))
 	}
 
 	// campaign_count is only ever read by the min/max filters and the
@@ -1828,10 +1838,7 @@ func (r *contactRepository) Search(
 				Step       *string    `json:"step"`
 				// The lead row's own fields, read together because they come
 				// from one campaign_leads row.
-				Lead *struct {
-					Sender *string          `json:"sender"`
-					Hold   *models.LeadHold `json:"hold"`
-				} `json:"lead"`
+				Lead *leadRowJSON `json:"lead"`
 
 				Undeliverable bool `json:"undeliverable"`
 			}
@@ -1843,10 +1850,7 @@ func (r *contactRepository) Search(
 			// which the outer query already excludes.
 			lead := lp.Lead
 			if lead == nil {
-				lead = &struct {
-					Sender *string          `json:"sender"`
-					Hold   *models.LeadHold `json:"hold"`
-				}{}
+				lead = &leadRowJSON{}
 			}
 			status := models.LeadStatusPending
 			switch {
@@ -1888,6 +1892,7 @@ func (r *contactRepository) Search(
 			c.CampaignLead = &models.ContactCampaignProgress{
 				Status:         status,
 				Hold:           lead.Hold,
+				CC:             lead.CC,
 				Sender:         sender,
 				Sent:           lp.Sent,
 				Opened:         lp.Opened,
@@ -3174,7 +3179,7 @@ func importCategoryNames(names []string) ([]string, map[string]string, *errx.Err
 		}
 		if len(title) > 50 {
 			return nil, nil, errx.New(errx.BadRequest,
-				"category name "+strconv.Quote(title)+" is longer than 50 characters")
+				"label name "+strconv.Quote(title)+" is longer than 50 characters")
 		}
 		lower := strings.ToLower(title)
 		if _, dup := seen[lower]; dup {
