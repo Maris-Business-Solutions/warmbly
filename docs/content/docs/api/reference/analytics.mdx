@@ -46,7 +46,9 @@ Returns the main dashboard overview for the active organization: aggregate stats
       "campaign_name": "Q2 outbound",
       "contact_email": "lead@example.com",
       "contact_id": "c0ffee00-0000-0000-0000-000000000002",
-      "timestamp": "2026-06-11T14:02:11Z"
+      "timestamp": "2026-06-11T14:02:11Z",
+      "sender_id": "5e11d0c4-0000-0000-0000-000000000003",
+      "sender_email": "alex@yourco.com"
     },
     {
       "type": "opened",
@@ -82,6 +84,8 @@ Returns the main dashboard overview for the active organization: aggregate stats
 ```
 
 An `opened` or `clicked` entry in `recent_activity` carries `origin` when the person's first open or click on that step was logged: the same client, device and location object a [contact timeline](/api/reference/contacts/#list-a-contacts-timeline) event carries.
+
+Every entry names the mailbox the step was sent from in `sender_id` and `sender_email` (its send-as alias when it has one). A reply credits that mailbox even when it landed in the [shared reply inbox](/guides/mailboxes/#a-shared-reply-inbox) the sender's reply-to names.
 
 ## Get deliverability dashboard
 

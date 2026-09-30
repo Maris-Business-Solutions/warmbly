@@ -17,6 +17,8 @@ export default interface UniboxEmail {
   message_count?: number;
   /** Conversation labels (categories) assigned to the thread. */
   labels?: { id: string; title: string; color: string }[];
+  /** Thread reads: the workspace mailbox that sent the email this one replies to, when another mailbox holds it. */
+  answers_mailbox_id?: string;
 }
 
 /**

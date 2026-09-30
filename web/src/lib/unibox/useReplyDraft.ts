@@ -4,7 +4,8 @@ import { clearReplyDraft, saveReplyDraft, type ReplySeed } from "./replyDraft";
 export function useReplyDraft(key: string | null, draft: ReplySeed, defaults: ReplySeed) {
     const [baseline] = useState(() => JSON.stringify(defaults));
     const serialized = JSON.stringify(draft);
-    const hasDraft = serialized !== baseline;
+    // A default that settles after mount (the mailbox list loading) is not an edit.
+    const hasDraft = serialized !== baseline && serialized !== JSON.stringify(defaults);
     const pending = useRef<ReplySeed | null>(null);
     const stopped = useRef(false);
     const mounted = useRef(true);

@@ -1235,6 +1235,11 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 	var sequenceID *uuid.UUID
 	var contactID *uuid.UUID
 	var taskID *uuid.UUID
+	// senderAccountID is the mailbox that sent the email this answers, which a
+	// shared reply inbox is not; viaReplyTo is a reply that landed here only
+	// because that send's Reply-To named this mailbox.
+	var senderAccountID *uuid.UUID
+	var viaReplyTo bool
 	var referencesCampaignThread bool
 	// contactEmail is the address we mailed, which is not always the one
 	// that answered; an opt-out has to reach both.
@@ -1265,14 +1270,18 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 				*campaign.OrganizationID != *account.OrganizationID {
 				continue
 			}
-			sentFromReceivingAccount, err := s.campaignProgressRepo.CampaignContactSentFromAccount(
-				ctx, *ct.CampaignID, *ct.ContactID, emailAccountID,
-			)
-			if err != nil {
-				return toErrx(err)
-			}
-			if !sentFromReceivingAccount {
-				continue
+			// The send pointing its Reply-To here is as good as having sent
+			// from here: a shared reply inbox never writes to anyone.
+			if !account.ReceivesAt(task.ReplyTo) {
+				sentFromReceivingAccount, err := s.campaignProgressRepo.CampaignContactSentFromAccount(
+					ctx, *ct.CampaignID, *ct.ContactID, emailAccountID,
+				)
+				if err != nil {
+					return toErrx(err)
+				}
+				if !sentFromReceivingAccount {
+					continue
+				}
 			}
 		}
 		// The thread is the evidence; the From address does not have to be
@@ -1290,6 +1299,8 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		}
 		contactEmail = strings.TrimSpace(contact.Email)
 		taskID = &task.ID
+		senderAccountID = &task.EmailAccountID
+		viaReplyTo = task.EmailAccountID != emailAccountID && account.ReceivesAt(task.ReplyTo)
 		campaignID = ct.CampaignID
 		contactID = ct.ContactID
 		sequenceID = ct.SequenceID
@@ -1322,7 +1333,8 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 
 	// A copied contact answering further down the thread (to the lead's own
 	// reply, say) names no message of ours; the mailbox that wrote to the
-	// lead is the evidence, and the reply is the lead's. A fresh message with
+	// lead, or the one its Reply-To named, is the evidence, and the reply is
+	// the lead's. A fresh message with
 	// no parent is not a reply to anything and credits nobody.
 	if campaignID == nil && contactID != nil && !referencesCampaignThread && len(msg.InReplyTo) > 0 {
 		ref, err := s.campaignProgressRepo.LeadForCopiedReply(ctx, *contactID, emailAccountID)
@@ -1438,9 +1450,15 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 			// unibox. Self-detaches, so it never blocks reply ingest.
 			if s.inboxAgent != nil && account.OrganizationID != nil {
 				ownerID, _ := uuid.Parse(account.UserID)
+				// An answer from a shared reply inbox leaves from the mailbox
+				// the contact wrote to, as the composer's does.
+				draftFrom := emailAccountID
+				if viaReplyTo && senderAccountID != nil {
+					draftFrom = *senderAccountID
+				}
 				s.inboxAgent.DraftForReply(ctx, models.InboxAgentReply{
 					OrganizationID:  *account.OrganizationID,
-					EmailAccountID:  emailAccountID,
+					EmailAccountID:  draftFrom,
 					OwnerUserID:     ownerID,
 					SourceMessageID: msg.ID,
 					ThreadID:        msg.ThreadID,
@@ -1633,8 +1651,12 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		// user); the leading underscore keeps it out of outbound customer webhook
 		// bodies (publicEventData strips _-prefixed keys) while staying available
 		// to native actions, which read the raw event data.
-		"thread_id": msg.ThreadID,
-		"_user_id":  account.UserID,
+		"thread_id":        msg.ThreadID,
+		"email_account_id": emailAccountID.String(),
+		"_user_id":         account.UserID,
+	}
+	if senderAccountID != nil {
+		payload["sender_email_account_id"] = senderAccountID.String()
 	}
 	if campaignID != nil {
 		payload["campaign_id"] = campaignID.String()

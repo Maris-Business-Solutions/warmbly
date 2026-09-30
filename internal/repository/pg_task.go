@@ -19,11 +19,13 @@ type Task struct {
 	EmailAccountID uuid.UUID
 	Status         string
 	MessageID      string
-	ScheduledAt    *time.Time
-	CompletedAt    *time.Time
-	CloudTaskName  *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// ReplyTo is the address the send's Reply-To header named, empty for none.
+	ReplyTo       string
+	ScheduledAt   *time.Time
+	CompletedAt   *time.Time
+	CloudTaskName *string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // CampaignTask represents campaign-specific task data
@@ -175,6 +177,8 @@ type TaskRepository interface {
 	// sending from. A campaign task is created before its mailbox is known, so
 	// the send path stamps the rotation's real pick before dispatching.
 	UpdateTaskEmailAccount(ctx context.Context, taskID, accountID uuid.UUID) error
+	// UpdateTaskReplyTo records the Reply-To a send is about to carry.
+	UpdateTaskReplyTo(ctx context.Context, taskID uuid.UUID, replyTo string) error
 
 	// Update campaign task with contact/sequence IDs (for tracking)
 	UpdateCampaignTaskTracking(ctx context.Context, taskID, contactID, sequenceID uuid.UUID) error
@@ -340,7 +344,7 @@ func (r *taskRepository) GetTaskByMessageID(ctx context.Context, messageID strin
 		return nil, nil
 	}
 	query := `
-		SELECT id, task_type, email_account_id, status, message_id,
+		SELECT id, task_type, email_account_id, status, message_id, reply_to,
 		       scheduled_at, completed_at, cloud_task_name, created_at, updated_at
 		FROM tasks
 		WHERE message_id = $1 OR message_id = $2
@@ -355,6 +359,7 @@ func (r *taskRepository) GetTaskByMessageID(ctx context.Context, messageID strin
 		&task.EmailAccountID,
 		&task.Status,
 		&task.MessageID,
+		&task.ReplyTo,
 		&task.ScheduledAt,
 		&task.CompletedAt,
 		&task.CloudTaskName,
@@ -1137,6 +1142,15 @@ func (r *taskRepository) UpdateTaskEmailAccount(ctx context.Context, taskID, acc
 	_, err := r.db.Exec(ctx,
 		`UPDATE tasks SET email_account_id = $1, updated_at = NOW() WHERE id = $2`,
 		accountID, taskID)
+	return err
+}
+
+// UpdateTaskReplyTo records the Reply-To a send carries. It is the evidence
+// that lets a reply landing in that address's mailbox count for the campaign.
+func (r *taskRepository) UpdateTaskReplyTo(ctx context.Context, taskID uuid.UUID, replyTo string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE tasks SET reply_to = $1, updated_at = NOW() WHERE id = $2 AND reply_to <> $1`,
+		replyTo, taskID)
 	return err
 }
 

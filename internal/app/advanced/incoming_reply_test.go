@@ -551,6 +551,92 @@ func TestProcessIncomingReplyAcceptsCrossMailboxThreadWhenStoredSourceIsInbound(
 	}
 }
 
+func TestProcessIncomingReplyAcceptsReplyAtTheSendsReplyToMailbox(t *testing.T) {
+	orgID, accountID, contactID := uuid.New(), uuid.New(), uuid.New()
+	account := &models.Email{ID: accountID, OrganizationID: &orgID, Email: "replies@example.test"}
+	service, progress := newIncomingReplyService(account, &models.Contact{
+		ID: contactID, Email: "recipient@example.test",
+	}, contactID)
+	task := service.taskRepo.(incomingReplyTaskRepo).task
+	task.EmailAccountID = uuid.New()
+	task.ReplyTo = "Replies@Example.test"
+	// The reply inbox never wrote to the contact.
+	progress.receivingSent = false
+	events := &capturedEvents{}
+	service.dispatcher = events
+	agent := &capturedAgentDraft{}
+	service.inboxAgent = agent
+
+	xerr := service.ProcessIncomingReply(context.Background(), accountID, &models.EmailMessageStoreData{
+		EmailID:   accountID,
+		Folder:    models.FolderInbox,
+		FromAddr:  []string{"Recipient <recipient@example.test>"},
+		ToAddr:    []string{"replies@example.test"},
+		InReplyTo: []string{"<opener@example.test>"},
+		Subject:   "Re: Hello",
+	})
+	if xerr != nil {
+		t.Fatal(xerr)
+	}
+	if progress.replied != 1 {
+		t.Fatalf("RecordEmailReplied calls = %d, want 1 for a reply at the send's Reply-To mailbox", progress.replied)
+	}
+	reply := events.data[models.WebhookEventCampaignReplyReceived]
+	if reply["sender_email_account_id"] != task.EmailAccountID.String() || reply["email_account_id"] != accountID.String() {
+		t.Fatalf("reply event names sender %v and inbox %v; want %s and %s",
+			reply["sender_email_account_id"], reply["email_account_id"], task.EmailAccountID, accountID)
+	}
+	// The suggested answer leaves from the mailbox the contact wrote to.
+	if agent.from != task.EmailAccountID {
+		t.Fatalf("agent draft from %s, want the sending mailbox %s", agent.from, task.EmailAccountID)
+	}
+}
+
+type capturedAgentDraft struct{ from uuid.UUID }
+
+func (c *capturedAgentDraft) DraftForReply(_ context.Context, r models.InboxAgentReply) {
+	c.from = r.EmailAccountID
+}
+
+type capturedEvents struct {
+	data map[models.WebhookEventType]map[string]any
+}
+
+func (c *capturedEvents) Dispatch(_ context.Context, _ uuid.UUID, eventType models.WebhookEventType, data any) (uuid.UUID, error) {
+	if c.data == nil {
+		c.data = map[models.WebhookEventType]map[string]any{}
+	}
+	c.data[eventType], _ = data.(map[string]any)
+	return uuid.New(), nil
+}
+
+func TestProcessIncomingReplyRejectsReplyToNamingAnotherMailbox(t *testing.T) {
+	orgID, accountID, contactID := uuid.New(), uuid.New(), uuid.New()
+	account := &models.Email{ID: accountID, OrganizationID: &orgID, Email: "unrelated@example.test"}
+	service, progress := newIncomingReplyService(account, &models.Contact{
+		ID: contactID, Email: "recipient@example.test",
+	}, contactID)
+	task := service.taskRepo.(incomingReplyTaskRepo).task
+	task.EmailAccountID = uuid.New()
+	task.ReplyTo = "replies@example.test"
+	progress.receivingSent = false
+
+	xerr := service.ProcessIncomingReply(context.Background(), accountID, &models.EmailMessageStoreData{
+		EmailID:   accountID,
+		Folder:    models.FolderInbox,
+		FromAddr:  []string{"Recipient <recipient@example.test>"},
+		ToAddr:    []string{"unrelated@example.test"},
+		InReplyTo: []string{"<opener@example.test>"},
+		Subject:   "Re: Hello",
+	})
+	if xerr != nil {
+		t.Fatal(xerr)
+	}
+	if progress.replied != 0 {
+		t.Fatalf("RecordEmailReplied calls = %d, want 0 when the Reply-To named another mailbox", progress.replied)
+	}
+}
+
 func TestProcessIncomingReplyRejectsCrossOrganizationThread(t *testing.T) {
 	orgID, otherOrgID, accountID, contactID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	account := &models.Email{ID: accountID, OrganizationID: &orgID, Email: "sender@example.test"}

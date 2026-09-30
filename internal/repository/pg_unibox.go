@@ -480,7 +480,70 @@ func (r *uniboxRepository) GetByThread(ctx context.Context, orgID, emailID uuid.
 	query += fmt.Sprintf(` ORDER BY internal_date ASC, id ASC LIMIT $%d`, argPos)
 	args = append(args, limit+1)
 
-	return r.queryPreviewList(ctx, query, args, limit)
+	res, err := r.queryPreviewList(ctx, query, args, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.annotateAnsweredMailboxes(ctx, orgID, res.Data); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// annotateAnsweredMailboxes marks each message that replies to a send from
+// another workspace mailbox with that mailbox, read from the task whose
+// Message-ID its In-Reply-To names.
+func (r *uniboxRepository) annotateAnsweredMailboxes(ctx context.Context, orgID uuid.UUID, emails []models.EmailMessageStoreDataPreview) error {
+	if len(emails) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, len(emails))
+	for i, e := range emails {
+		ids[i] = e.ID
+	}
+	const q = `
+		SELECT ue.id, answered.email_account_id
+		FROM unibox_emails ue
+		CROSS JOIN LATERAL (
+			SELECT t.email_account_id
+			FROM tasks t
+			JOIN email_accounts sender ON sender.id = t.email_account_id AND sender.organization_id = $1
+			WHERE t.task_type <> 'warmup'
+			  AND t.email_account_id <> ue.email_id
+			  AND t.message_id = ANY(ARRAY(
+			        SELECT v
+			        FROM unnest(ue.in_reply_to) AS parent(raw),
+			             LATERAL (VALUES (btrim(parent.raw, '<> ')), ('<' || btrim(parent.raw, '<> ') || '>')) AS form(v)
+			        WHERE btrim(parent.raw, '<> ') <> ''
+			  ))
+			ORDER BY t.created_at DESC
+			LIMIT 1
+		) answered
+		WHERE ue.id = ANY($2)
+		  AND ue.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
+	`
+	rows, err := r.db.Query(ctx, q, orgID, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	answered := make(map[uuid.UUID]uuid.UUID, len(emails))
+	for rows.Next() {
+		var id, mailbox uuid.UUID
+		if err := rows.Scan(&id, &mailbox); err != nil {
+			return err
+		}
+		answered[id] = mailbox
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range emails {
+		if mailbox, ok := answered[emails[i].ID]; ok {
+			emails[i].AnswersMailboxID = &mailbox
+		}
+	}
+	return nil
 }
 
 func (r *uniboxRepository) GetBySender(ctx context.Context, userID uuid.UUID, sender string, limit int, cursor string) (*models.MailSearchResult, error) {

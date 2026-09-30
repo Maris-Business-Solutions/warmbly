@@ -148,6 +148,9 @@ func (s *emailSender) Send(ctx context.Context, taskID uuid.UUID, msg EmailMessa
 	// meant to prove.
 	if !msg.IsWarmup {
 		params.FromEmail = strings.TrimSpace(account.SendAsEmail)
+		// Warmup replies are read back in the sending mailbox, so only
+		// campaign and unibox mail points replies elsewhere.
+		params.ReplyTo = account.ReplyToHeader()
 	}
 
 	// Publish send email event to worker

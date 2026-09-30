@@ -43,6 +43,7 @@ type mailpitMessage struct {
 	MessageID string           `json:"MessageID"`
 	From      mailpitAddress   `json:"From"`
 	To        []mailpitAddress `json:"To"`
+	ReplyTo   []mailpitAddress `json:"ReplyTo"`
 	Subject   string           `json:"Subject"`
 	HTML      string           `json:"HTML"`
 	Text      string           `json:"Text"`

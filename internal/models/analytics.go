@@ -404,6 +404,10 @@ type RecentActivityItem struct {
 	// Origin is the client, device and location of a person's open or
 	// click, when it was logged per event.
 	Origin *EngagementOrigin `json:"origin,omitempty"`
+	// SenderID and SenderEmail name the mailbox the step went out from,
+	// which a reply credits even when it landed in a shared reply inbox.
+	SenderID    *uuid.UUID `json:"sender_id,omitempty"`
+	SenderEmail string     `json:"sender_email,omitempty"`
 }
 
 // TopCampaignStats represents performance stats for a top campaign

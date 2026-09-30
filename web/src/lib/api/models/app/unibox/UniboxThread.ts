@@ -14,6 +14,8 @@ export interface UniboxThreadMessage {
     snippet: string
     internal_date: Date
     seen: boolean
+    /** The workspace mailbox that sent the email this one replies to, when another mailbox holds it. */
+    answers_mailbox_id?: string
 }
 
 export default interface UniboxThread {

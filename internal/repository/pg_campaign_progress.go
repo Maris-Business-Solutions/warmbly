@@ -346,8 +346,8 @@ type CampaignProgressRepository interface {
 	// one of the lead's copies.
 	MarkLeadCCBounced(ctx context.Context, campaignID, contactID uuid.UUID, address string) (*uuid.UUID, error)
 	// LeadForCopiedReply finds the lead whose thread a copied contact is
-	// answering in: the latest email step sent from emailAccountID to a lead
-	// that copies them. Nil when there is none.
+	// answering in: the latest email step sent to a lead that copies them
+	// from emailAccountID, or with its Reply-To naming it. Nil when there is none.
 	LeadForCopiedReply(ctx context.Context, ccContactID, emailAccountID uuid.UUID) (*CopiedLeadRef, error)
 	// SuggestLeadCC offers the lead's likely colleagues: same company name, or
 	// the same email domain when that domain is not a personal mail service.

@@ -3,6 +3,7 @@ package wmail
 import (
 	"context"
 	"errors"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -81,15 +82,21 @@ type SendRequest struct {
 	// mailbox's own address. It is never set on a warmup send: warmup pairs
 	// on the mailbox address, so an alias there would break verification.
 	FromEmail string
+	// ReplyTo is the address the Reply-To header names, so a reply lands in
+	// another mailbox. Empty for no header; never set on a warmup send.
+	ReplyTo string
 }
 
 // buildSendHeaders assembles the outbound custom headers: the warmup
-// verification token (warmup sends) and RFC 8058 one-click unsubscribe headers
-// (campaign sends). Returns nil when there are none so callers can branch.
+// verification token (warmup sends), Reply-To, and RFC 8058 one-click
+// unsubscribe headers (campaign sends). Returns nil when there are none so callers can branch.
 func buildSendHeaders(req *SendRequest) map[string]string {
 	h := map[string]string{}
 	if req.WarmupToken != "" {
 		h[config.WarmupVerifyHeader] = req.WarmupToken
+	}
+	if rt := replyToHeader(req); rt != "" {
+		h["Reply-To"] = rt
 	}
 	if req.UnsubscribeURL != "" {
 		h["List-Unsubscribe"] = "<" + req.UnsubscribeURL + ">"
@@ -105,6 +112,23 @@ func buildSendHeaders(req *SendRequest) map[string]string {
 		return nil
 	}
 	return h
+}
+
+// replyToHeader is the Reply-To value for a send: one bare address, or empty
+// for a warmup send or anything that does not parse as exactly one address.
+func replyToHeader(req *SendRequest) string {
+	if req.IsWarmup {
+		return ""
+	}
+	raw := strings.TrimSpace(req.ReplyTo)
+	if raw == "" || strings.ContainsAny(raw, "\r\n") {
+		return ""
+	}
+	addr, err := mail.ParseAddress(raw)
+	if err != nil {
+		return ""
+	}
+	return addr.Address
 }
 
 // SendResult contains the result of a send operation

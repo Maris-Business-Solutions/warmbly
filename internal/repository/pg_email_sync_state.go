@@ -142,14 +142,23 @@ func (r *pgEmailSyncStateRepository) IsOwnConversation(ctx context.Context, user
 	if len(ids) == 0 && threadID == "" {
 		return false, nil
 	}
-	// Three sources, cheapest first: campaign and reply sends record their
-	// Message-ID on tasks; IMAP maps sent-folder mail by RFC id; Gmail and
-	// Graph key the map by provider id, so for them the stored unibox thread
-	// is what links a reply back to the mailbox's own message.
+	// Four sources, cheapest first: campaign and reply sends record their
+	// Message-ID on tasks, and a workspace send whose Reply-To named this
+	// mailbox counts as its own; IMAP maps sent-folder mail by RFC id; Gmail
+	// and Graph key the map by provider id, so for them the stored unibox
+	// thread is what links a reply back to the mailbox's own message.
 	const q = `
 		SELECT EXISTS (
 			SELECT 1 FROM tasks
 			WHERE email_account_id = $2 AND cardinality($3::text[]) > 0 AND message_id = ANY($3)
+		) OR EXISTS (
+			SELECT 1
+			FROM tasks t
+			JOIN email_accounts sender ON sender.id = t.email_account_id
+			JOIN email_accounts here ON here.id = $2 AND here.organization_id = sender.organization_id
+			WHERE cardinality($3::text[]) > 0 AND t.message_id = ANY($3)
+			  AND t.reply_to <> ''
+			  AND lower(t.reply_to) IN (lower(here.email), lower(COALESCE(NULLIF(here.send_as_email, ''), here.email)))
 		) OR EXISTS (
 			SELECT 1 FROM email_message_map
 			WHERE user_id = $1 AND email_id = $2 AND cardinality($3::text[]) > 0 AND message_id = ANY($3)

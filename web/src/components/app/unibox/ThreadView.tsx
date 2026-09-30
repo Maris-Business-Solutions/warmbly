@@ -87,6 +87,7 @@ function toUniboxEmail(m: UniboxThreadMessage): UniboxEmail {
     is_seen: m.seen,
     thread_id: m.thread_id,
     account_id: m.email_id,
+    answers_mailbox_id: m.answers_mailbox_id,
   };
 }
 
@@ -651,6 +652,11 @@ export function ThreadView({ threadId, emailId, onClose }: ThreadViewProps) {
             defaultExpanded={i === messages.length - 1 || !email.is_seen}
             outbound={
               !!mailboxEmail && bareEmail(email.from).toLowerCase() === mailboxEmail
+            }
+            answersMailbox={
+              email.answers_mailbox_id
+                ? accounts.find((a) => a.id === email.answers_mailbox_id)?.email
+                : undefined
             }
             onReply={() => openReply(email.id, "reply")}
             onForward={() => openReply(email.id, "forward")}

@@ -154,7 +154,7 @@ Returns every message in a single conversation, oldest-first style message rows,
 | `cursor` | query | string | Opaque pagination cursor. |
 | `limit` | query | integer | Page size. Out-of-range values return `400`. |
 
-The response is a `data` plus `pagination` envelope. Each item is a full message (envelope plus body).
+The response is a `data` plus `pagination` envelope. Each item is a full message (envelope plus body). A message that answers an email sent from another workspace mailbox, as a reply in a [shared reply inbox](/guides/mailboxes/#a-shared-reply-inbox) does, carries that mailbox's id in `answers_mailbox_id`; the field is absent otherwise.
 
 ### Response
 
@@ -178,6 +178,7 @@ The response is a `data` plus `pagination` envelope. Each item is a full message
       "in_reply_to": ["<CA+prev@mail.acme.com>"],
       "reply_to": [],
       "to_addr": ["sales@yourco.com"],
+      "answers_mailbox_id": "5e11d0c4-0000-0000-0000-000000000003",
       "subject": "Re: Following up on pricing",
       "size": 18422,
       "internal_date": "2026-06-11T14:22:09Z",

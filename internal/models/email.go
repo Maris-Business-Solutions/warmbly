@@ -2,6 +2,7 @@ package models
 
 import (
 	"net"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -254,6 +255,34 @@ func (e *Email) SendFrom() string {
 		return s
 	}
 	return e.Email
+}
+
+// ReplyToHeader is the Reply-To a campaign or unibox send carries: the
+// configured reply-to as a bare address, empty when unset, unparseable or the
+// address the mail is already From.
+func (e *Email) ReplyToHeader() string {
+	raw := strings.TrimSpace(e.ReplyTo)
+	if raw == "" || strings.ContainsAny(raw, "\r\n") {
+		return ""
+	}
+	addr, err := mail.ParseAddress(raw)
+	if err != nil || addr.Address == "" {
+		return ""
+	}
+	if strings.EqualFold(addr.Address, e.Email) || strings.EqualFold(addr.Address, e.SendFrom()) {
+		return ""
+	}
+	return addr.Address
+}
+
+// ReceivesAt reports whether address, as a send's Reply-To named it, reaches
+// this mailbox.
+func (e *Email) ReceivesAt(address string) bool {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return false
+	}
+	return strings.EqualFold(address, strings.TrimSpace(e.Email)) || strings.EqualFold(address, strings.TrimSpace(e.SendFrom()))
 }
 
 // SendAsIdentity is one address the provider has verified this mailbox to send

@@ -36,16 +36,21 @@ vi.mock("@/lib/api/hooks/app/unibox/useDraftReply", () => ({
 vi.mock("@/hooks/context/user", () => ({
     useUserProfile: () => ({ user: { id: "u1", email: "me@example.com", name: "Me" } }),
 }));
+const mailboxes = vi.hoisted(() => {
+    const all = [
+        { id: "acc1", email: "me@example.com", status: "active", tags: [], signature_html: "", signature_plain: "" },
+        // Points its replies at acc1, the shared reply inbox.
+        { id: "acc2", email: "other@example.com", reply_to: "me@example.com", status: "active", tags: [], signature_html: "", signature_plain: "Other signature", signature_sync: true },
+        { id: "acc3", email: "gone@example.com", status: "inactive", tags: [], signature_html: "", signature_plain: "" },
+    ];
+    return { all, current: all as unknown[] };
+});
 vi.mock("@/stores", () => ({
     useAppStore: (sel: (s: { emails: unknown[]; tags: unknown[]; currentOrganization: { id: string } }) => unknown) =>
         sel({
             currentOrganization: { id: "org1" },
             tags: [],
-            emails: [
-                { id: "acc1", email: "me@example.com", status: "active", tags: [], signature_html: "", signature_plain: "" },
-                { id: "acc2", email: "other@example.com", status: "active", tags: [], signature_html: "", signature_plain: "Other signature", signature_sync: true },
-                { id: "acc3", email: "gone@example.com", status: "inactive", tags: [], signature_html: "", signature_plain: "" },
-            ],
+            emails: mailboxes.current,
         }),
 }));
 vi.mock("@/lib/api/hooks/app/unibox/useComposeCandidates", () => ({
@@ -141,6 +146,7 @@ function pickSender(current: string, next: string) {
 describe("reply composer drafts", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mailboxes.current = mailboxes.all;
         followUps.campaigns = [];
         setupStorage();
         vi.useFakeTimers();
@@ -370,6 +376,50 @@ describe("reply composer drafts", () => {
         expect(body()).toHaveValue("saved");
         expect(fromTrigger("me@example.com")).toBeInTheDocument();
         expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("answers from the mailbox that emailed them when the message sits in its reply inbox", async () => {
+        const answer = { ...(message() as object), answers_mailbox_id: "acc2" } as never;
+        render(<ReplyComposer threadId="t1" replyTo={answer} mode="reply" onClose={() => {}} />);
+        expect(fromTrigger("other@example.com")).toBeInTheDocument();
+        expect(screen.getByText(/which sent the email they answered/)).toHaveTextContent("comes back to me@example.com");
+        expect(screen.queryByText(/Replying from another mailbox/)).toBeNull();
+        fireEvent.change(body(), { target: { value: "Happy to" } });
+        await act(async () => fireEvent.keyDown(body(), { key: "Enter", ctrlKey: true }));
+        expect(sendReply).toHaveBeenCalledWith(expect.objectContaining({ email_account_id: "acc2" }));
+    });
+
+    it("lets a reply inbox answer for itself, and switches back to the sender", () => {
+        const answer = { ...(message() as object), answers_mailbox_id: "acc2" } as never;
+        const view = render(<ReplyComposer threadId="t1" replyTo={answer} mode="reply" onClose={() => {}} />);
+        fireEvent.click(screen.getByRole("button", { name: "Use me@example.com" }));
+        expect(fromTrigger("me@example.com")).toBeInTheDocument();
+        expect(screen.getByText(/Replying from another mailbox/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Switch back" }));
+        expect(fromTrigger("other@example.com")).toBeInTheDocument();
+        view.unmount();
+        // Nothing typed, so the default sender is no reason to keep a draft.
+        expect(localStorage.getItem(draftKey())).toBeNull();
+    });
+
+    it("follows the mailbox list as it loads without calling the default a draft", () => {
+        mailboxes.current = [];
+        const answer = { ...(message() as object), answers_mailbox_id: "acc2" } as never;
+        const view = render(<ReplyComposer threadId="t1" replyTo={answer} mode="reply" onClose={() => {}} />);
+        mailboxes.current = mailboxes.all;
+        view.rerender(<ReplyComposer threadId="t1" replyTo={answer} mode="reply" onClose={() => {}} />);
+        expect(fromTrigger("other@example.com")).toBeInTheDocument();
+        act(() => vi.advanceTimersByTime(500));
+        expect(screen.queryByText(/Draft saved/)).toBeNull();
+        view.unmount();
+        expect(localStorage.getItem(draftKey())).toBeNull();
+    });
+
+    it("keeps the holding mailbox when the answered one points its replies elsewhere", () => {
+        const answer = { ...(message("acc2") as object), answers_mailbox_id: "acc1" } as never;
+        render(<ReplyComposer threadId="t1" replyTo={answer} mode="reply" onClose={() => {}} />);
+        expect(fromTrigger("other@example.com")).toBeInTheDocument();
+        expect(screen.queryByText(/which sent the email they answered/)).toBeNull();
     });
 
     it("closes only the mailbox menu on Escape", () => {

@@ -297,6 +297,12 @@ function ActivityRow({ a }: { a: RecentActivityItem }) {
             <ActivityIcon className={`w-3.5 h-3.5 shrink-0 ${meta.tone}`} />
             <span className="text-[12.5px] text-slate-900 truncate">
                 <span className={meta.tone}>{meta.verb}</span> {a.contact_email}
+                {a.type === "replied" && a.sender_email && (
+                    // The mailbox that emailed them, which a shared reply inbox would otherwise hide.
+                    <span className="text-slate-400" title={`Answers an email sent from ${a.sender_email}`}>
+                        {" "}to {a.sender_email}
+                    </span>
+                )}
             </span>
             {a.origin && (
                 <span className="hidden sm:inline-flex min-w-0 max-w-[16rem]">
