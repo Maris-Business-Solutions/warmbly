@@ -226,7 +226,7 @@ func TestLiveMailboxSourcesRedirects(t *testing.T) {
 
 func TestLiveDomainRedirectServing(t *testing.T) {
 	handle, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 237)
+	requireSchemaVersion(t, pool, 238)
 	f := newImportFixture(t, pool)
 	redirects := NewDomainRedirectRepository(handle)
 	custom := NewCustomDomainRepository(pool)
