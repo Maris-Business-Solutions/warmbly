@@ -134,10 +134,10 @@ export const sanitizeUniboxRailOrder = (v: unknown): Record<string, string[]> =>
   )
 }
 
-// A blank name means "use the row's own label"; anything else is trimmed and capped.
+// A blank name means "use the row's own label"; anything else is trimmed and capped by code point.
 export const cleanUniboxRailFavoriteName = (v: unknown): string | undefined => {
   if (typeof v !== 'string') return undefined
-  const name = v.replace(/\s+/g, ' ').trim().slice(0, UNIBOX_RAIL_FAVORITE_NAME_MAX).trim()
+  const name = Array.from(v.replace(/\s+/g, ' ').trim()).slice(0, UNIBOX_RAIL_FAVORITE_NAME_MAX).join('').trim()
   return name || undefined
 }
 

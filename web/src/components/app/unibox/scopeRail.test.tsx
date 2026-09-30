@@ -738,6 +738,30 @@ describe("Favorites", () => {
     expect(favoritesPanel().contains(current[0])).toBe(true);
   });
 
+  it("highlights in Favorites again once the scope is left and reached some other way", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }] });
+    const onChange = vi.fn();
+    const { rerender } = render(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    const homeInbox = () => screen.getAllByText("Inbox").map((n) => n.closest("[data-rail-row]") as HTMLElement)[1];
+    fireEvent.click(homeInbox());
+    rerender(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    expect(favoritesPanel().querySelector("[aria-current]")).toBeNull();
+
+    // A shortcut away and back, with no click in the rail.
+    rerender(<ScopeRail scope={{ kind: "unread" }} onChange={onChange} />);
+    rerender(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    expect(favoritesPanel().querySelector("[aria-current]")).toBeTruthy();
+    expect(document.querySelectorAll("[aria-current]")).toHaveLength(1);
+  });
+
+  it("names what a renamed view points at on hover", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "view:needs_reply", name: "Follow-ups" }] });
+    mountRail();
+    expect(favoriteLabels()).toEqual(["Follow-ups"]);
+    fireEvent.focus(favoritesPanel().querySelector("[data-rail-row]") as HTMLElement);
+    expect(screen.getAllByText(/^Needs a reply: /).length).toBeGreaterThan(0);
+  });
+
   it("folds, keeps the favorite you are on, and remembers the fold", () => {
     useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }, { key: "unread" }] });
     mountRail({ kind: "unread" });
@@ -872,6 +896,17 @@ describe("Favorites edit mode", () => {
     expect(favoriteLabels()).toEqual(["Work", "Hot leads"]);
   });
 
+  it("keeps a favorite starred elsewhere while editing when the section next writes", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }, { key: "view:hot" }] });
+    mountRail();
+    fireEvent.click(screen.getByRole("button", { name: "Edit favorites" }));
+    // Starred from another row's menu by keyboard, which leaves edit mode open.
+    act(() => useAppStore.getState().toggleUniboxRailFavorite("folder:sent"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unread" }));
+    expect(useAppStore.getState().uniboxRailFavorites.map((f) => f.key)).toEqual(["view:hot", "folder:sent"]);
+    expect(screen.getByRole("checkbox", { name: "Sent" }).getAttribute("aria-checked")).toBe("true");
+  });
+
   it("stays on the rail while every favorite is unticked, and leaves it on Done", () => {
     useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }] });
     mountRail();
@@ -926,6 +961,23 @@ describe("Favorites edit mode", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Unread" }));
     fireEvent.click(screen.getByRole("button", { name: "Done editing Favorites" }));
     expect(screen.queryByText(/\d+ hidden/)).toBeNull();
+  });
+});
+
+describe("Favorites and hiding", () => {
+  it("says a row hides at once when the scope you are on is highlighted in Favorites", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }] });
+    render(
+      <>
+        <ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={() => {}} />
+        <Toaster />
+      </>,
+    );
+    fireEvent.click(screen.getByLabelText("Inbox folder actions"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide from rail" }));
+    expect(screen.getByText("Inbox is hidden from the rail.")).toBeTruthy();
+    // Gone from Mail, still in Favorites.
+    expect(screen.getAllByText("Inbox")).toHaveLength(1);
   });
 });
 
@@ -992,6 +1044,10 @@ describe("sanitizeUniboxRailFavorites", () => {
     expect(cleanUniboxRailFavoriteName("a\n\tb")).toBe("a b");
     expect(cleanUniboxRailFavoriteName("x".repeat(80))).toHaveLength(40);
     expect(cleanUniboxRailFavoriteName("")).toBeUndefined();
+    // An emoji straddling the cap is kept whole or dropped, never split.
+    const capped = cleanUniboxRailFavoriteName(`${"x".repeat(39)}🔥🔥`) as string;
+    expect(Array.from(capped)).toHaveLength(40);
+    expect(capped.endsWith("🔥")).toBe(true);
   });
 
   it("runs on rehydration", async () => {

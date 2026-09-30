@@ -243,6 +243,12 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
   );
 
   const active = scopeKey(scope);
+  // A scope reached any other way (shortcut, Back) highlights in Favorites again.
+  const [pickedFor, setPickedFor] = React.useState(active);
+  if (pickedFor !== active) {
+    setPickedFor(active);
+    if (homePick !== null && homePick !== active) setHomePick(null);
+  }
   const folderCounts = React.useMemo(() => {
     const m = new Map<string, { unread: number; total: number }>();
     for (const f of data?.folders ?? []) {
@@ -327,7 +333,10 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
       })
     : [];
 
-  const mailboxRows: RailRow[] = (data?.mailboxes ?? []).map((m) => ({
+  const mailboxes = data?.mailboxes;
+  const categories = data?.categories;
+  const tags = data?.tags;
+  const mailboxRows = React.useMemo<RailRow[]>(() => (mailboxes ?? []).map((m) => ({
     key: `mailbox:${m.id}`,
     label: m.email,
     icon: <MailOpenIcon className={ICON} />,
@@ -336,9 +345,9 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
     noun: "mailbox",
     search: `${m.email} ${m.name}`,
     onOpen: () => onChange({ kind: "mailbox", mailboxId: m.id }),
-  }));
+  })), [mailboxes, onChange]);
 
-  const labelRows: RailRow[] = (data?.categories ?? []).map((c) => ({
+  const labelRows = React.useMemo<RailRow[]>(() => (categories ?? []).map((c) => ({
     key: `category:${c.id}`,
     label: c.title,
     icon: <Dot color={c.color} />,
@@ -347,9 +356,9 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
     noun: "label",
     tooltip: tagMeaning(c.title) || undefined,
     onOpen: () => onChange({ kind: "category", categoryId: c.id }),
-  }));
+  })), [categories, onChange]);
 
-  const tagRows: RailRow[] = (data?.tags ?? []).map((t) => ({
+  const tagRows = React.useMemo<RailRow[]>(() => (tags ?? []).map((t) => ({
     key: `tag:${t.id}`,
     label: t.title,
     icon: <Dot color={t.color} />,
@@ -357,13 +366,16 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
     accent: t.unread > 0,
     noun: "tag",
     onOpen: () => onChange({ kind: "tag", tagId: t.id }),
-  }));
+  })), [tags, onChange]);
 
   // Favorites resolve against every other section, so a row always carries its live count.
   const everyRow = new Map(
     [...mailRows, ...viewRows, ...mailboxRows, ...labelRows, ...tagRows].map((r) => [r.key, r]),
   );
-  const favoriteList = favoritesDraft ?? favorites;
+  // A favorite added while editing (a keyboard star elsewhere) joins the draft at the end.
+  const favoriteList = favoritesDraft
+    ? [...favoritesDraft, ...favorites.filter((f) => !favoritesDraft.some((d) => d.key === f.key))]
+    : favorites;
   const favoriteKeys = new Set(favorites.map((f) => f.key));
   const favoriteRows: RailRow[] = favoriteList.flatMap((f) => {
     const r = everyRow.get(f.key);
@@ -373,6 +385,7 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
         ...r,
         label: f.name ?? r.label,
         original: f.name ? r.label : undefined,
+        tooltip: f.name && r.tooltip ? `${r.label}: ${r.tooltip}` : r.tooltip,
         noun: "favorite",
         onOpen: () => {
           setHomePick(null);
@@ -385,14 +398,20 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
   // One row carries the highlight: the favorite, unless the scope was opened from its own section.
   const inFavorites = favoriteKeys.has(active) && homePick !== active && favoriteRows.some((r) => r.key === active);
   const homeActive = inFavorites ? "" : active;
-  const home = (rows: RailRow[]) =>
-    rows.map((r) => ({
-      ...r,
-      onOpen: () => {
-        setHomePick(r.key);
-        r.onOpen();
-      },
-    }));
+  const home = React.useCallback(
+    (rows: RailRow[]) =>
+      rows.map((r) => ({
+        ...r,
+        onOpen: () => {
+          setHomePick(r.key);
+          r.onOpen();
+        },
+      })),
+    [],
+  );
+  const homeMailboxRows = React.useMemo(() => home(mailboxRows), [home, mailboxRows]);
+  const homeLabelRows = React.useMemo(() => home(labelRows), [home, labelRows]);
+  const homeTagRows = React.useMemo(() => home(tagRows), [home, tagRows]);
 
   // Writes the favorites; while editing, the draft keeps unticked ones in place.
   const writeFavorites = (next: UniboxRailFavorite[], kept = favoriteKeys) => {
@@ -451,13 +470,13 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
     <FavoriteToggle
       on={favoriteKeys.has(row.key)}
       label={row.label}
-      onToggle={() => (favoriteKeys.has(row.key) ? removeFavorite(row.key, row.label) : toggleFavorite(row.key))}
+      onToggle={() => (favoriteKeys.has(row.key) ? removeFavorite(row.key, row.label) : addFavorite(row))}
     />
   );
 
   const hideWithUndo = (row: RailRow) => {
     setRowsHidden([row.key], true);
-    const when = row.key === active ? " once you leave it" : "";
+    const when = row.key === homeActive ? " once you leave it" : "";
     undoToast(`rail-hidden:${row.key}`, `${row.label} is hidden from the rail${when}.`, () =>
       setRowsHidden([row.key], false),
     );
@@ -602,7 +621,7 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
             id="mailboxes"
             label="Mailboxes"
             controls={controls("mailboxes")}
-            rows={home(mailboxRows)}
+            rows={homeMailboxRows}
             activeKey={homeActive}
             rowMenu={favoriteItem}
             emptyText={overview.isPending ? "Loading…" : "No mailboxes connected."}
@@ -615,7 +634,7 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
             id="labels"
             label="Labels"
             controls={controls("labels")}
-            rows={home(labelRows)}
+            rows={homeLabelRows}
             activeKey={homeActive}
             rowMenu={favoriteItem}
             emptyText="No labels yet."
@@ -628,7 +647,7 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
             id="tags"
             label="Tags"
             controls={controls("tags")}
-            rows={home(tagRows)}
+            rows={homeTagRows}
             activeKey={homeActive}
             rowMenu={favoriteItem}
             emptyText="No tags yet."
@@ -976,8 +995,7 @@ function MoveItems({ row, ctx }: { row: RailRow; ctx: RowContext }) {
   );
 }
 
-// FixedSection: Mail and Views, a shipped list of rows the user can hide,
-// reorder and star into Favorites.
+// FixedSection: Mail and Views, whose shipped rows can be hidden, reordered and starred.
 function FixedSection({
   id,
   label,
@@ -1061,9 +1079,7 @@ function FixedSection({
   );
 }
 
-// RailSection: an ordered list of rows that folds and has an edit mode, where
-// each row can be ticked off (hidden, or out of Favorites) and reordered. The
-// row you are on is never ticked out of sight.
+// RailSection: ordered rows that fold, reorder and tick off in edit mode; the active row always shows.
 function RailSection({
   id,
   label,
@@ -1796,8 +1812,7 @@ function FavoriteToggle({ on, label, onToggle }: { on: boolean; label: string; o
   );
 }
 
-// RenameRow: a favorite's name, edited in place. Enter or leaving the field
-// keeps it, Escape drops the edit, and an empty name goes back to the row's own.
+// RenameRow: Enter or blur keeps the name, Escape drops it, empty restores the row's own.
 function RenameRow({
   row,
   onDone,
