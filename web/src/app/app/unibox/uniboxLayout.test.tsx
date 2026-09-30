@@ -206,6 +206,58 @@ describe("unibox desktop layout (#473)", SUITE, () => {
 
             expect(useAppStore.getState().navCollapsed).toBe(false);
         });
+
+        // Issue #742: the tip is held shut while expanded, and Radix only
+        // reports changes against that, so a hover there used to report the
+        // open and never the close. Collapsing then showed every such tip.
+        it("opens no tips on collapse for rows hovered while expanded", async () => {
+            await mount("/app/unibox/all");
+            await settle();
+
+            const rows = Array.from(document.querySelectorAll<HTMLAnchorElement>('aside a[data-slot="tooltip-trigger"]')).slice(0, 3);
+            expect(rows).toHaveLength(3);
+            const tips = () => document.querySelectorAll('[data-slot="tooltip-content"]');
+            const hover = async (row: HTMLElement) => {
+                await act(async () => {
+                    fireEvent.pointerMove(row);
+                });
+                await settle();
+                await act(async () => {
+                    fireEvent.pointerLeave(row);
+                });
+            };
+
+            for (const row of rows) await hover(row);
+            await settle();
+            expect(tips()).toHaveLength(0);
+
+            await act(async () => {
+                fireEvent.keyDown(document.body, { key: "b" });
+            });
+            await settle();
+            expect(useAppStore.getState().navCollapsed).toBe(true);
+            expect(tips()).toHaveLength(0);
+
+            // The rail itself still names a row on hover.
+            await act(async () => {
+                fireEvent.pointerMove(rows[0]);
+            });
+            await settle();
+            expect(tips()).toHaveLength(1);
+
+            // And a tip left open in the rail does not come back after a round
+            // trip through the expanded sidebar.
+            await act(async () => {
+                fireEvent.keyDown(document.body, { key: "b" });
+            });
+            await settle();
+            await act(async () => {
+                fireEvent.keyDown(document.body, { key: "b" });
+            });
+            await settle();
+            expect(useAppStore.getState().navCollapsed).toBe(true);
+            expect(tips()).toHaveLength(0);
+        });
     });
 
     describe("resizable conversation list", () => {

@@ -198,10 +198,16 @@ function NavTip({
 }) {
     // Controlled, so a hover in the expanded sidebar never opens a tip there.
     const [open, setOpen] = useState(false);
+    // Radix never reports the close of a tip held shut, so a mode change drops any stale open (#742).
+    const [openIn, setOpenIn] = useState(collapsed);
+    if (openIn !== collapsed) {
+        setOpenIn(collapsed);
+        setOpen(false);
+    }
     return (
         // Rooted in the rail's shared provider: after the first tip, moving to
         // the next row shows its name at once instead of waiting again.
-        <TooltipGroupRoot open={collapsed && open} onOpenChange={setOpen}>
+        <TooltipGroupRoot open={collapsed && open} onOpenChange={(next) => setOpen(collapsed && next)}>
             <TooltipTrigger asChild>{children}</TooltipTrigger>
             {collapsed && (
                 <TooltipContent side="right" sideOffset={8}>
