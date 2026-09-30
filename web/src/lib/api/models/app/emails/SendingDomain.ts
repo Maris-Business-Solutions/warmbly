@@ -24,6 +24,25 @@ export interface DNSRecord {
     optional?: boolean;
 }
 
+/** Who answers visitors: this instance's tracking service, or Warmbly Cloud for a linked self-hosted instance. */
+export type RedirectServer = "instance" | "cloud";
+
+/** "ok": visitors get the redirect; "not_reaching": something else answers; "https_error": https fails; "unreachable": nothing answered this server's check. */
+export type RedirectReachStatus = "ok" | "not_reaching" | "https_error" | "unreachable";
+
+/** The likely cause, which picks the fix to show. */
+export type RedirectReachHint = "" | "not_routed" | "host_header" | "wrong_target" | "certificate" | "no_listener" | "settling";
+
+/** The last time the domain was opened the way a visitor would, after DNS verified. */
+export interface RedirectReach {
+    status: RedirectReachStatus;
+    hint?: RedirectReachHint;
+    detail?: string;
+    /** The web server that answered in Warmbly's place, when it could be told: traefik, nginx, caddy, ... */
+    proxy?: string;
+    checked_at?: Date | null;
+}
+
 export interface DomainRedirect {
     id: string;
     domain: string;
@@ -35,6 +54,10 @@ export interface DomainRedirect {
     last_error?: string;
     created_at: Date;
     records: DNSRecord[];
+    served_by: RedirectServer;
+    /** The tracking host that answers, which a proxy in front routes the domain to. */
+    serve_host?: string;
+    reach?: RedirectReach | null;
 }
 
 export interface SendingDomain {
@@ -90,6 +113,8 @@ export interface SetDomainTrackingResult {
 export interface SetDomainRedirectRequest {
     target_url: string;
     include_www?: boolean;
+    /** Omitted keeps where the redirect is served from today. */
+    served_by?: RedirectServer;
 }
 
 /** POST /emails/domains/bulk: one tracking subdomain and one redirect website for up to 100 domains. */
@@ -101,10 +126,12 @@ export interface BulkDomainSetupRequest {
     /** A domain's own tracking host or website, in place of the shared one. */
     tracking_hosts?: Record<string, string>;
     redirect_urls?: Record<string, string>;
+    /** Where a redirect no vendor forwards is served from. */
+    served_by?: RedirectServer;
 }
 
-/** "vendor": the vendor holding the domain did it; "dns": the record is yours to add. */
-export type BulkVia = "vendor" | "dns";
+/** "vendor": the vendor holding the domain did it; "dns": the record is yours to add; "cloud": Warmbly Cloud serves it, once its records are added. */
+export type BulkVia = "vendor" | "dns" | "cloud";
 
 export interface BulkDomainResult {
     domain: string;

@@ -21,6 +21,8 @@ import {
     revokePoolLinkInstance,
 } from "@/lib/api/client/app/cloudlink/poolLink";
 
+import { SENDING_DOMAINS_KEY } from "@/lib/api/hooks/app/emails/useSendingDomains";
+
 export const CLOUD_LINK_KEY = ["cloud-link"];
 export const POOL_LINK_KEY = ["pool-link"];
 
@@ -55,6 +57,8 @@ export function useDisconnectCloudLink() {
         onSuccess: () => {
             void qc.invalidateQueries({ queryKey: CLOUD_LINK_KEY });
             void qc.invalidateQueries({ queryKey: ["emails"] });
+            // Redirects Warmbly Cloud served stop with the link.
+            void qc.invalidateQueries({ queryKey: SENDING_DOMAINS_KEY });
         },
     });
 }

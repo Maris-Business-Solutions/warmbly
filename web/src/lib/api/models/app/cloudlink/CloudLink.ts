@@ -49,10 +49,20 @@ export interface PoolLinkOffer {
     currency: string;
 }
 
+/** Root redirects Warmbly Cloud serves for this linked instance. */
+export interface PoolLinkRedirectOffer {
+    available: boolean;
+    host?: string;
+    limit: number;
+    used: number;
+}
+
 export interface PoolLinkInstanceInfo {
     instance: PoolLinkInstance;
     organization: PoolLinkOrgInfo;
     plan: PoolLinkPlan;
+    /** Absent from a Cloud that does not serve redirects. */
+    redirects?: PoolLinkRedirectOffer | null;
 }
 
 export interface PoolLinkCode {

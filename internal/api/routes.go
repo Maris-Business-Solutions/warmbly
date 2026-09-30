@@ -1543,6 +1543,12 @@ func Run(
 				poolLinkInstance.POST("/placement/tests", h.PoolLinkStartPlacement)
 				poolLinkInstance.GET("/placement/tests/:testId", h.PoolLinkPlacementVerdicts)
 				poolLinkInstance.POST("/placement/tests/:testId/sends", h.PoolLinkPlacementSends)
+				// Root redirects served here for the linked instance.
+				poolLinkInstance.GET("/redirects", h.PoolLinkListRedirects)
+				poolLinkInstance.GET("/redirects/:domain", h.PoolLinkGetRedirect)
+				poolLinkInstance.PUT("/redirects/:domain", h.PoolLinkPutRedirect)
+				poolLinkInstance.POST("/redirects/:domain/verify", h.PoolLinkVerifyRedirect)
+				poolLinkInstance.DELETE("/redirects/:domain", h.PoolLinkDeleteRedirect)
 			}
 
 			// Self-hosted side: Settings > Warmbly Cloud.

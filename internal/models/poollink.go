@@ -113,6 +113,8 @@ type PoolLinkInstanceInfo struct {
 	Instance     PoolLinkInstance `json:"instance"`
 	Organization PoolLinkOrgInfo  `json:"organization"`
 	Plan         PoolLinkPlan     `json:"plan"`
+	// Redirects is nil from a Cloud that does not serve root redirects.
+	Redirects *PoolLinkRedirectOffer `json:"redirects,omitempty"`
 }
 
 // PoolLinkWarmupSettings is the requested ramp; zero values mean cloud defaults.

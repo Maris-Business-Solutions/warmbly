@@ -3,7 +3,11 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -165,9 +169,9 @@ func TestLiveMailboxSourcesRedirects(t *testing.T) {
 	domain := "redir-" + f.org.String()[:8] + ".io"
 
 	a := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.org, Domain: domain, TargetURL: "https://acme.com", IncludeWWW: true, VerifyToken: "tok-a"}
-	mustImport(t, redirects.Upsert(ctx, a, f.owner))
+	mustImport(t, redirects.Upsert(ctx, a, &f.owner))
 	again := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.org, Domain: domain, TargetURL: "https://acme.com/new", IncludeWWW: true, VerifyToken: "tok-new"}
-	mustImport(t, redirects.Upsert(ctx, again, f.owner))
+	mustImport(t, redirects.Upsert(ctx, again, &f.owner))
 	if again.VerifyToken != "tok-a" || again.TargetURL != "https://acme.com/new" {
 		t.Fatalf("an update rotated the token or kept the old target: %+v", again)
 	}
@@ -186,7 +190,7 @@ func TestLiveMailboxSourcesRedirects(t *testing.T) {
 	}
 
 	b := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: domain, TargetURL: "https://evil.com", VerifyToken: "tok-b"}
-	mustImport(t, redirects.Upsert(ctx, b, f.owner))
+	mustImport(t, redirects.Upsert(ctx, b, &f.owner))
 	if err := redirects.SetCheck(ctx, b.ID, true, ""); !errors.Is(err, ErrRedirectTaken) {
 		t.Fatalf("a second workspace verified the same domain: %v", err)
 	}
@@ -218,6 +222,154 @@ func TestLiveMailboxSourcesRedirects(t *testing.T) {
 		}
 		t.Fatal("the domain is missing from the overview")
 	})
+}
+
+func TestLiveDomainRedirectServing(t *testing.T) {
+	handle, pool := liveContactDB(t)
+	requireSchemaVersion(t, pool, 237)
+	f := newImportFixture(t, pool)
+	redirects := NewDomainRedirectRepository(handle)
+	custom := NewCustomDomainRepository(pool)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM domain_redirects WHERE organization_id = ANY($1)`, []uuid.UUID{f.org, f.other})
+		_, _ = pool.Exec(context.Background(), `DELETE FROM pool_link_instances WHERE organization_id = ANY($1)`, []uuid.UUID{f.org, f.other})
+	})
+	domain := "serve-" + f.org.String()[:8] + ".io"
+
+	// Cloud serves it: this instance neither answers for it nor asks for its certificate.
+	cloudRow := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.org, Domain: domain, TargetURL: "https://acme.com", IncludeWWW: true,
+		VerifyToken: "tok", ServedBy: models.RedirectServedByCloud}
+	mustImport(t, redirects.Upsert(ctx, cloudRow, &f.owner))
+	mustImport(t, redirects.SetCheck(ctx, cloudRow.ID, true, ""))
+	records := []models.DNSRecord{{Purpose: "root", Type: "A", Name: domain, Value: "198.51.100.7"}}
+	mustImport(t, redirects.SetRemote(ctx, cloudRow.ID, "t.warmbly.cloud", records))
+	checked := time.Now()
+	mustImport(t, redirects.SetReach(ctx, cloudRow.ID, &models.RedirectReach{Status: models.RedirectReachNotReaching, Hint: models.RedirectHintNotRouted, Detail: "404", CheckedAt: &checked}))
+	if _, ok, _ := redirects.Lookup(ctx, domain); ok {
+		t.Fatal("this instance serves a redirect Cloud serves")
+	}
+	if ok, _ := custom.IsVerified(ctx, domain); ok {
+		t.Fatal("this instance would get a certificate for a domain Cloud serves")
+	}
+	got, err := redirects.Get(ctx, f.org, domain)
+	if err != nil || got.ServedBy != models.RedirectServedByCloud || got.RemoteHost != "t.warmbly.cloud" || len(got.RemoteRecords) != 1 ||
+		got.Reach == nil || got.Reach.Hint != models.RedirectHintNotRouted || got.Reach.CheckedAt == nil {
+		t.Fatalf("round trip = %+v, %v", got, err)
+	}
+	if taken, _ := redirects.CloudServedElsewhere(ctx, f.other, domain); !taken {
+		t.Fatal("another workspace was not told Cloud already serves the domain")
+	}
+
+	// Moving it here drops Cloud's records, reach and verdict; this instance proves the domain itself.
+	here := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.org, Domain: domain, TargetURL: "https://acme.com", IncludeWWW: true,
+		VerifyToken: "tok", ServedBy: models.RedirectServedByInstance}
+	mustImport(t, redirects.Upsert(ctx, here, &f.owner))
+	if here.RemoteHost != "" || here.RemoteRecords != nil || here.Reach != nil || here.Verified || here.VerifiedAt != nil {
+		t.Fatalf("a move kept the old server's state: %+v", here)
+	}
+	if _, ok, _ := redirects.Lookup(ctx, domain); ok {
+		t.Fatal("a redirect moved here is served on Cloud's verdict")
+	}
+	mustImport(t, redirects.SetCheck(ctx, here.ID, true, ""))
+	if target, ok, _ := redirects.Lookup(ctx, domain); !ok || target != "https://acme.com" {
+		t.Fatal("a verified redirect served here is not answered")
+	}
+
+	// A redirect visitors do not reach is checked again within minutes; one this server could not open is not.
+	due := func() bool {
+		list, err := redirects.Due(ctx, 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range list {
+			if d.ID == here.ID {
+				return true
+			}
+		}
+		return false
+	}
+	for _, c := range []struct {
+		status models.RedirectReachStatus
+		due    bool
+	}{{models.RedirectReachNotReaching, true}, {models.RedirectReachHTTPSError, true}, {models.RedirectReachUnreachable, false}, {models.RedirectReachOK, false}} {
+		mustImport(t, redirects.SetCheck(ctx, here.ID, true, ""))
+		mustImport(t, redirects.SetReach(ctx, here.ID, &models.RedirectReach{Status: c.status}))
+		if _, err := pool.Exec(ctx, `UPDATE domain_redirects SET last_checked_at = now() - interval '20 minutes' WHERE id = $1`, here.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := due(); got != c.due {
+			t.Fatalf("reach %s: due = %v", c.status, got)
+		}
+	}
+
+	// The link ending stops every cloud-served row.
+	mustImport(t, redirects.Upsert(ctx, cloudRow, &f.owner))
+	mustImport(t, redirects.UnverifyCloudServed(ctx, "unlinked"))
+	if got, _ = redirects.Get(ctx, f.org, domain); got.Verified || got.LastError != "unlinked" {
+		t.Fatalf("still live after the link ended: %+v", got)
+	}
+
+	// On Cloud: a linked instance's row is the link's, out of the workspace's list and delete, and ends with it.
+	instID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO pool_link_instances (id, organization_id, name, token_hash) VALUES ($1, $2, 'test', $3)`,
+		instID, f.other, "hash-"+instID.String()); err != nil {
+		t.Fatal(err)
+	}
+	linkedDomain := "linked-" + f.org.String()[:8] + ".io"
+	linked := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: linkedDomain, TargetURL: "https://frost.se",
+		IncludeWWW: true, VerifyToken: "tok-l", LinkedInstanceID: &instID}
+	mustImport(t, redirects.Upsert(ctx, linked, nil))
+	if list, _ := redirects.List(ctx, f.other); len(list) != 0 {
+		t.Fatalf("the workspace lists the link's row: %+v", list)
+	}
+	if ok, _ := redirects.Delete(ctx, f.other, linkedDomain); ok {
+		t.Fatal("the workspace deleted the link's row")
+	}
+	if n, _ := redirects.CountLinked(ctx, instID); n != 1 {
+		t.Fatalf("count = %d", n)
+	}
+	// The limit counts under the instance's lock: a new domain past it is refused, an existing one still updates.
+	second := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: "two-" + linkedDomain, TargetURL: "https://frost.se",
+		VerifyToken: "tok-2", LinkedInstanceID: &instID}
+	if ok, err := redirects.UpsertLinked(ctx, second, nil, 1); err != nil || ok {
+		t.Fatalf("a redirect past the limit was taken: %v %v", ok, err)
+	}
+	again := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: linkedDomain, TargetURL: "https://frost.se/new",
+		IncludeWWW: true, VerifyToken: "tok-l", LinkedInstanceID: &instID}
+	if ok, err := redirects.UpsertLinked(ctx, again, nil, 1); err != nil || !ok || again.TargetURL != "https://frost.se/new" {
+		t.Fatalf("an existing redirect at the limit could not be updated: %v %v %+v", ok, err, again)
+	}
+	// Saves racing each other still stop at the limit.
+	raceID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO pool_link_instances (id, organization_id, name, token_hash) VALUES ($1, $2, 'race', $3)`,
+		raceID, f.other, "hash-"+raceID.String()); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	var taken atomic.Int32
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			r := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: fmt.Sprintf("race%d-%s", i, linkedDomain),
+				TargetURL: "https://frost.se", VerifyToken: "tok", LinkedInstanceID: &raceID}
+			if ok, err := redirects.UpsertLinked(ctx, r, nil, 5); err == nil && ok {
+				taken.Add(1)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if n, _ := redirects.CountLinked(ctx, raceID); n != 5 || taken.Load() != 5 {
+		t.Fatalf("racing saves took %d (%d stored) against a limit of 5", taken.Load(), n)
+	}
+
+	if err := NewPoolLinkRepository(pool).RevokeInstance(ctx, instID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := redirects.GetLinked(ctx, instID, linkedDomain); got != nil {
+		t.Fatal("the redirect outlived the link it was served for")
+	}
 }
 
 func TestLiveMailboxSourcesSigninConversions(t *testing.T) {

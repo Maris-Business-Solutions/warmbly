@@ -191,6 +191,9 @@ func (h *Handler) PoolLinkInstanceInfo(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
+	if h.SendingDomainService != nil {
+		info.Redirects = h.SendingDomainService.LinkedOffer(c.Request.Context(), inst.ID)
+	}
 	c.JSON(http.StatusOK, info)
 }
 

@@ -266,18 +266,56 @@ pub async fn redirect_first(
                 &state.client_ip_header,
             );
             let source = hash_ip(&state.ip_hash_key, &ip);
-            if let Lookup::Found(target) = state.redirects.lookup(&host, &source, false).await {
-                return redirect_to(target);
+            match state.redirects.lookup(&host, &source, false).await {
+                Lookup::Found(target) => return redirect_to(target),
+                Lookup::Unavailable => {
+                    // Unknown whether this host redirects, so a miss is an outage, not a 404.
+                    let res = next.run(req).await;
+                    if res.status() == StatusCode::NOT_FOUND {
+                        return (
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            [
+                                (header::RETRY_AFTER, "30"),
+                                (header::HeaderName::from_static(SERVICE_HEADER), "tracking"),
+                            ],
+                            "Temporarily unavailable",
+                        )
+                            .into_response();
+                    }
+                    return res;
+                }
+                Lookup::NotFound => {}
             }
         }
     }
     next.run(req).await
 }
 
+/// Marks a response as this service's own, so the backend's redirect check can
+/// tell a visit that reached tracking from one a proxy answered.
+pub const SERVICE_HEADER: &str = "x-warmbly-service";
+
+/// The host a 404 was looked up under, so the same check can tell a rewritten
+/// Host header from a redirect this service has not picked up yet.
+pub const HOST_HEADER: &str = "x-warmbly-host";
+
 /// A request no route matched: a redirect domain was already answered by
 /// redirect_first, so what is left is unknown.
-pub async fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, "Not found").into_response()
+pub async fn not_found(headers: HeaderMap) -> Response {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .and_then(normalize_host)
+        .unwrap_or_default();
+    (
+        StatusCode::NOT_FOUND,
+        [
+            (SERVICE_HEADER, "tracking".to_string()),
+            (HOST_HEADER, host),
+        ],
+        "Not found",
+    )
+        .into_response()
 }
 
 fn redirect_to(target: String) -> Response {
@@ -287,6 +325,10 @@ fn redirect_to(target: String) -> Response {
         [
             (header::LOCATION, target),
             (header::CACHE_CONTROL, "public, max-age=300".to_string()),
+            (
+                header::HeaderName::from_static(SERVICE_HEADER),
+                "tracking".to_string(),
+            ),
         ],
     )
         .into_response()

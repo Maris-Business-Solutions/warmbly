@@ -251,6 +251,12 @@ func (r *poolLinkRepository) RevokeInstance(ctx context.Context, id uuid.UUID) e
 		db.CaptureError(err, query, []any{id}, "exec")
 		return err
 	}
+	// Redirects Cloud served for the instance end with its link.
+	release := `DELETE FROM domain_redirects WHERE linked_instance_id = $1`
+	if _, err := r.db.Exec(ctx, release, id); err != nil {
+		db.CaptureError(err, release, []any{id}, "exec")
+		return err
+	}
 	return nil
 }
 

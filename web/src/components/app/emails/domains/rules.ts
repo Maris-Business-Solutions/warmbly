@@ -1,6 +1,6 @@
 // Pure helpers the Sending domains page and the import wizards share.
 import type { RecordRow } from "./parts";
-import type { SendingDomain } from "@/lib/api/models/app/emails/SendingDomain";
+import type { DomainRedirect, SendingDomain } from "@/lib/api/models/app/emails/SendingDomain";
 import { vendorLabel } from "@/lib/api/models/app/emails/MailboxSources";
 
 /** The CNAME a tracking host needs. */
@@ -42,11 +42,17 @@ export function trackingState(d: SendingDomain): TrackingState {
     return covered >= d.mailboxes ? "live" : "partial";
 }
 
-/** "vendor": the vendor forwards the root; "live" / "pending": the DNS redirect. */
-export type RedirectState = "live" | "vendor" | "pending" | "none";
+/** "vendor": the vendor forwards the root; "live" / "pending": the DNS redirect; "blocked": DNS is in place, visitors still do not get it. */
+export type RedirectState = "live" | "blocked" | "vendor" | "pending" | "none";
+
+/** Verified, but opening the domain the way a visitor does did not reach the redirect. */
+export function redirectBlocked(r: DomainRedirect | null | undefined): boolean {
+    const s = r?.reach?.status;
+    return !!r?.verified && (s === "not_reaching" || s === "https_error");
+}
 
 export function redirectState(d: SendingDomain): RedirectState {
-    if (d.redirect?.verified) return "live";
+    if (d.redirect?.verified) return redirectBlocked(d.redirect) ? "blocked" : "live";
     if (d.vendor_domain?.forwarding) return "vendor";
     if (d.redirect) return "pending";
     return "none";
@@ -55,7 +61,8 @@ export function redirectState(d: SendingDomain): RedirectState {
 /** Authentication fails, or a tracking host or redirect is stuck waiting for DNS. */
 export function needsAttention(d: SendingDomain): boolean {
     const t = trackingState(d);
-    return d.auth_state === "failing" || t === "pending" || t === "partial" || redirectState(d) === "pending";
+    const r = redirectState(d);
+    return d.auth_state === "failing" || t === "pending" || t === "partial" || r === "pending" || r === "blocked";
 }
 
 /** The vendor managing a domain: the account holding it, else the one its mailboxes came from. */
@@ -147,6 +154,12 @@ export function redirectPill(d: SendingDomain): PillInfo {
                 title: `${vendor} forwards ${d.domain} to ${d.vendor_domain!.forwarding}.`,
             };
         }
+        case "blocked":
+            return {
+                tone: "amber",
+                label: "Not reaching visitors",
+                title: d.redirect?.reach?.detail || `DNS is in place, but visitors to ${d.domain} do not get the redirect yet.`,
+            };
         case "pending":
             return { tone: "amber", label: "Waiting for DNS", title: "The redirect's DNS records are not all in place yet." };
         default:

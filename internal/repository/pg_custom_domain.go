@@ -22,7 +22,8 @@ func NewCustomDomainRepository(db *pgxpool.Pool) CustomDomainRepository {
 }
 
 // IsVerified reports whether host is a verified custom tracking domain (on a
-// mailbox or a campaign override) or a verified custom forms domain.
+// mailbox or a campaign override), a verified custom forms domain, or a
+// verified root redirect this instance serves itself.
 //
 // Verified is the whole gate. Verification is a DNS check, so it completes
 // before any certificate is needed and there is no ordering problem, and a
@@ -48,7 +49,7 @@ func (r *customDomainRepository) IsVerified(ctx context.Context, host string) (b
 			WHERE forms_domain = $1 AND forms_domain_verified
 			UNION ALL
 			SELECT 1 FROM domain_redirects
-			WHERE verified AND (domain = $1 OR (include_www AND 'www.' || domain = $1))
+			WHERE verified AND served_by = 'instance' AND (domain = $1 OR (include_www AND 'www.' || domain = $1))
 		)
 	`, host).Scan(&ok)
 	if err != nil {
