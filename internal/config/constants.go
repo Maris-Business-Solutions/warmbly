@@ -346,6 +346,22 @@ const (
 	// strikes behind a live hold are always there to re-decide it.
 	WarmupTamperingKeepDays = 37
 
+	// A warmup email moved to spam names no actor on any provider, so the move
+	// is held this long before it is attributed, to see the activity around it.
+	WarmupSpamMoveSettleMinutes = 30
+	// Owner activity this close to a move, either side, attributes it to the owner.
+	WarmupSpamMoveActivityMinutes = 30
+	// A move this soon after arrival, with nobody active, is the filter catching up.
+	WarmupSpamMoveQuickMinutes = 15
+	// The same sender's mail moved to spam in another workspace this close is the provider re-judging it.
+	WarmupSpamMoveCorrelationHours = 24
+	// Unexplained moves from this many distinct senders in seven days, in a mailbox someone uses, are its owner's.
+	WarmupSpamMovePatternSenders = 3
+	// A mailbox with no owner activity this long has nobody to have moved anything.
+	WarmupOwnerDormantDays = 14
+	// Owner activity is kept this long; it only answers the two windows above.
+	WarmupOwnerActivityKeepDays = 30
+
 	// CampaignSendStampAttempts is how many times the control plane retries the
 	// sent_at stamp after a send is already on the bus. The reservation is what
 	// keeps the step from being re-sent, so a lost stamp is a pacing problem,

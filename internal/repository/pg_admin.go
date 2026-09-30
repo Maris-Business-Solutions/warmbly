@@ -1146,7 +1146,13 @@ func (r *adminRepository) BlockAccount(ctx context.Context, accountID uuid.UUID,
 
 // UnblockAccount unblocks an account from warmup pools
 func (r *adminRepository) UnblockAccount(ctx context.Context, accountID uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
 		UPDATE warmup_pool_participants
 		SET blocked_at = NULL,
 		    blocked_reason = NULL,
@@ -1156,7 +1162,19 @@ func (r *adminRepository) UnblockAccount(ctx context.Context, accountID uuid.UUI
 		    last_health_evaluated_at = NOW(),
 		    last_health_score = 0
 		WHERE email_account_id = $1
-	`, accountID)
+	`, accountID); err != nil {
+		return err
+	}
+	if err := forgiveWarmupStrikes(ctx, tx, accountID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// forgiveWarmupStrikes clears the tampering strikes behind a hold an admin
+// lifted, or the next health evaluation reimposes it on the same strikes.
+func forgiveWarmupStrikes(ctx context.Context, tx pgx.Tx, accountID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `DELETE FROM warmup_tampering_events WHERE email_account_id = $1`, accountID)
 	return err
 }
 
@@ -1295,6 +1313,9 @@ func (r *adminRepository) ReviewAppeal(ctx context.Context, appealID uuid.UUID, 
 				WHERE email_account_id = $1
 			`, accountID)
 			if err != nil {
+				return err
+			}
+			if err := forgiveWarmupStrikes(ctx, tx, accountID); err != nil {
 				return err
 			}
 

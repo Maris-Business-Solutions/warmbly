@@ -143,7 +143,7 @@ func TestLivePoolLinkWarmupDeliveryMatchesAndRefuses(t *testing.T) {
 
 	// A delivery already recorded, whose token has since been cleaned up.
 	const receivedID = "<pool-link-received@test.local>"
-	if err := f.warmup.RecordWarmupReceived(ctx, f.recipient, uuid.New(), receivedID, f.sender); err != nil {
+	if err := f.warmup.RecordWarmupReceived(ctx, f.recipient, uuid.New(), receivedID, f.sender, false); err != nil {
 		t.Fatalf("RecordWarmupReceived: %v", err)
 	}
 	ok, err = f.warmup.IsWarmupDelivery(ctx, f.recipient, "someone@elsewhere.test", receivedID, "Anything")
