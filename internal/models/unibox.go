@@ -595,6 +595,9 @@ type SeenRelayTarget struct {
 // isRead.
 const FlagSeen = `\Seen`
 
+// FlagFlagged is the star: Gmail STARRED, IMAP \Flagged.
+const FlagFlagged = `\Flagged`
+
 // SeenFromFlags reads a message's read state out of its flags. The stored
 // `seen` column has to follow the provider: mail the customer already read in
 // their own client is read in Warmbly, and a copy the worker files in Sent

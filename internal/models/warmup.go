@@ -339,13 +339,13 @@ type WarmupHealthMetrics struct {
 	BounceRate        float64 `json:"bounce_rate"`
 
 	// DeletionsLast7d and SpamFlagsLast7d are warmup messages this mailbox
-	// received and then deleted or flagged as spam. TamperingStrikes weighs
-	// them: a spam flag counts double, because nobody flags mail by accident.
+	// received and then deleted or moved to spam. TamperingStrikes weighs them
+	// equally: no provider says who moved a message into spam.
 	DeletionsLast7d int `json:"deletions_last_7d"`
 	SpamFlagsLast7d int `json:"spam_flags_last_7d"`
 }
 
 // TamperingStrikes is the weighted harm count the tampering band reads.
 func (m *WarmupHealthMetrics) TamperingStrikes() int {
-	return m.DeletionsLast7d + 2*m.SpamFlagsLast7d
+	return m.DeletionsLast7d + m.SpamFlagsLast7d
 }

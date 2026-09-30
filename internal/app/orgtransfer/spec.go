@@ -905,6 +905,8 @@ var ExcludedTables = map[string]string{
 	"oauth_authorization_codes":    "Single-use authorization codes, valid for seconds.",
 	"scheduled_deletions":          "Instance lifecycle state. Importing a pending deletion would schedule the destination workspace for destruction.",
 	"dedicated_worker_assignments": "Worker topology, which is a property of the instance rather than the workspace.",
+	"warmup_spam_moves":            "Per-message attribution evidence for warmup mail this instance synced, kept only to decide recent tampering; the destination judges its own.",
+	"mailbox_owner_activity":       "Five-minute buckets of sync-observed owner activity on this instance, read only to attribute recent spam moves.",
 	"warmup_pools":                 "Instance-global pool definitions shared by every workspace on the instance.",
 	"pool_link_codes":              "In-flight link handshakes between a self-hosted instance and this cloud, valid for minutes.",
 	"cli_auth_codes":               "In-flight `warmbly auth login` handshakes, valid for minutes. The API key an approval mints does travel, with the api_keys rows.",

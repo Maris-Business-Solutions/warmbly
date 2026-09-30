@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/models"
@@ -16,19 +17,22 @@ import (
 
 func (s *JobsService) HandleFlagsAdd(ctx context.Context, e *models.JobEventFlags) error {
 	// Tampering check first: verified warmup mail is NOT in the unibox, so we
-	// detect it via the warmup_received record. If the recipient marked a
-	// warmup email as spam, that harms the pool — penalise the sender for the
-	// spam signal AND ban the harmer (they can appeal). Warmup mail isn't
-	// tracked in the unibox, so there's nothing else to do for it.
+	// detect it via the warmup_received record. A spam label names no actor on
+	// any provider: on mail that arrived in spam it is the filter's own, and
+	// any other move is held and attributed on the evidence around it
+	// (attributeSpamMove) before anyone is charged.
 	if s.WarmupRepo != nil {
 		if rec, _ := s.WarmupRepo.GetWarmupReceived(ctx, e.EmailID, e.ID); rec != nil {
 			switch {
 			case s.WarmupService == nil:
+			case containsSpamFlag(e.Flags) && (rec.LandedSpam || rec.MessageID == ""):
 			case containsSpamFlag(e.Flags):
-				hSender, _ := s.WarmupService.ApplySpamReport(ctx, e.EmailID, rec.SenderAccountID, rec.MessageID, "user_complaint")
-				s.markRiskBandFromWarmupHealth(ctx, rec.SenderAccountID, hSender)
-				hHarmer, _ := s.WarmupService.RecordTampering(ctx, e.EmailID, rec.MessageID, "spam_flag")
-				s.markRiskBandFromWarmupHealth(ctx, e.EmailID, hHarmer)
+				if _, err := s.WarmupRepo.RecordWarmupSpamMove(ctx, repository.WarmupSpamMove{
+					EmailAccountID: e.EmailID, MessageID: rec.MessageID,
+					SenderAccountID: rec.SenderAccountID, ReceivedAt: rec.CreatedAt,
+				}); err != nil {
+					return fmt.Errorf("hold warmup spam move: %w", err)
+				}
 			case containsTrashFlag(e.Flags) && warmupDeletionCounts(rec, time.Now()):
 				// Gmail reports Delete as gaining the TRASH label and only
 				// reports the message gone when Trash is emptied, weeks later.
@@ -98,6 +102,9 @@ func (s *JobsService) HandleFlagsAdd(ctx context.Context, e *models.JobEventFlag
 		if !slices.Contains(email.Flags, e.Flags[i]) {
 			email.Flags = append(email.Flags, e.Flags[i])
 			updated = true
+			if e.Flags[i] == models.FlagFlagged {
+				s.noteOwnerActivity(ctx, e.EmailID, email.InternalDate)
+			}
 		}
 	}
 
@@ -111,6 +118,7 @@ func (s *JobsService) HandleFlagsAdd(ctx context.Context, e *models.JobEventFlag
 		update.Seen = &seen
 		email.Seen = true
 		updated = true
+		s.noteOwnerActivity(ctx, e.EmailID, email.InternalDate)
 	}
 
 	if !updated {
@@ -175,6 +183,9 @@ func (s *JobsService) HandleFlagsRemove(ctx context.Context, e *models.JobEventF
 	// Losing \Seen is the provider reporting the message back to unread, and
 	// that is the column the inbox reads, not the flag array.
 	unread := models.SeenFromFlags(e.Flags) && email.Seen
+	if unread || (slices.Contains(e.Flags, models.FlagFlagged) && slices.Contains(email.Flags, models.FlagFlagged)) {
+		s.noteOwnerActivity(ctx, e.EmailID, email.InternalDate)
+	}
 
 	if len(email.Flags) == 0 && !unread {
 		return nil
@@ -226,6 +237,22 @@ func (s *JobsService) HandleFlagsRemove(ctx context.Context, e *models.JobEventF
 	email.Flags = newFlags
 	s.publishEmailUpdated(ctx, e.UserID, email)
 	return nil
+}
+
+// ownerActivityArrivalGrace is how long after arrival a filter may still be labelling a message.
+const ownerActivityArrivalGrace = 2 * time.Minute
+
+// noteOwnerActivity records the owner acting on their own mail at the
+// provider. Callers pass only changes our store did not already hold, so a
+// change made in Warmbly and echoed back by the sync never counts, and a
+// change to mail that only just arrived may be a filter finishing delivery.
+func (s *JobsService) noteOwnerActivity(ctx context.Context, accountID uuid.UUID, arrived time.Time) {
+	if s.WarmupRepo == nil || arrived.IsZero() || time.Since(arrived) < ownerActivityArrivalGrace {
+		return
+	}
+	if err := s.WarmupRepo.RecordOwnerActivity(ctx, accountID, time.Now()); err != nil {
+		log.Warn().Err(err).Str("email_id", accountID.String()).Msg("owner activity not recorded")
+	}
 }
 
 // containsTrashFlag reports the transition Gmail emits for Delete: the TRASH

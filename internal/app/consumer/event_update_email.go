@@ -45,6 +45,7 @@ func (s *JobsService) HandleUpdateEmail(ctx context.Context, e *models.JobEventE
 	// provider: mail read in the customer's own client is read here too.
 	if seen := models.SeenFromFlags(e.Flags); seen != email.Seen {
 		updateData.Seen = &seen
+		s.noteOwnerActivity(ctx, e.EmailID, email.InternalDate)
 	}
 	if email.UID != e.UID {
 		updateData.UID = &e.UID
