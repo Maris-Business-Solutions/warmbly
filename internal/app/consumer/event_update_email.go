@@ -130,16 +130,11 @@ func (s *JobsService) HandleFolderUpdate(ctx context.Context, e *models.JobEvent
 
 // applyRelayedFolder records where a unibox filing left the message at the
 // provider, and never the folder: the filing may have been undone meanwhile.
+// No read first: GetByID marks the message seen, and UpdateEntry on a missing
+// row is already a no-op.
 func (s *JobsService) applyRelayedFolder(ctx context.Context, e *models.JobEventFolderUpdate) error {
-	email, err := s.UniboxRepository.GetByID(ctx, e.UserID, e.ID)
-	if errors.Is(err, repository.ErrEmailNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
 	update := repository.UpdateUniboxEntry{ProviderFolder: &e.Folder}
-	if e.ProviderID != "" && e.ProviderID != email.GmailID {
+	if e.ProviderID != "" {
 		update.ProviderID = &e.ProviderID
 	}
 	if e.FolderPath != "" && e.UID != 0 && e.Mailbox != 0 {

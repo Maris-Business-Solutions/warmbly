@@ -52,12 +52,26 @@ func TestFolderUpdateFollowsOnlyProviderMoves(t *testing.T) {
 	}
 }
 
+// countingReads records reads: the unibox's GetByID marks a message seen.
+type countingReads struct {
+	*seenSyncRepo
+	reads int
+}
+
+func (r *countingReads) GetByID(ctx context.Context, userID, id uuid.UUID) (*models.EmailMessageStoreData, error) {
+	r.reads++
+	return r.seenSyncRepo.GetByID(ctx, userID, id)
+}
+
 // A relayed filing's answer records the provider's placement and the new
 // handles, and never the folder: the filing may have been undone meanwhile.
+// It must not read the row either, or archiving unread mail marks it read.
 func TestRelayedFolderUpdateLeavesTheFolderAlone(t *testing.T) {
-	s, repo := seenSyncService(&models.EmailMessageStoreData{
+	s, base := seenSyncService(&models.EmailMessageStoreData{
 		Folder: models.FolderInbox, ProviderFolder: models.FolderInbox, GmailID: "old",
 	})
+	repo := &countingReads{seenSyncRepo: base}
+	s.UniboxRepository = repo
 	if err := s.HandleFolderUpdate(context.Background(), &models.JobEventFolderUpdate{
 		UserID: uuid.New(), EmailID: uuid.New(), ID: uuid.New(),
 		Folder: models.FolderArchive, Relayed: true, ProviderID: "new",
@@ -78,15 +92,18 @@ func TestRelayedFolderUpdateLeavesTheFolderAlone(t *testing.T) {
 	if u.ProviderID == nil || *u.ProviderID != "new" || u.UID == nil || *u.UID != 12 || u.FolderPath == nil || *u.FolderPath != "Archive" {
 		t.Errorf("handles not moved: %+v", u)
 	}
+	if u.Seen != nil || repo.reads != 0 {
+		t.Errorf("the answer touched read state: seen=%v reads=%d", u.Seen, repo.reads)
+	}
 
 	// The sync then reports the same placement, which is no provider move.
-	s, repo = seenSyncService(&models.EmailMessageStoreData{Folder: models.FolderInbox, ProviderFolder: models.FolderArchive})
+	s, base = seenSyncService(&models.EmailMessageStoreData{Folder: models.FolderInbox, ProviderFolder: models.FolderArchive})
 	if err := s.HandleFolderUpdate(context.Background(), &models.JobEventFolderUpdate{
 		UserID: uuid.New(), EmailID: uuid.New(), ID: uuid.New(), Folder: models.FolderArchive,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.updates) != 0 {
-		t.Fatalf("the relayed move's echo refiled the message: %+v", repo.updates)
+	if len(base.updates) != 0 {
+		t.Fatalf("the relayed move's echo refiled the message: %+v", base.updates)
 	}
 }
