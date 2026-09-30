@@ -295,11 +295,24 @@ func (s *Service) LinkedSet(ctx context.Context, inst *models.PoolLinkInstance, 
 		return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDLimit, "This instance has reached the number of redirects Warmbly Cloud serves for it.")
 	}
 	out, xerr := s.check(ctx, r, true)
-	// A new row the instance is told was refused must not stay behind, counted and unlisted.
-	if xerr != nil && existing == nil {
-		_, _ = s.redirects.DeleteLinked(ctx, inst.ID, domain)
+	// A save the instance is told was refused leaves nothing behind: a new row goes, an existing one is put back.
+	if xerr != nil {
+		if existing == nil {
+			_, _ = s.redirects.DeleteLinked(ctx, inst.ID, domain)
+		} else {
+			s.restoreLinked(ctx, inst, existing)
+		}
 	}
 	return out, xerr
+}
+
+func (s *Service) restoreLinked(ctx context.Context, inst *models.PoolLinkInstance, prev *models.DomainRedirect) {
+	back := *prev
+	if _, err := s.redirects.UpsertLinked(ctx, &back, inst.CreatedBy, config.PoolLinkRedirectLimit); err != nil {
+		return
+	}
+	_ = s.redirects.SetCheck(ctx, prev.ID, prev.Verified, prev.LastError)
+	_ = s.redirects.SetReach(ctx, prev.ID, prev.Reach)
 }
 
 func (s *Service) LinkedVerify(ctx context.Context, inst *models.PoolLinkInstance, domain string) (*models.DomainRedirect, *errx.Error) {

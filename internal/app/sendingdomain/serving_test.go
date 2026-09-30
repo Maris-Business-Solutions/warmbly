@@ -540,3 +540,25 @@ func TestOnlyADefiniteRefusalStopsACloudRedirect(t *testing.T) {
 		t.Fatal("a passing Cloud answer took a live redirect down")
 	}
 }
+
+func TestARefusedUpdateOfALinkedRowPutsItBack(t *testing.T) {
+	dns := baseDNS()
+	s, repo := newTest(dns)
+	ctx := context.Background()
+	inst := &models.PoolLinkInstance{ID: uuid.New(), OrganizationID: uuid.New()}
+	if _, xerr := s.LinkedSet(ctx, inst, "frost.io", models.DomainRedirectRequest{TargetURL: "frost.se"}); xerr != nil {
+		t.Fatal(xerr)
+	}
+	// Another workspace verifies the domain first, so this row's next check is refused.
+	other := &models.DomainRedirect{ID: uuid.New(), OrganizationID: uuid.New(), Domain: "frost.io", TargetURL: "https://x.com", Verified: true, ServedBy: models.RedirectServedByInstance}
+	repo.rows[other.ID] = other
+	dns.ips["frost.io"] = []string{"203.0.113.10"}
+	dns.txt["_warmbly.frost.io"] = []string{s.proof.Value(inst.OrganizationID, "frost.io")}
+	if _, xerr := s.LinkedSet(ctx, inst, "frost.io", models.DomainRedirectRequest{TargetURL: "evil.example"}); xerr == nil {
+		t.Fatal("the update was not refused")
+	}
+	got, _ := repo.GetLinked(ctx, inst.ID, "frost.io")
+	if got == nil || got.TargetURL != "https://frost.se" {
+		t.Fatalf("a refused update kept its target: %+v", got)
+	}
+}
