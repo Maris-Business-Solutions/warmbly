@@ -223,7 +223,7 @@ export default function SyncSourceEditDrawer({
 
                         <section>
                             <h2 className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 mb-2">
-                                Apply categories
+                                Apply labels
                             </h2>
                             <CategoryPicker value={categoryIds} onChange={setCategoryIds} />
                         </section>

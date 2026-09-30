@@ -151,7 +151,7 @@ function SegmentsList() {
                         body={
                             query
                                 ? "Try a different search."
-                                : "Build an audience from contact fields, categories, campaign activity and engagement, then add it to a campaign in one step."
+                                : "Build an audience from contact fields, labels, campaign activity and engagement, then add it to a campaign in one step."
                         }
                         cta={
                             query ? undefined : (

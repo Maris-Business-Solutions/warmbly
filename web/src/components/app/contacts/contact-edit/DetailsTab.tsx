@@ -106,7 +106,7 @@ export default function DetailsTab({
             </Section>
 
             <Section
-                title="Categories"
+                title="Labels"
                 accessory={
                     <span className="text-[10.5px] text-slate-400 tabular-nums">
                         {categoryIds.length}

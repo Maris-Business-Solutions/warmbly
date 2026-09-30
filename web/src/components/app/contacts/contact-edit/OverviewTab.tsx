@@ -211,7 +211,7 @@ export default function OverviewTab({
                     />
                     <ProfileRow label="Phone" value={contact.phone || "—"} />
                     <ProfileRow
-                        label="Categories"
+                        label="Labels"
                         value={
                             contact.categories.length > 0 ? (
                                 <span className="flex flex-wrap gap-1 justify-end">

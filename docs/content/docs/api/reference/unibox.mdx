@@ -201,7 +201,7 @@ The response is a `data` plus `pagination` envelope. Each item is a full message
 
 `GET /unibox/thread/labels`
 
-Returns the conversation labels (the workspace's categories) attached to a thread. Auth: **Scope** `READ_UNIBOX` · **Org permission** `access_unibox`.
+Returns the labels attached to a thread, drawn from the same workspace list as contact labels (managed through `/categories`). Auth: **Scope** `READ_UNIBOX` · **Org permission** `access_unibox`.
 
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
@@ -223,14 +223,14 @@ The response wraps the labels in a `data` array.
 
 `PUT /unibox/thread/labels`
 
-Replaces the full conversation-label set on a thread, for the whole workspace. The body's `category_ids` is the desired set, so the call is idempotent and retries are naturally safe. Only the workspace's own categories are attached; an id belonging to another organization is dropped. Auth: **Scope** `WRITE_UNIBOX` · **Org permission** `access_unibox`.
+Replaces the full conversation-label set on a thread, for the whole workspace. The body's `category_ids` is the desired set, so the call is idempotent and retries are naturally safe. Only the workspace's own labels are attached; an id belonging to another organization is dropped. Auth: **Scope** `WRITE_UNIBOX` · **Org permission** `access_unibox`.
 
 ### Request body
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `thread_id` | string | Yes | The thread to label. |
-| `category_ids` | string[] | No | The full desired set of category UUIDs. An empty array clears all labels. |
+| `category_ids` | string[] | No | The full desired set of label UUIDs. An empty array clears all labels. |
 
 ```json
 {

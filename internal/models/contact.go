@@ -330,7 +330,10 @@ const (
 // MaxContactBulkSelection bounds how many contacts one "select all matching"
 // bulk action may resolve to. Past it the action is refused and the user
 // narrows the filters, so a stray click can never walk a whole workspace.
-const MaxContactBulkSelection = 50000
+const MaxContactBulkSelection = 250000
+
+// MaxContactBatchIDs bounds an explicit contact id list in one request body.
+const MaxContactBatchIDs = 10000
 
 // ContactSelection names the contacts a bulk action applies to. Either an
 // explicit id list (Contacts), or every contact matching a search (All +

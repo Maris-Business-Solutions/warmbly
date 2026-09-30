@@ -30,7 +30,7 @@ func (d Deps) registerInboxActionTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "set_thread_labels",
-		Description: "Replace a conversation thread's label (category) set. Pass the full desired set; an empty list clears labels.",
+		Description: "Replace a conversation thread's label set (labels are called categories in the API). Pass the full desired set; an empty list clears labels.",
 		InputSchema: objectSchema(map[string]any{
 			"thread_id":    strProp("The thread id."),
 			"category_ids": arrProp("Category (label) UUIDs to apply.", strProp("Category UUID.")),

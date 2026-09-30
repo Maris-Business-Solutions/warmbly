@@ -286,7 +286,7 @@ var Tables = []Table{
 	{
 		Name: "categories", Group: models.OrgDataGroupContacts,
 		Scope: scopeOrg,
-		Note:  "The whole category registry travels, including ones no contact or conversation carries yet.",
+		Note:  "The whole label registry travels, including ones no contact or conversation carries yet.",
 	},
 	{
 		Name: "contacts", Group: models.OrgDataGroupContacts,

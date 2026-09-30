@@ -194,7 +194,7 @@ func fieldHeader(f string) string {
 	case models.ContactExportFieldSubscribed:
 		return "Subscribed"
 	case models.ContactExportFieldCategories:
-		return "Categories"
+		return "Labels"
 	case models.ContactExportFieldCampaigns:
 		return "Campaigns"
 	case models.ContactExportFieldCreatedAt:

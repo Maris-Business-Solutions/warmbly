@@ -91,7 +91,7 @@ export default function ReviewStep({
                                     </p>
                                     <p className="text-[11.5px] text-slate-500 mt-0.5">
                                         {dedup === "skip"
-                                            ? "Their details stay as they are. They still get the segments, categories and campaigns below."
+                                            ? "Their details stay as they are. They still get the segments, labels and campaigns below."
                                             : "Empty details are filled in from the file. Nothing they already have is erased."}
                                     </p>
                                 </div>
@@ -131,7 +131,7 @@ export default function ReviewStep({
                         placeholder={lockedSegment ? "Add another segment…" : "Pick or create a segment…"}
                     />
                 </Row>
-                <Row icon={TagsIcon} label="Categories" hint="Labels to filter by">
+                <Row icon={TagsIcon} label="Labels" hint="To filter and segment by">
                     <CategoryPicker value={categoryIds} onChange={setCategoryIds} />
                 </Row>
                 <Row icon={MegaphoneIcon} label="Campaigns" hint="Enrolled as leads; an active campaign starts emailing them">

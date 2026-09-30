@@ -77,7 +77,7 @@ export function ThreadLabelMenu({ threadId, open, onOpenChange }: Props) {
       setQuery("");
     } catch (err) {
       toast.error(
-        errorMessage(err, "Failed to create category"),
+        errorMessage(err, "Failed to create label"),
       );
     }
   };
@@ -208,7 +208,7 @@ export function ThreadLabelMenu({ threadId, open, onOpenChange }: Props) {
           </div>
 
           <div className="px-2.5 h-7 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-            <span>Labels are shared with contact categories</span>
+            <span>Labels are shared with contacts</span>
             <kbd className="h-4 px-1 rounded border border-slate-200 bg-slate-50 font-mono inline-flex items-center">
               c
             </kbd>

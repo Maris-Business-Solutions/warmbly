@@ -233,9 +233,9 @@ func stepLabel(name, kind string, action []byte, emailOrdinal int) string {
 		}
 		switch cfg.Type {
 		case "add_tag":
-			return "Add tag"
+			return "Add label"
 		case "remove_tag":
-			return "Remove tag"
+			return "Remove label"
 		case "add_to_segment":
 			return "Add to segment"
 		case "remove_from_segment":
