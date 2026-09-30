@@ -215,16 +215,18 @@ func (s *adminService) BanUser(ctx context.Context, adminID, userID uuid.UUID, r
 	// A login ban that leaves live sessions alone bans nothing for up to twelve
 	// hours: the access token keeps working, the refresh token mints new ones
 	// from it, and the websocket keeps streaming. uuid.Nil matches no session,
-	// so every one of them is revoked.
+	// so every one of them is revoked, and a failure is reported rather than
+	// letting the admin trust a ban that left sessions running.
+	var revokeErr *errx.Error
 	if models.BanScope(scope).Has(models.BanScopeLogin) && s.sessions != nil {
-		if rerr := s.sessions.RevokeOtherSessions(ctx, userID, uuid.Nil); rerr != nil {
-			// The ban is already recorded; report the leftover sessions rather
-			// than failing the ban and leaving the account unbanned.
-			errs.CaptureException(rerr)
-		}
+		revokeErr = s.sessions.RevokeOtherSessions(ctx, userID, uuid.Nil)
 	}
 
 	s.logAction(ctx, adminID, "ban_user", "user", userID, map[string]any{"reason": reason, "scope": uint32(scope)}, ipAddress, userAgent)
+	if revokeErr != nil {
+		errs.CaptureException(revokeErr)
+		return errx.NewPublic(errx.Internal, "The ban is recorded, but some of the user's sessions could not be ended. Unban and ban again to retry.")
+	}
 	return nil
 }
 

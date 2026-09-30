@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/app/email"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
@@ -65,7 +67,7 @@ func (h *Handler) FinishEmailOAuth(c *gin.Context) {
 		return
 	}
 
-	acc, reauthed, xerr := h.EmailService.OAuthFinish(c.Request.Context(), userIDStr, req.Code, req.State)
+	acc, reauthed, xerr := h.EmailService.OAuthFinish(c.Request.Context(), userIDStr, req.Code, req.State, h.mailboxFinishAuthorizer(userIDStr))
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -82,6 +84,31 @@ func (h *Handler) FinishEmailOAuth(c *gin.Context) {
 	})
 
 	c.JSON(status, acc)
+}
+
+// mailboxFinishAuthorizer re-checks, at finish time, the bar the start route
+// held: membership to connect, manage-emails to renew an existing mailbox.
+func (h *Handler) mailboxFinishAuthorizer(userIDStr string) email.FinishAuthorizer {
+	return func(ctx context.Context, orgID uuid.UUID, reauth bool) *errx.Error {
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			return errx.ErrUnauthorized
+		}
+		if h.OrganizationService == nil {
+			return errx.ErrForbidden
+		}
+		if reauth {
+			return h.OrganizationService.RequirePermission(ctx, orgID, userID, models.PermManageEmails)
+		}
+		member, xerr := h.OrganizationService.GetMembership(ctx, orgID, userID)
+		if xerr != nil {
+			return xerr
+		}
+		if member == nil {
+			return errx.ErrForbidden
+		}
+		return nil
+	}
 }
 
 // ReauthEmailOAuth starts an OAuth round trip that renews the tokens of an

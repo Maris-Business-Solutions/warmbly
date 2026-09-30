@@ -18,10 +18,8 @@ type OidcHandler struct {
 	ServiceAccount string
 	KeySet         keyfunc.Keyfunc
 	AppEnv         string
-	// Audience is this instance's public URL, which Cloud Tasks puts in the
-	// token it mints for the webhook. Without it any token that service
-	// account holds for any audience is accepted here. Empty leaves the check
-	// off, for a deployment that cannot name its own URL.
+	// Audience is the webhook URL Cloud Tasks names in the token it mints.
+	// Required: an empty one refuses every request.
 	Audience string
 }
 
@@ -35,14 +33,14 @@ func (h *OidcHandler) Middleware() gin.HandlerFunc {
 		// No key set means the GCP Cloud Tasks OIDC path isn't configured (the
 		// default local dispatcher calls handlers in-process). Fail closed
 		// rather than deref a nil key set if a webhook request slips through.
-		if h.KeySet == nil {
-			errx.Handle(c, errx.ErrForbidden)
+		if h.KeySet == nil || h.Audience == "" {
+			deny(c)
 			return
 		}
 
 		auth := c.GetHeader("Authorization")
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
-			errx.Handle(c, errx.ErrForbidden)
+			deny(c)
 			return
 		}
 
@@ -52,38 +50,42 @@ func (h *OidcHandler) Middleware() gin.HandlerFunc {
 			jwt.WithLeeway(10 * time.Second),
 			jwt.WithValidMethods([]string{"RS256"}),
 			jwt.WithExpirationRequired(),
-		}
-		if h.Audience != "" {
-			opts = append(opts, jwt.WithAudience(h.Audience))
+			jwt.WithAudience(h.Audience),
 		}
 
 		token, err := jwt.Parse(tokenStr, h.KeySet.Keyfunc, opts...)
 		if err != nil {
-			errx.Handle(c, errx.ErrForbidden)
+			deny(c)
 			return
 		}
 
 		if !token.Valid {
-			errx.Handle(c, errx.ErrForbidden)
+			deny(c)
 			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			errx.Handle(c, errx.ErrForbidden)
+			deny(c)
 			return
 		}
 
 		if iss, _ := claims.GetIssuer(); iss != googleIssuer {
-			errx.Handle(c, errx.ErrForbidden)
+			deny(c)
 			return
 		}
 
 		if sAccount, _ := claims.GetSubject(); sAccount != h.ServiceAccount {
-			errx.Handle(c, errx.ErrForbidden)
+			deny(c)
 			return
 		}
 
 		c.Next()
 	}
+}
+
+// deny answers 403 and stops the chain; errx.Handle alone lets the handler run.
+func deny(c *gin.Context) {
+	errx.Handle(c, errx.ErrForbidden)
+	c.Abort()
 }

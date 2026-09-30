@@ -20,7 +20,7 @@ If the address already has a Warmbly account with a password, the first Google, 
 Accounts created through an external sign-in provider have no password initially. Trying password sign-in returns the same invalid-credentials response as an incorrect password. Continue with your provider, or use **Forgot password** to set a password before signing in with it. A reset link works once and only for the password it was requested against: changing your password by any route, including using another reset link, makes every earlier link invalid before it expires.
 
 <Callout type="info" title="Passwordless by design">
-A passkey is tied to your device and unlocked with biometrics or a PIN, so it already proves both something you have and something you are or know. That is why it skips the emailed code.
+A passkey is tied to your device and unlocked with biometrics or a PIN, so it already proves both something you have and something you are or know. That is why it skips the emailed code. Warmbly requires that unlock: a security key with no PIN set cannot be added, and cannot sign in, until you set one on the key.
 </Callout>
 
 ## Two-factor authentication
@@ -77,6 +77,8 @@ This exists because the things on that list either hand out a credential that ou
 Every signed-in device appears under **Sessions** with its device (`Chrome on macOS`), location where known, sign-in method (Email, Google, Apple, or Passkey), and last activity. Your current device is tagged **This device**.
 
 **Sign out** ends one session; **Sign out other sessions** clears everything except where you are now.
+
+A session renews itself in the background, and each renewal replaces the credential that keeps it alive. If an old one is ever presented, a copy of it exists somewhere else, so Warmbly ends that session on the spot and you sign in once more on that device.
 
 <Callout type="warn" title="If something looks wrong">
 Sign out the session, change your password, and make sure 2FA is on. Signing out other sessions is the fastest way to cut off access.

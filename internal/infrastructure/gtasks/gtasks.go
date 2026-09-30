@@ -59,6 +59,8 @@ func (c *Client) CreateTask(ctx context.Context, taskData *proto.ProcessTask, sc
 				AuthorizationHeader: &cloudtaskspb.HttpRequest_OidcToken{
 					OidcToken: &cloudtaskspb.OidcToken{
 						ServiceAccountEmail: c.serviceAccountEmail,
+						// The webhook verifies this exact audience.
+						Audience: c.url,
 					},
 				},
 				Headers: map[string]string{

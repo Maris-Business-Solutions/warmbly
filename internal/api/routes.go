@@ -162,7 +162,7 @@ func Run(
 	{
 		internal.GET("/dek/:orgID", h.InternalGetDEK)
 		internal.PUT("/dek/:orgID", h.InternalPutDEK)
-		internal.DELETE("/dek/:orgID", h.InternalDeleteDEK)
+		// No DELETE: a lost DEK is unrecoverable, so nothing holding this token may remove one.
 
 		// Click-link tickets: the tracking service resolves /c/<id> redirects
 		// here instead of touching Postgres (read-only, heavily cached there).
@@ -624,8 +624,9 @@ func Run(
 
 			// Integration OAuth handshake is JWT-only — it writes user-encrypted
 			// provider tokens via the SPA popup flow, same as mailbox onboarding.
+			// Connecting is a settings change, the same bar as POST /integrations/connections.
 			integrationsOAuth := jwtOnly.Group("/integrations/oauth")
-			integrationsOAuth.Use(m.RequireOrganization(), m.RateLimitMiddleware(models.RateLimitWrite))
+			integrationsOAuth.Use(m.RequireOrganization(), m.RequirePermission(models.PermManageSettings), m.RateLimitMiddleware(models.RateLimitWrite))
 			{
 				integrationsOAuth.POST("/start", h.StartIntegrationOAuth)
 				integrationsOAuth.POST("/finish", h.FinishIntegrationOAuth)
@@ -1129,6 +1130,8 @@ func Run(
 				integrations.PUT("/connections/:id/field-mappings", write, h.ReplaceConnectionFieldMappings)
 				integrations.GET("/connections/:id/runs", read, h.ListConnectionSyncRuns)
 				integrations.GET("/connections/:id/webhook-secret", write, h.GetConnectionWebhookSecret)
+				integrations.PUT("/connections/:id/signing-key", write, h.SetConnectionSigningKey)
+				integrations.POST("/connections/:id/rotate-inbound-url", write, h.RotateConnectionInboundURL)
 				integrations.POST("/connections/:id/test", write, h.TestConnection)
 				integrations.POST("/connections/:id/push", operate, h.PushContactsToIntegration)
 				integrations.GET("/bookings", read, h.ListMeetingBookings)

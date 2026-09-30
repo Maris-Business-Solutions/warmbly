@@ -10,6 +10,7 @@ import { CheckIcon, CopyIcon, XIcon } from "lucide-react";
 import toast from "react-hot-toast";
 
 import type { IntegrationProvider } from "@/lib/api/models/app/integrations/Integration";
+import { API_URL } from "@/lib/information";
 
 const PROVIDER_NAMES: Partial<Record<IntegrationProvider, string>> = {
     calendly: "Calendly",
@@ -32,9 +33,10 @@ export default function InboundUrlDialog({
 }) {
     const [copied, setCopied] = React.useState(false);
 
+    // The inbound route is served by the API, which is often not the dashboard's host.
     const fullUrl = url.startsWith("http")
         ? url
-        : `${window.location.origin}${url}`;
+        : `${(API_URL || window.location.origin).replace(/\/+$/, "")}${url}`;
 
     function copy() {
         navigator.clipboard.writeText(fullUrl).then(
@@ -91,8 +93,8 @@ export default function InboundUrlDialog({
 
                     <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2.5">
                         <p className="text-[11.5px] text-amber-900 leading-relaxed">
-                            This URL contains a secret that is only shown once. If you lose it, rotate the
-                            connection to mint a new one — the old URL will stop working immediately.
+                            This URL contains a secret that is only shown once. If you lose it, use Rotate URL
+                            on the connection to mint a new one. The old URL stops working immediately.
                         </p>
                     </div>
                 </div>

@@ -18,9 +18,8 @@ import (
 func init() { gin.SetMode(gin.TestMode) }
 
 type mockEKStore struct {
-	put    func(ctx context.Context, orgID uuid.UUID, dek string) error
-	get    func(ctx context.Context, orgID uuid.UUID) (string, error)
-	delete func(ctx context.Context, orgID uuid.UUID) error
+	put func(ctx context.Context, orgID uuid.UUID, dek string) error
+	get func(ctx context.Context, orgID uuid.UUID) (string, error)
 }
 
 func (m *mockEKStore) Put(ctx context.Context, orgID uuid.UUID, dek string) error {
@@ -28,9 +27,6 @@ func (m *mockEKStore) Put(ctx context.Context, orgID uuid.UUID, dek string) erro
 }
 func (m *mockEKStore) Get(ctx context.Context, orgID uuid.UUID) (string, error) {
 	return m.get(ctx, orgID)
-}
-func (m *mockEKStore) Delete(ctx context.Context, orgID uuid.UUID) error {
-	return m.delete(ctx, orgID)
 }
 func (m *mockEKStore) Name() string { return "mock" }
 
@@ -40,7 +36,6 @@ func newDEKRouter(t *testing.T, store encryptedkeys.Store) *gin.Engine {
 	r := gin.New()
 	r.GET("/dek/:orgID", h.InternalGetDEK)
 	r.PUT("/dek/:orgID", h.InternalPutDEK)
-	r.DELETE("/dek/:orgID", h.InternalDeleteDEK)
 	return r
 }
 
@@ -158,18 +153,5 @@ func TestInternalPutDEK_RejectsEmptyBody(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty key, got %d", w.Code)
-	}
-}
-
-func TestInternalDeleteDEK_NoContent(t *testing.T) {
-	store := &mockEKStore{
-		delete: func(_ context.Context, _ uuid.UUID) error { return nil },
-	}
-	r := newDEKRouter(t, store)
-	w := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/dek/"+uuid.New().String(), nil)
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", w.Code)
 	}
 }

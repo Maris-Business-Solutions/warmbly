@@ -299,7 +299,7 @@ export function MessageBubble({
                     transition={{ duration: 0.16 }}
                     className="sm:pl-10"
                 >
-                    <EmailBody html={body.data?.body_html} plain={body.data?.body_plain} />
+                    <EmailBody html={body.data?.body_html} plain={body.data?.body_plain} blockRemote={!outbound} />
                     {body.data?.body_truncated && (
                         <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-amber-700">
                             <AlertCircleIcon className="w-3.5 h-3.5 shrink-0" />
