@@ -52,6 +52,9 @@ func (s *service) Tick(ctx context.Context) error {
 	if err != nil {
 		errs.CaptureException(err)
 	}
+	if err := s.Repo.PruneRenders(ctx); err != nil {
+		errs.CaptureException(err)
+	}
 	notifiedGroups := map[uuid.UUID]bool{}
 	for _, f := range finished {
 		delete(touched, f.ID)

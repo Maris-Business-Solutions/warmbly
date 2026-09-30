@@ -32,7 +32,7 @@ type placementFixture struct {
 func newPlacementFixture(t *testing.T) *placementFixture {
 	t.Helper()
 	handle, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 217)
+	requireSchemaVersion(t, pool, 230)
 	ctx := context.Background()
 	f := &placementFixture{
 		t:     t,
@@ -485,5 +485,60 @@ func TestLivePlacementDeleteUnsentTestsTakesItsTasks(t *testing.T) {
 	}
 	if got, _ := f.repo.GetTest(ctx, other.ID); got == nil {
 		t.Fatalf("an unrelated test was deleted")
+	}
+}
+
+// A tracking comparison freezes one copy per seed: the first write wins, a
+// case-folded address names the same pair, another workspace reads nothing,
+// and the copy goes once nothing in its comparison is running.
+func TestLivePlacementRenderFreezesOnceAndPrunes(t *testing.T) {
+	f := newPlacementFixture(t)
+	ctx := context.Background()
+	a, _, _ := f.newTest(f.seeds[:1], time.Now().Add(time.Hour))
+	b, _, _ := f.newTest(f.seeds[:1], time.Now().Add(time.Hour))
+	group := uuid.New()
+	f.exec(`UPDATE placement_tests SET compare_group_id = $1 WHERE id IN ($2, $3)`, group, a.ID, b.ID)
+
+	if got, err := f.repo.GetPlacementRender(ctx, f.org, group, "Seed@Gmail.com"); err != nil || got != "" {
+		t.Fatalf("empty pair read %q, %v", got, err)
+	}
+	contents := make(chan string, 8)
+	for i := range 8 {
+		go func() {
+			got, err := f.repo.FreezePlacementRender(ctx, f.org, group, "Seed@Gmail.com", "copy-"+string(rune('a'+i)))
+			if err != nil {
+				t.Errorf("FreezePlacementRender: %v", err)
+			}
+			contents <- got
+		}()
+	}
+	first := <-contents
+	for range 7 {
+		if got := <-contents; got != first {
+			t.Fatalf("racing freezes returned %q and %q", first, got)
+		}
+	}
+	if got, _ := f.repo.FreezePlacementRender(ctx, f.org, group, "seed@gmail.com", "later"); got != first {
+		t.Fatalf("a later freeze replaced the copy: %q", got)
+	}
+	if got, _ := f.repo.GetPlacementRender(ctx, f.opOrg, group, "seed@gmail.com"); got != "" {
+		t.Fatalf("another workspace read the copy: %q", got)
+	}
+
+	if err := f.repo.PruneRenders(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.repo.GetPlacementRender(ctx, f.org, group, "seed@gmail.com"); got != first {
+		t.Fatalf("pruned a running comparison's copy")
+	}
+	f.exec(`UPDATE placement_tests SET status = 'completed', finished_at = NOW() WHERE id = $1`, a.ID)
+	_ = f.repo.PruneRenders(ctx)
+	if got, _ := f.repo.GetPlacementRender(ctx, f.org, group, "seed@gmail.com"); got != first {
+		t.Fatalf("pruned the copy while one half still runs")
+	}
+	f.exec(`UPDATE placement_tests SET status = 'cancelled', finished_at = NOW() WHERE id = $1`, b.ID)
+	_ = f.repo.PruneRenders(ctx)
+	if got, _ := f.repo.GetPlacementRender(ctx, f.org, group, "seed@gmail.com"); got != "" {
+		t.Fatalf("kept the copy of a finished comparison: %q", got)
 	}
 }

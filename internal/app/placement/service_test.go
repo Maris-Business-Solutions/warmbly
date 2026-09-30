@@ -46,6 +46,7 @@ func (f *fakeRepo) CountMeteredTests(context.Context, uuid.UUID, time.Time) (int
 	return f.metered, nil
 }
 func (f *fakeRepo) SampleLead(context.Context, uuid.UUID) (*uuid.UUID, error) { return nil, nil }
+func (f *fakeRepo) PruneRenders(context.Context) error                        { return nil }
 func (f *fakeRepo) ListSeeds(_ context.Context, scope string, org *uuid.UUID, activeOnly bool) ([]repository.SeedAccount, error) {
 	var out []repository.SeedAccount
 	for _, s := range f.seeds {

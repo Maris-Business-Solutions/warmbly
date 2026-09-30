@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
+	"github.com/warmbly/warmbly/internal/app/cipher"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
@@ -128,13 +130,104 @@ func (s *tasksService) HandlePlacementTask(task *proto.ProcessTask) *errx.Error 
 	return nil
 }
 
-// renderPlacementProbe builds one probe the way HandleCampaignTask builds a
-// send, in the same order: form links, merge fields and spintax, AI blocks,
-// plain-text rule, unsubscribe link, tracking, signature, opt-out footer,
-// CSS inlining. What it leaves out is what only a real lead has: threading,
-// A/B arm selection and the campaign's CC and BCC. The second result is why
-// the probe cannot be sent, empty when it can.
+// placementBase is a probe's copy with everything but tracking resolved: what
+// both halves of a tracking comparison send to one seed. A refusal is frozen
+// too, so a pair fails together instead of one half going out alone.
+type placementBase struct {
+	Subject        string                     `json:"subject"`
+	BodyHTML       string                     `json:"body_html"`
+	BodyPlain      string                     `json:"body_plain"`
+	UnsubscribeURL string                     `json:"unsubscribe_url,omitempty"`
+	HeaderURL      string                     `json:"header_url,omitempty"`
+	SignatureHTML  string                     `json:"signature_html,omitempty"`
+	SignaturePlain string                     `json:"signature_plain,omitempty"`
+	OptOut         models.UnsubscribeSettings `json:"opt_out"`
+	TrackingDomain string                     `json:"tracking_domain,omitempty"`
+	CampaignID     uuid.UUID                  `json:"campaign_id"`
+	Attachments    []models.AttachmentRef     `json:"attachments,omitempty"`
+	Refusal        string                     `json:"refusal,omitempty"`
+}
+
+// renderPlacementProbe builds one probe: the base copy, then the tracking the
+// test's half carries. The second result is why the probe cannot be sent,
+// empty when it can.
 func (s *tasksService) renderPlacementProbe(ctx context.Context, taskID uuid.UUID, test *models.PlacementTest, account *models.Email, recipient string) (EmailMessage, string) {
+	var sealer *cipher.Cipher
+	if s.cipherService != nil {
+		c, err := s.cipherService.Cipher(ctx, *test.OrganizationID)
+		if err != nil {
+			errs.CaptureException(fmt.Errorf("placement probe: organization key: %w", err))
+			return EmailMessage{}, "The workspace's encryption key is unavailable"
+		}
+		sealer = c
+	}
+	base := s.placementBaseFor(ctx, test, account, recipient, sealer)
+	if base.Refusal != "" {
+		return EmailMessage{}, base.Refusal
+	}
+	bodyHTML, bodyPlain, tracking := s.finishPlacementProbe(ctx, base, taskID, test.OpenTracking, test.LinkTracking)
+	return EmailMessage{
+		From:           account.Email,
+		To:             []string{recipient},
+		Subject:        base.Subject,
+		BodyHTML:       bodyHTML,
+		BodyPlain:      bodyPlain,
+		MessageID:      generateMessageID(account.SendFrom()),
+		Tracking:       tracking,
+		UnsubscribeURL: base.HeaderURL,
+		Attachments:    base.Attachments,
+	}, ""
+}
+
+// placementBaseFor is the base copy of one probe. The halves of a tracking
+// comparison share one per seed: the first to run renders and freezes it, and
+// the other half, like any retry, sends what was frozen.
+func (s *tasksService) placementBaseFor(ctx context.Context, test *models.PlacementTest, account *models.Email, recipient string, sealer *cipher.Cipher) placementBase {
+	if test.CompareGroupID == nil {
+		return s.renderPlacementBase(ctx, test, account, recipient)
+	}
+	if sealer == nil {
+		return placementBase{Refusal: "The workspace's encryption key is unavailable"}
+	}
+	orgID, group := *test.OrganizationID, *test.CompareGroupID
+	sealed, err := s.placementRepo.GetPlacementRender(ctx, orgID, group, recipient)
+	if err != nil {
+		errs.CaptureException(fmt.Errorf("placement probe: read frozen copy: %w", err))
+		return placementBase{Refusal: "The comparison's copy could not be read"}
+	}
+	if sealed == "" {
+		raw, err := json.Marshal(s.renderPlacementBase(ctx, test, account, recipient))
+		if err == nil {
+			sealed, err = sealer.Encrypt(ctx, string(raw))
+		}
+		if err == nil {
+			sealed, err = s.placementRepo.FreezePlacementRender(ctx, orgID, group, recipient, sealed)
+		}
+		if err != nil {
+			errs.CaptureException(fmt.Errorf("placement probe: freeze copy: %w", err))
+			return placementBase{Refusal: "The comparison's copy could not be stored"}
+		}
+	}
+	// Both halves read the stored copy, the one that rendered it included.
+	var base placementBase
+	raw, err := sealer.Decrypt(ctx, sealed)
+	if err == nil {
+		err = json.Unmarshal([]byte(raw), &base)
+	}
+	if err != nil {
+		errs.CaptureException(fmt.Errorf("placement probe: open frozen copy: %w", err))
+		return placementBase{Refusal: "The comparison's copy could not be read"}
+	}
+	return base
+}
+
+// renderPlacementBase resolves a probe's copy the way HandleCampaignTask
+// builds a send, in the same order: form links, merge fields and spintax, AI
+// blocks, plain-text rule, unsubscribe link and UTM tags, plus the signature,
+// opt-out and attachments that go on after tracking. What it leaves out is
+// what only a real lead has: threading, A/B arm selection and the campaign's
+// CC and BCC.
+func (s *tasksService) renderPlacementBase(ctx context.Context, test *models.PlacementTest, account *models.Email, recipient string) placementBase {
 	orgID := *test.OrganizationID
 
 	// An ad-hoc test renders against a campaign with the platform defaults, so
@@ -144,7 +237,7 @@ func (s *tasksService) renderPlacementProbe(ctx context.Context, taskID uuid.UUI
 	if test.CampaignID != nil {
 		c, err := s.campaignRepo.GetByID(ctx, *test.CampaignID)
 		if err != nil || c == nil || c.OrganizationID == nil || *c.OrganizationID != orgID {
-			return EmailMessage{}, "The campaign no longer exists"
+			return placementBase{Refusal: "The campaign no longer exists"}
 		}
 		campaign = c
 	}
@@ -192,7 +285,7 @@ func (s *tasksService) renderPlacementProbe(ctx context.Context, taskID uuid.UUI
 		var err error
 		subject, bodyHTML, bodyPlain, err = s.resolveAIVariables(ctx, campaign, &contact, sequenceID, subject, bodyHTML, bodyPlain)
 		if err != nil {
-			return EmailMessage{}, "The AI blocks in the copy could not be generated"
+			return placementBase{Refusal: "The AI blocks in the copy could not be generated"}
 		}
 	}
 
@@ -209,81 +302,78 @@ func (s *tasksService) renderPlacementProbe(ctx context.Context, taskID uuid.UUI
 	}
 	bodyHTML = dropBlankHTMLPart(bodyHTML, bodyPlain)
 	if !mailhtml.HasContent(bodyHTML) && bodyPlain == "" {
-		return EmailMessage{}, "The copy rendered empty"
+		return placementBase{Refusal: "The copy rendered empty"}
 	}
 	bodyHTML = linkifyUnsubscribeURL(bodyHTML, unsubscribeURL, optOut.LinkText)
 
+	// UTM tags are the campaign's own links, not tracking, so both halves of a
+	// comparison carry them.
 	trackingDomain, _ := resolveTrackingHost(config.TrackingHost(), account, campaign)
-	openTracking := test.OpenTracking && bodyHTML != "" && trackingDomain != ""
-	linkTracking := test.LinkTracking && bodyHTML != "" && trackingDomain != ""
-	if openTracking {
-		bodyHTML = AddOpenTrackingPixel(bodyHTML, taskID, trackingDomain)
-	}
-	if bodyHTML != "" && (linkTracking || campaign.UTMTracking) {
-		opts := LinkTracking{
-			TaskID:         taskID,
-			CampaignID:     campaign.ID,
-			TrackingDomain: trackingDomain,
-			Wrap:           linkTracking,
-			UTM:            CampaignUTM(campaign),
-		}
-		tracked, links := TrackLinks(bodyHTML, opts)
-		switch {
-		case len(links) == 0:
-			bodyHTML = tracked
-		case s.trackedLinkRepo == nil:
-			bodyHTML, _ = TrackLinks(bodyHTML, LinkTracking{TrackingDomain: trackingDomain, UTM: opts.UTM})
-		default:
-			if err := s.trackedLinkRepo.CreateBatch(ctx, links); err != nil {
-				bodyHTML, _ = TrackLinks(bodyHTML, LinkTracking{TrackingDomain: trackingDomain, UTM: opts.UTM})
-			} else {
-				bodyHTML = tracked
-			}
-		}
-	}
-	if campaign.UTMTracking && bodyPlain != "" {
-		bodyPlain = TagPlainTextLinks(bodyPlain, CampaignUTM(campaign), trackingDomain)
-	}
-
-	if account.SignatureSync {
+	if utm := CampaignUTM(campaign); utm != nil {
 		if bodyHTML != "" {
-			bodyHTML = AddSignature(bodyHTML, account.SignatureHTML, true)
+			bodyHTML, _ = TrackLinks(bodyHTML, LinkTracking{TrackingDomain: trackingDomain, UTM: utm})
 		}
-		if bodyPlain != "" {
-			bodyPlain = AddSignature(bodyPlain, account.SignaturePlain, false)
-		}
-	}
-	bodyHTML, bodyPlain = appendOptOut(bodyHTML, bodyPlain, optOut, unsubscribeURL)
-	bodyHTML = mailhtml.InlineCSS(bodyHTML)
-
-	if s.cipherService != nil {
-		if _, err := s.cipherService.Cipher(ctx, orgID); err != nil {
-			errs.CaptureException(fmt.Errorf("placement probe: organization key: %w", err))
-			return EmailMessage{}, "The workspace's encryption key is unavailable"
-		}
+		bodyPlain = TagPlainTextLinks(bodyPlain, utm, trackingDomain)
 	}
 
-	var tracking *models.TrackingInfo
-	if openTracking || linkTracking {
-		tracking = &models.TrackingInfo{OpenTracking: openTracking, LinkTracking: linkTracking, TrackingDomain: trackingDomain}
-	}
-	headerURL := ""
-	if campaign.UnsubscribeHeader {
-		headerURL = unsubscribeURL
-	}
-	var attachments []models.AttachmentRef
-	if test.CampaignID != nil {
-		attachments = s.campaignAttachmentRefs(ctx, campaign.ID, sequenceID)
-	}
-	return EmailMessage{
-		From:           account.Email,
-		To:             []string{recipient},
+	base := placementBase{
 		Subject:        subject,
 		BodyHTML:       bodyHTML,
 		BodyPlain:      bodyPlain,
-		MessageID:      generateMessageID(account.SendFrom()),
-		Tracking:       tracking,
-		UnsubscribeURL: headerURL,
-		Attachments:    attachments,
-	}, ""
+		UnsubscribeURL: unsubscribeURL,
+		OptOut:         optOut,
+		TrackingDomain: trackingDomain,
+		CampaignID:     campaign.ID,
+	}
+	if account.SignatureSync {
+		base.SignatureHTML, base.SignaturePlain = account.SignatureHTML, account.SignaturePlain
+	}
+	if campaign.UnsubscribeHeader {
+		base.HeaderURL = unsubscribeURL
+	}
+	if test.CampaignID != nil {
+		base.Attachments = s.campaignAttachmentRefs(ctx, campaign.ID, sequenceID)
+	}
+	return base
+}
+
+// finishPlacementProbe turns a base copy into what one half sends: the open
+// pixel and wrapped links when that half is tracked, then the signature,
+// opt-out footer and CSS inlining every copy gets. Tracking is the only input
+// that differs between the halves of a comparison.
+func (s *tasksService) finishPlacementProbe(ctx context.Context, base placementBase, taskID uuid.UUID, open, link bool) (string, string, *models.TrackingInfo) {
+	bodyHTML, bodyPlain := base.BodyHTML, base.BodyPlain
+	openTracking := open && bodyHTML != "" && base.TrackingDomain != ""
+	linkTracking := link && bodyHTML != "" && base.TrackingDomain != ""
+	if openTracking {
+		bodyHTML = AddOpenTrackingPixel(bodyHTML, taskID, base.TrackingDomain)
+	}
+	if linkTracking {
+		tracked, links := TrackLinks(bodyHTML, LinkTracking{
+			TaskID:         taskID,
+			CampaignID:     base.CampaignID,
+			TrackingDomain: base.TrackingDomain,
+			Wrap:           true,
+		})
+		// A body carries tickets only once they are stored; otherwise its links
+		// stay as written.
+		if len(links) > 0 && s.trackedLinkRepo != nil && s.trackedLinkRepo.CreateBatch(ctx, links) == nil {
+			bodyHTML = tracked
+		}
+	}
+
+	if bodyHTML != "" {
+		bodyHTML = AddSignature(bodyHTML, base.SignatureHTML, true)
+	}
+	if bodyPlain != "" {
+		bodyPlain = AddSignature(bodyPlain, base.SignaturePlain, false)
+	}
+	bodyHTML, bodyPlain = appendOptOut(bodyHTML, bodyPlain, base.OptOut, base.UnsubscribeURL)
+	bodyHTML = mailhtml.InlineCSS(bodyHTML)
+
+	var tracking *models.TrackingInfo
+	if openTracking || linkTracking {
+		tracking = &models.TrackingInfo{OpenTracking: openTracking, LinkTracking: linkTracking, TrackingDomain: base.TrackingDomain}
+	}
+	return bodyHTML, bodyPlain, tracking
 }

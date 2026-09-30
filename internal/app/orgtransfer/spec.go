@@ -924,6 +924,7 @@ var ExcludedTables = map[string]string{
 	"mailbox_import_rows":          "The rows of a mailbox import, with credentials sealed until each row is connected. They follow mailbox_imports, which does not travel.",
 	"contact_imports":              "Contact imports in progress or recently finished. They are work this instance is doing; the contacts they created travel with the contacts group.",
 	"contact_import_rows":          "The uploaded rows of a contact import and what became of each. They follow contact_imports, which does not travel.",
+	"placement_renders":            "The copy a tracking comparison is sending to each seed, sealed so both halves send the same words. It lives only while the comparison runs, and a copy that had not been sent stays behind with its task.",
 	"user_view_preferences":        "Each member's own column layout and sort for the dashboard's lists. It belongs to the person rather than the workspace: members are matched by account on import and a layout names custom fields the destination may not hold yet, so everyone starts from the default view and picks their columns again.",
 }
 
