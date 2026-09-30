@@ -163,6 +163,31 @@ func TestEmailBlob_FromEmail(t *testing.T) {
 	}
 }
 
+// Reply-To is the last section, so it has to decode after every other one
+// and alone.
+func TestEmailBlob_ReplyTo(t *testing.T) {
+	out := roundTrip(t, &EmailBlob{
+		PlainText:   []byte("Hi"),
+		Attachments: []Attachment{{S3Key: "k", Filename: "deck.pdf", MimeType: "application/pdf"}},
+		FromName:    "Renée Doe",
+		FromEmail:   "hello@acme.com",
+		ReplyTo:     "replies@acme.com",
+	})
+	if out.ReplyTo != "replies@acme.com" || out.FromEmail != "hello@acme.com" || out.FromName != "Renée Doe" {
+		t.Errorf("reply-to did not round-trip beside the identity: %+v", out)
+	}
+
+	alone := roundTrip(t, &EmailBlob{PlainText: []byte("Hi"), ReplyTo: "replies@acme.com"})
+	if alone.ReplyTo != "replies@acme.com" || alone.FromEmail != "" || alone.FromName != "" {
+		t.Errorf("reply-to-only blob decoded wrong: %+v", alone)
+	}
+
+	data, _ := (&EmailBlob{PlainText: []byte("Hi"), FromEmail: "hello@acme.com"}).EncodeBinary()
+	if binaryFlags(data)&FlagReplyTo != 0 {
+		t.Error("empty reply-to set the flag")
+	}
+}
+
 func binaryFlags(data []byte) uint32 {
 	return uint32(data[5])<<24 | uint32(data[6])<<16 | uint32(data[7])<<8 | uint32(data[8])
 }

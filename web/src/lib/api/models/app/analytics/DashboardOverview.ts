@@ -33,6 +33,10 @@ export interface RecentActivityItem {
     link?: string
     // Client, device and location of a person's open or click, when logged.
     origin?: EngagementOrigin
+    // The mailbox the step went out from, which a reply credits even when it
+    // landed in a shared reply inbox.
+    sender_id?: string
+    sender_email?: string
 }
 
 export interface TopCampaignStats {

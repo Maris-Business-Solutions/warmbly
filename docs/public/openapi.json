@@ -33299,6 +33299,11 @@
           "seen": {
             "type": "boolean"
           },
+          "answers_mailbox_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Thread reads only: the workspace mailbox that sent the email this message replies to, when another mailbox holds it (a shared reply inbox). Absent otherwise."
+          },
           "body_plain": {
             "type": "string"
           },
@@ -35978,6 +35983,15 @@
                 "$ref": "#/components/schemas/EngagementOrigin"
               }
             ]
+          },
+          "sender_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The mailbox the step was sent from. A reply credits it even when the reply landed in another mailbox named by its Reply-To."
+          },
+          "sender_email": {
+            "type": "string",
+            "description": "The address of the sending mailbox, its send-as alias when it has one."
           }
         }
       },

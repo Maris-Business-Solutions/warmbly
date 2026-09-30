@@ -98,6 +98,8 @@ import useSendingBehavior from "@/lib/api/hooks/app/emails/useSendingBehavior";
 import useSendingPlan from "@/lib/api/hooks/app/emails/useSendingPlan";
 import { minutesToClock, secondsToLabel } from "@/lib/api/models/app/emails/SendingBehavior";
 import TagSelector from "../popup/select/TagSelector";
+import { useAppStore } from "@/stores";
+import { repliesGoTo } from "@/lib/unibox/replyInbox";
 import TimeSelect from "@/components/ui/TimeSelect";
 import { DitherBarChart } from "@/components/ui/dither";
 import WeekdayBitmask from "../campaigns/schedule/WeekdayBitmask";
@@ -2029,6 +2031,27 @@ function DisconnectCard({ mailbox, onDisconnected }: { mailbox: Inbox; onDisconn
     );
 }
 
+// Where a reply-to sends replies, and whether Warmbly still sees them there.
+function ReplyToNote({ mailbox, value }: { mailbox: Inbox; value: string }) {
+    const accounts = useAppStore((s) => s.emails);
+    const address = value.trim();
+    const own = [mailbox.email, mailbox.send_as_email].some((a) => !!a && a.toLowerCase() === address.toLowerCase());
+    if (!address || own) return null;
+    const inbox = accounts.find((a) => repliesGoTo({ ...mailbox, reply_to: address }, a));
+    if (inbox) {
+        return (
+            <p className="text-[10.5px] text-slate-500 mt-1 leading-relaxed">
+                Replies land in {inbox.email} and still count for this mailbox's campaigns. Warmup mail keeps its replies here.
+            </p>
+        );
+    }
+    return (
+        <p className="text-[10.5px] text-amber-700 mt-1 leading-relaxed">
+            {address} is not a mailbox in this workspace, so replies sent there are not tracked. Connect it to track them.
+        </p>
+    );
+}
+
 function SettingsTab({ form, update, mailbox, onDisconnected }: { form: Inbox; update: (p: Partial<Inbox>) => void; mailbox: Inbox; onDisconnected: () => void }) {
     const { timezones } = useUserProfile();
     const org = useCurrentOrganization();
@@ -2050,7 +2073,7 @@ function SettingsTab({ form, update, mailbox, onDisconnected }: { form: Inbox; u
                 </FieldShell>
                 <FieldShell
                     label="Reply-to"
-                    hint={`Where replies land. Leave empty to use ${mailbox.email}.`}
+                    hint={`Where replies land. Leave empty to use ${mailbox.email}. Point several mailboxes at one connected mailbox to read every reply in one place.`}
                 >
                     <div className="flex items-center gap-1.5">
                         <TextInput
@@ -2069,6 +2092,7 @@ function SettingsTab({ form, update, mailbox, onDisconnected }: { form: Inbox; u
                             </button>
                         )}
                     </div>
+                    <ReplyToNote mailbox={mailbox} value={form.reply_to ?? ""} />
                 </FieldShell>
             </div>
 

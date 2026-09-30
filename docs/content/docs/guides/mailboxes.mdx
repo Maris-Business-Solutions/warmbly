@@ -240,13 +240,30 @@ Turn it off when your provider already saves its own copy of anything submitted 
 
 **Mirror Archive and Delete** is on by default for every mailbox. With it on, Archive, Delete and Move to inbox in the [unibox](/guides/unibox/#filing-in-the-mailbox-too) move the message in the mailbox too: Gmail gains or loses its Inbox label or goes to Trash, Outlook moves it to Archive, Deleted Items or Inbox, and an IMAP mailbox moves it between its Archive, Trash and INBOX folders. Delete always lands in the mailbox's own trash, never a permanent delete. Turn it off to keep filing inside Warmbly for this mailbox; the conversation still leaves the unibox view you filed it from, and the mailbox keeps it where it was.
 
-The same tab sets the **display name**, **reply-to** (empty uses the mailbox address), **signature** in plain text and HTML, and **tags** for grouping. Tags belong to the workspace: one anybody creates is there for every teammate, on every mailbox. A new display name is on the From header of the next message the mailbox sends, campaign, reply or warmup alike; nothing needs to be reconnected.
+The same tab sets the **display name**, **reply-to** (empty uses the mailbox address, see [a shared reply inbox](#a-shared-reply-inbox)), **signature** in plain text and HTML, and **tags** for grouping. Tags belong to the workspace: one anybody creates is there for every teammate, on every mailbox. A new display name is on the From header of the next message the mailbox sends, campaign, reply or warmup alike; nothing needs to be reconnected.
 
 The HTML signature is placed in a block of its own one line below the body, so it arrives without the stack of blank lines above it that Apple Mail and Outlook used to show. Put any extra spacing you want inside the signature itself. On a body laid out in HTML it goes inside the container the email was built in, so it lines up with the copy it signs off rather than sitting under it at the left edge of the window (the same placement as the [opt-out line](/guides/unsubscribe/#where-it-appears)). The plain-text signature follows the body after a single blank line.
 
 The signature editor has four views. **HTML** is the visual surface with bold, italic, underline, links and images. The `</>` button next to it swaps that for the raw markup, which is sent exactly as written, so a table-based signature from another tool can be pasted in whole. **Preview** renders it the way a mail client will, in its own frame. **Plain** holds the plain-text version, generated from the HTML while **Sync** is on.
 
 A signature carrying a `<style>` block, a whole HTML document, or an event handler is always edited as markup and the visual toggle is greyed out. The visual surface works by putting the markup into the page, and a signature is workspace data your teammates also see, so that markup is never given a live element to run in. Preview is how you look at it. Any `<style>` block in a signature is inlined onto the elements it matches when the email sends, the same as a campaign body.
+
+### A shared reply inbox
+
+**Reply-to** puts a `Reply-To` header on the mailbox's campaign mail, unibox replies, test sends and placement tests, so answers land in another address instead of the one that sent them. Leave it empty, or set it to the mailbox's own address, and no header is added. Warmup mail never carries it: the warmup exchange reads its replies back in the mailbox that sent them.
+
+Point several sending mailboxes at one mailbox you have connected here, one that only receives, and every reply collects in one place while Warmbly keeps track of who sent what:
+
+- the reply counts for the campaign. It stops the sequence when **Stop on reply** is on, runs the reply branch of the email it answers, and is credited to the mailbox that sent that email, in campaign stats and in the dashboard's recent activity ("Reply from lead@acme.com to alex@yourco.com")
+- a reply from someone copied on the lead's emails counts for the lead, as it would at the sending mailbox
+- in the unibox the message shows which mailbox's email it answers, and **Reply** starts from that mailbox, as does a reply the [inbox agent](/guides/inbox-agent/) drafts, so the contact keeps hearing from the address they wrote to. Your answer carries the same reply-to, so their next reply comes back to the shared inbox too. See [choosing the sending mailbox](/guides/unibox/#choosing-the-sending-mailbox)
+- the `campaign.reply_received` webhook names both: `email_account_id` is the mailbox the reply landed in and `sender_email_account_id` the one that sent the email it answers
+
+Replies are only tracked where Warmbly can read them. A reply-to naming an address that is not a mailbox in this workspace still routes replies there, but none of it is counted, and the field says so. The reply inbox has to be in the same workspace as the mailboxes pointing at it.
+
+Keep the reply-to on the sending domain where you can. A `Reply-To` on a different domain from the `From` is a mild spam signal to some filters, and one on the same domain is not.
+
+Reply-to only applies to mail sent after it is set: an email sent before carried no header, so an answer to it still arrives at the mailbox that sent it.
 
 ### Sending identity
 

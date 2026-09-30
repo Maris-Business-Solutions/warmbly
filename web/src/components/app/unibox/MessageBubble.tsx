@@ -39,6 +39,8 @@ interface MessageBubbleProps {
     defaultExpanded?: boolean;
     /** Sent from the connected mailbox, i.e. ours rather than the contact's. */
     outbound?: boolean;
+    /** Another workspace mailbox whose email this message answers, as in a shared reply inbox. */
+    answersMailbox?: string;
     onReply?: () => void;
     onForward?: () => void;
 }
@@ -57,6 +59,7 @@ export function MessageBubble({
     email,
     defaultExpanded = false,
     outbound = false,
+    answersMailbox,
     onReply,
     onForward,
 }: MessageBubbleProps) {
@@ -156,6 +159,15 @@ export function MessageBubble({
                         {outbound && (
                             <span className="shrink-0 px-1 rounded bg-sky-100 text-sky-700 text-[9.5px] font-semibold uppercase tracking-wide">
                                 Outgoing
+                            </span>
+                        )}
+                        {!outbound && answersMailbox && (
+                            <span
+                                title={`Answers an email sent from ${answersMailbox}`}
+                                className="hidden sm:inline-flex shrink min-w-0 items-center gap-1 px-1.5 h-[18px] self-center rounded bg-slate-100 text-slate-600 text-[10.5px]"
+                            >
+                                <CornerUpLeftIcon className="w-2.5 h-2.5 shrink-0 text-slate-400" />
+                                <span className="truncate">to {answersMailbox}</span>
                             </span>
                         )}
                     </div>

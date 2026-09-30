@@ -627,7 +627,9 @@ func (r *analyticsRepository) GetDashboardOverallStats(ctx context.Context, orgI
 func (r *analyticsRepository) GetRecentActivity(ctx context.Context, orgID uuid.UUID, limit int) ([]models.RecentActivityItem, *errx.Error) {
 	// Union query to get recent opens, clicks, replies, and bounces. The
 	// origin of an open or click is looked up only for the rows that make
-	// the page, from the person's first logged open or click on the step.
+	// the page, from the person's first logged open or click on the step,
+	// and so is the mailbox the step was sent from, which is not always the
+	// one a reply landed in.
 	query := `
 		WITH recent_events AS (
 			-- Opens
@@ -679,8 +681,14 @@ func (r *analyticsRepository) GetRecentActivity(ctx context.Context, orgID uuid.
 		SELECT p.type, p.campaign_id, p.campaign_name, p.contact_email, p.contact_id, p.timestamp, COALESCE(p.link, '') as link,
 		       COALESCE(og.client, ''), COALESCE(og.client_type, ''), COALESCE(og.device_hidden, false),
 		       COALESCE(og.device_type, ''), COALESCE(og.os, ''), COALESCE(og.browser, ''),
-		       COALESCE(og.country_code, ''), COALESCE(og.region, ''), COALESCE(og.city, '')
+		       COALESCE(og.country_code, ''), COALESCE(og.region, ''), COALESCE(og.city, ''),
+		       sender.id, COALESCE(NULLIF(sender.send_as_email, ''), sender.email, '')
 		FROM page p
+		LEFT JOIN campaign_contact_progress sent
+		       ON sent.campaign_id = p.campaign_id AND sent.contact_id = p.contact_id AND sent.sequence_id = p.sequence_id
+		LEFT JOIN tasks sent_task ON sent_task.id = sent.dispatch_task_id
+		LEFT JOIN email_accounts sender
+		       ON sender.id = sent_task.email_account_id AND sender.organization_id = $1
 		LEFT JOIN LATERAL (
 			SELECT o.opened_at AS at, o.client, o.client_type, o.device_hidden, o.device_type, o.os, o.browser, o.country_code, o.region, o.city
 			FROM email_opens o
@@ -714,7 +722,7 @@ func (r *analyticsRepository) GetRecentActivity(ctx context.Context, orgID uuid.
 		var o models.EngagementOrigin
 		if err := rows.Scan(&a.Type, &a.CampaignID, &a.CampaignName, &a.ContactEmail, &a.ContactID, &a.Timestamp, &a.Link,
 			&o.Client, &o.ClientType, &o.DeviceHidden, &o.DeviceType, &o.OS, &o.Browser,
-			&o.CountryCode, &o.Region, &o.City); err != nil {
+			&o.CountryCode, &o.Region, &o.City, &a.SenderID, &a.SenderEmail); err != nil {
 			db.CaptureError(err, "", nil, "scan")
 			return nil, errx.InternalError()
 		}

@@ -205,7 +205,12 @@ func (s *simulator) handleMessage(ctx context.Context, summary mailpitSummary) e
 
 		// Contact recipient: play the human.
 		if c, ok := contacts[addr]; ok {
-			sender, senderHosted := hosted[strings.ToLower(detail.From.Address)]
+			// A mail client answers the Reply-To when the message has one.
+			answer := detail.From.Address
+			if len(detail.ReplyTo) > 0 {
+				answer = detail.ReplyTo[0].Address
+			}
+			sender, senderHosted := hosted[strings.ToLower(answer)]
 			go s.actAsContact(ctx, c, detail, sender, senderHosted)
 		}
 	}

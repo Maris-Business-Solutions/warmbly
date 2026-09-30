@@ -194,7 +194,18 @@ func (r *campaignProgressRepository) LeadForCopiedReply(ctx context.Context, ccC
 		JOIN campaign_leads cl ON cl.campaign_id = x.campaign_id AND cl.contact_id = x.contact_id
 		JOIN campaign_contact_progress p ON p.campaign_id = x.campaign_id AND p.contact_id = x.contact_id
 		WHERE x.cc_contact_id = $1
-		  AND cl.email_account_id = $2
+		  AND (
+		    cl.email_account_id = $2
+		    OR EXISTS (
+		      SELECT 1
+		      FROM campaign_tasks ct
+		      JOIN tasks t ON t.id = ct.task_id
+		      JOIN email_accounts here ON here.id = $2
+		      WHERE ct.campaign_id = x.campaign_id AND ct.contact_id = x.contact_id
+		        AND t.reply_to <> ''
+		        AND lower(t.reply_to) IN (lower(here.email), lower(COALESCE(NULLIF(here.send_as_email, ''), here.email)))
+		    )
+		  )
 		  AND p.sent_at IS NOT NULL
 		  AND `+progressIsEmailStep("p")+`
 		ORDER BY p.sent_at DESC

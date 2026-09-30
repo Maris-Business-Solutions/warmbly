@@ -207,6 +207,11 @@ type EmailMessageStoreDataPreview struct {
 	// id/title/color so the row renders chips without a second lookup).
 	// Always non-nil so it marshals to [] not null.
 	Labels []MiniCategory `json:"labels"`
+
+	// AnswersMailboxID is the workspace mailbox that sent the email this
+	// message replies to, when that is not the mailbox holding it: a reply
+	// that landed in a shared reply inbox. Thread reads only.
+	AnswersMailboxID *uuid.UUID `json:"answers_mailbox_id,omitempty"`
 }
 
 // MessageGrounding is one message rendered for an AI prompt: the stored body

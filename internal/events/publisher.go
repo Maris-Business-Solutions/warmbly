@@ -85,13 +85,17 @@ type SendEmailParams struct {
 	// at publish time from the same row. Empty means the mailbox's own
 	// address, which is every mailbox that has not picked an alias.
 	FromEmail string
+	// ReplyTo is the address the Reply-To header names, empty for none. It
+	// rides in the emsg blob beside the identity.
+	ReplyTo string
 }
 
 // sender is the identity a message goes out under, carried together because
-// the two halves are one decision and are read as a pair.
+// the halves are one decision and are read as a set.
 type sender struct {
-	Name  string
-	Email string
+	Name    string
+	Email   string
+	ReplyTo string
 }
 
 type publisher struct {
@@ -133,7 +137,7 @@ func (p *publisher) PublishSendEmail(ctx context.Context, workerID uuid.UUID, pa
 		return fmt.Errorf("object storage not configured; cannot hand send %s to a worker", params.TaskID)
 	}
 	s3Key, err := p.storeEmailBody(ctx, params.TaskID, params.OrgID, params.BodyPlain, params.BodyHTML, params.Attachments,
-		sender{Name: params.FromName, Email: params.FromEmail})
+		sender{Name: params.FromName, Email: params.FromEmail, ReplyTo: params.ReplyTo})
 	if err != nil {
 		return fmt.Errorf("failed to store email body: %w", err)
 	}
@@ -237,6 +241,7 @@ func (p *publisher) storeEmailBody(ctx context.Context, taskID, orgID uuid.UUID,
 		HTMLBody:  []byte(encHTMLBody),
 		FromName:  from.Name,
 		FromEmail: from.Email,
+		ReplyTo:   from.ReplyTo,
 	}
 	for _, a := range attachments {
 		blob.Attachments = append(blob.Attachments, emsg.Attachment{

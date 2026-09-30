@@ -84,6 +84,7 @@ func (w *WorkerService) HandleSendEmail(ctx context.Context, sendEmail models.Se
 		Attachments:    attachments,
 		FromName:       body.FromName,
 		FromEmail:      body.FromEmail,
+		ReplyTo:        body.ReplyTo,
 	})
 	w.recordSendLatency(time.Since(sendStart))
 	w.recordSendOutcome(result)
@@ -136,6 +137,7 @@ type sendBody struct {
 	Attachments []emsg.Attachment
 	FromName    string
 	FromEmail   string
+	ReplyTo     string
 }
 
 // fetchEmailBody fetches and decodes the email body from S3.
@@ -187,6 +189,7 @@ func (w *WorkerService) fetchEmailBody(ctx context.Context, orgID uuid.UUID, s3K
 		Attachments: blob.Attachments,
 		FromName:    blob.FromName,
 		FromEmail:   blob.FromEmail,
+		ReplyTo:     blob.ReplyTo,
 	}, nil
 }
 

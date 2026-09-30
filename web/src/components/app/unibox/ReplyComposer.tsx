@@ -75,6 +75,7 @@ import {
 } from "@/lib/unibox/replyDraft";
 
 import { useReplyDraft } from "@/lib/unibox/useReplyDraft";
+import { answerAddress, replyInboxSender } from "@/lib/unibox/replyInbox";
 
 export type { ReplyMode, ReplySeed } from "@/lib/unibox/replyDraft";
 
@@ -190,23 +191,29 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
     const [bcc, setBcc] = React.useState<string[]>(restored?.bcc ?? []);
     const [showCc, setShowCc] = React.useState((restored?.cc.length ?? 0) > 0);
     const [showBcc, setShowBcc] = React.useState((restored?.bcc.length ?? 0) > 0);
-    // The mailbox holding the message is the default sender; picking another
-    // one is a per-draft override.
+    // The mailbox holding the message is the default sender, unless it is a
+    // shared reply inbox: then the mailbox that emailed them answers, so they
+    // keep hearing from one address. Picking another is a per-draft override.
     const threadAccountId = replyTo.account_id ?? "";
-    // A saved pick whose mailbox has since gone falls back to the thread's own.
+    const answersMailboxId = mode === "reply" ? replyTo.answers_mailbox_id : undefined;
+    const defaultAccountId = React.useMemo(
+        () => replyInboxSender(accounts, threadAccountId, answersMailboxId) ?? threadAccountId,
+        [accounts, threadAccountId, answersMailboxId],
+    );
+    // A saved pick whose mailbox has since gone falls back to the default.
     const accountsRef = React.useRef(accounts);
     accountsRef.current = accounts;
     const resolveSender = React.useCallback(
         (id: string | undefined) =>
-            id && (accountsRef.current.length === 0 || accountsRef.current.some((a) => a.id === id))
-                ? id
-                : threadAccountId,
-        [threadAccountId],
+            id && (accountsRef.current.length === 0 || accountsRef.current.some((a) => a.id === id)) ? id : null,
+        [],
     );
-    const [accountId, setAccountId] = React.useState(() => resolveSender(restored?.email_account_id));
+    // Until someone chooses, From is the default, so it follows the mailbox list as it loads.
+    const [chosenSender, chooseSender] = React.useState<string | null>(() => resolveSender(restored?.email_account_id));
+    const accountId = chosenSender ?? defaultAccountId;
     const [isSending, setIsSending] = React.useState(false);
     const draft = useReplyDraft(draftKey, { to, cc, bcc, subject, body, email_account_id: accountId }, {
-        to: initial.to, cc: [], bcc: [], subject: initial.subject, body: "", email_account_id: threadAccountId,
+        to: initial.to, cc: [], bcc: [], subject: initial.subject, body: "", email_account_id: defaultAccountId,
     });
     const closeKeepingDraft = () => {
         if (!draft.flush()) {
@@ -263,13 +270,15 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
         setShowCc(seed.cc.length > 0);
         setShowBcc(seed.bcc.length > 0);
         setBody(seed.body);
-        setAccountId(resolveSender(seed.email_account_id));
+        chooseSender(resolveSender(seed.email_account_id));
     }, [seed, resumeDraft, resolveSender]);
 
     // The full Inbox record (signature_html, signature_plain, etc) of the
     // chosen sender, from the global emails store.
     const mailbox = accounts.find((a) => a.id === accountId);
-    const switchedMailbox = !!threadAccountId && accountId !== threadAccountId;
+    const switchedMailbox = !!defaultAccountId && accountId !== defaultAccountId;
+    // From is the mailbox that emailed them rather than the reply inbox holding the message.
+    const answeringFromSender = !switchedMailbox && defaultAccountId !== threadAccountId;
     // A queued send from an inactive or removed mailbox cannot leave, so Send
     // waits for a sender that can.
     const senderProblem = !accountId
@@ -282,6 +291,7 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
             ? "This mailbox is no longer connected. Pick another mailbox in From."
             : null;
     const threadMailbox = accounts.find((a) => a.id === threadAccountId);
+    const defaultMailbox = accounts.find((a) => a.id === defaultAccountId);
 
     // Scored like compose (history with the recipient, today's budget, auth),
     // fetched once From is opened: most replies keep the default mailbox.
@@ -621,7 +631,7 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                             value={accountId}
                             autoTag={null}
                             allowAuto={false}
-                            onChange={(next) => setAccountId(next)}
+                            onChange={chooseSender}
                             onOpen={() => setWantCandidates(true)}
                             candidates={candidatesQ.data}
                             loading={candidatesQ.isPending}
@@ -664,16 +674,44 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                                 <InfoIcon className="w-3 h-3 mt-px shrink-0 text-slate-400" />
                                 <span className="min-w-0 flex-1 leading-snug">
                                     Replying from another mailbox. It stays in the same conversation for the
-                                    recipient, and their answer comes back to {mailbox?.email ?? "this mailbox"}.
+                                    recipient, and their answer comes back to {mailbox ? answerAddress(mailbox) : "this mailbox"}.
                                 </span>
                                 <button
                                     type="button"
-                                    onClick={() => setAccountId(threadAccountId)}
-                                    title={threadMailbox ? `Reply from ${threadMailbox.email}` : "Reply from the original mailbox"}
+                                    onClick={() => chooseSender(defaultAccountId)}
+                                    title={defaultMailbox ? `Reply from ${defaultMailbox.email}` : "Reply from the original mailbox"}
                                     className="shrink-0 text-[11px] font-medium text-sky-700 hover:text-sky-800 transition-colors"
                                 >
                                     Switch back
                                 </button>
+                            </div>
+                        </motion.div>
+                    )}
+                    {!senderProblem && answeringFromSender && mode === "reply" && (
+                        <motion.div
+                            key="reply-inbox"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                            className="overflow-hidden"
+                        >
+                            <div className="px-4 py-1.5 flex items-start gap-1.5 border-b border-slate-100 bg-slate-50/60 text-[11px] text-slate-500">
+                                <InfoIcon className="w-3 h-3 mt-px shrink-0 text-slate-400" />
+                                <span className="min-w-0 flex-1 leading-snug">
+                                    Replying from {mailbox?.email ?? "the mailbox"}, which sent the email they answered, so
+                                    they keep hearing from one address. Their answer comes back to {mailbox ? answerAddress(mailbox) : "this inbox"}.
+                                </span>
+                                {threadMailbox && (
+                                    <button
+                                        type="button"
+                                        onClick={() => chooseSender(threadAccountId)}
+                                        title={`Reply from ${threadMailbox.email}`}
+                                        className="shrink-0 max-w-[40%] truncate text-[11px] font-medium text-sky-700 hover:text-sky-800 transition-colors"
+                                    >
+                                        Use {threadMailbox.email}
+                                    </button>
+                                )}
                             </div>
                         </motion.div>
                     )}

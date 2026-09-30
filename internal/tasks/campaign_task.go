@@ -540,6 +540,20 @@ func (s *tasksService) HandleCampaignTask(task *proto.ProcessTask) (result *errx
 		taskRecord.EmailAccountID = account.ID
 	}
 
+	// The Reply-To this send is about to carry is the evidence that credits a
+	// reply landing in another workspace mailbox, so it is on the row before
+	// the mail can be answered, and a send that cannot record it waits. It is
+	// written on every attempt: a retry reuses the row and may send without one.
+	if err := s.taskRepo.UpdateTaskReplyTo(ctx, taskID, account.ReplyToHeader()); err != nil {
+		errs.CaptureException(err)
+		s.taskRepo.RecordTaskFailure(ctx, taskID, "Could not record the reply-to address", err.Error())
+		s.recordSchedulerFailure(ctx, campaign.ID, "reply_to_record_failed",
+			fmt.Sprintf("Could not record where %s's reply should land; retrying", contact.Email), err)
+		s.retryCampaignTickLater(ctx, taskRecord)
+		executionStatus = "failed"
+		return errx.InternalError()
+	}
+
 	// Who else the email copies, read for an email step before the send is
 	// reserved. Fail closed: copies that cannot be checked against suppression
 	// are not sent, and neither is the email without the copies chosen.
