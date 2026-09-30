@@ -25,6 +25,10 @@ type WarmupSpamMove struct {
 	SenderAccountID uuid.UUID
 	ReceivedAt      time.Time
 	ObservedAt      time.Time
+	// Verdict is pending until fixed; a fixed verdict whose effects were not
+	// all applied is re-applied as it stands, never decided again.
+	Verdict string
+	Signals []string
 }
 
 // WarmupSpamMoveEvidence is what the pool and the mailbox show around one move.
@@ -55,12 +59,14 @@ func (r *warmupRepository) RecordWarmupSpamMove(ctx context.Context, m WarmupSpa
 	return cmd.RowsAffected() > 0, nil
 }
 
-// ListSettledWarmupSpamMoves is pending moves observed before settledBefore, oldest first.
+// ListSettledWarmupSpamMoves is unclaimed moves observed before settledBefore
+// whose verdict is not yet applied, oldest first.
 func (r *warmupRepository) ListSettledWarmupSpamMoves(ctx context.Context, settledBefore time.Time, limit int) ([]WarmupSpamMove, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT email_account_id, message_id, sender_account_id, received_at, observed_at
+		SELECT email_account_id, message_id, sender_account_id, received_at, observed_at, verdict, signals
 		FROM warmup_spam_moves
-		WHERE verdict = 'pending' AND observed_at < $1
+		WHERE decided_at IS NULL AND observed_at < $1
+		  AND (claimed_until IS NULL OR claimed_until < NOW())
 		ORDER BY observed_at
 		LIMIT $2`, settledBefore, limit)
 	if err != nil {
@@ -70,12 +76,26 @@ func (r *warmupRepository) ListSettledWarmupSpamMoves(ctx context.Context, settl
 	var out []WarmupSpamMove
 	for rows.Next() {
 		var m WarmupSpamMove
-		if err := rows.Scan(&m.EmailAccountID, &m.MessageID, &m.SenderAccountID, &m.ReceivedAt, &m.ObservedAt); err != nil {
+		if err := rows.Scan(&m.EmailAccountID, &m.MessageID, &m.SenderAccountID, &m.ReceivedAt, &m.ObservedAt, &m.Verdict, &m.Signals); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// ClaimWarmupSpamMove gives one consumer the move for lease; false when another holds it or it is done.
+func (r *warmupRepository) ClaimWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID string, lease time.Duration) (bool, error) {
+	cmd, err := r.db.Exec(ctx, `
+		UPDATE warmup_spam_moves
+		SET claimed_until = NOW() + make_interval(secs => $3)
+		WHERE email_account_id = $1 AND message_id = $2 AND decided_at IS NULL
+		  AND (claimed_until IS NULL OR claimed_until < NOW())`,
+		accountID, messageID, lease.Seconds())
+	if err != nil {
+		return false, err
+	}
+	return cmd.RowsAffected() > 0, nil
 }
 
 // WarmupSpamMoveEvidence gathers the evidence for one move in one round trip.
@@ -108,12 +128,12 @@ func (r *warmupRepository) WarmupSpamMoveEvidence(ctx context.Context, m WarmupS
 	return ev, err
 }
 
-// DecideWarmupSpamMove settles a pending move once; false when it was already decided.
-func (r *warmupRepository) DecideWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID, verdict string, signals []string) (bool, error) {
+// FixWarmupSpamMoveVerdict records the verdict once, before its effects are applied.
+func (r *warmupRepository) FixWarmupSpamMoveVerdict(ctx context.Context, accountID uuid.UUID, messageID, verdict string, signals []string) (bool, error) {
 	cmd, err := r.db.Exec(ctx, `
 		UPDATE warmup_spam_moves
-		SET verdict = $3, signals = $4, decided_at = NOW()
-		WHERE email_account_id = $1 AND message_id = $2 AND verdict = 'pending'`,
+		SET verdict = $3, signals = $4
+		WHERE email_account_id = $1 AND message_id = $2 AND verdict = 'pending' AND decided_at IS NULL`,
 		accountID, messageID, verdict, signals)
 	if err != nil {
 		return false, err
@@ -121,12 +141,24 @@ func (r *warmupRepository) DecideWarmupSpamMove(ctx context.Context, accountID u
 	return cmd.RowsAffected() > 0, nil
 }
 
-// correlatedOwnerMovesWhere selects the sender's owner-attributed moves in
-// other workspaces near $3, for sender $1 and the correlating mailbox $2.
+// CompleteWarmupSpamMove marks the verdict's effects applied and releases the claim.
+func (r *warmupRepository) CompleteWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE warmup_spam_moves
+		SET decided_at = NOW(), claimed_until = NULL
+		WHERE email_account_id = $1 AND message_id = $2 AND decided_at IS NULL`,
+		accountID, messageID)
+	return err
+}
+
+// correlatedOwnerMovesWhere selects the sender's applied owner verdicts in
+// other workspaces near $3, for sender $1 and the correlating mailbox $2. One
+// still being applied keeps its verdict, so a strike always matches its row.
 const correlatedOwnerMovesWhere = `
 	o.sender_account_id = $1
 	AND o.email_account_id <> $2
 	AND o.verdict = 'owner'
+	AND o.decided_at IS NOT NULL
 	AND o.email_account_id IN (
 		SELECT oa.id FROM email_accounts oa
 		WHERE oa.organization_id IS DISTINCT FROM (SELECT organization_id FROM email_accounts WHERE id = $2))

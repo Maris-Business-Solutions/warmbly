@@ -29,10 +29,12 @@ CREATE TABLE IF NOT EXISTS warmup_spam_moves (
     verdict           text        NOT NULL DEFAULT 'pending'
         CHECK (verdict IN ('pending', 'owner', 'provider', 'unattributed')),
     signals           text[]      NOT NULL DEFAULT '{}',
+    -- claimed_until: one consumer holds the move while it applies the verdict; decided_at: the verdict's effects are applied.
+    claimed_until     timestamptz,
     decided_at        timestamptz,
     PRIMARY KEY (email_account_id, message_id)
 );
-CREATE INDEX IF NOT EXISTS idx_warmup_spam_moves_pending ON warmup_spam_moves (observed_at) WHERE verdict = 'pending';
+CREATE INDEX IF NOT EXISTS idx_warmup_spam_moves_undecided ON warmup_spam_moves (observed_at) WHERE decided_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_warmup_spam_moves_sender ON warmup_spam_moves (sender_account_id, observed_at);
 
 -- Five-minute buckets in which the owner acted on their own mail at the provider (read, unread, star), never Warmbly's echo.

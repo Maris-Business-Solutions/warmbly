@@ -245,7 +245,9 @@ type WarmupRepository interface {
 	RecordWarmupSpamMove(ctx context.Context, m WarmupSpamMove) (bool, error)
 	ListSettledWarmupSpamMoves(ctx context.Context, settledBefore time.Time, limit int) ([]WarmupSpamMove, error)
 	WarmupSpamMoveEvidence(ctx context.Context, m WarmupSpamMove) (WarmupSpamMoveEvidence, error)
-	DecideWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID, verdict string, signals []string) (bool, error)
+	ClaimWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID string, lease time.Duration) (bool, error)
+	FixWarmupSpamMoveVerdict(ctx context.Context, accountID uuid.UUID, messageID, verdict string, signals []string) (bool, error)
+	CompleteWarmupSpamMove(ctx context.Context, accountID uuid.UUID, messageID string) error
 	CorrelatedOwnerSpamMoves(ctx context.Context, senderID, exceptAccountID uuid.UUID, at time.Time) ([]WarmupSpamMove, error)
 	ReattributeOwnerSpamMoves(ctx context.Context, senderID, exceptAccountID uuid.UUID, at time.Time) error
 	RecordOwnerActivity(ctx context.Context, accountID uuid.UUID, at time.Time) error
@@ -1895,7 +1897,7 @@ func (r *warmupRepository) PruneWarmupEventsBefore(ctx context.Context, before t
 		 WHERE created_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`,
 		`DELETE FROM warmup_spam_reports WHERE created_at < $1`,
 		`DELETE FROM warmup_spam_moves
-		 WHERE verdict <> 'pending'
+		 WHERE decided_at IS NOT NULL
 		   AND observed_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`,
 		`DELETE FROM mailbox_owner_activity
 		 WHERE bucket < NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupOwnerActivityKeepDays) + `)`,

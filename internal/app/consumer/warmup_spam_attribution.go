@@ -16,6 +16,8 @@ import (
 const (
 	spamMoveAttributionInterval = 5 * time.Minute
 	spamMoveAttributionBatch    = 200
+	// spamMoveClaimLease outlives one move's work; a consumer that dies holding it frees it on expiry.
+	spamMoveClaimLease = 5 * time.Minute
 )
 
 // Evidence names stored with each verdict, so an operator can read why.
@@ -77,17 +79,39 @@ func (s *JobsService) attributeSpamMoves(ctx context.Context, now time.Time) err
 	return nil
 }
 
-// attributeOneSpamMove applies the verdict before recording it; every effect
-// is idempotent, so a failure part way is simply decided again next pass.
+// attributeOneSpamMove claims the move, fixes its verdict once and applies it.
+// Effects are idempotent and the move is completed only after all of them, so
+// a failure part way re-applies the same verdict on a later pass.
 func (s *JobsService) attributeOneSpamMove(ctx context.Context, m repository.WarmupSpamMove) error {
-	ev, err := s.WarmupRepo.WarmupSpamMoveEvidence(ctx, m)
+	claimed, err := s.WarmupRepo.ClaimWarmupSpamMove(ctx, m.EmailAccountID, m.MessageID, spamMoveClaimLease)
 	if err != nil {
-		return fmt.Errorf("warmup spam move evidence: %w", err)
+		return fmt.Errorf("claim warmup spam move: %w", err)
 	}
-	verdict, signals := attributeSpamMove(m, ev)
+	if !claimed {
+		return nil
+	}
+
+	verdict, signals := m.Verdict, m.Signals
+	if verdict == repository.SpamMovePending {
+		ev, err := s.WarmupRepo.WarmupSpamMoveEvidence(ctx, m)
+		if err != nil {
+			return fmt.Errorf("warmup spam move evidence: %w", err)
+		}
+		verdict, signals = attributeSpamMove(m, ev)
+		fixed, err := s.WarmupRepo.FixWarmupSpamMoveVerdict(ctx, m.EmailAccountID, m.MessageID, verdict, signals)
+		if err != nil {
+			return fmt.Errorf("fix warmup spam move verdict: %w", err)
+		}
+		if !fixed {
+			return nil
+		}
+	}
 
 	if verdict == repository.SpamMoveOwner {
-		hSender, _ := s.WarmupService.ApplySpamReport(ctx, m.EmailAccountID, m.SenderAccountID, m.MessageID, "user_complaint")
+		hSender, xerr := s.WarmupService.ApplySpamReport(ctx, m.EmailAccountID, m.SenderAccountID, m.MessageID, "user_complaint")
+		if xerr != nil {
+			return fmt.Errorf("record warmup spam complaint: %w", xerr)
+		}
 		s.markRiskBandFromWarmupHealth(ctx, m.SenderAccountID, hSender)
 		hOwner, xerr := s.WarmupService.RecordTampering(ctx, m.EmailAccountID, m.MessageID, "spam_flag")
 		if xerr != nil {
@@ -98,7 +122,10 @@ func (s *JobsService) attributeOneSpamMove(ctx context.Context, m repository.War
 		// The provider junked the sender's mail, or may have: a placement
 		// reading against the sender, which only ever slows it down.
 		provider, domain := recipientProviderDomain(s.recipientAccount(ctx, m.EmailAccountID))
-		hSender, _ := s.WarmupService.RecordSpamPlacement(ctx, m.EmailAccountID, m.SenderAccountID, m.MessageID, "", provider, domain)
+		hSender, xerr := s.WarmupService.RecordSpamPlacement(ctx, m.EmailAccountID, m.SenderAccountID, m.MessageID, "", provider, domain)
+		if xerr != nil {
+			return fmt.Errorf("record warmup spam placement: %w", xerr)
+		}
 		s.markRiskBandFromWarmupHealth(ctx, m.SenderAccountID, hSender)
 	}
 
@@ -108,8 +135,8 @@ func (s *JobsService) attributeOneSpamMove(ctx context.Context, m repository.War
 		}
 	}
 
-	if _, err := s.WarmupRepo.DecideWarmupSpamMove(ctx, m.EmailAccountID, m.MessageID, verdict, signals); err != nil {
-		return fmt.Errorf("decide warmup spam move: %w", err)
+	if err := s.WarmupRepo.CompleteWarmupSpamMove(ctx, m.EmailAccountID, m.MessageID); err != nil {
+		return fmt.Errorf("complete warmup spam move: %w", err)
 	}
 	log.Info().Str("email_id", m.EmailAccountID.String()).Str("verdict", verdict).Strs("signals", signals).
 		Msg("warmup spam move attributed")

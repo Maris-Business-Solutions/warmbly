@@ -19,7 +19,7 @@ func spamMoveAfter(sinceArrival time.Duration) repository.WarmupSpamMove {
 	observed := time.Date(2026, 9, 28, 14, 18, 36, 0, time.UTC)
 	return repository.WarmupSpamMove{
 		EmailAccountID: uuid.New(), MessageID: "<warmup@example.test>", SenderAccountID: uuid.New(),
-		ReceivedAt: observed.Add(-sinceArrival), ObservedAt: observed,
+		ReceivedAt: observed.Add(-sinceArrival), ObservedAt: observed, Verdict: repository.SpamMovePending,
 	}
 }
 
@@ -60,7 +60,22 @@ type attributionRepo struct {
 	moves      []repository.WarmupSpamMove
 	evidence   repository.WarmupSpamMoveEvidence
 	correlated []repository.WarmupSpamMove
+	claimLost  bool
 	log        *[]string
+}
+
+func (r attributionRepo) ClaimWarmupSpamMove(context.Context, uuid.UUID, string, time.Duration) (bool, error) {
+	return !r.claimLost, nil
+}
+
+func (r attributionRepo) FixWarmupSpamMoveVerdict(_ context.Context, _ uuid.UUID, _, verdict string, _ []string) (bool, error) {
+	*r.log = append(*r.log, "fix:"+verdict)
+	return true, nil
+}
+
+func (r attributionRepo) CompleteWarmupSpamMove(context.Context, uuid.UUID, string) error {
+	*r.log = append(*r.log, "complete")
+	return nil
 }
 
 func (r attributionRepo) ListSettledWarmupSpamMoves(context.Context, time.Time, int) ([]repository.WarmupSpamMove, error) {
@@ -69,11 +84,6 @@ func (r attributionRepo) ListSettledWarmupSpamMoves(context.Context, time.Time, 
 
 func (r attributionRepo) WarmupSpamMoveEvidence(context.Context, repository.WarmupSpamMove) (repository.WarmupSpamMoveEvidence, error) {
 	return r.evidence, nil
-}
-
-func (r attributionRepo) DecideWarmupSpamMove(_ context.Context, _ uuid.UUID, _, verdict string, _ []string) (bool, error) {
-	*r.log = append(*r.log, "decide:"+verdict)
-	return true, nil
 }
 
 func (r attributionRepo) CorrelatedOwnerSpamMoves(context.Context, uuid.UUID, uuid.UUID, time.Time) ([]repository.WarmupSpamMove, error) {
@@ -88,15 +98,22 @@ func (r attributionRepo) ReattributeOwnerSpamMoves(context.Context, uuid.UUID, u
 // attributionService records the effects a verdict has, in order.
 type attributionService struct {
 	warmupapp.Service
-	log *[]string
+	senderFails bool
+	log         *[]string
 }
 
 func (s attributionService) ApplySpamReport(_ context.Context, _, _ uuid.UUID, _, reportType string) (*models.WarmupParticipantHealth, *errx.Error) {
+	if s.senderFails {
+		return nil, errx.InternalError()
+	}
 	*s.log = append(*s.log, "sender:"+reportType)
 	return nil, nil
 }
 
 func (s attributionService) RecordSpamPlacement(context.Context, uuid.UUID, uuid.UUID, string, string, string, string) (*models.WarmupParticipantHealth, *errx.Error) {
+	if s.senderFails {
+		return nil, errx.InternalError()
+	}
 	*s.log = append(*s.log, "sender:spam_placement")
 	return nil, nil
 }
@@ -112,35 +129,49 @@ func (s attributionService) WithdrawTampering(_ context.Context, _ uuid.UUID, _,
 }
 
 // Only an owner verdict charges the recipient; the rest read as placement
-// against the sender. A correlation takes back the owner verdicts it explains
-// before its own is recorded, so a failure part way is redone next pass.
+// against the sender. The verdict is fixed before any effect and the move is
+// completed after all of them, so a failure part way re-applies the same
+// verdict, and a correlation takes back the owner verdicts it explains first.
 func TestAttributeSpamMovesAppliesTheVerdict(t *testing.T) {
+	owner := repository.WarmupSpamMoveEvidence{OwnerActiveNear: true, OwnerActiveRecently: true}
+	fixedProvider := spamMoveAfter(6 * time.Hour)
+	fixedProvider.Verdict, fixedProvider.Signals = repository.SpamMoveProvider, []string{spamMoveOnArrival}
 	cases := []struct {
-		name       string
-		since      time.Duration
-		ev         repository.WarmupSpamMoveEvidence
-		correlated int
-		want       []string
+		name        string
+		move        repository.WarmupSpamMove
+		ev          repository.WarmupSpamMoveEvidence
+		correlated  int
+		claimLost   bool
+		senderFails bool
+		wantErr     bool
+		want        []string
 	}{
-		{"owner", 6 * time.Hour, repository.WarmupSpamMoveEvidence{OwnerActiveNear: true, OwnerActiveRecently: true}, 0,
-			[]string{"sender:user_complaint", "strike:spam_flag", "decide:owner"}},
-		{"provider on arrival", time.Minute, repository.WarmupSpamMoveEvidence{}, 0,
-			[]string{"sender:spam_placement", "decide:provider"}},
-		{"unattributed", 6 * time.Hour, repository.WarmupSpamMoveEvidence{OwnerActiveRecently: true, PatternSenders: 1}, 0,
-			[]string{"sender:spam_placement", "decide:unattributed"}},
-		{"correlated withdraws earlier owner verdicts", 6 * time.Hour, repository.WarmupSpamMoveEvidence{CorrelatedElsewhere: 2}, 2,
-			[]string{"sender:spam_placement", "withdraw:spam_flag", "withdraw:spam_flag", "reattribute", "decide:provider"}},
+		{name: "owner", move: spamMoveAfter(6 * time.Hour), ev: owner,
+			want: []string{"fix:owner", "sender:user_complaint", "strike:spam_flag", "complete"}},
+		{name: "provider on arrival", move: spamMoveAfter(time.Minute),
+			want: []string{"fix:provider", "sender:spam_placement", "complete"}},
+		{name: "unattributed", move: spamMoveAfter(6 * time.Hour), ev: repository.WarmupSpamMoveEvidence{OwnerActiveRecently: true, PatternSenders: 1},
+			want: []string{"fix:unattributed", "sender:spam_placement", "complete"}},
+		{name: "correlated withdraws earlier owner verdicts", move: spamMoveAfter(6 * time.Hour), ev: repository.WarmupSpamMoveEvidence{CorrelatedElsewhere: 2}, correlated: 2,
+			want: []string{"fix:provider", "sender:spam_placement", "withdraw:spam_flag", "withdraw:spam_flag", "reattribute", "complete"}},
+		{name: "a move another consumer holds is left alone", move: spamMoveAfter(6 * time.Hour), ev: owner, claimLost: true,
+			want: nil},
+		{name: "a fixed verdict is re-applied, not decided again", move: fixedProvider, ev: owner,
+			want: []string{"sender:spam_placement", "complete"}},
+		{name: "a failed sender write leaves the move to retry", move: spamMoveAfter(6 * time.Hour), ev: owner, senderFails: true, wantErr: true,
+			want: []string{"fix:owner"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var log []string
-			repo := attributionRepo{moves: []repository.WarmupSpamMove{spamMoveAfter(tc.since)}, evidence: tc.ev, log: &log}
+			repo := attributionRepo{moves: []repository.WarmupSpamMove{tc.move}, evidence: tc.ev, claimLost: tc.claimLost, log: &log}
 			for range tc.correlated {
-				repo.correlated = append(repo.correlated, spamMoveAfter(tc.since))
+				repo.correlated = append(repo.correlated, spamMoveAfter(6*time.Hour))
 			}
-			s := &JobsService{WarmupRepo: repo, WarmupService: attributionService{log: &log}, EmailRepository: warmupInboxEmailRepo{}}
-			if err := s.attributeSpamMoves(context.Background(), time.Now()); err != nil {
-				t.Fatal(err)
+			s := &JobsService{WarmupRepo: repo, WarmupService: attributionService{log: &log, senderFails: tc.senderFails}, EmailRepository: warmupInboxEmailRepo{}}
+			err := s.attributeSpamMoves(context.Background(), time.Now())
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want error %v", err, tc.wantErr)
 			}
 			if !slices.Equal(log, tc.want) {
 				t.Fatalf("effects = %v, want %v", log, tc.want)
