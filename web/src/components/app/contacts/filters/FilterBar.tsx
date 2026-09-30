@@ -221,14 +221,14 @@ export default function FilterBar({
         <div className="px-5 py-1.5 border-b border-slate-200/60 bg-white flex flex-wrap items-center gap-1.5">
             <MultiPill
                 id="categories"
-                label="Category"
+                label="Label"
                 openKey={openKey}
                 setOpenKey={setOpenKey}
                 value={filters.category_ids ?? []}
                 onChange={(v) => setFilters((s) => ({ ...s, category_ids: v.length ? v : undefined }))}
                 options={categoryOptions}
-                empty="No categories yet."
-                hint="Contacts must have every selected category."
+                empty="No labels yet."
+                hint="Contacts must have every selected label."
             />
             {!hideSegments && (
                 <MultiPill

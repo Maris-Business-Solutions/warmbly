@@ -1078,7 +1078,7 @@ export default function AutomationFlow({
             if (isNativeAction(d.action)) {
                 const need = nativeActionNeeds(d.action);
                 if (need === "tag" && !String(d.config?.category_id ?? "").trim()) {
-                    toast.error("A tag action needs a tag");
+                    toast.error("A label action needs a label");
                     setSelectedId(n.id);
                     return false;
                 }
@@ -1088,7 +1088,7 @@ export default function AutomationFlow({
                     return false;
                 }
                 if (need === "label" && !triggerCarriesThread(trigger)) {
-                    toast.error("Label email only runs on a “Reply received” automation");
+                    toast.error("Label the conversation only runs on a “Reply received” automation");
                     setSelectedId(n.id);
                     return false;
                 }
@@ -2286,8 +2286,8 @@ function ConditionEditor({
 // the editor header. Drives both the action dropdown glyphs and the editor
 // header, so the picker reads like the campaign step picker.
 const ACTION_VISUAL: Record<string, { Icon: typeof TagIcon; tint: string; bg: string; desc?: string }> = {
-    "warmbly.add_tag": { Icon: TagIcon, tint: "text-emerald-600", bg: "bg-emerald-50", desc: "Add a tag to the contact." },
-    "warmbly.remove_tag": { Icon: TagIcon, tint: "text-amber-600", bg: "bg-amber-50", desc: "Remove a tag from the contact." },
+    "warmbly.add_tag": { Icon: TagIcon, tint: "text-emerald-600", bg: "bg-emerald-50", desc: "Add a label to the contact." },
+    "warmbly.remove_tag": { Icon: TagIcon, tint: "text-amber-600", bg: "bg-amber-50", desc: "Remove a label from the contact." },
     "warmbly.create_task": { Icon: CheckSquareIcon, tint: "text-violet-600", bg: "bg-violet-50", desc: "Open a CRM task for the contact." },
     "warmbly.create_deal": { Icon: BriefcaseIcon, tint: "text-sky-600", bg: "bg-sky-50", desc: "Create a CRM deal for the contact." },
     "warmbly.move_deal_stage": { Icon: BriefcaseIcon, tint: "text-sky-600", bg: "bg-sky-50", desc: "Move the contact's open deal to another stage." },
@@ -2628,11 +2628,11 @@ function NativeActionConfig({
         <div className="space-y-3">
             {need === "tag" && (
                 <div>
-                    <Label>{action === "warmbly.add_tag" ? "Tag to add" : "Tag to remove"}</Label>
+                    <Label>{action === "warmbly.add_tag" ? "Label to add" : "Label to remove"}</Label>
                     <CategoryPicker
                         value={config.category_id ? [String(config.category_id)] : []}
                         onChange={(ids) => patchConfig({ category_id: ids.length ? ids[ids.length - 1] : "" })}
-                        placeholder="Pick a tag…"
+                        placeholder="Pick a label…"
                     />
                 </div>
             )}
@@ -2813,7 +2813,7 @@ function NativeActionConfig({
 type SetVarRow = { key: string; value: string };
 
 const IF_EXISTS_OPTIONS: SelectOption[] = [
-    { value: "update", label: "Update it (fill blanks, add tags and campaign)" },
+    { value: "update", label: "Update it (fill blanks, add labels and campaign)" },
     { value: "skip", label: "Leave it alone" },
 ];
 
@@ -2915,11 +2915,11 @@ function UpsertContactFields({
                 </button>
             </div>
             <div>
-                <Label>Tags</Label>
+                <Label>Labels</Label>
                 <CategoryPicker
                     value={Array.isArray(config.category_ids) ? (config.category_ids as string[]) : []}
                     onChange={(ids) => patchConfig({ category_ids: ids })}
-                    placeholder="Pick tags…"
+                    placeholder="Pick labels…"
                 />
             </div>
             <div>
@@ -2942,7 +2942,7 @@ function UpsertContactFields({
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
                 A blank value never erases what the contact already has. The written contact becomes this event&apos;s contact, so the
-                steps after it (tag, task, deal) act on it. A campaign picked here keeps running for new leads instead of finishing between runs.
+                steps after it (label, task, deal) act on it. A campaign picked here keeps running for new leads instead of finishing between runs.
             </p>
         </div>
     );
@@ -3432,7 +3432,7 @@ function AITagPoolField({
             <p className="mt-1.5 text-[11px] text-slate-400">
                 {value.length
                     ? "The agent chooses among these for each event."
-                    : "Empty, so the agent may use any of your tags for each event."}
+                    : "Empty, so the agent may use any of your labels for each event."}
             </p>
         </div>
     );
@@ -3465,7 +3465,7 @@ function AIAgentFields({
             <AIInstruction
                 value={String(config.instruction ?? "")}
                 onChange={(v) => patchConfig({ instruction: v })}
-                placeholder="Read the reply. If they ask about pricing, tag them 'pricing' and create a follow-up task."
+                placeholder="Read the reply. If they ask about pricing, label them 'pricing' and create a follow-up task."
             />
             <div>
                 <Label>Actions the agent may take</Label>
@@ -3495,10 +3495,10 @@ function AIAgentFields({
                                         <AITagPoolField
                                             label={
                                                 id === "warmbly.add_tag"
-                                                    ? "Tags the agent can add"
+                                                    ? "Labels the agent can add"
                                                     : id === "warmbly.remove_tag"
-                                                      ? "Tags the agent can remove"
-                                                      : "Labels the agent can apply"
+                                                      ? "Labels the agent can remove"
+                                                      : "Conversation labels the agent can apply"
                                             }
                                             value={poolFor(id)}
                                             onChange={(refs) => patchConfig({ [poolKey]: refs })}
@@ -3523,7 +3523,7 @@ function AIAgentFields({
                         >
                             {!!config.ai_allow_create_tags && <CheckIcon className="w-3 h-3" />}
                         </span>
-                        Let the agent create a new tag/label when none fits
+                        Let the agent create a new label when none fits
                     </button>
                 )}
                 <p className="mt-1.5 text-[11px] text-slate-400 leading-relaxed">

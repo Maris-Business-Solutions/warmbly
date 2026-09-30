@@ -3179,7 +3179,7 @@ func importCategoryNames(names []string) ([]string, map[string]string, *errx.Err
 		}
 		if len(title) > 50 {
 			return nil, nil, errx.New(errx.BadRequest,
-				"category name "+strconv.Quote(title)+" is longer than 50 characters")
+				"label name "+strconv.Quote(title)+" is longer than 50 characters")
 		}
 		lower := strings.ToLower(title)
 		if _, dup := seen[lower]; dup {

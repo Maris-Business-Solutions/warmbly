@@ -20,9 +20,9 @@ func (h *Handler) resolveContactSelection(c *gin.Context, orgID uuid.UUID, sel m
 			errx.Handle(c, errx.New(errx.BadRequest, "no contacts provided"))
 			return nil, false
 		}
-		if len(sel.Contacts) > maxBulkOperationSize {
+		if len(sel.Contacts) > models.MaxContactBatchIDs {
 			errx.Handle(c, errx.NewWithIdentifier(errx.BadRequest, "too_many_contacts",
-				fmt.Sprintf("too many contacts, maximum is %d per batch", maxBulkOperationSize)))
+				fmt.Sprintf("too many contacts, maximum is %d per batch", models.MaxContactBatchIDs)))
 			return nil, false
 		}
 		return sel.Contacts, true

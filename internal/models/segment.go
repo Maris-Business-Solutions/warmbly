@@ -148,7 +148,7 @@ var SegmentFieldCatalog = []SegmentFieldSpec{
 	{Field: "esp_provider", Label: "Email provider family", Group: "Contact", Kind: SegmentFieldEnum, Options: []string{"gmail", "outlook", "other"}, OptionLabels: map[string]string{"gmail": "Google", "outlook": "Microsoft", "other": "Other"}},
 	{Field: "created_at", Label: "Created", Group: "Contact", Kind: SegmentFieldDate},
 	{Field: "updated_at", Label: "Updated", Group: "Contact", Kind: SegmentFieldDate},
-	{Field: "category", Label: "Category", Group: "Contact", Kind: SegmentFieldCategory},
+	{Field: "category", Label: "Label", Group: "Contact", Kind: SegmentFieldCategory},
 
 	{Field: "company", Label: "Company name", Group: "Company", Kind: SegmentFieldText},
 

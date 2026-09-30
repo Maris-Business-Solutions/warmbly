@@ -7256,7 +7256,7 @@
         ],
         "operationId": "contacts_bulk_update",
         "summary": "Bulk update contacts",
-        "description": "Applies one set of edits across a selection of contacts (up to 1000 by ID, or everything a filter matches, up to 50000): add/remove campaigns and categories, custom-field operations, and subscription. Scope `BULK_CONTACTS`.",
+        "description": "Applies one set of edits across a selection of contacts (up to 10000 by ID, or everything a filter matches, up to 250000): add/remove campaigns and categories, custom-field operations, and subscription. Scope `BULK_CONTACTS`.",
         "security": [
           {
             "bearerAuth": []
@@ -7292,7 +7292,7 @@
             }
           },
           "400": {
-            "description": "A selection that names nothing, an explicit list over 1000 or an exclusion list over 50000 (`too_many_contacts`), a select-all with no filters, a filter matching no contacts, or a filter matching more than 50000 (`selection_too_large`).",
+            "description": "A selection that names nothing, an explicit list over 10000 or an exclusion list over 250000 (`too_many_contacts`), a select-all with no filters, a filter matching no contacts, or a filter matching more than 250000 (`selection_too_large`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -7339,7 +7339,7 @@
         ],
         "operationId": "contacts_bulk_delete",
         "summary": "Bulk delete contacts",
-        "description": "Deletes a selection of contacts: up to 1000 by ID, or everything a filter matches (up to 50000). Scope `BULK_CONTACTS`.",
+        "description": "Deletes a selection of contacts: up to 10000 by ID, or everything a filter matches (up to 250000). Scope `BULK_CONTACTS`.",
         "security": [
           {
             "bearerAuth": []
@@ -7352,7 +7352,7 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "A JSON array of contact ID strings (1 to 1000), or a ContactSelection object naming a filter.",
+          "description": "A JSON array of contact ID strings (1 to 10000), or a ContactSelection object naming a filter.",
           "content": {
             "application/json": {
               "schema": {
@@ -7360,7 +7360,7 @@
                   {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": 1000,
+                    "maxItems": 10000,
                     "items": {
                       "type": "string",
                       "format": "uuid"
@@ -7379,7 +7379,7 @@
             "description": "Contacts deleted."
           },
           "400": {
-            "description": "A selection that names nothing, an explicit list over 1000 or an exclusion list over 50000 (`too_many_contacts`), a select-all with no filters, a filter matching no contacts, or a filter matching more than 50000 (`selection_too_large`).",
+            "description": "A selection that names nothing, an explicit list over 10000 or an exclusion list over 250000 (`too_many_contacts`), a select-all with no filters, a filter matching no contacts, or a filter matching more than 250000 (`selection_too_large`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -19090,7 +19090,7 @@
             }
           },
           "400": {
-            "description": "A selection that names nothing, an exclusion list over 50000 or one resolving to more than 500 contacts (`too_many_contacts`), a select-all with no filters, a filter matching no contacts, or a filter matching more than 50000 (`selection_too_large`).",
+            "description": "A selection that names nothing, an exclusion list over 250000 or one resolving to more than 500 contacts (`too_many_contacts`), a select-all with no filters, a filter matching no contacts, or a filter matching more than 250000 (`selection_too_large`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -31672,7 +31672,7 @@
       },
       "ContactSelection": {
         "type": "object",
-        "description": "Names the contacts a bulk action applies to: either an explicit id list, or every contact matching a search (all + filters) minus the ids in exclude. The filter form lets one call cover far more contacts than a page, and is refused with selection_too_large past 50000 matches.",
+        "description": "Names the contacts a bulk action applies to: either an explicit id list, or every contact matching a search (all + filters) minus the ids in exclude. The filter form lets one call cover far more contacts than a page, and is refused with selection_too_large past 250000 matches.",
         "oneOf": [
           {
             "required": [
@@ -31704,12 +31704,12 @@
           "contacts": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 1000,
+            "maxItems": 10000,
             "items": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Contact ids (1 to 1000). Required unless all is set."
+            "description": "Contact ids (1 to 10000). Required unless all is set."
           },
           "all": {
             "type": "boolean",
@@ -31729,7 +31729,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "maxItems": 50000,
+            "maxItems": 250000,
             "description": "Contact ids to drop from the resolved set. Ignored unless all is set."
           }
         }
@@ -31768,12 +31768,12 @@
           "contacts": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 1000,
+            "maxItems": 10000,
             "items": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "Contact IDs to edit (1 to 1000). Required unless all is set."
+            "description": "Contact IDs to edit (1 to 10000). Required unless all is set."
           },
           "all": {
             "type": "boolean",
@@ -31793,7 +31793,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "maxItems": 50000,
+            "maxItems": 250000,
             "description": "Contact ids to drop from the resolved set. Ignored unless all is set."
           },
           "add_campaigns": {
@@ -37910,7 +37910,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "maxItems": 50000,
+            "maxItems": 250000,
             "description": "Contact ids to drop from the resolved set. Ignored unless all is set."
           }
         },

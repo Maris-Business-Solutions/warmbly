@@ -1,6 +1,6 @@
 ---
 title: "Contacts & CRM"
-description: "Import contacts, custom fields, categories, deals, and pipelines."
+description: "Import contacts, custom fields, labels, deals, and pipelines."
 ---
 
 Contacts are the people you reach out to; the CRM tracks what happens after they reply.
@@ -13,7 +13,7 @@ Two routes share the same column-mapping screen: a file upload and an on-demand 
 
 1. **Upload.** The file goes up once and is read on the server, which measures every column over the whole file. Nothing is written to your contacts yet. **Download a sample file** gives you a CSV with every standard column if you are starting from scratch.
 2. **Map columns.** Each column shows how full it is across the file, a few of its values, and where it will go. **Find a column** and **Unmapped only** help with wide CRM exports, **First row is header** moves the first row between the headers and the data, and **Preview contacts** shows the first rows as the contacts they will become, with any row missing a usable address marked.
-3. **Review.** The whole file is checked before anything is written, and the result is one line: how many new contacts will be added, how many are already in your workspace, how many repeated rows are merged, and how many rows can't be imported (open it to see which and why). When some contacts already exist, choose **Leave as is** or **Update details** for them. **Add them to** puts everything from the file into segments, categories, and campaigns; the segment picker creates a segment on the spot, and offers one named after the file, so an import becomes an audience in one step. **More options** holds whether new contacts are subscribed. An import that would be refused as a whole, because it would put the workspace over its plan's contact limit or create more than 100 categories, says so here instead of after the upload, and the import button says exactly what will happen (`Import 1,102 new · update 118`).
+3. **Review.** The whole file is checked before anything is written, and the result is one line: how many new contacts will be added, how many are already in your workspace, how many repeated rows are merged, and how many rows can't be imported (open it to see which and why). When some contacts already exist, choose **Leave as is** or **Update details** for them. **Add them to** puts everything from the file into segments, labels, and campaigns; the segment picker creates a segment on the spot, and offers one named after the file, so an import becomes an audience in one step. **More options** holds whether new contacts are subscribed. An import that would be refused as a whole, because it would put the workspace over its plan's contact limit or create more than 100 labels, says so here instead of after the upload, and the import button says exactly what will happen (`Import 1,102 new · update 118`).
 4. **Import.** The import runs on the server in chunks, with live progress, its rate, and the time left. You can close the window: it keeps running, survives a refresh, and everyone in the workspace sees it finish. While it runs, an **Importing** chip on the Contacts toolbar shows how far it is and reopens it; **Stop** ends it early and keeps the rows already imported. The result reports imported, updated, skipped, and failed counts, lists the failed rows with their reasons, and **Download to fix** gives you every failed row as uploaded, under the file's own headers, with the reason in the last column, ready to correct and import again.
 
 A file whose headers match one you imported before maps itself the way you confirmed last time, marked **Mapping remembered**. The Upload step lists the workspace's recent imports, finished or still running, and opening one shows its progress or result.
@@ -25,7 +25,7 @@ You must map at least one column to **Email**.
 | Email | Required, and used to dedupe |
 | First name, Last name, Company, Phone | Standard identity fields |
 | Subscribed | `yes`, `true`, `1`, `subscribed` and their opposites (`no`, `false`, `0`, `unsubscribed`). Applies to new contacts and to existing ones you update; a value the importer cannot read fails only that row |
-| Categories | Category names, separated by commas or semicolons. Names you do not have yet are created, up to 100 new names per import |
+| Labels | Label names, separated by commas or semicolons. Names you do not have yet are created, up to 100 new names per import |
 | Custom field | Anything else: one of your existing custom fields, or a new one you name |
 
 ### Mapping into your custom fields
@@ -34,7 +34,7 @@ The mapping menu lists the custom fields your workspace already has under **Your
 
 A column whose header names an existing field is mapped to it before you open the menu. The match ignores case, spaces, underscores, dashes and dots, so a `company url` column lands on your `company_url` field in its stored spelling instead of starting a second field. Only one column is matched to each field, and standard fields (Email, Company, and so on) are matched first.
 
-When the instance has TypeSafe configured, the columns no header matched are also placed by what their header means: `Job Title` onto your `Title` field, `Firmenname` onto Company, `Sector` onto `Industry`. Only a confident answer is applied, each field still goes to one column, and those rows are marked **Matched by meaning. Check it.** until you change them. It picks names, Company, Phone and your custom fields only: Subscribed and Categories change who gets mail and which categories exist, so they are never guessed. What is sent is the column headers, the kind of value each column holds and your field names, never a cell, and nothing at all unless the first row is clearly headers (no address, date or number in it, and a named Email column); see [data control](/development/data-control/#typesafe-judgments). A column of addresses under any header, or none, is mapped to Email either way.
+When the instance has TypeSafe configured, the columns no header matched are also placed by what their header means: `Job Title` onto your `Title` field, `Firmenname` onto Company, `Sector` onto `Industry`. Only a confident answer is applied, each field still goes to one column, and those rows are marked **Matched by meaning. Check it.** until you change them. It picks names, Company, Phone and your custom fields only: Subscribed and Labels change who gets mail and which labels exist, so they are never guessed. What is sent is the column headers, the kind of value each column holds and your field names, never a cell, and nothing at all unless the first row is clearly headers (no address, date or number in it, and a named Email column); see [data control](/development/data-control/#typesafe-judgments). A column of addresses under any header, or none, is mapped to Email either way.
 
 Each custom mapping says what it will do: **Fills your existing field**, **Creates a new field**, or, when the name you typed differs from an existing field only in case or separators, **You already have `Industry`**, with **Use it** to switch to that field. **Keep N more as custom fields** uses the same matching, so the columns it claims land on your existing fields where it can.
 
@@ -43,7 +43,7 @@ Two columns may fill the same field, which is how a `Phone` and a `Mobile` colum
 <Callout type="info" title="Duplicates match on lowercased email, across the workspace">
 `Dana@Acme.com` and `dana@acme.com` are the same contact, and a contact belongs to the workspace, so an address a teammate already added counts as one you have. Choose **Leave as is** (their details stay untouched) or **Update details** (empty details are filled in from the file). The API also accepts `create_duplicate`, which updates too, since one address is one contact per workspace.
 
-Skipping still adds the contact to the campaigns, segments, and categories the import targets: it leaves their fields alone, it does not leave them out of the list. If the same address appears twice in one file it becomes one contact, and the extra rows count as skipped with the line they repeat.
+Skipping still adds the contact to the campaigns, segments, and labels the import targets: it leaves their fields alone, it does not leave them out of the list. If the same address appears twice in one file it becomes one contact, and the extra rows count as skipped with the line they repeat.
 </Callout>
 
 An address you already hold as a contact in another workspace you belong to cannot be added to this one, and that row fails with a reason saying so; the other workspace's contact is never changed by an import here.
@@ -56,7 +56,7 @@ Problems with the mapping itself, an unnamed custom field or a name Warmbly cann
 
 On the **Review** step, **Campaigns** enrols everyone in the file as leads of the campaigns you pick (started from a campaign's Leads tab, that campaign is shown as the fixed target), and **Segments** pins them into the [segments](/guides/segments/) you pick as manual includes, so they stay members whatever the segment's conditions say. A segment created from the picker has no conditions, so it holds exactly the contacts pinned into it. Started from a segment, that segment is always applied and shown as a fixed row; the picker below it adds more.
 
-**From Google Sheets**, a sheet is a reusable **sync source** rather than a one-time upload. Connect it once (Warmbly reads only the tab you choose and never writes back), paste the spreadsheet ID from the URL between `/d/` and `/edit`, pick the tab, map columns, then set duplicate handling, a label, and optionally a campaign to enroll into, categories to apply and segments to pin into. **Nothing syncs automatically**: press **Sync now**, or save and sync immediately.
+**From Google Sheets**, a sheet is a reusable **sync source** rather than a one-time upload. Connect it once (Warmbly reads only the tab you choose and never writes back), paste the spreadsheet ID from the URL between `/d/` and `/edit`, pick the tab, map columns, then set duplicate handling, a label, and optionally a campaign to enroll into, labels to apply and segments to pin into. **Nothing syncs automatically**: press **Sync now**, or save and sync immediately.
 
 Segment targets apply on every run, so a sheet you keep adding rows to keeps feeding the same audience. Opening **Sync sources** from a segment's member list lists only the sources feeding it and pre-targets a new one to it. A segment deleted later is dropped from the run rather than stopping it.
 
@@ -100,7 +100,7 @@ See [Personalization & expressions](/guides/expressions/) for the full templatin
 
 ## Filtering the list
 
-A filter bar sits above the contact list. **Category**, **Segment**, **Status** and **Campaign** are always there; open one, tick values, and the list updates immediately with the matching count next to the bar. **Add filter** adds a custom-field condition (field, contains/is/starts with/ends with, value), a date-added or last-updated range, a number-of-campaigns range, the address verification verdict, the [email provider](#email-provider) and, on a campaign's Leads tab, lead status and engagement. Each active filter is a pill you can reopen to change or remove with its cross; **Clear** drops them all, and **Save as segment** turns the current set into a [segment](/guides/segments/). Free-text search, sort and the column chooser stay in the toolbar.
+A filter bar sits above the contact list. **Label**, **Segment**, **Status** and **Campaign** are always there; open one, tick values, and the list updates immediately with the matching count next to the bar. **Add filter** adds a custom-field condition (field, contains/is/starts with/ends with, value), a date-added or last-updated range, a number-of-campaigns range, the address verification verdict, the [email provider](#email-provider) and, on a campaign's Leads tab, lead status and engagement. Each active filter is a pill you can reopen to change or remove with its cross; **Clear** drops them all, and **Save as segment** turns the current set into a [segment](/guides/segments/). Free-text search, sort and the column chooser stay in the toolbar.
 
 Free-text search matches first name, last name, email, company and phone. Every word you type has to match one of those, so `Test Demo` finds the contact whose first name is Test and last name is Demo, and `Demo Acme` finds everyone named Demo at Acme. Words can be in any order, and only the first six count.
 
@@ -122,7 +122,7 @@ Each contact's avatar carries a small badge with the logo of whoever hosts their
 
 A contact on a company domain shows that company's logo in place of their initials, and the **Company** column shows it beside the company name; when no company is on file, the column shows the domain their address is on. Personal inboxes (Gmail, Outlook.com, Yahoo and the like) keep their initials. Logos are on for Warmbly Cloud and off on a self-hosted instance unless its operator turns them on, because the browser fetches each one from DuckDuckGo; see [data control](/development/data-control/#outbound-calls).
 
-It shows on the contacts page and on a campaign's Leads tab alike. You can sort by it from **Sort**, filter with **Add filter** > **Email provider** (including **Unknown or not checked yet**), select every match and act on them in bulk (add them to a campaign, tag them, export them), or save the filter as a segment. Campaign [ESP matching](/guides/campaigns/) uses the same data to pair each lead with a same-provider mailbox.
+It shows on the contacts page and on a campaign's Leads tab alike. You can sort by it from **Sort**, filter with **Add filter** > **Email provider** (including **Unknown or not checked yet**), select every match and act on them in bulk (add them to a campaign, label them, export them), or save the filter as a segment. Campaign [ESP matching](/guides/campaigns/) uses the same data to pair each lead with a same-provider mailbox.
 
 ## Selecting rows
 
@@ -130,35 +130,35 @@ Tick a row's checkbox to select it, or the one in the table header to select eve
 
 When more contacts match than are loaded, a bar appears under the header: **Select all N matching**. Clicking it hands the whole filtered set to the next action, however many pages that is, and the selection bar counts the full number rather than the loaded rows. Unticking a row afterwards takes just that contact out and the count follows. **Clear selection** in the bar, or the header checkbox, drops back to nothing.
 
-The set is the one the list is showing: search, filters, the subscription facet, and the campaign or segment the list is scoped to all narrow it. Changing any of them clears the selection, because it would no longer mean what it did when you made it. A selection past `50,000` contacts is refused rather than half-applied; add a filter and work through it in parts.
+The set is the one the list is showing: search, filters, the subscription facet, and the campaign or segment the list is scoped to all narrow it. Changing any of them clears the selection, because it would no longer mean what it did when you made it. A selection past `250,000` contacts is refused rather than half-applied; add a filter and work through it in parts.
 
-Every bulk action reads the selection: **Edit**, **Segment**, **Remove from segment**, **Remove from campaign**, **Research**, **Verify**, **Mark deliverable** and **Delete**. **Push to CRM** is the exception: it calls the CRM once per contact while you wait, so it stays capped at `500` at a time.
+Every bulk action reads the selection: **Edit**, **Segment**, **Remove from segment**, **Remove from campaign**, **Research**, **Verify**, **Mark deliverable** and **Delete**. **Push to CRM** and **Research** are the exceptions: a push calls the CRM once per contact while you wait, and each research run spends AI credits, so both stay capped at `500` at a time.
 
 **Select all matching** is in the **From contacts** picker too, on a campaign's Leads tab and a segment page, so a whole search can be added as leads or members in one step.
 
 ## Editing one contact
 
-Clicking a row opens the contact's panel. Its **Details** tab edits the fields the contact is made of: name, email address, company, phone, subscription, campaigns, categories and custom fields. Nothing is sent until **Save**, **Discard** puts the panel back to the stored values, and closing it with unsaved edits asks first.
+Clicking a row opens the contact's panel. Its **Details** tab edits the fields the contact is made of: name, email address, company, phone, subscription, campaigns, labels and custom fields. Nothing is sent until **Save**, **Discard** puts the panel back to the stored values, and closing it with unsaved edits asks first.
 
 The email address can be changed here, which is the right move when someone's address was mistyped on import or they moved to a new domain. It is stored lowercased and stripped of any display name, and it has to be free: an address another contact already holds is refused, because merging two people's campaign history is not something the edit could undo. A new address also clears the contact's [verification](/guides/deliverability/#address-verification) verdict and everything the platform had observed about the old mailbox, so the background check starts the new address from scratch on its next pass, and the recipient provider Warmbly matches senders against is worked out again from the new domain. Emails already sent went to the old address and stay in the timeline as they happened.
 
 ## Editing many contacts at once
 
-Tick rows in any contact list, a segment's members or a campaign's leads, and the selection bar's **Edit** opens a bulk panel. It can add or remove campaigns, add or remove categories, force a subscription state, and queue custom-field operations (add, edit, delete, rename) that run on every selected contact (the key box suggests your existing fields as you type), including a **Select all matching** selection that reaches past the loaded pages.
+Tick rows in any contact list, a segment's members or a campaign's leads, and the selection bar's **Edit** opens a bulk panel. It can add or remove campaigns, add or remove labels, force a subscription state, and queue custom-field operations (add, edit, delete, rename) that run on every selected contact (the key box suggests your existing fields as you type), including a **Select all matching** selection that reaches past the loaded pages.
 
 Nothing is applied while you build it up. The header names the list the selection came from, and a **Will apply** strip above the buttons lists every queued change as a chip you can take back one at a time before pressing Apply. A field operation missing its key, or its value where one is needed, is marked and skipped rather than sent half-finished.
 
-## Categories
+## Labels
 
-Colored labels that group and filter contacts (`Warm lead`, `Conference 2026`, `Enterprise`), behaving like tags. The same picker appears in bulk edit, a contact's Details tab, the new-contact dialog, the filters, and the import and sync wizards.
+Colored labels that group and filter contacts (`Warm lead`, `Conference 2026`, `Enterprise`). The same list labels [inbox conversations](/guides/unibox/#labels) and is what [forms](/guides/forms/) file their submissions under. The same picker appears in bulk edit, a contact's Details tab, the new-contact dialog, the filters, and the import and sync wizards.
 
-It supports type-ahead search, and typing an unmatched name offers **Create** to add and select it in one step. Each category keeps its color everywhere its chip appears.
+It supports type-ahead search, and typing an unmatched name offers **Create** to add and select it in one step. Each label keeps its color everywhere its chip appears.
 
-Categories belong to the workspace, not to whoever made them: every teammate sees the same list and can file contacts under it. **Contacts > Categories** lists every category with a live contact count. From there you can create one, rename it, change its color, delete it (contacts are kept; the label is removed from them and from inbox threads), or click a row to open the contact list filtered to it.
+Labels belong to the workspace, not to whoever made them: every teammate sees the same list and can label contacts with it. **Contacts > Labels** lists every label with a live contact count. From there you can create one, rename it, change its color, delete it (contacts are kept; the label is removed from them and from inbox threads), or click a row to open the contact list filtered to it.
 
-Categories also drive automation: a sequence can run **Add tag** or **Remove tag** as a contact moves through a flow, so a label can be applied automatically on a positive reply. **Add to segment** and **Remove from segment** do the same for [segments](/guides/segments/).
+Labels also drive automation: a sequence can run **Add label** or **Remove label** as a contact moves through a flow, so a label can be applied automatically on a positive reply. **Add to segment** and **Remove from segment** do the same for [segments](/guides/segments/).
 
-To turn labels and activity into a reusable audience, build a [segment](/guides/segments/): a saved set of conditions over contacts (categories, fields, campaign activity, engagement) that you can browse and add to a campaign in one step.
+To turn labels and activity into a reusable audience, build a [segment](/guides/segments/): a saved set of conditions over contacts (labels, fields, campaign activity, engagement) that you can browse and add to a campaign in one step.
 
 ## Where a contact came from
 
@@ -182,11 +182,11 @@ A new contact is also an event. `contact.created` goes to your [webhooks](/guide
 
 ## Activity timeline
 
-The **Activity** tab of a contact is one workspace-wide feed, newest first, of everything Warmbly knows about them. Every member with permission to view contacts sees the same timeline, regardless of who created the contact or its campaigns. It includes every campaign email sent, opened, clicked, replied to or bounced (with the campaign, step, subject and sending mailbox), replies with their classified intent, deliverability and suppression events, notes, meetings, and the contact's lifecycle: when it was created and how, and each time it joined or left a campaign or a category.
+The **Activity** tab of a contact is one workspace-wide feed, newest first, of everything Warmbly knows about them. Every member with permission to view contacts sees the same timeline, regardless of who created the contact or its campaigns. It includes every campaign email sent, opened, clicked, replied to or bounced (with the campaign, step, subject and sending mailbox), replies with their classified intent, deliverability and suppression events, notes, meetings, and the contact's lifecycle: when it was created and how, and each time it joined or left a campaign or gained or lost a label.
 
 Opens appear once per event, not once per email: a second open from another device is its own row. Opens show the device and mail client they were read on, such as **iPhone · Apple Mail app** or **Gmail · device hidden**, and clicks the device and browser the link opened in, with the city and country when known (see [How an open was read](/guides/analytics/#how-an-open-was-read)); expanded, the operating system, browser and full location, and why a device is hidden when a mail provider's image proxy fetched the email. The Overview tab sums this up under **How they read**: each client and device the contact's opens came from, with the count and the latest. A click names the link: the row reads **Clicked Pricing** and, expanded, shows the link's text, its full URL, the UTM source, medium, campaign and content it carried, and the browser. Every link in an email is tracked on its own, so two links clicked are two rows. Opens and clicks that came from a machine rather than the person (a mail privacy proxy, a security gateway that follows every link at delivery) carry an **auto** badge, and the expanded row says which rule caught them; see [Link tracking and UTM parameters](/guides/campaigns/#link-tracking-and-utm-parameters).
 
-Filter chips narrow the feed (**Emails**, **Replies**, **Deliv.**, **Notes**, **Meetings**, **Campaigns**, **Lifecycle**), the search box matches subjects, campaigns, steps, mailboxes, categories, reasons and, for clicks, the link's text, URL and UTM values, and the date picker bounds it. Each row stays to one line until you click it; expanded, it shows every detail the event carries. The feed updates live as teammates and the schedulers write to it.
+Filter chips narrow the feed (**Emails**, **Replies**, **Deliv.**, **Notes**, **Meetings**, **Campaigns**, **Lifecycle**), the search box matches subjects, campaigns, steps, mailboxes, labels, reasons and, for clicks, the link's text, URL and UTM values, and the date picker bounds it. Each row stays to one line until you click it; expanded, it shows every detail the event carries. The feed updates live as teammates and the schedulers write to it.
 
 At the top of the tab sits the campaign panel: for each campaign the contact is in, its flow with this contact's progress, the lead status, and what the scheduler will do next. See [Campaigns](/guides/campaigns/) for how the next action is worked out and what its states mean.
 

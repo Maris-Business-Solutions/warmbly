@@ -568,7 +568,7 @@ func (s *service) ListCategories(ctx context.Context, orgID uuid.UUID) ([]models
 // creator is nil: an automation has no human behind it.
 func (s *service) CreateCategory(ctx context.Context, orgID uuid.UUID, title, color string) (models.MiniCategory, error) {
 	if s.categoryRepo == nil {
-		return models.MiniCategory{}, errx.New(errx.BadRequest, "categories are not available")
+		return models.MiniCategory{}, errx.New(errx.BadRequest, "labels are not available")
 	}
 	if strings.TrimSpace(color) == "" {
 		color = "#64748b"

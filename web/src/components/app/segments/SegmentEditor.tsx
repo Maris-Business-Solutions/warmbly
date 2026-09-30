@@ -490,7 +490,7 @@ function ValueInput({
         case "enum":
             return <EnumMultiPicker value={values} onChange={setValues} options={spec.options ?? []} labels={spec.option_labels} />;
         case "category":
-            return <CategoryPicker value={values} onChange={setValues} placeholder="Pick categories…" allowCreate={false} />;
+            return <CategoryPicker value={values} onChange={setValues} placeholder="Pick labels…" allowCreate={false} />;
         case "campaign":
             return <CampaignMultiPicker value={values} onChange={setValues} />;
         case "segment":

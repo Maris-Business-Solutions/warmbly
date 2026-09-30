@@ -177,7 +177,7 @@ export function NewContactDialog({ open, onClose, campaign, segment }: Props) {
                                 <TextInput value={phone} onChange={setPhone} className="w-full" />
                             </div>
                             <div>
-                                <Label>Categories</Label>
+                                <Label>Labels</Label>
                                 <CategoryPicker value={categories} onChange={setCategories} />
                             </div>
                             <div>

@@ -86,11 +86,11 @@ export default function SettingsPanel({
                 description="Where a submitted contact lands in your workspace."
             >
                 <div>
-                    <Label>Add to categories</Label>
+                    <Label>Add labels</Label>
                     <CategoryPicker
                         value={draft.category_ids}
                         onChange={(next) => onChange({ category_ids: next })}
-                        placeholder="Pick categories, e.g. Website leads"
+                        placeholder="Pick labels, e.g. Website leads"
                     />
                     <p className="text-[11px] text-slate-500 mt-1">Every submitted contact is filed under these.</p>
                 </div>
