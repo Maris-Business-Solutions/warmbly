@@ -23,7 +23,7 @@ import {
     XIcon,
     ZapIcon,
 } from "lucide-react";
-import type { SendingDomain, DNSRecord, DomainRedirect, VendorDomainLink } from "@/lib/api/models/app/emails/SendingDomain";
+import type { SendingDomain, DNSRecord, DomainRedirect, RedirectServer, VendorDomainLink } from "@/lib/api/models/app/emails/SendingDomain";
 import type TrackingDomain from "@/lib/api/models/app/emails/TrackingDomain";
 import {
     useDeleteDomainRedirect,
@@ -41,13 +41,16 @@ import ProviderLogo, { LogoStack } from "@/components/app/emails/ProviderLogo";
 import { useConfirm } from "@/hooks/context/confirm";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
-import timeAgo from "@/lib/helper/timeAgo";
 import { mailHostLabel } from "@/lib/mailHost";
 import { cn } from "@/lib/utils";
 import { DnsRecordsTable, StatusPill, VendorChip, type RecordRow } from "./parts";
+import { ReachFix, RedirectStatusBanner, ServedByPicker } from "./RedirectServing";
+import { defaultServer, useCloudServing } from "./cloudServing";
+import CloudConnectDialog from "@/components/app/cloud/CloudConnectDialog";
 import {
     authPill,
     domainVendor,
+    redirectBlocked,
     redirectPill,
     redirectState,
     redirectTargetProblem,
@@ -121,11 +124,13 @@ function Detail({
     const [urlDraft, setUrlDraft] = React.useState<string | null>(null);
     const [wwwDraft, setWwwDraft] = React.useState<boolean | null>(null);
     const [fwdDraft, setFwdDraft] = React.useState<string | null>(null);
+    const [servedDraft, setServedDraft] = React.useState<RedirectServer | null>(null);
     const redirect = domain.redirect ?? null;
     const dirty =
         (hostDraft !== null && hostDraft.trim() !== "") ||
         (urlDraft !== null && urlDraft.trim() !== (redirect?.target_url ?? "")) ||
         (wwwDraft !== null && wwwDraft !== (redirect?.include_www ?? true)) ||
+        (servedDraft !== null && !!redirect && servedDraft !== redirect.served_by) ||
         (fwdDraft !== null && fwdDraft.trim() !== (domain.vendor_domain?.forwarding ?? ""));
 
     const requestClose = React.useCallback(() => {
@@ -248,6 +253,8 @@ function Detail({
                                     setUrlDraft={setUrlDraft}
                                     wwwDraft={wwwDraft}
                                     setWwwDraft={setWwwDraft}
+                                    servedDraft={servedDraft}
+                                    setServedDraft={setServedDraft}
                                     fwdDraft={fwdDraft}
                                     setFwdDraft={setFwdDraft}
                                 />
@@ -712,6 +719,8 @@ function RedirectTab({
     setUrlDraft,
     wwwDraft,
     setWwwDraft,
+    servedDraft,
+    setServedDraft,
     fwdDraft,
     setFwdDraft,
 }: {
@@ -721,6 +730,8 @@ function RedirectTab({
     setUrlDraft: (v: string | null) => void;
     wwwDraft: boolean | null;
     setWwwDraft: (v: boolean | null) => void;
+    servedDraft: RedirectServer | null;
+    setServedDraft: (v: RedirectServer | null) => void;
     fwdDraft: string | null;
     setFwdDraft: (v: string | null) => void;
 }) {
@@ -800,6 +811,8 @@ function RedirectTab({
                             setUrlDraft={setUrlDraft}
                             wwwDraft={wwwDraft}
                             setWwwDraft={setWwwDraft}
+                            servedDraft={servedDraft}
+                            setServedDraft={setServedDraft}
                         />
                     )}
                 </motion.div>
@@ -964,6 +977,8 @@ function DnsRedirect({
     setUrlDraft,
     wwwDraft,
     setWwwDraft,
+    servedDraft,
+    setServedDraft,
 }: {
     domain: SendingDomain;
     redirect: DomainRedirect | null;
@@ -971,32 +986,98 @@ function DnsRedirect({
     setUrlDraft: (v: string | null) => void;
     wwwDraft: boolean | null;
     setWwwDraft: (v: boolean | null) => void;
+    servedDraft: RedirectServer | null;
+    setServedDraft: (v: RedirectServer | null) => void;
 }) {
     const confirm = useConfirm();
     const save = useSetDomainRedirect();
     const verify = useVerifyDomainRedirect();
     const remove = useDeleteDomainRedirect();
+    const cloud = useCloudServing();
     const [checked, setChecked] = React.useState<DomainRedirect | null>(null);
     const [tried, setTried] = React.useState(false);
+    // "serve" came from a redirect visitors do not reach, so linking moves it; "pick" only selects Cloud.
+    const [connecting, setConnecting] = React.useState<"pick" | "serve" | null>(null);
 
     const url = urlDraft ?? redirect?.target_url ?? "";
     const www = wwwDraft ?? redirect?.include_www ?? true;
+    // A Cloud pick Cloud can no longer take falls back, unless Cloud already serves this one.
+    const stalePick = servedDraft === "cloud" && !cloud.canServe && redirect?.served_by !== "cloud";
+    const server: RedirectServer = stalePick ? "instance" : (servedDraft ?? redirect?.served_by ?? defaultServer(cloud));
     const problem = redirectTargetProblem(url, domain.domain);
-    const changed = !redirect || url.trim() !== redirect.target_url || www !== redirect.include_www;
+    const moving = !!redirect && server !== redirect.served_by;
+    const changed = !redirect || url.trim() !== redirect.target_url || www !== redirect.include_www || moving;
     const lastCheck = checked && redirect && checked.id === redirect.id ? checked : null;
     const records = redirect ? mergeRecords(redirect.records, lastCheck) : [];
-    const lastError = lastCheck?.last_error ?? redirect?.last_error;
+    const toCloud = server === "cloud";
+
+    function resetDrafts() {
+        setUrlDraft(null);
+        setWwwDraft(null);
+        setServedDraft(null);
+        setTried(false);
+    }
+
+    async function persist(target: string, includeWww: boolean, servedBy: RedirectServer) {
+        const r = await save.mutateAsync({
+            domain: domain.domain,
+            body: { target_url: target, include_www: includeWww, ...(cloud.choosable ? { served_by: servedBy } : {}) },
+        });
+        setChecked(r);
+        resetDrafts();
+        if (r.verified && !redirectBlocked(r)) toast.success("Redirect saved and live");
+        else if (r.verified) toast("Saved. DNS is in place, but visitors do not reach the redirect yet.");
+        else if (r.served_by === "cloud") toast.success("Saved. Add the records below to point the domain at Warmbly Cloud.");
+        else toast.success("Redirect saved. Add the DNS records below to switch it on.");
+    }
 
     async function submit() {
         setTried(true);
         if (problem || save.isPending) return;
+        const run = async () => {
+            try {
+                await persist(url.trim(), www, server);
+            } catch (e) {
+                toast.error(buildError(e as AppError));
+            }
+        };
+        // Moving a redirect changes its records, so a live one stops until the new ones are in place.
+        if (moving && redirect?.verified) {
+            confirm.show(
+                toCloud
+                    ? `Serve ${domain.domain} from Warmbly Cloud? Its root records change, so the redirect pauses until you replace them with the ones shown next.`
+                    : `Serve ${domain.domain} from this server? Warmbly Cloud stops serving it now, and the redirect pauses until the root records point here.`,
+                run,
+            );
+            return;
+        }
+        await run();
+    }
+
+    function serveFromCloud() {
+        if (!redirect) return;
+        confirm.show(
+            `Serve ${domain.domain} from Warmbly Cloud? You replace its root records with the ones shown next, and nothing on your server needs to change.`,
+            async () => {
+                try {
+                    await persist(redirect.target_url, redirect.include_www, "cloud");
+                } catch (e) {
+                    toast.error(buildError(e as AppError));
+                }
+            },
+        );
+    }
+
+    // Once linked, the dialog's own button is the go-ahead.
+    async function afterLinked() {
+        const why = connecting;
+        setConnecting(null);
+        if (!redirect || why !== "serve") {
+            setServedDraft("cloud");
+            return;
+        }
         try {
-            const r = await save.mutateAsync({ domain: domain.domain, body: { target_url: url.trim(), include_www: www } });
-            setChecked(r);
-            setUrlDraft(null);
-            setWwwDraft(null);
-            setTried(false);
-            toast.success(r.verified ? "Redirect saved and live" : "Redirect saved. Add the DNS records below to switch it on.");
+            await persist(redirect.target_url, redirect.include_www, "cloud");
         } catch (e) {
             toast.error(buildError(e as AppError));
         }
@@ -1007,7 +1088,8 @@ function DnsRedirect({
         try {
             const r = await verify.mutateAsync(domain.domain);
             setChecked(r);
-            if (r.verified) toast.success("DNS is in place. The redirect is live.");
+            if (r.verified && !redirectBlocked(r)) toast.success("The redirect is live.");
+            else if (r.verified) toast("DNS is in place, but visitors do not reach the redirect yet.");
             else toast("Not every record is visible yet. It keeps checking by itself.");
         } catch (e) {
             toast.error(buildError(e as AppError));
@@ -1015,12 +1097,15 @@ function DnsRedirect({
     }
 
     function removeRedirect() {
-        confirm.show(`Stop redirecting ${domain.domain}? Visitors stop being sent to your website once DNS no longer points here.`, async () => {
+        const text =
+            redirect?.served_by === "cloud"
+                ? `Stop redirecting ${domain.domain}? Warmbly Cloud stops serving it right away.`
+                : `Stop redirecting ${domain.domain}? Visitors stop being sent to your website once DNS no longer points here.`;
+        confirm.show(text, async () => {
             try {
                 await remove.mutateAsync(domain.domain);
                 setChecked(null);
-                setUrlDraft(null);
-                setWwwDraft(null);
+                resetDrafts();
                 toast.success("Redirect removed");
             } catch (e) {
                 toast.error(buildError(e as AppError));
@@ -1030,47 +1115,18 @@ function DnsRedirect({
 
     return (
         <div className="space-y-5">
-
             {redirect && (
-                <div
-                    className={cn(
-                        "rounded-md border px-3 py-2.5 flex items-start gap-2",
-                        redirect.verified ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60",
-                    )}
-                >
-                    {redirect.verified ? (
-                        <CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
-                    ) : (
-                        <Loader2Icon className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1 text-[11.5px] leading-relaxed">
-                        <p className={cn("text-[12.5px] font-medium", redirect.verified ? "text-emerald-900" : "text-amber-900")}>
-                            {redirect.verified ? "Live" : "Waiting for DNS"}
-                        </p>
-                        <p className={redirect.verified ? "text-emerald-800/90" : "text-amber-800/90"}>
-                            {redirect.verified ? (
-                                <>
-                                    {domain.domain}
-                                    {redirect.include_www ? ` and www.${domain.domain}` : ""} redirect to{" "}
-                                    <a
-                                        href={redirect.target_url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-0.5 underline decoration-emerald-300 hover:decoration-emerald-600 break-all"
-                                    >
-                                        {redirect.target_url}
-                                        <ExternalLinkIcon className="w-2.5 h-2.5 shrink-0" />
-                                    </a>
-                                    .
-                                </>
-                            ) : (
-                                lastError || "Add the records below at your DNS provider."
-                            )}
-                        </p>
-                        {redirect.last_checked_at && (
-                            <p className="text-[11px] text-slate-500 mt-0.5">Last checked {timeAgo(lastCheck?.last_checked_at ?? redirect.last_checked_at)}</p>
-                        )}
-                    </div>
+                <div className="space-y-2.5">
+                    <RedirectStatusBanner domain={domain.domain} redirect={redirect} />
+                    <ReachFix
+                        key={redirect.reach?.proxy ?? ""}
+                        domain={domain.domain}
+                        redirect={redirect}
+                        cloud={cloud}
+                        onServeFromCloud={serveFromCloud}
+                        onConnect={() => setConnecting("serve")}
+                        switching={save.isPending}
+                    />
                 </div>
             )}
 
@@ -1096,6 +1152,15 @@ function DnsRedirect({
                     </div>
                     <Toggle value={www} onChange={setWwwDraft} ariaLabel={`Include www.${domain.domain}`} />
                 </div>
+                {cloud.choosable && (
+                    <ServedByPicker
+                        value={server}
+                        current={redirect?.served_by}
+                        onChange={setServedDraft}
+                        onConnect={() => setConnecting("pick")}
+                        cloud={cloud}
+                    />
+                )}
                 <div className="flex items-center gap-1.5">
                     <button
                         type="button"
@@ -1104,16 +1169,12 @@ function DnsRedirect({
                         className="h-7 px-2.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
                     >
                         {save.isPending && <Loader2Icon className="w-3 h-3 animate-spin" />}
-                        {redirect ? "Update redirect" : "Save redirect"}
+                        {!redirect ? "Save redirect" : moving ? (toCloud ? "Move to Warmbly Cloud" : "Move to this server") : "Update redirect"}
                     </button>
                     {redirect && changed && (
                         <button
                             type="button"
-                            onClick={() => {
-                                setUrlDraft(null);
-                                setWwwDraft(null);
-                                setTried(false);
-                            }}
+                            onClick={resetDrafts}
                             className="h-7 px-2.5 rounded-md text-[12px] text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                         >
                             Discard
@@ -1138,9 +1199,9 @@ function DnsRedirect({
                     </div>
                     <DnsRecordsTable records={records} />
                     <p className="text-[11.5px] text-slate-500 leading-relaxed">
-                        The root records replace whatever {domain.domain} serves today. New records can take from a few minutes to a
-                        few hours to appear. Warmbly checks by itself every 10 minutes and switches the redirect on once the ownership and
-                        root records are in place.
+                        {redirect.served_by === "cloud"
+                            ? `The root records point ${domain.domain} at Warmbly Cloud and replace whatever it serves today. New records can take from a few minutes to a few hours to appear. Warmbly Cloud checks by itself every 10 minutes and switches the redirect on once the ownership and root records are in place.`
+                            : `The root records replace whatever ${domain.domain} serves today. New records can take from a few minutes to a few hours to appear. Warmbly checks by itself every 10 minutes and switches the redirect on once the ownership and root records are in place, then opens the domain to make sure visitors get it.`}
                     </p>
                 </div>
             )}
@@ -1158,6 +1219,21 @@ function DnsRedirect({
                     </button>
                 </div>
             )}
+
+            <CloudConnectDialog
+                open={connecting !== null}
+                onClose={() => setConnecting(null)}
+                autoStart
+                intro={
+                    <>
+                        Link this instance to a Warmbly Cloud workspace, free to create, and Cloud serves{" "}
+                        <span className="font-medium text-slate-900">{domain.domain}</span>&apos;s redirect and its certificate. Nothing on your
+                        server changes: you only point the domain&apos;s DNS at Cloud. Approve the code below on Warmbly Cloud to finish.
+                    </>
+                }
+                doneLabel={redirect && connecting === "serve" ? `Serve ${domain.domain} from Warmbly Cloud` : "Use Warmbly Cloud"}
+                onDone={() => void afterLinked()}
+            />
         </div>
     );
 }

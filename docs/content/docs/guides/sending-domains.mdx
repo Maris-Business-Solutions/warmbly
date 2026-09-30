@@ -58,7 +58,7 @@ While any domain still uses the shared tracking host or has no redirect, the top
 
 A domain bought for cold email usually answers nothing when someone types it into a browser. A recipient who checks who wrote to them, or a filter that looks at the domain, finds an empty page or an error, which reads as a throwaway domain. A redirect sends visitors to the bare domain (and its `www`) on to your company's main website instead, so the domain looks like what it is: part of a real business.
 
-Warmbly serves the redirect from this instance's tracking service once DNS proves two things: that you control the domain, and that its root points here.
+Warmbly serves the redirect from this instance's tracking service once DNS proves two things: that you control the domain, and that its root points here. A self-hosted instance linked to Warmbly Cloud can [have Cloud serve it](#serve-it-from-warmbly-cloud) instead, with nothing to set up on its own server.
 
 ### Set one up
 
@@ -80,7 +80,9 @@ The root of a domain has to point here for the redirect to work, so a domain who
 
 A redirect verifies when the `TXT` record and the root record are both in place. The `www` record is optional; without it, only the bare domain redirects.
 
-Warmbly checks the records as soon as you save, whenever you press **Check now**, and on its own: every 10 minutes while the redirect is pending (for its first 14 days, then every 6 hours), and every 6 hours once it is verified. A verified redirect only stops when a check finds the records definitively gone or pointing elsewhere; a DNS lookup that fails or times out leaves it running.
+Verified DNS proves the domain points here, not that a visitor gets the redirect: a proxy in front of Warmbly can still answer in its place. So once DNS verifies, Warmbly opens the domain over `http` and `https` the way a visitor does, and the redirect shows **Live** when both lead to your website. When something answers in Warmbly's place, it shows **Not reaching visitors**, says what answered, and counts under **Needs attention**. Two cases stay **Live** with a note instead, because the check cannot tell them from a working redirect: nothing answered the check at all, or the tracking service is still picking up a redirect that has just verified. See [when visitors do not get it](#when-visitors-do-not-get-it).
+
+Warmbly checks the records as soon as you save, whenever you press **Check now**, and on its own: every 10 minutes while the redirect is pending (for its first 14 days, then every 6 hours), every 10 minutes while it is verified but not reaching visitors (for 14 days after it verified, then every 6 hours), and every 6 hours once it is live. A verified redirect only stops when a check finds the records definitively gone or pointing elsewhere; a DNS lookup that fails or times out leaves it running, and so does a failed visit.
 
 Saving the redirect again, to change the website or the `www` setting, keeps the same ownership value, so the `TXT` record you already added stays valid.
 
@@ -88,14 +90,56 @@ Saving the redirect again, to change the website or the `www` setting, keeps the
 
 A visit to the domain (and to its `www` when included) answers with a `302` to the website you entered, cacheable for five minutes. The path they asked for is not carried over: every visit lands on that one address. The answer is temporary on purpose, so a change or a deletion reaches every visitor within minutes instead of lingering in browsers.
 
-HTTPS needs a certificate for your domain. Warmbly Cloud issues one on demand the first time someone visits, and only for a domain whose redirect is verified. A self-hosted instance installed with the bundled Caddy does the same. Behind an operator's own proxy, the proxy has to route the domain to the tracking service and hold a certificate for it; see [custom tracking domain](/guides/mailboxes/#custom-tracking-domain) for the same caveat.
+HTTPS needs a certificate for your domain. Warmbly Cloud issues one on demand the first time someone visits, and only for a domain whose redirect is verified, including redirects it serves for a linked instance. A self-hosted instance installed with the bundled Caddy does the same. Behind an operator's own proxy, the proxy has to route the domain to the tracking service and hold a certificate for it; see [custom tracking domain](/guides/mailboxes/#custom-tracking-domain) for the same caveat.
+
+### When visitors do not get it
+
+The redirect's tab says what the check saw and, for the usual causes, what to change:
+
+| What the check saw | What it usually means | What to do |
+| --- | --- | --- |
+| Another web server answered, often a `404`, and the tab names it when it can tell (Traefik, nginx, Caddy, Apache) | A proxy in front of Warmbly only answers for the hostnames it was set up with | Add the domain wherever the tracking host is set up, since that one already reaches Warmbly. The tab shows the exact change for Traefik, Coolify, Dokploy, nginx and Caddy |
+| The tracking service answered but did not recognise the domain | The proxy sends the visit on under a different hostname | Pass the original `Host` header through, for example `proxy_set_header Host $host;` in nginx |
+| The domain redirects somewhere else | Another redirect answers first: a proxy rule, or forwarding at the domain or DNS provider | Remove that redirect |
+| `https` has no valid certificate | The proxy has no certificate for the domain | Add the domain to the proxy's configuration so it gets one |
+| Nothing answers on port 80 or 443 | A firewall, or nothing listening | Open the port and make the proxy serve the domain |
+
+When nothing answered the check at all, the redirect still shows **Live**, with a note to open the domain yourself: some networks do not let a server open its own public address, so the check cannot tell that apart from a working redirect. The same goes for the first minute after DNS verifies, while the tracking service picks the redirect up: the tab says so and checks again within 10 minutes.
+
+For a proxy you run yourself, the change is the same wherever the tracking host is configured. With Traefik, extend the router rule that already routes the tracking host:
+
+```text
+Host(`t.example.com`) || Host(`acme.io`) || Host(`www.acme.io`)
+```
+
+With nginx, add the names to the server block that proxies the tracking service, keep the original hostname, and give it a certificate:
+
+```nginx
+server_name t.example.com acme.io www.acme.io;
+proxy_set_header Host $host;
+```
+
+On a self-hosted instance linked to Warmbly Cloud, the same tab also offers to skip all of this and [serve the redirect from Warmbly Cloud](#serve-it-from-warmbly-cloud).
+
+### Serve it from Warmbly Cloud
+
+On a self-hosted instance [linked to Warmbly Cloud](/guides/warmbly-cloud/), a redirect has a **Served from** choice: **This server** or **Warmbly Cloud**. Cloud serves the redirect and its certificate from its own tracking service, so nothing on your server has to route the domain. You point the root at the addresses Cloud lists and publish the ownership value it lists, which is Cloud's own and differs from your instance's.
+
+- An instance that is not linked yet can link from right there: **Connect Warmbly Cloud** under **Served from**, or in the fix for a redirect that is not reaching visitors, shows the code to approve on Warmbly Cloud, and approving it moves on to serving the redirect from Cloud. When redirects are not reaching visitors, the top of the page offers the same for all of them at once.
+- While the instance is linked, the dashboard picks Warmbly Cloud for a new redirect (the API keeps this instance unless `served_by` says otherwise). Bulk setup has the same choice; there, a domain that already has a redirect keeps where it is served from unless you pick a server, and the dashboard asks before moving a live one.
+- Cloud checks the records and opens the domain on its own schedule, the same one described above. Your instance shows Cloud's verdict, records and last visit, and reads them again on its own schedule and on **Check now**.
+- Moving a redirect between this server and Cloud changes its root records, so a live redirect pauses until the new records are in place. The dashboard asks before it moves one.
+- Only the domain, the website and the `www` setting go to Cloud. See [data control](/development/data-control/#outbound-calls).
+- If Cloud cannot be reached when you save, the redirect is kept as waiting for Cloud and sent as soon as it answers. A redirect Cloud still serves that no workspace here has any more, after a workspace is deleted for example, is released within about half an hour.
+- Disconnecting the instance, or unlinking it from Warmbly Cloud, stops every redirect Cloud served for it. Each one then says so and can be moved back to this server. A redirect Cloud no longer has while the link is still up is put back by the next check.
 
 ### Limits
 
 - The workspace must have a mailbox on the domain.
 - Domains of shared email providers, such as `gmail.com` or `outlook.com`, are refused.
 - One workspace per domain on an instance. While one workspace's redirect for a domain is verified, another workspace's redirect for it is refused with `domain_redirect_taken` and does not verify.
-- The instance needs a tracking host (`TRACKING_DOMAIN`), because the tracking service is what answers. Without one, redirects are not offered.
+- The instance needs a tracking host (`TRACKING_DOMAIN`), because the tracking service is what answers. Without one, redirects are not offered, except from Warmbly Cloud on a linked instance.
+- Warmbly Cloud serves up to 200 redirects for one linked instance.
 
 ## Domains held by an inbox vendor
 
@@ -124,7 +168,7 @@ The vendor's domain list is read with the workspace's own API key, only for conn
 
 ## What travels in an export
 
-Redirects travel in a [workspace export](/guides/workspace-export-import/). They arrive unverified and are served once the destination's own check sees both records. The ownership value belongs to the workspace on the instance that issued it, so the destination lists its own value: publish that value in the `TXT` record, and point the root at the destination. A tracking host is part of each mailbox's settings and travels with the mailbox. Forwarding set through a vendor lives at the vendor and is unaffected by a move.
+Redirects travel in a [workspace export](/guides/workspace-export-import/). They arrive unverified and are served once the destination's own check sees both records. One Warmbly Cloud served for the source arrives served by the destination itself. The ownership value belongs to the workspace on the instance that issued it, so the destination lists its own value: publish that value in the `TXT` record, and point the root at the destination. A tracking host is part of each mailbox's settings and travels with the mailbox. Forwarding set through a vendor lives at the vendor and is unaffected by a move.
 
 ## Related guides
 

@@ -21,13 +21,16 @@ import {
     revokePoolLinkInstance,
 } from "@/lib/api/client/app/cloudlink/poolLink";
 
+import { SENDING_DOMAINS_KEY } from "@/lib/api/hooks/app/emails/useSendingDomains";
+
 export const CLOUD_LINK_KEY = ["cloud-link"];
 export const POOL_LINK_KEY = ["pool-link"];
 
 // Self-hosted side.
 
-export function useCloudLinkStatus(enabled = true) {
-    return useQuery({ queryKey: [...CLOUD_LINK_KEY, "status"], queryFn: getCloudLinkStatus, enabled, staleTime: 10_000 });
+// Each read asks Warmbly Cloud, so a surface that only needs the redirect offer can take a longer staleTime.
+export function useCloudLinkStatus(enabled = true, staleTime = 10_000) {
+    return useQuery({ queryKey: [...CLOUD_LINK_KEY, "status"], queryFn: getCloudLinkStatus, enabled, staleTime });
 }
 
 export function useCloudLinkMailboxes(enabled = true) {
@@ -55,6 +58,8 @@ export function useDisconnectCloudLink() {
         onSuccess: () => {
             void qc.invalidateQueries({ queryKey: CLOUD_LINK_KEY });
             void qc.invalidateQueries({ queryKey: ["emails"] });
+            // Redirects Warmbly Cloud served stop with the link.
+            void qc.invalidateQueries({ queryKey: SENDING_DOMAINS_KEY });
         },
     });
 }

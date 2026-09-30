@@ -39,6 +39,8 @@ type BulkInput struct {
 	// TrackingHosts and RedirectURLs override the shared value for the domains they name.
 	TrackingHosts map[string]string `json:"tracking_hosts"`
 	RedirectURLs  map[string]string `json:"redirect_urls"`
+	// ServedBy picks where a redirect not forwarded by a vendor is served from; empty keeps each domain's current choice.
+	ServedBy models.RedirectServer `json:"served_by"`
 }
 
 // BulkResult is what one domain got.
@@ -65,7 +67,7 @@ type BulkTracking struct {
 // BulkRedirectTo is one domain's root redirect after a bulk setup.
 type BulkRedirectTo struct {
 	TargetURL string `json:"target_url,omitempty"`
-	// Via is "vendor" when the vendor forwards the root, "dns" when this instance serves it.
+	// Via is "vendor" when the vendor forwards the root, "dns" when this instance serves it, "cloud" when Warmbly Cloud does.
 	Via      string `json:"via"`
 	Verified bool   `json:"verified"`
 	// Reviewed means the vendor's staff apply the forwarding later.
@@ -110,8 +112,11 @@ func (s *Service) BulkSetup(ctx context.Context, orgID, userID uuid.UUID, in Bul
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDBulkInvalid, "Give a tracking subdomain, a redirect website, or both.")
 	case label != "" && !dnsLabel.MatchString(label):
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDBulkInvalid, "The tracking subdomain is one DNS label, like "+config.DefaultTrackingLabel+".")
+	case in.ServedBy != "" && in.ServedBy != models.RedirectServedByInstance && in.ServedBy != models.RedirectServedByCloud:
+		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDBulkInvalid, "served_by is instance or cloud.")
 	}
-	if s.target() == "" {
+	// Only tracking needs this instance's host; each redirect is checked against the server it goes to.
+	if s.target() == "" && (label != "" || len(hosts) > 0) {
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDNoTracking, "Open and click tracking is not set up on this instance.")
 	}
 
@@ -141,9 +146,9 @@ func (s *Service) BulkSetup(ctx context.Context, orgID, userID uuid.UUID, in Bul
 				r.Tracking = s.bulkTracking(ctx, orgID, r.Domain, label+"."+r.Domain, link)
 			}
 			if u := targets[r.Domain]; u != "" {
-				r.Redirect = s.bulkRedirect(ctx, orgID, userID, r.Domain, u, link)
+				r.Redirect = s.bulkRedirect(ctx, orgID, userID, r.Domain, u, in.ServedBy, link)
 			} else if target != "" {
-				r.Redirect = s.bulkRedirect(ctx, orgID, userID, r.Domain, target, link)
+				r.Redirect = s.bulkRedirect(ctx, orgID, userID, r.Domain, target, in.ServedBy, link)
 			}
 		}(&out[i], link)
 	}
@@ -169,7 +174,7 @@ func (s *Service) bulkTracking(ctx context.Context, orgID uuid.UUID, domain, hos
 	return r
 }
 
-func (s *Service) bulkRedirect(ctx context.Context, orgID, userID uuid.UUID, domain, target string, link *models.VendorDomainLink) *BulkRedirectTo {
+func (s *Service) bulkRedirect(ctx context.Context, orgID, userID uuid.UUID, domain, target string, server models.RedirectServer, link *models.VendorDomainLink) *BulkRedirectTo {
 	if link != nil && link.CanForward {
 		r := &BulkRedirectTo{Via: "vendor", Reviewed: link.ForwardingReviewed}
 		l, xerr := s.VendorForward(ctx, orgID, userID, domain, target)
@@ -181,10 +186,16 @@ func (s *Service) bulkRedirect(ctx context.Context, orgID, userID uuid.UUID, dom
 		return r
 	}
 	r := &BulkRedirectTo{Via: "dns"}
-	red, xerr := s.SetRedirect(ctx, orgID, userID, domain, RedirectInput{TargetURL: target})
+	if server == models.RedirectServedByCloud {
+		r.Via = "cloud"
+	}
+	red, xerr := s.SetRedirect(ctx, orgID, userID, domain, RedirectInput{TargetURL: target, ServedBy: server})
 	if xerr != nil {
 		r.Error, r.Code = rowMessage(domain, xerr), xerr.ResponseCode()
 		return r
+	}
+	if red.ServedBy == models.RedirectServedByCloud {
+		r.Via = "cloud"
 	}
 	r.TargetURL, r.Verified = red.TargetURL, red.Verified
 	return r

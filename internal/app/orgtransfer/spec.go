@@ -167,11 +167,12 @@ var Tables = []Table{
 	},
 	{
 		Name: "domain_redirects", Group: models.OrgDataGroupCore,
-		Scope: scopeOrg,
-		// DNS points at the source instance until the customer moves it, so the
-		// destination serves nothing until its own check sees the records.
-		ResetOnImport: []string{"verified", "verified_at", "last_checked_at", "last_error"},
-		Note:          "Sending domains whose root redirects to the workspace's website. The destination lists its own TXT value, derived from its secret and the new workspace, and verifies once it is published.",
+		// A row Cloud serves for a linked instance belongs to that link, which does not travel.
+		Scope: `organization_id = $1 AND linked_instance_id IS NULL`,
+		// DNS points at the source (or at Cloud for it) until moved, so the destination serves it itself once its own check passes.
+		ResetOnImport: []string{"verified", "verified_at", "last_checked_at", "last_error", "served_by", "remote_host", "remote_records",
+			"linked_instance_id", "reach_status", "reach_hint", "reach_detail", "reach_proxy", "reach_checked_at"},
+		Note: "Sending domains whose root redirects to the workspace's website. The destination lists its own TXT value, derived from its secret and the new workspace, and verifies once it is published. A redirect Warmbly Cloud served for the source arrives served by the destination.",
 	},
 	{
 		Name: "email_accounts", Group: models.OrgDataGroupCore,

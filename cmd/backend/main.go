@@ -1735,6 +1735,9 @@ func main() {
 		// Sending domains: tracking host per domain and the bare-domain redirect.
 		sendingDomainService = sendingdomain.NewService(repository.NewDomainRedirectRepository(primaryDB), emailRepostory, nil, domainProver)
 		sendingDomainService.WireAuditor(auditService)
+		// A linked self-hosted instance can have Warmbly Cloud serve a redirect instead.
+		sendingDomainService.WireCloud(cloudLinkService)
+		cloudLinkService.OnDisconnect(sendingDomainService.MarkCloudUnlinked)
 		go sendingDomainService.StartSweep(ctx)
 
 		mailhostDetector := mailhost.NewDetector(nil, nil, mailboximport.NewRedisDetectionCache(cache))

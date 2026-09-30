@@ -101,17 +101,25 @@ func IsBlockedIP(ip net.IP) bool {
 // portAllowed restricts the dial to web ports. Only 443 and 8443 are reachable
 // for user-supplied URLs (so a host that passes the IP check still cannot reach
 // 22/3306/6379/9200/etc.); the dev flag opens any port for local testing.
-func portAllowed(port string) bool {
+func portAllowed(port string, ports []string) bool {
 	if allowUnsafe() {
 		return true
 	}
-	return port == "443" || port == "8443"
+	if len(ports) == 0 {
+		return port == "443" || port == "8443"
+	}
+	for _, p := range ports {
+		if port == p {
+			return true
+		}
+	}
+	return false
 }
 
 // safeDialContext resolves addr's host, blocks the connection if any resolved IP
 // is non-public, and dials the validated IP directly so no rebinding can occur
 // between validation and connect.
-func safeDialContext(dialer *net.Dialer) func(context.Context, string, string) (net.Conn, error) {
+func safeDialContext(dialer *net.Dialer, ports []string) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if allowUnsafe() {
 			return dialer.DialContext(ctx, network, addr)
@@ -124,7 +132,7 @@ func safeDialContext(dialer *net.Dialer) func(context.Context, string, string) (
 			log.Warn().Str("host", host).Msg("safehttp: blocked request to a denied hostname")
 			return nil, ErrBlockedAddress
 		}
-		if !portAllowed(port) {
+		if !portAllowed(port, ports) {
 			log.Warn().Str("host", host).Str("port", port).Msg("safehttp: blocked request to a non-web port")
 			return nil, ErrBlockedAddress
 		}
@@ -147,11 +155,11 @@ func safeDialContext(dialer *net.Dialer) func(context.Context, string, string) (
 	}
 }
 
-// Client returns an SSRF-hardened *http.Client with the given overall timeout.
-func Client(timeout time.Duration) *http.Client {
+// NewTransport is the SSRF-hardened transport for the given ports; none means 443 and 8443.
+func NewTransport(ports ...string) *http.Transport {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	transport := &http.Transport{
-		DialContext:           safeDialContext(dialer),
+	return &http.Transport{
+		DialContext:           safeDialContext(dialer, ports),
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
@@ -159,9 +167,13 @@ func Client(timeout time.Duration) *http.Client {
 		ResponseHeaderTimeout: 10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
+}
+
+// Client returns an SSRF-hardened *http.Client with the given overall timeout.
+func Client(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: transport,
+		Transport: NewTransport(),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return errors.New("too many redirects")

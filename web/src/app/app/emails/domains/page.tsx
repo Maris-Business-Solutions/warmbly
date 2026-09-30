@@ -19,6 +19,7 @@ import { LogoStack } from "@/components/app/emails/ProviderLogo";
 import SendingDomainDrawer, { type DomainTab } from "@/components/app/emails/domains/SendingDomainDrawer";
 import BulkSetupDialog, { type BulkSetupIntent } from "@/components/app/emails/domains/BulkSetupDialog";
 import DomainSelectionBar from "@/components/app/emails/domains/DomainSelectionBar";
+import RedirectRescue from "@/components/app/emails/domains/RedirectRescue";
 import { StatusPill, VendorChip } from "@/components/app/emails/domains/parts";
 import {
     authPill,
@@ -209,6 +210,8 @@ export default function SendingDomainsPage() {
                     />
                 </div>
             )}
+
+            {!loading && !empty && <RedirectRescue all={all} onOpenDomain={(d) => openDomain(d, "redirect")} />}
 
             <AnimatePresence initial={false}>
                 {!loading && !empty && showNudge && (

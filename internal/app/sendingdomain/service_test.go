@@ -66,10 +66,24 @@ type memRedirects struct {
 	rows map[uuid.UUID]*models.DomainRedirect
 }
 
-func (m *memRedirects) Upsert(_ context.Context, r *models.DomainRedirect, _ uuid.UUID) error {
+func (m *memRedirects) Upsert(_ context.Context, r *models.DomainRedirect, _ *uuid.UUID) error {
+	if r.ServedBy == "" {
+		r.ServedBy = models.RedirectServedByInstance
+	}
+	for _, e := range m.rows {
+		if r.ServedBy == models.RedirectServedByCloud && e.ServedBy == models.RedirectServedByCloud && e.Domain == r.Domain && e.OrganizationID != r.OrganizationID {
+			return repository.ErrRedirectTaken
+		}
+	}
 	for _, e := range m.rows {
 		if e.OrganizationID == r.OrganizationID && e.Domain == r.Domain {
-			e.TargetURL, e.IncludeWWW = r.TargetURL, r.IncludeWWW
+			if (e.LinkedInstanceID == nil) != (r.LinkedInstanceID == nil) || (e.LinkedInstanceID != nil && *e.LinkedInstanceID != *r.LinkedInstanceID) {
+				return repository.ErrRedirectOwned
+			}
+			if e.ServedBy != r.ServedBy {
+				e.RemoteHost, e.RemoteRecords, e.Reach, e.Verified, e.VerifiedAt, e.LastError = "", nil, nil, false, nil, ""
+			}
+			e.TargetURL, e.IncludeWWW, e.ServedBy = r.TargetURL, r.IncludeWWW, r.ServedBy
 			*r = *e
 			return nil
 		}
@@ -79,19 +93,44 @@ func (m *memRedirects) Upsert(_ context.Context, r *models.DomainRedirect, _ uui
 	m.rows[r.ID] = &cp
 	return nil
 }
-func (m *memRedirects) Get(_ context.Context, org uuid.UUID, domain string) (*models.DomainRedirect, error) {
-	for _, e := range m.rows {
-		if e.OrganizationID == org && e.Domain == domain {
-			cp := *e
-			return &cp, nil
+func (m *memRedirects) UpsertLinked(ctx context.Context, r *models.DomainRedirect, by *uuid.UUID, limit int) (bool, error) {
+	if existing, _ := m.GetLinked(ctx, *r.LinkedInstanceID, r.Domain); existing == nil {
+		if n, _ := m.CountLinked(ctx, *r.LinkedInstanceID); n >= limit {
+			return false, nil
 		}
 	}
-	return nil, nil
+	return true, m.Upsert(ctx, r, by)
 }
-func (m *memRedirects) List(context.Context, uuid.UUID) ([]models.DomainRedirect, error) {
-	return nil, nil
+func (m *memRedirects) find(match func(*models.DomainRedirect) bool) *models.DomainRedirect {
+	for _, e := range m.rows {
+		if match(e) {
+			cp := *e
+			return &cp
+		}
+	}
+	return nil
 }
-func (m *memRedirects) Delete(context.Context, uuid.UUID, string) (bool, error) { return true, nil }
+func (m *memRedirects) Get(_ context.Context, org uuid.UUID, domain string) (*models.DomainRedirect, error) {
+	return m.find(func(e *models.DomainRedirect) bool { return e.OrganizationID == org && e.Domain == domain }), nil
+}
+func (m *memRedirects) List(_ context.Context, org uuid.UUID) ([]models.DomainRedirect, error) {
+	var out []models.DomainRedirect
+	for _, e := range m.rows {
+		if e.OrganizationID == org && e.LinkedInstanceID == nil {
+			out = append(out, *e)
+		}
+	}
+	return out, nil
+}
+func (m *memRedirects) Delete(_ context.Context, org uuid.UUID, domain string) (bool, error) {
+	for id, e := range m.rows {
+		if e.OrganizationID == org && e.Domain == domain && e.LinkedInstanceID == nil {
+			delete(m.rows, id)
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (m *memRedirects) SetCheck(_ context.Context, id uuid.UUID, verified bool, last string) error {
 	for _, e := range m.rows {
 		if e.ID != id && e.Domain == m.rows[id].Domain && e.Verified && verified {
@@ -99,10 +138,84 @@ func (m *memRedirects) SetCheck(_ context.Context, id uuid.UUID, verified bool, 
 		}
 	}
 	m.rows[id].Verified, m.rows[id].LastError = verified, last
+	if verified && m.rows[id].VerifiedAt == nil {
+		now := time.Now()
+		m.rows[id].VerifiedAt = &now
+	} else if !verified {
+		m.rows[id].VerifiedAt = nil
+	}
 	return nil
+}
+func (m *memRedirects) SetReach(_ context.Context, id uuid.UUID, reach *models.RedirectReach) error {
+	m.rows[id].Reach = reach
+	return nil
+}
+func (m *memRedirects) SetRemote(_ context.Context, id uuid.UUID, host string, records []models.DNSRecord) error {
+	m.rows[id].RemoteHost, m.rows[id].RemoteRecords = host, records
+	return nil
+}
+func (m *memRedirects) UnverifyCloudServed(_ context.Context, last string) error {
+	for _, e := range m.rows {
+		if e.ServedBy == models.RedirectServedByCloud {
+			e.Verified, e.LastError, e.Reach = false, last, nil
+		}
+	}
+	return nil
+}
+func (m *memRedirects) CloudServedDomains(context.Context) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, e := range m.rows {
+		if e.ServedBy == models.RedirectServedByCloud {
+			out[e.Domain] = true
+		}
+	}
+	return out, nil
+}
+func (m *memRedirects) CloudServedElsewhere(_ context.Context, org uuid.UUID, domain string) (bool, error) {
+	return m.find(func(e *models.DomainRedirect) bool {
+		return e.OrganizationID != org && e.Domain == domain && e.ServedBy == models.RedirectServedByCloud
+	}) != nil, nil
 }
 func (m *memRedirects) Due(context.Context, int) ([]models.DomainRedirect, error) { return nil, nil }
 func (m *memRedirects) Lookup(context.Context, string) (string, bool, error)      { return "", false, nil }
+func (m *memRedirects) ListLinked(_ context.Context, inst uuid.UUID) ([]models.DomainRedirect, error) {
+	var out []models.DomainRedirect
+	for _, e := range m.rows {
+		if e.LinkedInstanceID != nil && *e.LinkedInstanceID == inst {
+			out = append(out, *e)
+		}
+	}
+	return out, nil
+}
+func (m *memRedirects) GetLinked(_ context.Context, inst uuid.UUID, domain string) (*models.DomainRedirect, error) {
+	return m.find(func(e *models.DomainRedirect) bool {
+		return e.LinkedInstanceID != nil && *e.LinkedInstanceID == inst && e.Domain == domain
+	}), nil
+}
+func (m *memRedirects) DeleteLinked(_ context.Context, inst uuid.UUID, domain string) (bool, error) {
+	for id, e := range m.rows {
+		if e.LinkedInstanceID != nil && *e.LinkedInstanceID == inst && e.Domain == domain {
+			delete(m.rows, id)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (m *memRedirects) CountLinked(ctx context.Context, inst uuid.UUID) (int, error) {
+	l, _ := m.ListLinked(ctx, inst)
+	return len(l), nil
+}
+
+// fakeReach answers every probe with one verdict and counts them.
+type fakeReach struct {
+	verdict models.RedirectReach
+	probes  int
+}
+
+func (f *fakeReach) Probe(context.Context, string, string) models.RedirectReach {
+	f.probes++
+	return f.verdict
+}
 
 type fakeMailboxes struct{ counts map[string]int }
 
@@ -120,6 +233,7 @@ func newTest(dns *fakeDNS) (*Service, *memRedirects) {
 	repo := &memRedirects{rows: map[uuid.UUID]*models.DomainRedirect{}}
 	s := NewService(repo, &fakeMailboxes{counts: map[string]int{"acme.io": 2}}, dns, domainproof.New("test-secret"))
 	s.target = func() string { return "track.warmbly.test" }
+	s.reach = &fakeReach{verdict: models.RedirectReach{Status: models.RedirectReachOK}}
 	return s, repo
 }
 

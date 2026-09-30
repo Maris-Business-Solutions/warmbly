@@ -208,8 +208,13 @@ The [inbox vendor](/guides/mailbox-import/#import-from-an-inbox-vendor) routes (
 | `sending_domain_not_in_workspace` | 404 | The workspace has no mailbox on this domain. Also `400` when no domain was given |
 | `sending_domain_shared_provider` | 400 | The domain belongs to a shared email provider, such as `gmail.com`, and cannot be redirected |
 | `domain_redirect_invalid_target` | 400 | `target_url` (or a vendor forwarding `url`) is not an `http` or `https` address on a host, carries credentials, is longer than 2,048 characters, or points back at the same domain or its `www`. An import's `redirects` option answers the same. Also returned by `vendor-tracking` when `host` is not a subdomain of the domain |
-| `domain_redirect_taken` | 409 | Another workspace on this instance already serves a verified redirect for this domain. The redirect is saved but does not verify |
-| `sending_domain_bulk_invalid` | 400 | A bulk setup named no domain, more than 100, neither a `tracking_label` nor a `redirect_url`, or a `tracking_label` that is not one DNS label |
+| `domain_redirect_taken` | 409 | Another workspace on this instance already serves a verified redirect for this domain, or already has Warmbly Cloud serve it. The redirect is saved but does not verify. On Warmbly Cloud's linked-instance API, the linked workspace already has its own redirect for the domain |
+| `domain_redirect_linked` | 409 | On Warmbly Cloud: this domain's redirect is served for a linked self-hosted instance, and only that instance changes it |
+| `domain_redirect_cloud_unavailable` | 409 | `served_by` is `cloud`, but this instance is not linked to Warmbly Cloud, or Cloud does not serve redirects for it |
+| `domain_redirect_cloud_unreachable` | 503 | Warmbly Cloud could not be reached while saving, moving or removing a redirect it serves, so nothing changed. Retry |
+| `domain_redirect_limit` | 409 | Warmbly Cloud already serves 200 redirects for this linked instance |
+| `pool_link_redirect_not_found` | 404 | On Warmbly Cloud's linked-instance API: Cloud serves no redirect for this domain for the calling instance |
+| `sending_domain_bulk_invalid` | 400 | A bulk setup named no domain, more than 100, neither a `tracking_label` nor a `redirect_url`, a `tracking_label` that is not one DNS label, or a `served_by` other than `instance` or `cloud` |
 | `tracking_host_not_configured` | 400 | This instance has no tracking host (`TRACKING_DOMAIN`), so it cannot serve a tracking domain or a redirect |
 
 ```json

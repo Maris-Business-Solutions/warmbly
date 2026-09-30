@@ -125,7 +125,7 @@ ws.example.com      track.example.com    forms.example.com
 
 It also gets a certificate for hostnames that do not exist yet. A workspace on this instance can point its own [tracking domain](/guides/mailboxes/#custom-tracking-domain) or [forms domain](/guides/forms/#custom-domain) here months after the install, and a site block cannot name a host nobody has heard of. The generated Caddyfile carries `on_demand_tls` with an `ask` pointed at the backend, so Caddy obtains a certificate the first time such a name is requested, after the backend confirms this instance has verified it. A name nobody here has verified is refused, so pointing a domain at the machine is not enough to get a certificate out of it.
 
-Behind your own proxy this is yours to arrange: the same custom domains need certificates there, and how depends on the proxy. Caddy takes the same `on_demand_tls` block; nginx needs a certificate per domain.
+Behind your own proxy this is yours to arrange: the same custom domains need certificates there, and how depends on the proxy. Caddy takes the same `on_demand_tls` block; nginx and Traefik need each domain added by hand. [Root redirects](/guides/sending-domains/#root-redirects) are custom domains too: the proxy sends the bare domain and its `www` to the tracking port with the original `Host` header. The sending domains page shows **Not reaching visitors**, and the change for Traefik, nginx, Caddy, Coolify or Dokploy, until it does. An instance [linked to Warmbly Cloud](/guides/warmbly-cloud/#root-redirects-served-by-warmbly-cloud) can have Cloud serve redirects instead.
 
 </Step>
 

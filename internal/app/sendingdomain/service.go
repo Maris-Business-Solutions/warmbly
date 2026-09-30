@@ -1,7 +1,8 @@
 // Package sendingdomain is the workspace's view of the domains it sends from:
 // their custom tracking host, and an optional redirect of the bare domain to
-// the company's main website, served by this instance once DNS proves the
-// workspace controls the domain.
+// the company's main website, served by this instance (or by Warmbly Cloud for
+// a linked self-hosted instance) once DNS proves the workspace controls the
+// domain.
 package sendingdomain
 
 import (
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,6 +36,16 @@ const (
 	ErrIDTarget         = "domain_redirect_invalid_target"
 	ErrIDTaken          = "domain_redirect_taken"
 	ErrIDNoTracking     = "tracking_host_not_configured"
+	// ErrIDLinked refuses a change, from Cloud's own dashboard, to a redirect a linked instance manages.
+	ErrIDLinked = "domain_redirect_linked"
+	// ErrIDCloudUnavailable refuses serving from Cloud when this instance is not linked or Cloud does not offer it.
+	ErrIDCloudUnavailable = "domain_redirect_cloud_unavailable"
+	// ErrIDCloudUnreachable refuses a move or removal Cloud could not be told about.
+	ErrIDCloudUnreachable = "domain_redirect_cloud_unreachable"
+	// ErrIDLimit refuses a linked instance's redirect past config.PoolLinkRedirectLimit.
+	ErrIDLimit = "domain_redirect_limit"
+	// ErrIDRemoteNotFound is Cloud's answer for a redirect the linked instance does not have there.
+	ErrIDRemoteNotFound = "pool_link_redirect_not_found"
 )
 
 // Mailboxes is the mailbox store's side.
@@ -61,6 +73,8 @@ func (s *Service) WireAuditor(a Auditor) { s.auditor = a }
 type Service struct {
 	auditor   Auditor
 	vendors   VendorDomains
+	cloud     CloudRedirects
+	reach     ReachProber
 	redirects repository.DomainRedirectRepository
 	mailboxes Mailboxes
 	resolver  Resolver
@@ -73,7 +87,7 @@ func NewService(redirects repository.DomainRedirectRepository, mailboxes Mailbox
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
-	return &Service{redirects: redirects, mailboxes: mailboxes, resolver: resolver, proof: proof, target: config.TrackingHostname}
+	return &Service{redirects: redirects, mailboxes: mailboxes, resolver: resolver, proof: proof, target: config.TrackingHostname, reach: NewHTTPReach()}
 }
 
 func normalizeDomain(d string) string {
@@ -93,7 +107,7 @@ func (s *Service) Overview(ctx context.Context, orgID uuid.UUID) ([]models.Sendi
 	byDomain := map[string]*models.DomainRedirect{}
 	for i := range redirects {
 		r := redirects[i]
-		r.Records = s.records(&r, nil)
+		s.decorate(&r, nil)
 		byDomain[r.Domain] = &r
 	}
 	var links map[string]models.VendorDomainLink
@@ -172,13 +186,10 @@ func (s *Service) ApplyTracking(ctx context.Context, orgID uuid.UUID, domain, ho
 	return status, n, nil
 }
 
-// RedirectInput sets a domain's redirect.
-type RedirectInput struct {
-	TargetURL  string `json:"target_url"`
-	IncludeWWW *bool  `json:"include_www"`
-}
+// RedirectInput sets a domain's redirect; an empty ServedBy keeps where it is served from.
+type RedirectInput = models.DomainRedirectRequest
 
-// SetRedirect records (or updates) the redirect and checks DNS once.
+// SetRedirect records (or updates) the redirect and checks it once: DNS here, or Cloud's verdict when Cloud serves it.
 func (s *Service) SetRedirect(ctx context.Context, orgID, userID uuid.UUID, domain string, in RedirectInput) (*models.DomainRedirect, *errx.Error) {
 	domain = normalizeDomain(domain)
 	if xerr := s.ownDomain(ctx, orgID, domain); xerr != nil {
@@ -188,18 +199,80 @@ func (s *Service) SetRedirect(ctx context.Context, orgID, userID uuid.UUID, doma
 	if xerr != nil {
 		return nil, xerr
 	}
-	if s.target() == "" {
-		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDNoTracking, "Domain redirects are served by the tracking service, which is not set up on this instance.")
-	}
 	www := true
 	if in.IncludeWWW != nil {
 		www = *in.IncludeWWW
 	}
-	r := &models.DomainRedirect{ID: uuid.New(), OrganizationID: orgID, Domain: domain, TargetURL: target, IncludeWWW: www, VerifyToken: s.proof.Value(orgID, domain)}
-	if err := s.redirects.Upsert(ctx, r, userID); err != nil {
+	existing, err := s.redirects.Get(ctx, orgID, domain)
+	if err != nil {
 		return nil, errx.InternalError()
 	}
-	return s.check(ctx, r)
+	if existing != nil && existing.LinkedInstanceID != nil {
+		return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDLinked, "This domain's redirect is managed by a linked self-hosted instance. Change it there.")
+	}
+	server := in.ServedBy
+	if server == "" && existing != nil {
+		server = existing.ServedBy
+	}
+	if server == "" {
+		server = models.RedirectServedByInstance
+	}
+	switch server {
+	case models.RedirectServedByInstance:
+		if s.target() == "" {
+			return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDNoTracking, "Domain redirects are served by the tracking service, which is not set up on this instance.")
+		}
+	case models.RedirectServedByCloud:
+		if xerr := s.cloudServable(ctx, orgID, domain, existing != nil && existing.ServedBy == models.RedirectServedByCloud); xerr != nil {
+			return nil, xerr
+		}
+	default:
+		return nil, errx.ErrInvalid
+	}
+
+	if server == models.RedirectServedByInstance && existing != nil && existing.ServedBy == models.RedirectServedByCloud {
+		if xerr := s.releaseCloud(ctx, domain); xerr != nil {
+			return nil, xerr
+		}
+	}
+
+	// The row is written first, so it claims the domain before Cloud hears of it and the sweep can always finish the job.
+	r := &models.DomainRedirect{ID: uuid.New(), OrganizationID: orgID, Domain: domain, TargetURL: target, IncludeWWW: www,
+		VerifyToken: s.proof.Value(orgID, domain), ServedBy: server}
+	if err := s.redirects.Upsert(ctx, r, &userID); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrRedirectOwned):
+			return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDLinked, "This domain's redirect is managed by a linked self-hosted instance. Change it there.")
+		case errors.Is(err, repository.ErrRedirectTaken):
+			return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDTaken, "Another workspace on this instance already redirects this domain.")
+		}
+		return nil, errx.InternalError()
+	}
+	if server != models.RedirectServedByCloud {
+		return s.check(ctx, r, true)
+	}
+	remote, xerr := s.cloud.PutRedirect(ctx, domain, models.DomainRedirectRequest{TargetURL: target, IncludeWWW: &www})
+	if xerr == nil {
+		return s.mirror(ctx, r, remote)
+	}
+	if !cloudOutage(xerr) {
+		s.rollback(ctx, r, existing, userID)
+		return nil, cloudRefusal(xerr)
+	}
+	// Cloud may have taken it before the answer was lost; the sweep asks again and sends it if not.
+	return s.stop(ctx, r, pendingCloudMessage)
+}
+
+// rollback puts a row Cloud refused back to what it was before the save.
+func (s *Service) rollback(ctx context.Context, r, before *models.DomainRedirect, userID uuid.UUID) {
+	if before == nil {
+		_, _ = s.redirects.Delete(ctx, r.OrganizationID, r.Domain)
+		return
+	}
+	prev := *before
+	if err := s.redirects.Upsert(ctx, &prev, &userID); err == nil && prev.ServedBy == models.RedirectServedByInstance {
+		_, _ = s.check(ctx, &prev, false)
+	}
 }
 
 // ownDomain refuses a domain the workspace sends nothing from, and the shared providers anyone has an address on.
@@ -248,15 +321,28 @@ func (s *Service) VerifyRedirect(ctx context.Context, orgID uuid.UUID, domain st
 	if err != nil {
 		return nil, errx.InternalError()
 	}
-	if r == nil {
+	if r == nil || r.LinkedInstanceID != nil {
 		return nil, errx.ErrNotFound
 	}
-	return s.check(ctx, r)
+	return s.check(ctx, r, true)
 }
 
-// DeleteRedirect stops serving the redirect.
+// DeleteRedirect stops serving the redirect, on Cloud too when Cloud serves it.
 func (s *Service) DeleteRedirect(ctx context.Context, orgID uuid.UUID, domain string) *errx.Error {
-	ok, err := s.redirects.Delete(ctx, orgID, normalizeDomain(domain))
+	domain = normalizeDomain(domain)
+	r, err := s.redirects.Get(ctx, orgID, domain)
+	if err != nil {
+		return errx.InternalError()
+	}
+	if r == nil || r.LinkedInstanceID != nil {
+		return errx.ErrNotFound
+	}
+	if r.ServedBy == models.RedirectServedByCloud {
+		if xerr := s.releaseCloud(ctx, domain); xerr != nil {
+			return xerr
+		}
+	}
+	ok, err := s.redirects.Delete(ctx, orgID, domain)
 	if err != nil {
 		return errx.InternalError()
 	}
@@ -297,7 +383,11 @@ func (s *Service) probe(ctx context.Context, r *models.DomainRedirect) probe {
 
 // check verifies one redirect and records the verdict. A verified redirect
 // only drops when DNS says so definitively, never on a lookup that failed.
-func (s *Service) check(ctx context.Context, r *models.DomainRedirect) (*models.DomainRedirect, *errx.Error) {
+// force asks Cloud to check again rather than report its last verdict.
+func (s *Service) check(ctx context.Context, r *models.DomainRedirect, force bool) (*models.DomainRedirect, *errx.Error) {
+	if r.ServedBy == models.RedirectServedByCloud {
+		return s.checkCloud(ctx, r, force)
+	}
 	p := s.probe(ctx, r)
 	verified := p.txt && p.apex
 	msg := ""
@@ -318,16 +408,59 @@ func (s *Service) check(ctx context.Context, r *models.DomainRedirect) (*models.
 		}
 		return nil, errx.InternalError()
 	}
-	fresh, err := s.redirects.Get(ctx, r.OrganizationID, r.Domain)
+	// DNS proves the name points here; opening it proves a visitor gets the redirect.
+	var reach *models.RedirectReach
+	if verified && s.reach != nil {
+		got := s.reach.Probe(ctx, r.Domain, r.TargetURL)
+		// Tracking forgets a miss within a minute, so one that outlasts that is a real answer: this tracking service has no redirect for the name.
+		if got.Hint == models.RedirectHintSettling && r.Verified && r.VerifiedAt != nil && time.Since(*r.VerifiedAt) > settleGrace {
+			got = models.RedirectReach{Status: models.RedirectReachNotReaching, Hint: models.RedirectHintNotRouted, Proxy: got.Proxy,
+				Detail: "Warmbly's tracking service answers for " + r.Domain + " but serves no redirect for it, so the domain may point at a different Warmbly instance."}
+		}
+		reach = &got
+	}
+	if err := s.redirects.SetReach(ctx, r.ID, reach); err != nil {
+		return nil, errx.InternalError()
+	}
+	return s.finish(ctx, r, &p)
+}
+
+// sweepConcurrency bounds the checks one sweep runs at once.
+const sweepConcurrency = 8
+
+// settleGrace is how long after verifying a tracking miss is put down to its cache rather than to the setup.
+const settleGrace = 3 * time.Minute
+
+// finish reads the row back, tells the workspace when it went live or stopped, and fills what the dashboard shows.
+func (s *Service) finish(ctx context.Context, before *models.DomainRedirect, p *probe) (*models.DomainRedirect, *errx.Error) {
+	fresh, err := s.redirects.Get(ctx, before.OrganizationID, before.Domain)
 	if err != nil || fresh == nil {
 		return nil, errx.InternalError()
 	}
-	if fresh.Verified != r.Verified && s.auditor != nil && fresh.CreatedBy != nil {
+	if s.auditor != nil && fresh.CreatedBy != nil && (fresh.Verified != before.Verified || blocked(fresh) != blocked(before)) {
 		s.auditor.LogAction(ctx, fresh.OrganizationID, *fresh.CreatedBy, models.AuditActionUpdate, models.AuditEntityDomainRedirect, &fresh.ID, "", "",
-			map[string]string{"verified": strconv.FormatBool(fresh.Verified)}, map[string]string{"domain": fresh.Domain})
+			map[string]string{"verified": strconv.FormatBool(fresh.Verified), "reaching": strconv.FormatBool(!blocked(fresh))}, map[string]string{"domain": fresh.Domain})
 	}
-	fresh.Records = s.records(fresh, &p)
+	s.decorate(fresh, p)
 	return fresh, nil
+}
+
+// blocked is a verified redirect visitors do not get; an unconfirmed visit is not one.
+func blocked(r *models.DomainRedirect) bool {
+	return r.Verified && r.Reach != nil &&
+		(r.Reach.Status == models.RedirectReachNotReaching || r.Reach.Status == models.RedirectReachHTTPSError)
+}
+
+// decorate fills the records to add and the host that answers, from Cloud's mirror when Cloud serves it.
+func (s *Service) decorate(r *models.DomainRedirect, p *probe) {
+	if r.ServedBy == models.RedirectServedByCloud {
+		r.Records, r.ServeHost = r.RemoteRecords, r.RemoteHost
+		if r.Records == nil {
+			r.Records = []models.DNSRecord{}
+		}
+		return
+	}
+	r.Records, r.ServeHost = s.records(r, p), s.target()
 }
 
 // records are what the customer adds at their DNS provider.
@@ -388,11 +521,21 @@ func (s *Service) StartSweep(ctx context.Context) {
 		if err != nil {
 			return err
 		}
+		// A few at a time: each check can wait seconds on DNS and on a visit that times out.
+		sem := make(chan struct{}, sweepConcurrency)
+		var wg sync.WaitGroup
 		for i := range due {
-			if _, xerr := s.check(ctx, &due[i]); xerr != nil && xerr.Identifier != ErrIDTaken {
-				log.Warn().Str("domain", due[i].Domain).Str("error", xerr.Message).Msg("domain redirect sweep: check failed")
-			}
+			sem <- struct{}{}
+			wg.Add(1)
+			go func(r *models.DomainRedirect) {
+				defer func() { <-sem; wg.Done() }()
+				if _, xerr := s.check(ctx, r, false); xerr != nil && xerr.Identifier != ErrIDTaken {
+					log.Warn().Str("domain", r.Domain).Str("error", xerr.Message).Msg("domain redirect sweep: check failed")
+				}
+			}(&due[i])
 		}
+		wg.Wait()
+		s.reconcileCloud(ctx)
 		return nil
 	})
 }

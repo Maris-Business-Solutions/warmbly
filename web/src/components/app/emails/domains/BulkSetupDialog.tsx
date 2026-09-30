@@ -5,7 +5,7 @@ import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { AlertTriangleIcon, CheckCircle2Icon, CircleDashedIcon, CopyIcon, Loader2Icon, SparklesIcon, XIcon } from "lucide-react";
-import type { BulkDomainResult, SendingDomain } from "@/lib/api/models/app/emails/SendingDomain";
+import type { BulkDomainResult, RedirectServer, SendingDomain } from "@/lib/api/models/app/emails/SendingDomain";
 import { useBulkDomainSetup } from "@/lib/api/hooks/app/emails/useSendingDomains";
 import { vendorLabel } from "@/lib/api/models/app/emails/MailboxSources";
 import { TextInput } from "@/components/ui/field";
@@ -19,6 +19,9 @@ import { DEFAULT_TRACKING_LABEL, labelProblem, vendorForwards } from "@/componen
 import { commonWebsite, noDnsControl, redirectTargetProblem, trackingHostProblem, trackingState, vendorCanCname } from "./rules";
 import { Chip } from "./parts";
 import { PerDomainList, type DomainOverride, type PerDomainRow } from "./PerDomainList";
+import { ServedByPicker } from "./RedirectServing";
+import { defaultServer, useCloudServing } from "./cloudServing";
+import CloudConnectDialog from "@/components/app/cloud/CloudConnectDialog";
 
 export interface BulkSetupIntent {
     domains: string[];
@@ -63,6 +66,11 @@ function Dialog({
     const [replace, setReplace] = React.useState(false);
     const [redirectOn, setRedirectOn] = React.useState(intent.redirect);
     const [url, setUrl] = React.useState(website);
+    const cloud = useCloudServing();
+    const [servedPick, setServedPick] = React.useState<RedirectServer | null>(null);
+    const [connecting, setConnecting] = React.useState(false);
+    // A Cloud pick Cloud can no longer take falls back, so what is shown is what is sent.
+    const server = servedPick === "cloud" && !cloud.canServe ? "instance" : (servedPick ?? defaultServer(cloud));
     const [phase, setPhase] = React.useState<Phase>("form");
     const [done, setDone] = React.useState(0);
     const [results, setResults] = React.useState<Map<string, BulkDomainResult>>(() => new Map());
@@ -92,6 +100,14 @@ function Dialog({
     const cnameVendor = vendorLabel(trackTargets.find(vendorCanCname)?.vendor_domain?.vendor);
     const forwardVendor = vendorLabel(redirectTargets.find((d) => vendorForwards(d.vendor_domain))?.vendor_domain?.vendor);
     const n = picked.length;
+    // Untouched, the choice only places new redirects; picking it moves the existing ones too.
+    const served = (d: SendingDomain): RedirectServer => (servedPick === null && d.redirect ? d.redirect.served_by : server);
+    const selfServed = redirectTargets.filter((d) => !vendorForwards(d.vendor_domain));
+    const keeping = servedPick === null ? selfServed.filter((d) => d.redirect && d.redirect.served_by !== server).length : 0;
+    const movingLive = servedPick === null ? [] : selfServed.filter((d) => d.redirect?.verified && d.redirect.served_by !== server);
+    // Domains a vendor forwards never reach Cloud, so they do not count against its room.
+    const cloudBound = selfServed.filter((d) => served(d) === "cloud" && d.redirect?.served_by !== "cloud").length;
+    const cloudRoom = cloud.offer ? Math.max(0, cloud.offer.limit - cloud.offer.used) : 0;
 
     const usesLabel = (d: SendingDomain) => each[d.domain]?.host === undefined && !(trackingState(d) === "live" && !replace);
     const lp = trackTargets.some(usesLabel) ? labelProblem(label) : null;
@@ -146,7 +162,12 @@ function Dialog({
     const running = phase === "running";
     const dirty =
         phase === "form" &&
-        (trackOn !== intent.tracking || redirectOn !== intent.redirect || label !== DEFAULT_TRACKING_LABEL || url !== website || Object.keys(each).length > 0);
+        (trackOn !== intent.tracking ||
+            redirectOn !== intent.redirect ||
+            label !== DEFAULT_TRACKING_LABEL ||
+            url !== website ||
+            servedPick !== null ||
+            Object.keys(each).length > 0);
 
     const requestClose = React.useCallback(() => {
         if (running) return;
@@ -173,6 +194,19 @@ function Dialog({
         setDone((v) => v + rows.length);
     };
 
+    function start() {
+        if (issue || running) return;
+        if (movingLive.length > 0) {
+            const to = server === "cloud" ? "Warmbly Cloud" : "this server";
+            confirm.show(
+                `${movingLive.length === 1 ? `${movingLive[0].domain} is live and moves` : `${movingLive.length} live redirects move`} to ${to}. Their root records change, so ${movingLive.length === 1 ? "it pauses" : "they pause"} until the new records are in place. Continue?`,
+                run,
+            );
+            return;
+        }
+        void run();
+    }
+
     async function run() {
         if (issue || running) return;
         setPhase("running");
@@ -186,9 +220,19 @@ function Dialog({
                     onChunk: merge,
                 });
             }
-            if (redirectTargets.length > 0) {
+            // One request per server, so each domain gets the server it shows.
+            const groups = new Map<RedirectServer | "", SendingDomain[]>();
+            for (const d of redirectTargets) {
+                const k: RedirectServer | "" = cloud.choosable ? served(d) : "";
+                groups.set(k, [...(groups.get(k) ?? []), d]);
+            }
+            for (const [k, list] of groups) {
                 await bulk.mutateAsync({
-                    body: { domains: redirectTargets.map((d) => d.domain), redirect_urls: Object.fromEntries(redirectTargets.map((d) => [d.domain, eff(d).url.trim()])) },
+                    body: {
+                        domains: list.map((d) => d.domain),
+                        redirect_urls: Object.fromEntries(list.map((d) => [d.domain, eff(d).url.trim()])),
+                        ...(k ? { served_by: k } : {}),
+                    },
                     onChunk: merge,
                 });
             }
@@ -200,7 +244,8 @@ function Dialog({
 
     const rows = [...results.values()];
     const cnameToAdd = rows.filter((r) => r.tracking && !r.tracking.error && r.tracking.via === "dns" && !r.tracking.verified);
-    const redirectDns = rows.filter((r) => r.redirect && !r.redirect.error && r.redirect.via === "dns" && !r.redirect.verified);
+    const redirectDns = rows.filter((r) => r.redirect && !r.redirect.error && (r.redirect.via === "dns" || r.redirect.via === "cloud") && !r.redirect.verified);
+    const toCloud = redirectDns.some((r) => r.redirect?.via === "cloud");
     const failed = rows.filter((r) => r.tracking?.error || r.redirect?.error);
     const ready = rows.filter((r) => !r.tracking?.error && !r.redirect?.error).length;
 
@@ -301,13 +346,36 @@ function Dialog({
                             >
                                 <TextInput value={url} onChange={setUrl} placeholder="https://yourcompany.com" invalid={!!up && url.trim() !== ""} className="w-full" />
                                 {up && url.trim() !== "" && <p className="text-[11px] text-rose-700">{up}</p>}
+                                {cloud.choosable && (
+                                    <ServedByPicker value={server} onChange={setServedPick} onConnect={() => setConnecting(true)} cloud={cloud} />
+                                )}
+                                {keeping > 0 && (
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                                        {keeping.toLocaleString()} {keeping === 1 ? "domain already has its redirect" : "domains already have their redirect"} served
+                                        from {server === "cloud" ? "this server" : "Warmbly Cloud"} and {keeping === 1 ? "keeps it" : "keep it"} there. Pick a
+                                        server above to move {keeping === 1 ? "it" : "them"} too.
+                                    </p>
+                                )}
                                 {redirectTargets.length > 0 && (
                                     <Coverage
                                         byVendor={forwardByVendor}
                                         total={redirectTargets.length}
                                         vendorText={`${forwardVendor} forwards the domain`}
-                                        selfText="need DNS records you add, listed on each domain afterwards"
+                                        selfText={
+                                            server === "cloud"
+                                                ? "need DNS records pointing at Warmbly Cloud, listed on each domain afterwards"
+                                                : "need DNS records you add, listed on each domain afterwards"
+                                        }
                                     />
+                                )}
+                                {cloudBound > cloudRoom && (
+                                    <p className="text-[11px] text-amber-800 flex items-start gap-1.5 leading-relaxed">
+                                        <AlertTriangleIcon className="w-3 h-3 mt-0.5 shrink-0" />
+                                        <span>
+                                            Warmbly Cloud has room for {cloudRoom.toLocaleString()} more {cloudRoom === 1 ? "redirect" : "redirects"} for this instance, so{" "}
+                                            {(cloudBound - cloudRoom).toLocaleString()} of these will not be set up there.
+                                        </span>
+                                    </p>
                                 )}
                             </Section>
 
@@ -379,7 +447,7 @@ function Dialog({
                                 <div className="space-y-1.5">
                                     <Eyebrow>Redirects waiting for DNS</Eyebrow>
                                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                                        Each needs an ownership TXT record and its root pointed here. Open a domain for its records.
+                                        Each needs an ownership TXT record and its root pointed {toCloud ? "at Warmbly Cloud" : "here"}. Open a domain for its records.
                                     </p>
                                     <div className="flex flex-wrap gap-1">
                                         {redirectDns.map((r) => (
@@ -438,7 +506,7 @@ function Dialog({
                             </button>
                             <button
                                 type="button"
-                                onClick={() => void run()}
+                                onClick={start}
                                 disabled={!!issue}
                                 title={issue ?? undefined}
                                 className="h-7 px-2.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0"
@@ -459,6 +527,17 @@ function Dialog({
                     )}
                 </div>
             </motion.div>
+            <CloudConnectDialog
+                open={connecting}
+                onClose={() => setConnecting(false)}
+                autoStart
+                intro="Link this instance to a Warmbly Cloud workspace, free to create, and Cloud serves these redirects and their certificates. Nothing on your server changes: you only point each domain's DNS at Cloud. Approve the code below on Warmbly Cloud to finish."
+                doneLabel="Use Warmbly Cloud"
+                onDone={() => {
+                    setConnecting(false);
+                    setServedPick("cloud");
+                }}
+            />
         </motion.div>
     );
 }

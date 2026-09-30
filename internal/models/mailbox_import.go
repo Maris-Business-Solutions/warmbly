@@ -390,10 +390,85 @@ type DomainRedirect struct {
 	LastError     string      `json:"last_error,omitempty"`
 	CreatedAt     time.Time   `json:"created_at"`
 	Records       []DNSRecord `json:"records"`
+	// ServedBy is who answers visitors: this instance or Warmbly Cloud.
+	ServedBy RedirectServer `json:"served_by"`
+	// ServeHost is the tracking host that answers, which a proxy routes the domain to.
+	ServeHost string `json:"serve_host,omitempty"`
+	// Reach is the last HTTP check of the domain; nil until DNS verifies.
+	Reach *RedirectReach `json:"reach,omitempty"`
 	// VerifyToken is written into the TXT record; never serialized on its own.
 	VerifyToken    string     `json:"-"`
 	OrganizationID uuid.UUID  `json:"-"`
 	CreatedBy      *uuid.UUID `json:"-"`
+	// RemoteRecords and RemoteHost mirror Warmbly Cloud's answer for a cloud-served row.
+	RemoteRecords []DNSRecord `json:"-"`
+	RemoteHost    string      `json:"-"`
+	// LinkedInstanceID marks, on Cloud, a row served for a linked instance.
+	LinkedInstanceID *uuid.UUID `json:"-"`
+}
+
+// RedirectServer is where a redirect is served from.
+type RedirectServer string
+
+const (
+	RedirectServedByInstance RedirectServer = "instance"
+	RedirectServedByCloud    RedirectServer = "cloud"
+)
+
+// RedirectReachStatus is whether a visitor to the domain gets the redirect.
+type RedirectReachStatus string
+
+const (
+	RedirectReachOK RedirectReachStatus = "ok"
+	// RedirectReachNotReaching: something answered, but not with the redirect.
+	RedirectReachNotReaching RedirectReachStatus = "not_reaching"
+	// RedirectReachHTTPSError: the redirect answers over http, but https has no valid certificate.
+	RedirectReachHTTPSError RedirectReachStatus = "https_error"
+	// RedirectReachUnreachable: nothing answered, which may be this server failing to reach its own address.
+	RedirectReachUnreachable RedirectReachStatus = "unreachable"
+)
+
+// RedirectReachHint names the likely cause, so the dashboard can show the matching fix.
+type RedirectReachHint string
+
+const (
+	RedirectHintNone RedirectReachHint = ""
+	// RedirectHintNotRouted: a proxy in front answered itself, without sending the visit to Warmbly.
+	RedirectHintNotRouted RedirectReachHint = "not_routed"
+	// RedirectHintHostHeader: the tracking service got the visit under another hostname.
+	RedirectHintHostHeader RedirectReachHint = "host_header"
+	// RedirectHintWrongTarget: the domain redirects, but somewhere else.
+	RedirectHintWrongTarget RedirectReachHint = "wrong_target"
+	RedirectHintCertificate RedirectReachHint = "certificate"
+	RedirectHintNoListener  RedirectReachHint = "no_listener"
+	// RedirectHintSettling: the tracking service answered for the domain but has not picked the redirect up yet.
+	RedirectHintSettling RedirectReachHint = "settling"
+)
+
+// RedirectReach is one HTTP check of a verified redirect's domain.
+type RedirectReach struct {
+	Status RedirectReachStatus `json:"status"`
+	Hint   RedirectReachHint   `json:"hint,omitempty"`
+	// Detail is one sentence describing what the check saw.
+	Detail string `json:"detail,omitempty"`
+	// Proxy is the web server that answered in Warmbly's place, when it could be told: traefik, nginx, caddy, ...
+	Proxy     string     `json:"proxy,omitempty"`
+	CheckedAt *time.Time `json:"checked_at,omitempty"`
+}
+
+// DomainRedirectRequest sets a domain's redirect. An empty ServedBy keeps the current choice.
+type DomainRedirectRequest struct {
+	TargetURL  string         `json:"target_url"`
+	IncludeWWW *bool          `json:"include_www"`
+	ServedBy   RedirectServer `json:"served_by,omitempty"`
+}
+
+// PoolLinkRedirectOffer is what Warmbly Cloud offers a linked instance for root redirects.
+type PoolLinkRedirectOffer struct {
+	Available bool   `json:"available"`
+	Host      string `json:"host,omitempty"`
+	Limit     int    `json:"limit"`
+	Used      int    `json:"used"`
 }
 
 // DNSRecord is one record the customer adds at their DNS provider, and whether it is in place.
