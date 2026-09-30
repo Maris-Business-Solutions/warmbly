@@ -28,9 +28,6 @@ import (
 //	   201                                -> created
 //	   409                                -> ErrAlreadyExists
 //
-//	DELETE {BaseURL}/api/v1/internal/dek/{orgID}
-//	   204                                -> idempotent ok
-//
 // Auth: Authorization: Bearer <ENCRYPTED_KEYS_WORKER_TOKEN>
 type HTTPStore struct {
 	baseURL string
@@ -140,23 +137,4 @@ func (s *HTTPStore) Get(ctx context.Context, orgID uuid.UUID) (string, error) {
 	default:
 		return "", fmt.Errorf("encryptedkeys.http: get: unexpected status %d", resp.StatusCode)
 	}
-}
-
-func (s *HTTPStore) Delete(ctx context.Context, orgID uuid.UUID) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, s.url(orgID), nil)
-	if err != nil {
-		return err
-	}
-	s.authed(req)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("encryptedkeys.http: delete: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("encryptedkeys.http: delete: unexpected status %d", resp.StatusCode)
-	}
-	return nil
 }

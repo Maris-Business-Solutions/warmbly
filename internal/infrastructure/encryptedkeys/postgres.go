@@ -52,12 +52,3 @@ func (s *PostgresStore) Get(ctx context.Context, orgID uuid.UUID) (string, error
 	}
 	return out, nil
 }
-
-func (s *PostgresStore) Delete(ctx context.Context, orgID uuid.UUID) error {
-	const q = `DELETE FROM organization_encrypted_keys WHERE organization_id = $1`
-	_, err := s.db.Exec(ctx, q, orgID)
-	if err != nil {
-		return fmt.Errorf("encryptedkeys.postgres: delete: %w", err)
-	}
-	return nil
-}

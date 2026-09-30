@@ -19,6 +19,7 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/pubsub"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/repository"
 	"github.com/warmbly/warmbly/internal/utils/paging"
 )
 
@@ -209,8 +210,24 @@ func (h *Handler) FinishIntegrationOAuth(c *gin.Context) {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
-	conn, xerr := h.IntegrationService.OAuthFinish(c.Request.Context(), userID, p.Code, p.State)
+	// The state may name another organization than the session's, so the
+	// settings bar is held again there.
+	authorize := func(ctx context.Context, orgID uuid.UUID) error {
+		if h.OrganizationService == nil {
+			return errx.ErrForbidden
+		}
+		if xerr := h.OrganizationService.RequirePermission(ctx, orgID, userID, models.PermManageSettings); xerr != nil {
+			return xerr
+		}
+		return nil
+	}
+	conn, xerr := h.IntegrationService.OAuthFinish(c.Request.Context(), userID, p.Code, p.State, authorize)
 	if xerr != nil {
+		var bizErr *errx.Error
+		if errors.As(xerr, &bizErr) {
+			errx.JSON(c, bizErr)
+			return
+		}
 		errx.JSON(c, errx.New(errx.BadRequest, xerr.Error()))
 		return
 	}
@@ -625,6 +642,71 @@ func (h *Handler) UpdateConnectionConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"connection": conn})
 }
 
+type inboundSigningKeyPayload struct {
+	SigningKey string `json:"signing_key"`
+}
+
+// SetConnectionSigningKey sets the key a Calendly or Cal.com connection's
+// deliveries must be signed with; an empty key goes back to the URL secret alone.
+func (h *Handler) SetConnectionSigningKey(c *gin.Context) {
+	orgID, userID, ok := h.requireIntegrationActor(c, true)
+	if !ok {
+		return
+	}
+	connID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "invalid id"))
+		return
+	}
+	var p inboundSigningKeyPayload
+	if err := c.ShouldBindJSON(&p); err != nil {
+		errx.JSON(c, errx.InvalidBody(err))
+		return
+	}
+	conn, err := h.IntegrationService.SetInboundSigningKey(c.Request.Context(), orgID, connID, p.SigningKey)
+	switch {
+	case errors.Is(err, repository.ErrInboundConnectionNotFound):
+		errx.JSON(c, errx.ErrNotFound)
+		return
+	case errors.Is(err, integration.ErrNotInboundProvider), errors.Is(err, integration.ErrInboundSigningKeyLength):
+		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		return
+	case err != nil:
+		errx.JSON(c, errx.InternalError())
+		return
+	}
+	h.auditIntegration(c, userID, models.AuditActionUpdate, connID, "signing_key")
+	c.JSON(http.StatusOK, gin.H{"connection": conn})
+}
+
+// RotateConnectionInboundURL mints a new inbound URL for a Calendly or Cal.com
+// connection; the previous one stops working immediately.
+func (h *Handler) RotateConnectionInboundURL(c *gin.Context) {
+	orgID, userID, ok := h.requireIntegrationActor(c, true)
+	if !ok {
+		return
+	}
+	connID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "invalid id"))
+		return
+	}
+	url, err := h.IntegrationService.RotateInboundSecret(c.Request.Context(), orgID, connID)
+	switch {
+	case errors.Is(err, repository.ErrInboundConnectionNotFound):
+		errx.JSON(c, errx.ErrNotFound)
+		return
+	case errors.Is(err, integration.ErrNotInboundProvider):
+		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		return
+	case err != nil:
+		errx.JSON(c, errx.InternalError())
+		return
+	}
+	h.auditIntegration(c, userID, models.AuditActionUpdate, connID, "inbound_url")
+	c.JSON(http.StatusOK, gin.H{"inbound_webhook_url": url})
+}
+
 // GetConnectionWebhookSecret returns (generating on first call) the HMAC signing
 // secret for an automation connection, plus the scheme, so the user can verify
 // our webhook signatures on their end.
@@ -904,6 +986,17 @@ func (h *Handler) handleInboundBooking(c *gin.Context, provider models.Integrati
 	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "read body failed"})
+		return
+	}
+
+	// With a signing key set, the URL secret alone is not enough.
+	key, err := h.IntegrationService.InboundSigningKey(c.Request.Context(), conn)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "signature check failed"})
+		return
+	}
+	if key != "" && !integration.VerifyInboundSignature(provider, key, c.GetHeader, body, time.Now()) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
 		return
 	}
 

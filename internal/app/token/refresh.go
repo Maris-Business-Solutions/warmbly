@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/observability/errs"
@@ -31,7 +33,7 @@ func (s *tokenService) RefreshToken(ctx context.Context, refreshToken string) (*
 	}
 
 	if sess.RefreshNonce != t.Nonce {
-		return nil, errx.ErrToken
+		return nil, s.refusedRefresh(ctx, sess.ID, sess.UserID, t.Nonce)
 	}
 
 	issuedAt := time.Now()
@@ -72,7 +74,7 @@ func (s *tokenService) RefreshToken(ctx context.Context, refreshToken string) (*
 		// tells the client to re-authenticate: reporting it and answering 500
 		// paged on every lost race and left the client with nothing to do.
 		if err == errx.ErrToken {
-			return nil, err
+			return nil, s.refusedRefresh(ctx, sess.ID, sess.UserID, t.Nonce)
 		}
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
@@ -97,4 +99,26 @@ func (s *tokenService) RefreshToken(ctx context.Context, refreshToken string) (*
 		RefreshToken:          newRefreshToken,
 		RefreshTokenExpiresAt: refreshTokenExpiresAt,
 	}, nil
+}
+
+// refreshRaceWindow is how long the refresh token a session just rotated away
+// from is still taken for a lost race between two tabs rather than a replay.
+const refreshRaceWindow = 2 * time.Minute
+
+// refusedRefresh answers a refresh token that is no longer current. One that
+// was replaced more than refreshRaceWindow ago, or earlier still, has been
+// used twice, so the session it belongs to is ended: whoever holds the copy
+// loses it at the same moment the rightful client would.
+func (s *tokenService) refusedRefresh(ctx context.Context, sessionID, userID uuid.UUID, nonce string) *errx.Error {
+	revoked, err := s.tokenRepository.RevokeOnRefreshReuse(ctx, sessionID, nonce, time.Now().Add(-refreshRaceWindow))
+	if err != nil {
+		errs.CaptureException(err)
+		return errx.ErrToken
+	}
+	if revoked {
+		if xerr := s.evictRevoked(ctx, sessionID, userID, time.Now()); xerr != nil {
+			errs.CaptureException(xerr)
+		}
+	}
+	return errx.ErrToken
 }

@@ -221,6 +221,34 @@ type IntegrationConnection struct {
 	InboundWebhookURL string `json:"inbound_webhook_url,omitempty"`
 }
 
+// ConfigCapabilitiesSigningSecret is the config_capabilities key holding an
+// automation connection's outbound HMAC secret. Only the webhook-secret route,
+// behind the connection write gate, hands it out.
+const ConfigCapabilitiesSigningSecret = "signing_secret"
+
+// MarshalJSON leaves the outbound signing secret out of every response.
+func (c IntegrationConnection) MarshalJSON() ([]byte, error) {
+	type plain IntegrationConnection
+	out := plain(c)
+	if len(c.ConfigCapabilities) > 0 {
+		var cc map[string]any
+		if err := json.Unmarshal(c.ConfigCapabilities, &cc); err == nil {
+			if _, ok := cc[ConfigCapabilitiesSigningSecret]; ok {
+				delete(cc, ConfigCapabilitiesSigningSecret)
+				redacted, err := json.Marshal(cc)
+				if err != nil {
+					return nil, err
+				}
+				out.ConfigCapabilities = redacted
+			}
+		} else {
+			// Not an object, so nothing a caller can use: drop it rather than echo it.
+			out.ConfigCapabilities = nil
+		}
+	}
+	return json.Marshal(out)
+}
+
 // IntegrationTokens carries the freshly-exchanged OAuth material an
 // implementation persists. Plaintext lives only in memory.
 type IntegrationTokens struct {

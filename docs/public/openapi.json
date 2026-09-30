@@ -18854,6 +18854,217 @@
         }
       }
     },
+    "/integrations/connections/{id}/signing-key": {
+      "put": {
+        "operationId": "integrations_connections_set_signing_key",
+        "summary": "Set the inbound signing key",
+        "description": "Sets the key a Calendly or Cal.com connection's inbound deliveries must be signed with (Calendly's `Calendly-Webhook-Signature`, Cal.com's `X-Cal-Signature-256`). Once set, a delivery without a valid signature is refused with `401`. An empty `signing_key` removes it, so the inbound URL alone authenticates deliveries again. The key is stored encrypted and never returned; `display_fields.inbound_signing` reports whether one is set. Requires `manage_settings` for JWT callers.",
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Connection id."
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationSigningKeyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "connection"
+                  ],
+                  "properties": {
+                    "connection": {
+                      "$ref": "#/components/schemas/IntegrationConnection"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/connections/{id}/rotate-inbound-url": {
+      "post": {
+        "operationId": "integrations_connections_rotate_inbound_url",
+        "summary": "Rotate the inbound webhook URL",
+        "description": "Mints a new inbound webhook URL for a Calendly or Cal.com connection. The previous URL stops working immediately, so paste the new one into the provider. Requires `manage_settings` for JWT callers.",
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Connection id."
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new inbound URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "inbound_webhook_url"
+                  ],
+                  "properties": {
+                    "inbound_webhook_url": {
+                      "type": "string",
+                      "description": "Path of the new inbound URL, relative to the API host."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/integrations/connections/{id}/webhook-secret": {
       "get": {
         "operationId": "integrations_webhook_secret_get",
@@ -37876,6 +38087,19 @@
             "items": {
               "$ref": "#/components/schemas/IntegrationSyncRun"
             }
+          }
+        }
+      },
+      "IntegrationSigningKeyUpdate": {
+        "type": "object",
+        "required": [
+          "signing_key"
+        ],
+        "properties": {
+          "signing_key": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Calendly signing key or Cal.com webhook secret, 8 to 512 characters. Empty removes the key."
           }
         }
       },

@@ -76,3 +76,12 @@ export function plainToDisplayHtml(text: string): string {
         '<a target="_blank" rel="noopener noreferrer nofollow" href="',
     );
 }
+
+const REMOTE_ATTR = /\b(?:src|srcset|background|poster)\s*=\s*["']?[^"'>]*?(?:https?:)?\/\//i;
+const REMOTE_CSS = /url\(\s*["']?\s*(?:https?:)?\/\//i;
+
+// hasRemoteContent reports whether rendering the body would fetch anything
+// from another host, which is when the "Load images" bar is worth showing.
+export function hasRemoteContent(body: string): boolean {
+    return REMOTE_ATTR.test(body) || REMOTE_CSS.test(body);
+}

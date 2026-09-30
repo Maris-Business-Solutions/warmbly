@@ -157,7 +157,7 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 		url = rendered
 		// Automation tools (Zapier/Make/n8n) get the full structured + signed
 		// payload; the signing secret is the connection's (empty => unsigned).
-		secret := configString(target.Secrets.Conn.ConfigCapabilities, "signing_secret")
+		secret := configString(target.Secrets.Conn.ConfigCapabilities, models.ConfigCapabilitiesSigningSecret)
 		return automationDeliver(ctx, url, secret, sub.EventType, buildAutomationPayload(sub, data, msg))
 
 	case models.IntegrationActionHubSpotUpsert:

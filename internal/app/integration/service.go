@@ -54,14 +54,20 @@ type Service interface {
 	// OAuthStart returns the provider authorization URL for a one-click connect.
 	OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provider models.IntegrationProvider, label string) (*models.IntegrationOAuthStartResponse, error)
 	// OAuthFinish completes the handshake: validates state, exchanges the code,
-	// resolves the account identity, and persists encrypted tokens.
-	OAuthFinish(ctx context.Context, userID uuid.UUID, code, state string) (*models.IntegrationConnection, error)
+	// resolves the account identity, and persists encrypted tokens. authorize
+	// runs against the state's organization before the code is exchanged.
+	OAuthFinish(ctx context.Context, userID uuid.UUID, code, state string, authorize func(ctx context.Context, orgID uuid.UUID) error) (*models.IntegrationConnection, error)
 	// Reauth starts a fresh OAuth handshake for an existing connection whose
 	// token expired or was revoked.
 	Reauth(ctx context.Context, orgID, userID, id uuid.UUID) (*models.IntegrationOAuthStartResponse, error)
 
-	// RotateInboundSecret regenerates the inbound URL secret (Calendly/Cal.com).
-	RotateInboundSecret(ctx context.Context, orgID, id uuid.UUID, provider models.IntegrationProvider) (string, error)
+	// RotateInboundSecret replaces a Calendly/Cal.com connection's inbound URL
+	// secret, so the old URL stops working at once, and returns the new URL.
+	RotateInboundSecret(ctx context.Context, orgID, id uuid.UUID) (string, error)
+	// SetInboundSigningKey stores (empty key: removes) the key Calendly/Cal.com
+	// deliveries must be signed with; InboundSigningKey reads it back.
+	SetInboundSigningKey(ctx context.Context, orgID, connID uuid.UUID, key string) (*models.IntegrationConnection, error)
+	InboundSigningKey(ctx context.Context, conn *models.IntegrationConnection) (string, error)
 
 	// Event subscriptions wire a Warmbly event to a provider action.
 	ListEventSubscriptions(ctx context.Context, orgID, connID uuid.UUID) ([]models.IntegrationEventSubscription, error)
@@ -392,7 +398,7 @@ func (s *service) OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provi
 	return &models.IntegrationOAuthStartResponse{URL: authURL, State: state}, nil
 }
 
-func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state string) (*models.IntegrationConnection, error) {
+func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state string, authorize func(ctx context.Context, orgID uuid.UUID) error) (*models.IntegrationConnection, error) {
 	code = strings.TrimSpace(code)
 	state = strings.TrimSpace(state)
 	if code == "" || state == "" {
@@ -408,6 +414,12 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 	}
 	if st.UserID != userID {
 		return nil, errors.New("oauth state does not belong to this user")
+	}
+	if authorize == nil {
+		return nil, errors.New("oauth finish needs an authorization check")
+	}
+	if err := authorize(ctx, st.OrganizationID); err != nil {
+		return nil, err
 	}
 
 	tokens, account, err := s.oauth.Exchange(ctx, st.Provider, code, st.CodeVerifier)
@@ -494,23 +506,25 @@ func (s *service) Reauth(ctx context.Context, orgID, userID, id uuid.UUID) (*mod
 	return s.OAuthStart(ctx, orgID, userID, conn.Provider, conn.Label)
 }
 
-func (s *service) RotateInboundSecret(ctx context.Context, orgID, id uuid.UUID, provider models.IntegrationProvider) (string, error) {
-	secret, err := generateInboundSecret(provider)
+func (s *service) RotateInboundSecret(ctx context.Context, orgID, id uuid.UUID) (string, error) {
+	conn, err := s.repo.GetConnectionByID(ctx, orgID, id)
 	if err != nil {
 		return "", err
 	}
-	conn := &models.IntegrationConnection{
-		ID:             id,
-		OrganizationID: orgID,
-		Provider:       provider,
-		Status:         models.IntegrationStatusConnected,
-		AuthMethod:     string(models.IntegrationAuthWebhook),
-		Health:         string(models.IntegrationHealthHealthy),
+	if conn == nil {
+		return "", repository.ErrInboundConnectionNotFound
 	}
-	if err := s.repo.UpsertConnection(ctx, &repository.ConnectionWrite{Conn: conn, InboundSecret: secret}); err != nil {
+	if !IsInboundProvider(conn.Provider) {
+		return "", ErrNotInboundProvider
+	}
+	secret, err := generateInboundSecret(conn.Provider)
+	if err != nil {
 		return "", err
 	}
-	return BuildInboundURL(provider, secret), nil
+	if err := s.repo.SetInboundSecret(ctx, orgID, id, secret); err != nil {
+		return "", err
+	}
+	return BuildInboundURL(conn.Provider, secret), nil
 }
 
 func (s *service) ListEventSubscriptions(ctx context.Context, orgID, connID uuid.UUID) ([]models.IntegrationEventSubscription, error) {
@@ -1127,14 +1141,14 @@ func (s *service) WebhookSigningSecret(ctx context.Context, orgID, connID uuid.U
 	if len(conn.ConfigCapabilities) > 0 {
 		_ = json.Unmarshal(conn.ConfigCapabilities, &cc)
 	}
-	if existing, ok := cc["signing_secret"].(string); ok && existing != "" {
+	if existing, ok := cc[models.ConfigCapabilitiesSigningSecret].(string); ok && existing != "" {
 		return existing, nil
 	}
 	secret, err := generateSigningSecret()
 	if err != nil {
 		return "", err
 	}
-	cc["signing_secret"] = secret
+	cc[models.ConfigCapabilitiesSigningSecret] = secret
 	raw, _ := json.Marshal(cc)
 	dir := conn.SyncDirection
 	if dir == "" {

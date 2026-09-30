@@ -78,7 +78,7 @@ export default function ForwardedMessage({ email }: { email: UniboxEmail }) {
                                     Couldn't load the preview. The message is still attached when you send.
                                 </p>
                             ) : (
-                                <EmailBody html={data?.body_html} plain={data?.body_plain} />
+                                <EmailBody html={data?.body_html} plain={data?.body_plain} blockRemote />
                             )}
                         </div>
                         <p className="px-3 pb-2 text-[11px] text-slate-400">

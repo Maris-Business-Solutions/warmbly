@@ -147,7 +147,7 @@ TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
 | `PUBLIC_IP_RATE_LIMIT` | Requests allowed per source IP per 15 minutes on the remaining public routes: unsubscribe, invitation preview, fleet enrolment and the analytics proxy. Each carries its authorization in a high-entropy token, so this bounds unmetered writes and relayed bandwidth rather than guessing. Counts reads as well as writes, unlike the auth limiter | `600` | yes |
 | `WARMBLY_BOOTSTRAP_EMAIL` | First owner's address, read only while the users table is empty | unset | yes |
 | `WARMBLY_BOOTSTRAP_PASSWORD_HASH` | Argon2 PHC string for that owner. Preferred over the plaintext form | unset | yes |
-| `WARMBLY_BOOTSTRAP_PASSWORD` | Plaintext convenience form. Warns at boot, and leaves a password in your process environment | unset | yes |
+| `WARMBLY_BOOTSTRAP_PASSWORD` | Plaintext convenience form. Held to the same rules as any password (length, breached list); one that fails them is refused and no owner is created. Warns at boot, and leaves a password in your process environment | unset | yes |
 | `WARMBLY_BOOTSTRAP_ORG` | Name of the organization created with that owner. A value that breaks the [naming rules](/api/error-codes/#name-refusals) is ignored with a warning | derived from the name | yes |
 | `TWOFA_SECRET` | Key that encrypts stored TOTP secrets. Falls back to `AUTH_SECRET`, so existing deployments keep working; rotating it invalidates every enrolled TOTP secret | `AUTH_SECRET` | yes |
 | `WEBAUTHN_RP_ID` | Passkey relying party id. Derived from `APP_URL` when unset. Changing it invalidates every enrolled passkey | derived | yes |

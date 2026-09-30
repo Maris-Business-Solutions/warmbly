@@ -9,15 +9,28 @@
 //
 // Height is measured from the inner document and kept in sync as images load,
 // so the message reads as part of the page rather than a scroll box.
+//
+// With blockRemote, a Content-Security-Policy in the frame refuses every remote
+// image, background and font until the reader asks for them, so a sender's
+// tracking pixel cannot learn when, where or in what client a message was read.
 
 import React from "react";
-import { MoreHorizontalIcon } from "lucide-react";
-import { plainToDisplayHtml } from "@/lib/email/body";
+import { ImageOffIcon, MoreHorizontalIcon } from "lucide-react";
+import { hasRemoteContent, plainToDisplayHtml } from "@/lib/email/body";
 
 interface EmailBodyProps {
     html?: string | null;
     plain?: string | null;
+    // Hold back remote content until the reader loads it. Set for mail other
+    // people wrote; previews of the user's own drafts leave it off.
+    blockRemote?: boolean;
 }
+
+// Inline (data:) images and fonts only: nothing leaves the browser.
+const CSP_BLOCKED = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'";
+// After "Load images": remote images, fonts and media, still no scripts or frames.
+const CSP_LOADED =
+    "default-src 'none'; img-src data: https: http:; font-src data: https:; media-src https:; style-src 'unsafe-inline'";
 
 // Collapse only recognizable history; ambiguous inline replies stay visible.
 const QUOTE_SELECTORS = [
@@ -106,11 +119,18 @@ const DOCUMENT_ROOT = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html[\s>]
 const HEAD_OPEN = /<head\b[^>]*>/i;
 const HTML_OPEN = /<html\b[^>]*>/i;
 
-const SHELL =
-    `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
-    `<base target="_blank"><style>${DOCUMENT_CSS}</style>`;
+function shell(csp: string | null): string {
+    // The policy must precede everything else in the head to govern it.
+    const policy = csp ? `<meta http-equiv="Content-Security-Policy" content="${csp}">` : "";
+    return (
+        policy +
+        `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
+        `<base target="_blank"><style>${DOCUMENT_CSS}</style>`
+    );
+}
 
-function buildDocument(body: string): string {
+function buildDocument(body: string, csp: string | null): string {
+    const SHELL = shell(csp);
     if (DOCUMENT_ROOT.test(body)) {
         // Our shell goes FIRST in the head, so the message's own stylesheet
         // comes after it and wins on everything but the containment rules,
@@ -122,10 +142,11 @@ function buildDocument(body: string): string {
     return `<!doctype html><html><head>${SHELL}</head><body>${body}</body></html>`;
 }
 
-export default function EmailBody({ html, plain }: EmailBodyProps) {
+export default function EmailBody({ html, plain, blockRemote = false }: EmailBodyProps) {
     const frameRef = React.useRef<HTMLIFrameElement>(null);
     const [height, setHeight] = React.useState(0);
     const [showQuoted, setShowQuoted] = React.useState(false);
+    const [remoteLoaded, setRemoteLoaded] = React.useState(false);
 
     // The message body, before the shell. Split from srcDoc so toggling the
     // quote does not re-run the plain-text conversion.
@@ -137,11 +158,16 @@ export default function EmailBody({ html, plain }: EmailBodyProps) {
         return "";
     }, [html, plain]);
 
+    // A different message starts blocked again.
+    React.useEffect(() => setRemoteLoaded(false), [body]);
+
     const quotes = React.useMemo(() => prepareQuotes(body), [body]);
     const hasQuote = quotes.hasQuote;
+    const remote = React.useMemo(() => blockRemote && hasRemoteContent(body), [blockRemote, body]);
+    const csp = blockRemote ? (remoteLoaded ? CSP_LOADED : CSP_BLOCKED) : null;
     const srcDoc = React.useMemo(
-        () => (body ? buildDocument(showQuoted ? quotes.expanded : quotes.collapsed) : ""),
-        [body, quotes, showQuoted],
+        () => (body ? buildDocument(showQuoted ? quotes.expanded : quotes.collapsed, csp) : ""),
+        [body, quotes, showQuoted, csp],
     );
 
     // Late-loading remote images change the document height after onLoad, so
@@ -181,6 +207,21 @@ export default function EmailBody({ html, plain }: EmailBodyProps) {
 
     return (
         <>
+            {remote && !remoteLoaded && (
+                <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11.5px] text-slate-500">
+                    <ImageOffIcon className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span className="flex-1 min-w-0">
+                        Remote images are hidden, so the sender can't see when you read this.
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setRemoteLoaded(true)}
+                        className="shrink-0 font-medium text-sky-700 hover:text-sky-800"
+                    >
+                        Load images
+                    </button>
+                </div>
+            )}
             <iframe
                 ref={frameRef}
                 title="Message body"

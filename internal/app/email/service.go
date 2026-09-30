@@ -83,7 +83,9 @@ type EmailService interface {
 	// a new one, so the handler can audit and answer accordingly.
 	// loginHint preselects an address in the provider's picker; "" for none.
 	OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string) (*models.EmailOnboardingStartResponse, *errx.Error)
-	OAuthFinish(ctx context.Context, userID, code, state string) (*models.Email, bool, *errx.Error)
+	// authorize runs before the code is exchanged, against the organization the
+	// state names, so a caller removed mid-flow cannot finish it.
+	OAuthFinish(ctx context.Context, userID, code, state string, authorize FinishAuthorizer) (*models.Email, bool, *errx.Error)
 	OnboardSMTPIMAP(ctx context.Context, userID string, orgID *uuid.UUID, data *models.NewSMTPIMAPAccount) (*models.Email, *errx.Error)
 	// OnboardSMTPIMAPBulk connects many SMTP/IMAP mailboxes in one call and
 	// answers per row, so one bad password never fails the file. Rows past the
@@ -499,3 +501,7 @@ func (s *emailService) UpdateSyncSettings(ctx context.Context, orgID, emailID st
 	s.loadAccountBestEffort(ctx, acc.ID)
 	return folders, nil
 }
+
+// FinishAuthorizer refuses an OAuth finish when the caller no longer holds the
+// rights to connect (or, with reauth, to renew) a mailbox in orgID.
+type FinishAuthorizer func(ctx context.Context, orgID uuid.UUID, reauth bool) *errx.Error

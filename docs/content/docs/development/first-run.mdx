@@ -119,7 +119,7 @@ printf '%s' 'your password' | warmblyctl hash-password
 An argon2 PHC string contains `$` characters. Docker Compose reads those as interpolation, so a bare hash in `.env` silently loses part of itself and the bootstrap fails with no useful message. Wrap it in single quotes in `.env`, and double every `$` if you paste it directly into `docker-compose.yml`.
 </Callout>
 
-`WARMBLY_BOOTSTRAP_PASSWORD` accepts a plaintext password instead. It works, it warns at boot, and it leaves the password readable in your process environment through `docker inspect` and `/proc`. Prefer the hash, and remove either variable once the owner exists.
+`WARMBLY_BOOTSTRAP_PASSWORD` accepts a plaintext password instead, held to the same password rules as sign-up. It works, it warns at boot, and it leaves the password readable in your process environment through `docker inspect` and `/proc`. Prefer the hash, and remove either variable once the owner exists.
 
 All of these are read **only while the users table is empty**, so they are a no-op on every later restart. That also means they cannot be used to fix a lockout: an instance that already has accounts ignores them entirely.
 

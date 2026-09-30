@@ -66,8 +66,8 @@ type Deps struct {
 
 // New constructs the passkey service and the underlying WebAuthn engine.
 // Registration defaults to discoverable, synced passkeys (resident key
-// required, user verification preferred) with no attestation — the broadest
-// provider compatibility for consumer passkeys.
+// required, user verification required) with no attestation. Verification is
+// required because a passkey sign-in counts as multi-factor.
 func New(deps Deps) (Service, error) {
 	web, err := webauthn.New(&webauthn.Config{
 		RPID:          deps.RPID,
@@ -75,7 +75,7 @@ func New(deps Deps) (Service, error) {
 		RPOrigins:     deps.RPOrigins,
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
 			ResidentKey:      protocol.ResidentKeyRequirementRequired,
-			UserVerification: protocol.VerificationPreferred,
+			UserVerification: protocol.VerificationRequired,
 		},
 		AttestationPreference: protocol.PreferNoAttestation,
 	})
