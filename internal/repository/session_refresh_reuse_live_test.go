@@ -51,7 +51,11 @@ func TestLiveRefreshReuseRevokesOnlyOutsideTheRace(t *testing.T) {
 	t.Run("lost race keeps the session", func(t *testing.T) {
 		id := newSession("r1")
 		rotate(id, "r1", "r2", now)
-		if got, _ := repo.RevokeOnRefreshReuse(ctx, id, "r1", window); got || revoked(id) {
+		got, xerr := repo.RevokeOnRefreshReuse(ctx, id, "r1", window)
+		if xerr != nil {
+			t.Fatalf("revoke: %v", xerr)
+		}
+		if got || revoked(id) {
 			t.Fatal("the token just rotated away from ended the session inside the race window")
 		}
 	})
@@ -59,7 +63,11 @@ func TestLiveRefreshReuseRevokesOnlyOutsideTheRace(t *testing.T) {
 	t.Run("replay after the window ends the session", func(t *testing.T) {
 		id := newSession("r1")
 		rotate(id, "r1", "r2", now.Add(-10*time.Minute))
-		if got, _ := repo.RevokeOnRefreshReuse(ctx, id, "r1", window); !got || !revoked(id) {
+		got, xerr := repo.RevokeOnRefreshReuse(ctx, id, "r1", window)
+		if xerr != nil {
+			t.Fatalf("revoke: %v", xerr)
+		}
+		if !got || !revoked(id) {
 			t.Fatal("a refresh token replayed after the window left the session alive")
 		}
 	})
@@ -68,7 +76,11 @@ func TestLiveRefreshReuseRevokesOnlyOutsideTheRace(t *testing.T) {
 		id := newSession("r1")
 		rotate(id, "r1", "r2", now.Add(-time.Minute))
 		rotate(id, "r2", "r3", now)
-		if got, _ := repo.RevokeOnRefreshReuse(ctx, id, "r1", window); !got || !revoked(id) {
+		got, xerr := repo.RevokeOnRefreshReuse(ctx, id, "r1", window)
+		if xerr != nil {
+			t.Fatalf("revoke: %v", xerr)
+		}
+		if !got || !revoked(id) {
 			t.Fatal("a refresh token two rotations old left the session alive")
 		}
 	})
@@ -76,7 +88,11 @@ func TestLiveRefreshReuseRevokesOnlyOutsideTheRace(t *testing.T) {
 	t.Run("the current token never ends the session", func(t *testing.T) {
 		id := newSession("r1")
 		rotate(id, "r1", "r2", now.Add(-10*time.Minute))
-		if got, _ := repo.RevokeOnRefreshReuse(ctx, id, "r2", window); got || revoked(id) {
+		got, xerr := repo.RevokeOnRefreshReuse(ctx, id, "r2", window)
+		if xerr != nil {
+			t.Fatalf("revoke: %v", xerr)
+		}
+		if got || revoked(id) {
 			t.Fatal("the current refresh token ended its own session")
 		}
 	})

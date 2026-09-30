@@ -39,6 +39,23 @@ describe("EmailBody remote content", () => {
         expect(out.indexOf("Content-Security-Policy")).toBeLessThan(out.indexOf("<title>"));
     });
 
+    it("puts the policy in the real head when a comment mentions <head>", () => {
+        const doc = `<!-- <head> --><!doctype html><html><head><title>x</title></head><body>${TRACKED}</body></html>`;
+        const { container } = render(<EmailBody html={doc} blockRemote />);
+        const parsed = new DOMParser().parseFromString(srcDoc(container), "text/html");
+        const policy = parsed.head.querySelector('meta[http-equiv="Content-Security-Policy"]');
+        expect(policy?.getAttribute("content")).toContain("img-src data:;");
+        expect(parsed.head.firstElementChild).toBe(policy);
+    });
+
+    it("blocks a new message even after images were loaded for the last one", () => {
+        const { container, rerender } = render(<EmailBody html={TRACKED} blockRemote />);
+        fireEvent.click(loadButton()!);
+        rerender(<EmailBody html={`<p>Next</p><img src="https://other.example/p.gif">`} blockRemote />);
+        expect(srcDoc(container)).toContain("img-src data:;");
+        expect(loadButton()).toBeInTheDocument();
+    });
+
     it("shows no bar when nothing remote is referenced", () => {
         render(<EmailBody html={`<p>Plain words</p><img src="data:image/png;base64,AAAA">`} blockRemote />);
         expect(loadButton()).not.toBeInTheDocument();

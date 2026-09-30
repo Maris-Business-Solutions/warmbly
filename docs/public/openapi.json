@@ -18912,7 +18912,7 @@
             }
           },
           "400": {
-            "description": "Bad request.",
+            "description": "Bad request: the connection is not a Calendly or Cal.com connection, or `signing_key` is 1 to 7 characters or longer than 512. An empty `signing_key` is accepted and removes the key.",
             "content": {
               "application/json": {
                 "schema": {

@@ -116,8 +116,6 @@ const DOCUMENT_CSS = `
 // the <head> would land in the body, and the frame would preview something the
 // recipient will never see. Its own <head> gets our shell instead.
 const DOCUMENT_ROOT = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html[\s>])/i;
-const HEAD_OPEN = /<head\b[^>]*>/i;
-const HTML_OPEN = /<html\b[^>]*>/i;
 
 function shell(csp: string | null): string {
     // The policy must precede everything else in the head to govern it.
@@ -132,12 +130,13 @@ function shell(csp: string | null): string {
 function buildDocument(body: string, csp: string | null): string {
     const SHELL = shell(csp);
     if (DOCUMENT_ROOT.test(body)) {
-        // Our shell goes FIRST in the head, so the message's own stylesheet
-        // comes after it and wins on everything but the containment rules,
-        // which are marked !important above.
-        if (HEAD_OPEN.test(body)) return body.replace(HEAD_OPEN, `$&${SHELL}`);
-        if (HTML_OPEN.test(body)) return body.replace(HTML_OPEN, `$&<head>${SHELL}</head>`);
-        return `<!doctype html><html><head>${SHELL}</head>${body}</html>`;
+        // Our shell goes FIRST in the parsed document's real head, so the
+        // message's own stylesheet comes after it and wins on everything but
+        // the containment rules, and nothing in the markup (a commented-out
+        // <head>, say) can capture where the policy lands.
+        const doc = new DOMParser().parseFromString(body, "text/html");
+        doc.head.insertAdjacentHTML("afterbegin", SHELL);
+        return `${doc.doctype ? "<!doctype html>" : ""}${doc.documentElement.outerHTML}`;
     }
     return `<!doctype html><html><head>${SHELL}</head><body>${body}</body></html>`;
 }
@@ -146,7 +145,6 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
     const frameRef = React.useRef<HTMLIFrameElement>(null);
     const [height, setHeight] = React.useState(0);
     const [showQuoted, setShowQuoted] = React.useState(false);
-    const [remoteLoaded, setRemoteLoaded] = React.useState(false);
 
     // The message body, before the shell. Split from srcDoc so toggling the
     // quote does not re-run the plain-text conversion.
@@ -158,8 +156,10 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
         return "";
     }, [html, plain]);
 
-    // A different message starts blocked again.
-    React.useEffect(() => setRemoteLoaded(false), [body]);
+    // Consent belongs to the body it was given for, so a different message is
+    // blocked from its very first render.
+    const [loadedBody, setLoadedBody] = React.useState<string | null>(null);
+    const remoteLoaded = loadedBody !== null && loadedBody === body;
 
     const quotes = React.useMemo(() => prepareQuotes(body), [body]);
     const hasQuote = quotes.hasQuote;
@@ -215,7 +215,7 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
                     </span>
                     <button
                         type="button"
-                        onClick={() => setRemoteLoaded(true)}
+                        onClick={() => setLoadedBody(body)}
                         className="shrink-0 font-medium text-sky-700 hover:text-sky-800"
                     >
                         Load images
