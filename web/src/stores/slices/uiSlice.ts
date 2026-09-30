@@ -10,6 +10,15 @@ export const UNIBOX_LIST_MIN_WIDTH = 280
 export const UNIBOX_LIST_MAX_WIDTH = 620
 export const UNIBOX_LIST_DEFAULT_WIDTH = 360
 
+// A favorite's own name is a rail label, so it stays about as long as one.
+export const UNIBOX_RAIL_FAVORITE_NAME_MAX = 40
+
+// A scope pinned to the rail's Favorites section, with an optional name of its own.
+export interface UniboxRailFavorite {
+  key: string
+  name?: string
+}
+
 // Exported because rehydration bypasses the setter: zustand's default merge
 // writes localStorage straight into state, so the clamp has to run there too or
 // a hand-edited (or newly out-of-range) value reaches the DOM unchecked.
@@ -40,6 +49,8 @@ export interface UISlice {
   // Row order per section and the order of the sections; absent means default.
   uniboxRailOrder: Record<string, string[]>
   uniboxRailSectionOrder: string[]
+  // Favorites, in rail order; each key is a scopeKey from any section.
+  uniboxRailFavorites: UniboxRailFavorite[]
 
   // Theme
   theme: Theme
@@ -74,6 +85,8 @@ export interface UISlice {
   setUniboxRailRowsHidden: (keys: string[], hidden: boolean) => void
   setUniboxRailOrder: (section: string, keys: string[] | null) => void
   setUniboxRailSectionOrder: (ids: string[]) => void
+  toggleUniboxRailFavorite: (key: string) => void
+  setUniboxRailFavorites: (favorites: UniboxRailFavorite[]) => void
 
   // Actions - Theme
   setTheme: (theme: Theme) => void
@@ -121,6 +134,27 @@ export const sanitizeUniboxRailOrder = (v: unknown): Record<string, string[]> =>
   )
 }
 
+// A blank name means "use the row's own label"; anything else is trimmed and capped by code point.
+export const cleanUniboxRailFavoriteName = (v: unknown): string | undefined => {
+  if (typeof v !== 'string') return undefined
+  const name = Array.from(v.replace(/\s+/g, ' ').trim()).slice(0, UNIBOX_RAIL_FAVORITE_NAME_MAX).join('').trim()
+  return name || undefined
+}
+
+// Favorites rehydrate as a list of entries with a string key, one per key.
+export const sanitizeUniboxRailFavorites = (v: unknown): UniboxRailFavorite[] => {
+  if (!Array.isArray(v)) return []
+  const seen = new Set<string>()
+  return v.flatMap((entry): UniboxRailFavorite[] => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const { key, name } = entry as { key?: unknown; name?: unknown }
+    if (typeof key !== 'string' || !key || seen.has(key)) return []
+    seen.add(key)
+    const clean = cleanUniboxRailFavoriteName(name)
+    return [clean ? { key, name: clean } : { key }]
+  })
+}
+
 // A stored order over keys that come and go: known keys keep the stored order,
 // and a key the stored order never saw lands right after its default predecessor.
 export const applyRailOrder = (defaults: string[], stored: string[] | undefined): string[] => {
@@ -154,6 +188,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   uniboxRailHidden: [],
   uniboxRailOrder: {},
   uniboxRailSectionOrder: [],
+  uniboxRailFavorites: [],
 
   // Theme
   theme: getInitialTheme(),
@@ -209,6 +244,13 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
       return { uniboxRailOrder: next }
     }),
   setUniboxRailSectionOrder: (ids) => set({ uniboxRailSectionOrder: ids }),
+  toggleUniboxRailFavorite: (key) =>
+    set((state) => ({
+      uniboxRailFavorites: state.uniboxRailFavorites.some((f) => f.key === key)
+        ? state.uniboxRailFavorites.filter((f) => f.key !== key)
+        : [...state.uniboxRailFavorites, { key }],
+    })),
+  setUniboxRailFavorites: (favorites) => set({ uniboxRailFavorites: sanitizeUniboxRailFavorites(favorites) }),
 
   // Actions - Theme
   setTheme: (theme) => {

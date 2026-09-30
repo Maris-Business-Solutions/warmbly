@@ -1,4 +1,5 @@
-// The scope rail's sections fold and their rows can be hidden.
+// The scope rail's sections fold, their rows can be hidden, and any row can be
+// starred into Favorites.
 //
 // Both are per-browser preferences that live in the persisted store, so what is
 // pinned here is the part that is easy to get wrong: the fold survives, a
@@ -8,9 +9,16 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
+import toast, { Toaster } from "react-hot-toast";
 import { useAppStore } from "@/stores";
-import { applyRailOrder, sanitizeUniboxRailHidden, sanitizeUniboxRailOrder } from "@/stores/slices/uiSlice";
+import {
+  applyRailOrder,
+  cleanUniboxRailFavoriteName,
+  sanitizeUniboxRailFavorites,
+  sanitizeUniboxRailHidden,
+  sanitizeUniboxRailOrder,
+} from "@/stores/slices/uiSlice";
 import { ScopeRail, type UniboxScope } from "./ScopeRail";
 
 const overview = vi.hoisted(() => ({
@@ -75,11 +83,13 @@ beforeEach(() => {
     uniboxRailHidden: [],
     uniboxRailOrder: {},
     uniboxRailSectionOrder: [],
+    uniboxRailFavorites: [],
   });
 });
 
 afterEach(() => {
   cleanup();
+  act(() => toast.remove());
 });
 
 describe("ScopeRail sections", () => {
@@ -478,7 +488,8 @@ describe("section menu", () => {
     expect(headerOrder().slice(0, 2)).toEqual(["Mail", "Views"]);
     fireEvent.click(screen.getByLabelText("Mail section options"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Move section down" }));
-    expect(useAppStore.getState().uniboxRailSectionOrder.slice(0, 2)).toEqual(["views", "mail"]);
+    const stored = useAppStore.getState().uniboxRailSectionOrder;
+    expect(stored.indexOf("views")).toBeLessThan(stored.indexOf("mail"));
     expect(headerOrder().slice(0, 2)).toEqual(["Views", "Mail"]);
   });
 
@@ -631,5 +642,429 @@ describe("dropdown keys", () => {
     fireEvent.click(screen.getByLabelText("Mail section options"));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Tab" });
     expect(screen.getByRole("menu")).toBeTruthy();
+  });
+});
+
+const FAVORITES_TOGGLE = /^Favorites(,|$)/;
+
+// The Favorites section's rows, as the user reads them.
+const favoritesPanel = () =>
+  document.getElementById(
+    screen.getByRole("button", { name: FAVORITES_TOGGLE }).getAttribute("aria-controls") as string,
+  ) as HTMLElement;
+const favoriteLabels = () =>
+  Array.from(favoritesPanel().querySelectorAll("[data-rail-row]")).map((r) => r.textContent?.replace(/\d+$/, ""));
+
+function favorite(label: string, noun = "") {
+  fireEvent.click(screen.getByLabelText(`${label} ${noun ? `${noun} ` : ""}actions`));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Add to Favorites" }));
+}
+
+describe("Favorites", () => {
+  it("is not on the rail until something is starred", () => {
+    mountRail();
+    expect(screen.queryByRole("button", { name: FAVORITES_TOGGLE })).toBeNull();
+    expect(screen.queryByText("Favorites")).toBeNull();
+  });
+
+  it("gathers rows from Mail, Views, Mailboxes and Labels at the top, in the order they were added", () => {
+    mountRail();
+    favorite("Inbox", "folder");
+    favorite("Hot leads", "view");
+    favorite("me@example.com", "mailbox");
+    favorite("Interested", "label");
+
+    expect(headerOrder()[0]).toBe("Favorites");
+    expect(favoriteLabels()).toEqual(["Inbox", "Hot leads", "me@example.com", "Interested"]);
+    // Each row stays in its own section too.
+    expect(screen.getAllByText("Inbox")).toHaveLength(2);
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([
+      { key: "folder:inbox" },
+      { key: "view:hot" },
+      { key: "mailbox:m1" },
+      { key: "category:c1" },
+    ]);
+    const persisted = useAppStore.persist.getOptions().partialize?.(useAppStore.getState()) as {
+      uniboxRailFavorites?: unknown;
+    };
+    expect(persisted.uniboxRailFavorites).toEqual(useAppStore.getState().uniboxRailFavorites);
+  });
+
+  it("carries the row's live count", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "mailbox:m1" }] });
+    mountRail();
+    expect(favoritesPanel().textContent).toContain("2");
+  });
+
+  it("offers Remove from Favorites once a row is in", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:spam" }] });
+    mountRail();
+    fireEvent.click(screen.getByLabelText("Spam folder actions"));
+    expect(screen.queryByRole("menuitem", { name: "Add to Favorites" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from Favorites" }));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([]);
+    expect(screen.queryByRole("button", { name: FAVORITES_TOGGLE })).toBeNull();
+  });
+
+  it("stars a row from the Mail edit mode", () => {
+    mountRail();
+    startEditing("Mail");
+    const star = screen.getByRole("button", { name: "Favorite Sent" });
+    expect(star.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(star);
+    expect(screen.getByRole("button", { name: "Favorite Sent" }).getAttribute("aria-pressed")).toBe("true");
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "folder:sent" }]);
+  });
+
+  it("highlights one row: the favorite, or the home row when that is where the scope was opened", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }] });
+    const onChange = vi.fn();
+    const { rerender } = render(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    let current = document.querySelectorAll("[aria-current]");
+    expect(current).toHaveLength(1);
+    expect(favoritesPanel().contains(current[0])).toBe(true);
+
+    // The Mail section's own Inbox row.
+    const homeInbox = screen.getAllByText("Inbox").map((n) => n.closest("[data-rail-row]") as HTMLElement)[1];
+    fireEvent.click(homeInbox);
+    expect(onChange).toHaveBeenCalledWith({ kind: "folder", folder: "inbox" });
+    rerender(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    current = document.querySelectorAll("[aria-current]");
+    expect(current).toHaveLength(1);
+    expect(favoritesPanel().contains(current[0])).toBe(false);
+
+    fireEvent.click(favoritesPanel().querySelector("[data-rail-row]") as HTMLElement);
+    current = document.querySelectorAll("[aria-current]");
+    expect(favoritesPanel().contains(current[0])).toBe(true);
+  });
+
+  it("highlights in Favorites again once the scope is left and reached some other way", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }] });
+    const onChange = vi.fn();
+    const { rerender } = render(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    const homeInbox = () => screen.getAllByText("Inbox").map((n) => n.closest("[data-rail-row]") as HTMLElement)[1];
+    fireEvent.click(homeInbox());
+    rerender(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    expect(favoritesPanel().querySelector("[aria-current]")).toBeNull();
+
+    // A shortcut away and back, with no click in the rail.
+    rerender(<ScopeRail scope={{ kind: "unread" }} onChange={onChange} />);
+    rerender(<ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={onChange} />);
+    expect(favoritesPanel().querySelector("[aria-current]")).toBeTruthy();
+    expect(document.querySelectorAll("[aria-current]")).toHaveLength(1);
+  });
+
+  it("names what a renamed view points at on hover", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "view:needs_reply", name: "Follow-ups" }] });
+    mountRail();
+    expect(favoriteLabels()).toEqual(["Follow-ups"]);
+    fireEvent.focus(favoritesPanel().querySelector("[data-rail-row]") as HTMLElement);
+    expect(screen.getAllByText(/^Needs a reply: /).length).toBeGreaterThan(0);
+  });
+
+  it("folds, keeps the favorite you are on, and remembers the fold", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }, { key: "unread" }] });
+    mountRail({ kind: "unread" });
+    fireEvent.click(screen.getByRole("button", { name: FAVORITES_TOGGLE }));
+    expect(useAppStore.getState().uniboxRailFolded.favorites).toBe(true);
+    expect(favoriteLabels()).toEqual(["Unread"]);
+    // Inbox has a highlighted count folded out of sight.
+    expect(screen.getByRole("button", { name: "Favorites, highlighted count folded away" })).toBeTruthy();
+  });
+
+  it("puts itself on top of a section order stored before it existed", () => {
+    useAppStore.setState({
+      uniboxRailFavorites: [{ key: "folder:inbox" }],
+      uniboxRailSectionOrder: ["views", "mail", "mailboxes", "labels", "tags"],
+    });
+    mountRail();
+    expect(headerOrder().slice(0, 3)).toEqual(["Favorites", "Views", "Mail"]);
+  });
+
+  it("moves a favorite with Alt+arrow without touching its home section", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }, { key: "view:hot" }] });
+    mountRail();
+    const inbox = favoritesPanel().querySelector('[data-rail-row="folder:inbox"]') as HTMLElement;
+    fireEvent.keyDown(inbox, { key: "ArrowDown", altKey: true });
+    expect(favoriteLabels()).toEqual(["Hot leads", "Inbox"]);
+    expect(useAppStore.getState().uniboxRailOrder.mail).toBeUndefined();
+  });
+
+  it("keeps a favorite that does not resolve yet when the others move", () => {
+    useAppStore.setState({
+      uniboxRailFavorites: [{ key: "folder:inbox" }, { key: "mailbox:gone" }, { key: "view:hot" }],
+    });
+    mountRail();
+    expect(favoriteLabels()).toEqual(["Inbox", "Hot leads"]);
+    fireEvent.keyDown(favoritesPanel().querySelector('[data-rail-row="view:hot"]') as HTMLElement, {
+      key: "ArrowUp",
+      altKey: true,
+    });
+    expect(useAppStore.getState().uniboxRailFavorites.map((f) => f.key)).toEqual([
+      "view:hot",
+      "folder:inbox",
+      "mailbox:gone",
+    ]);
+  });
+});
+
+describe("Favorites rename", () => {
+  const renameFromMenu = (label: string) => {
+    fireEvent.click(screen.getByLabelText(`${label} favorite actions`));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rename/ }));
+  };
+
+  it("gives a favorite its own name, leaving the home row alone", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "mailbox:m1" }] });
+    mountRail();
+    renameFromMenu("me@example.com");
+    const input = screen.getByRole("textbox", { name: "Name for me@example.com in Favorites" });
+    expect((input as HTMLInputElement).value).toBe("me@example.com");
+    fireEvent.change(input, { target: { value: "  Inbox   work " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "mailbox:m1", name: "Inbox work" }]);
+    expect(favoriteLabels()).toEqual(["Inbox work"]);
+    // The Mailboxes row still reads the address, and the favorite says where it points.
+    expect(screen.getByText("me@example.com")).toBeTruthy();
+    expect(screen.getByTitle("Inbox work (me@example.com)")).toBeTruthy();
+    // Focus goes back to the row.
+    expect(document.activeElement?.getAttribute("data-rail-row")).toBe("mailbox:m1");
+  });
+
+  it("goes back to the row's own name when cleared or set to it", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox", name: "Work" }] });
+    mountRail();
+    renameFromMenu("Work");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "folder:inbox" }]);
+
+    renameFromMenu("Inbox");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Inbox" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "folder:inbox" }]);
+  });
+
+  it("drops the edit on Escape and keeps it on blur", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }] });
+    mountRail();
+    renameFromMenu("Inbox");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Nope" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "folder:inbox" }]);
+    expect(screen.queryByRole("textbox")).toBeNull();
+
+    renameFromMenu("Inbox");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Private" } });
+    fireEvent.blur(screen.getByRole("textbox"));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "folder:inbox", name: "Private" }]);
+  });
+
+  it("opens with F2 on the focused favorite", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }] });
+    mountRail();
+    fireEvent.keyDown(favoritesPanel().querySelector('[data-rail-row="unread"]') as HTMLElement, { key: "F2" });
+    expect(screen.getByRole("textbox", { name: "Name for Unread in Favorites" })).toBeTruthy();
+    // F2 on a home row does nothing.
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    fireEvent.keyDown(rowOf("Inbox"), { key: "F2" });
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});
+
+describe("Favorites edit mode", () => {
+  it("unticks a favorite, keeps it listed until Done, and ticks it back in place with its name", () => {
+    useAppStore.setState({
+      uniboxRailFavorites: [{ key: "folder:inbox", name: "Work" }, { key: "unread" }, { key: "view:hot" }],
+    });
+    mountRail();
+    fireEvent.click(screen.getByRole("button", { name: "Edit favorites" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Work" }));
+    expect(useAppStore.getState().uniboxRailFavorites.map((f) => f.key)).toEqual(["unread", "view:hot"]);
+    expect(screen.getByRole("checkbox", { name: "Work" }).getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Work" }));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([
+      { key: "folder:inbox", name: "Work" },
+      { key: "unread" },
+      { key: "view:hot" },
+    ]);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unread" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done editing Favorites" }));
+    expect(favoriteLabels()).toEqual(["Work", "Hot leads"]);
+  });
+
+  it("keeps a favorite starred elsewhere while editing when the section next writes", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }, { key: "view:hot" }] });
+    mountRail();
+    fireEvent.click(screen.getByRole("button", { name: "Edit favorites" }));
+    // Starred from another row's menu by keyboard, which leaves edit mode open.
+    act(() => useAppStore.getState().toggleUniboxRailFavorite("folder:sent"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unread" }));
+    expect(useAppStore.getState().uniboxRailFavorites.map((f) => f.key)).toEqual(["view:hot", "folder:sent"]);
+    expect(screen.getByRole("checkbox", { name: "Sent" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("stays on the rail while every favorite is unticked, and leaves it on Done", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }] });
+    mountRail();
+    fireEvent.click(screen.getByRole("button", { name: "Edit favorites" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unread" }));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([]);
+    expect(screen.getByRole("button", { name: "Done editing Favorites" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Done editing Favorites" }));
+    expect(screen.queryByRole("button", { name: FAVORITES_TOGGLE })).toBeNull();
+  });
+
+  it("reorders with the grip and renames from the row", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }, { key: "folder:inbox" }] });
+    mountRail();
+    fireEvent.click(screen.getByRole("button", { name: "Edit favorites" }));
+    const panel = favoritesPanel();
+    const grip = Array.from(panel.querySelectorAll("button")).find((b) =>
+      b.getAttribute("aria-label")?.startsWith("Move Inbox"),
+    ) as HTMLElement;
+    fireEvent.keyDown(grip, { key: "ArrowUp" });
+    expect(useAppStore.getState().uniboxRailFavorites.map((f) => f.key)).toEqual(["folder:inbox", "unread"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename Unread" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "To read" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([
+      { key: "folder:inbox" },
+      { key: "unread", name: "To read" },
+    ]);
+    // Still editing: the renamed row is a checkbox again.
+    expect(screen.getByRole("checkbox", { name: "To read" })).toBeTruthy();
+  });
+
+  it("keeps a rename in progress when a click outside ends editing", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }] });
+    mountRail();
+    fireEvent.click(screen.getByRole("button", { name: "Edit favorites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename Unread" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Later" } });
+    fireEvent.mouseDown(screen.getByText("me@example.com"));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "unread", name: "Later" }]);
+    expect(screen.queryByRole("button", { name: "Done editing Favorites" })).toBeNull();
+  });
+
+  it("has no Reset and no hidden count", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "unread" }] });
+    mountRail();
+    fireEvent.click(screen.getByRole("button", { name: "Edit favorites" }));
+    expect(screen.getByText("Drag to reorder, untick to remove")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unread" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done editing Favorites" }));
+    expect(screen.queryByText(/\d+ hidden/)).toBeNull();
+  });
+});
+
+describe("Favorites and hiding", () => {
+  it("says a row hides at once when the scope you are on is highlighted in Favorites", () => {
+    useAppStore.setState({ uniboxRailFavorites: [{ key: "folder:inbox" }] });
+    render(
+      <>
+        <ScopeRail scope={{ kind: "folder", folder: "inbox" }} onChange={() => {}} />
+        <Toaster />
+      </>,
+    );
+    fireEvent.click(screen.getByLabelText("Inbox folder actions"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide from rail" }));
+    expect(screen.getByText("Inbox is hidden from the rail.")).toBeTruthy();
+    // Gone from Mail, still in Favorites.
+    expect(screen.getAllByText("Inbox")).toHaveLength(1);
+  });
+});
+
+describe("Favorites undo", () => {
+  it("puts a removed favorite back where it was, with its name", () => {
+    useAppStore.setState({
+      uniboxRailFavorites: [{ key: "unread" }, { key: "folder:inbox", name: "Work" }, { key: "view:hot" }],
+    });
+    render(
+      <>
+        <ScopeRail scope={{ kind: "all" }} onChange={() => {}} />
+        <Toaster />
+      </>,
+    );
+    fireEvent.click(screen.getByLabelText("Work favorite actions"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from Favorites" }));
+    expect(favoriteLabels()).toEqual(["Unread", "Hot leads"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([
+      { key: "unread" },
+      { key: "folder:inbox", name: "Work" },
+      { key: "view:hot" },
+    ]);
+  });
+
+  it("clears every favorite from the section menu, and brings them back", () => {
+    const all = [{ key: "unread" }, { key: "folder:inbox", name: "Work" }];
+    useAppStore.setState({ uniboxRailFavorites: all });
+    render(
+      <>
+        <ScopeRail scope={{ kind: "all" }} onChange={() => {}} />
+        <Toaster />
+      </>,
+    );
+    fireEvent.click(screen.getByLabelText("Favorites section options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove all favorites" }));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual([]);
+    expect(screen.queryByRole("button", { name: FAVORITES_TOGGLE })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(useAppStore.getState().uniboxRailFavorites).toEqual(all);
+  });
+});
+
+describe("sanitizeUniboxRailFavorites", () => {
+  it("keeps entries with a string key, one per key, and a clean name only", () => {
+    expect(
+      sanitizeUniboxRailFavorites([
+        { key: "folder:inbox", name: "  Work  " },
+        { key: "folder:inbox", name: "Again" },
+        "unread",
+        { key: 3 },
+        { key: "" },
+        null,
+        { key: "view:hot", name: "   " },
+        { key: "mailbox:m1", name: 42 },
+      ]),
+    ).toEqual([{ key: "folder:inbox", name: "Work" }, { key: "view:hot" }, { key: "mailbox:m1" }]);
+    expect(sanitizeUniboxRailFavorites({ key: "unread" })).toEqual([]);
+  });
+
+  it("caps a name and collapses its whitespace", () => {
+    expect(cleanUniboxRailFavoriteName("a\n\tb")).toBe("a b");
+    expect(cleanUniboxRailFavoriteName("x".repeat(80))).toHaveLength(40);
+    expect(cleanUniboxRailFavoriteName("")).toBeUndefined();
+    // An emoji straddling the cap is kept whole or dropped, never split.
+    const capped = cleanUniboxRailFavoriteName(`${"x".repeat(39)}🔥🔥`) as string;
+    expect(Array.from(capped)).toHaveLength(40);
+    expect(capped.endsWith("🔥")).toBe(true);
+  });
+
+  it("runs on rehydration", async () => {
+    const original = useAppStore.persist.getOptions().storage;
+    useAppStore.persist.setOptions({
+      storage: {
+        getItem: () =>
+          ({ state: { uniboxRailFavorites: [{ key: "unread" }, { key: "unread" }, 5] } }) as never,
+        setItem: () => {},
+        removeItem: () => {},
+      },
+    });
+    try {
+      await useAppStore.persist.rehydrate();
+      expect(useAppStore.getState().uniboxRailFavorites).toEqual([{ key: "unread" }]);
+    } finally {
+      useAppStore.persist.setOptions({ storage: original });
+    }
   });
 });
