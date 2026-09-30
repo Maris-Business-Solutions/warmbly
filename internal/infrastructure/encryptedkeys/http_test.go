@@ -23,7 +23,6 @@ type fakeBackend struct {
 	failGet   bool
 	getStatus int
 	putStatus int
-	delStatus int
 }
 
 func (f *fakeBackend) handler() http.Handler {
@@ -64,13 +63,6 @@ func (f *fakeBackend) handler() http.Handler {
 			}
 			f.keys[id] = p.EncryptedDataKey
 			w.WriteHeader(http.StatusCreated)
-		case http.MethodDelete:
-			if f.delStatus != 0 {
-				w.WriteHeader(f.delStatus)
-				return
-			}
-			delete(f.keys, id)
-			w.WriteHeader(http.StatusNoContent)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -111,15 +103,6 @@ func TestHTTPStore_RoundTrip(t *testing.T) {
 	if got != "ciphertext-1" {
 		t.Fatalf("Get: got %q want %q", got, "ciphertext-1")
 	}
-
-	if err := s.Delete(ctx, uid); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-
-	got, err = s.Get(ctx, uid)
-	if err != nil || got != "" {
-		t.Fatalf("Get after delete: got=%q err=%v", got, err)
-	}
 }
 
 func TestHTTPStore_PutConflictReturnsErrAlreadyExists(t *testing.T) {
@@ -142,14 +125,6 @@ func TestHTTPStore_SendsBearerAuth(t *testing.T) {
 	_, _ = s.Get(context.Background(), uuid.New())
 	if be.gotAuth != "Bearer "+testToken {
 		t.Fatalf("auth header: got %q want %q", be.gotAuth, "Bearer "+testToken)
-	}
-}
-
-func TestHTTPStore_DeleteOnMissingIsOK(t *testing.T) {
-	be := &fakeBackend{t: t, keys: map[string]string{}}
-	s, _ := newHTTPStoreAgainst(t, be.handler())
-	if err := s.Delete(context.Background(), uuid.New()); err != nil {
-		t.Fatalf("delete missing: %v", err)
 	}
 }
 

@@ -98,6 +98,8 @@ var (
 	ErrPasskeyNotFound = New(NotFound, "Passkey not found.")
 	ErrPasskeyExists   = New(Conflict, "This passkey is already registered.")
 	ErrPasskeyNone     = New(BadRequest, "No passkey was found for this account.")
+	// A passkey sign-in counts as multi-factor, so the authenticator must verify the user.
+	ErrPasskeyUserVerification = NewWithIdentifier(BadRequest, "passkey_user_verification_required", "This passkey didn’t ask for a PIN or biometric. Set a PIN on the security key, or sign in another way.")
 
 	// Organization
 	//

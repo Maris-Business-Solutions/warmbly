@@ -36,13 +36,19 @@ import {
     type IntegrationConnection,
 } from "@/lib/api/models/app/integrations/Integration";
 import { useFieldMappings, useUpdateConnectionConfig } from "@/lib/api/hooks/app/integrations/useFieldMappings";
-import { useRevealWebhookSecret, useTestConnection } from "@/lib/api/hooks/app/integrations/useConnectionWebhookTools";
+import {
+    useRevealWebhookSecret,
+    useRotateInboundUrl,
+    useSetConnectionSigningKey,
+    useTestConnection,
+} from "@/lib/api/hooks/app/integrations/useConnectionWebhookTools";
 import { useAutomations } from "@/lib/api/hooks/app/automations/useAutomations";
 import type { IntegrationAction } from "@/lib/api/models/app/integrations/Integration";
 import { cn } from "@/lib/utils";
 
 import { Drawer, SectionLabel } from "./ConnectDrawer";
 import FieldMapEditor from "./FieldMapEditor";
+import InboundUrlDialog from "./InboundUrlDialog";
 import StatusPill, { HealthDot } from "./StatusPill";
 
 // Providers whose deliveries we can test (notify + generic webhook). Automation
@@ -206,6 +212,15 @@ export default function ConnectionDetail({
                     </div>
                 )}
 
+                {/* Inbound URL: rotation + signature for Calendly / Cal.com deliveries */}
+                {(conn.provider === "calendly" || conn.provider === "cal_com") && (
+                    <div className="px-5 py-4 border-b border-slate-200 space-y-3">
+                        <SectionLabel>Inbound URL</SectionLabel>
+                        <InboundRotateBlock connection={conn} />
+                        <InboundSigningBlock connection={conn} />
+                    </div>
+                )}
+
                 {/* Webhook delivery — test wiring + (automation tools) signature */}
                 {isWebhookTool && (
                     <div className="px-5 py-4 border-b border-slate-200 space-y-3">
@@ -338,6 +353,138 @@ function BookingLinkBlock({ connection, onSaved }: { connection: IntegrationConn
                     </button>
                 </div>
             )}
+        </div>
+    );
+}
+
+// InboundRotateBlock replaces a leaked inbound URL. The new one is shown once.
+function InboundRotateBlock({ connection }: { connection: IntegrationConnection }) {
+    const confirm = useConfirm();
+    const rotate = useRotateInboundUrl();
+    const [fresh, setFresh] = React.useState<string | null>(null);
+
+    function run() {
+        confirm.show(
+            "Rotate the inbound URL? The current URL stops working immediately, so bookings are missed until you paste the new one into the provider.",
+            async () => {
+                try {
+                    const r = await rotate.mutateAsync(connection.id);
+                    setFresh(r.inbound_webhook_url);
+                } catch (err: unknown) {
+                    toast.error(msg(err) ?? "Could not rotate the URL");
+                }
+            },
+        );
+    }
+
+    return (
+        <div className="space-y-1.5">
+            <p className="text-[11.5px] text-slate-500 leading-relaxed">
+                The URL contains a secret. If it was exposed, rotate it and paste the new one into the provider.
+            </p>
+            <button
+                type="button"
+                onClick={run}
+                disabled={rotate.isPending}
+                className="h-7 px-2.5 rounded-md border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-[12px] inline-flex items-center gap-1.5 transition-colors disabled:opacity-60"
+            >
+                {rotate.isPending ? (
+                    <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                    <RefreshCwIcon className="w-3.5 h-3.5" />
+                )}
+                Rotate URL
+            </button>
+            {fresh && (
+                <InboundUrlDialog provider={connection.provider} url={fresh} onClose={() => setFresh(null)} />
+            )}
+        </div>
+    );
+}
+
+const SIGNING_HINTS: Record<string, string> = {
+    calendly:
+        "Paste the signing key of your Calendly webhook subscription (the signing_key you set, or the one Calendly returned when it was created).",
+    cal_com: "Paste the secret you set on the Cal.com webhook (Settings, Developer, Webhooks, Secret).",
+};
+
+// InboundSigningBlock sets the key Calendly / Cal.com deliveries must be signed
+// with. Once set, a delivery without a valid signature is refused.
+function InboundSigningBlock({ connection }: { connection: IntegrationConnection }) {
+    const confirm = useConfirm();
+    const setKey = useSetConnectionSigningKey();
+    const [key, setKeyValue] = React.useState("");
+    const signed = connection.display_fields?.inbound_signing === true;
+
+    async function save() {
+        const v = key.trim();
+        if (v.length < 8) {
+            toast.error("A signing key is at least 8 characters");
+            return;
+        }
+        try {
+            await setKey.mutateAsync({ connectionId: connection.id, signing_key: v });
+            setKeyValue("");
+            toast.success("Signing key saved. Unsigned deliveries are now refused.");
+        } catch (err: unknown) {
+            toast.error(msg(err) ?? "Could not save the signing key");
+        }
+    }
+
+    function remove() {
+        confirm.show(
+            "Remove the signing key? Deliveries will be accepted on the inbound URL alone.",
+            async () => {
+                try {
+                    await setKey.mutateAsync({ connectionId: connection.id, signing_key: "" });
+                    toast.success("Signing key removed");
+                } catch (err: unknown) {
+                    toast.error(msg(err) ?? "Could not remove the signing key");
+                }
+            },
+        );
+    }
+
+    return (
+        <div className="space-y-1.5">
+            <p className="text-[11.5px] text-slate-500 leading-relaxed">
+                {signed
+                    ? "Deliveries must carry a valid signature. Paste a new key to replace it."
+                    : SIGNING_HINTS[connection.provider]}
+            </p>
+            <TextInput
+                type="password"
+                value={key}
+                onChange={setKeyValue}
+                placeholder={signed ? "Replace signing key" : "Signing key"}
+                className="font-mono"
+            />
+            <div className="flex items-center justify-end gap-1.5">
+                {signed && (
+                    <button
+                        type="button"
+                        onClick={remove}
+                        disabled={setKey.isPending}
+                        className="h-6 px-2.5 rounded border border-slate-200 hover:border-slate-300 text-[11.5px] text-slate-600 hover:text-slate-900 transition-colors disabled:opacity-60"
+                    >
+                        Remove
+                    </button>
+                )}
+                {key.trim() !== "" && (
+                    <button
+                        type="button"
+                        onClick={save}
+                        disabled={setKey.isPending}
+                        className={cn(
+                            "h-6 px-2.5 rounded text-[11.5px] font-medium text-white bg-sky-600 hover:bg-sky-700 inline-flex items-center gap-1.5 transition-colors",
+                            setKey.isPending && "opacity-60",
+                        )}
+                    >
+                        {setKey.isPending && <Loader2Icon className="w-3 h-3 animate-spin" />}
+                        Save key
+                    </button>
+                )}
+            </div>
         </div>
     );
 }

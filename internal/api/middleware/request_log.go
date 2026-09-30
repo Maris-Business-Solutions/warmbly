@@ -2,34 +2,72 @@ package middleware
 
 import (
 	"fmt"
-	"io"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// RequestLogger is gin's standard access log with the query string removed.
+// RequestLogger is gin's standard access log with every credential removed.
 //
 // gin.Logger() prints the full request URI, and several routes carry a
 // credential there because the provider or the mail client puts it there:
 // OAuth `code` and `state` on the callback bouncers, the team invitation token
 // on the preview lookup, the socket ticket on /v1/getaway's reply, the form
-// prefill ticket. Those end up in stdout, in the container log, and in whatever
-// aggregates it, which is a place none of them should reach.
+// prefill ticket. Others carry one in the path: inbound webhook secrets,
+// unsubscribe tokens, device and warmup tokens. None of them may reach stdout,
+// the container log, or whatever aggregates it.
 //
-// The path is kept because that is what the log is for. Nothing downstream
-// needs the query: a request that has to be traced has X-Request-Id.
+// So the query is dropped and a path parameter named in credentialParams is
+// logged as its name. A request that has to be traced has X-Request-Id.
 func RequestLogger() gin.HandlerFunc {
-	return gin.LoggerWithConfig(gin.LoggerConfig{
-		Formatter: func(p gin.LogFormatterParams) string {
-			return fmt.Sprintf("[GIN] %v | %3d | %13v | %15s | %-7s %#v\n",
-				p.TimeStamp.Format("2006/01/02 - 15:04:05"),
-				p.StatusCode,
-				p.Latency,
-				p.ClientIP,
-				p.Method,
-				p.Path,
-			)
-		},
-		Output: io.Writer(gin.DefaultWriter),
-	})
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		end := time.Now()
+		fmt.Fprintf(gin.DefaultWriter, "[GIN] %v | %3d | %13v | %15s | %-7s %#v\n",
+			end.Format("2006/01/02 - 15:04:05"),
+			c.Writer.Status(),
+			end.Sub(start),
+			c.ClientIP(),
+			c.Request.Method,
+			loggedPath(c),
+		)
+	}
+}
+
+// credentialParams are the route parameter names whose value is a credential.
+var credentialParams = map[string]bool{"secret": true, "token": true}
+
+// loggedPath is the request path with every credential parameter replaced by
+// its name, rebuilt from the matched route so no value is guessed at.
+func loggedPath(c *gin.Context) string {
+	path := c.Request.URL.Path
+	route := c.FullPath()
+	if route == "" {
+		return path
+	}
+	redact := false
+	for _, p := range c.Params {
+		if credentialParams[p.Key] {
+			redact = true
+			break
+		}
+	}
+	if !redact {
+		return path
+	}
+
+	segs := strings.Split(route, "/")
+	for i, seg := range segs {
+		switch {
+		case strings.HasPrefix(seg, ":"):
+			if name := seg[1:]; !credentialParams[name] {
+				segs[i] = c.Param(name)
+			}
+		case strings.HasPrefix(seg, "*"):
+			segs[i] = strings.TrimPrefix(c.Param(seg[1:]), "/")
+		}
+	}
+	return strings.Join(segs, "/")
 }

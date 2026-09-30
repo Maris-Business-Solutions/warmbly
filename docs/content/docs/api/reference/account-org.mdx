@@ -168,6 +168,8 @@ Auth: public (not available to API keys).
 
 A new token pair, same shape as the login confirm success response (`access_token`, `access_token_expires_at`, `refresh_token`, `refresh_token_expires_at`).
 
+Every refresh rotates the pair: store the new refresh token and discard the old one. A refresh token that has already been exchanged is refused with `401`. If it is presented again more than two minutes after it was exchanged, it has been used twice, so the whole session is ended and every token issued to it stops working. Inside those two minutes it is treated as two callers refreshing at once and only that request is refused.
+
 ### Start password reset
 
 `POST /auth/reset-password`

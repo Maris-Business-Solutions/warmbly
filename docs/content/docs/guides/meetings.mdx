@@ -45,8 +45,17 @@ Connection is webhook-based, not OAuth. From **Integrations**:
 The connection shows as connected as soon as the URL exists.
 
 <Callout type="info" title="The inbound URL is a shared secret">
-It contains a long random secret that authenticates incoming bookings, so treat it as a credential. Rotate it from the connection settings if exposed, then re-paste the fresh URL into the provider.
+It contains a long random secret that authenticates incoming bookings, so treat it as a credential. If it is exposed, use **Rotate URL** in the connection's **Inbound URL** settings: the old URL stops working at once, and you paste the new one into the provider.
 </Callout>
+
+### Signed deliveries
+
+Both providers can sign each delivery, and Warmbly checks the signature once you give it the key. In the connection's **Inbound URL** settings, paste:
+
+- **Calendly**: the webhook subscription's signing key (the `signing_key` you set when creating it, or the one Calendly returned)
+- **Cal.com**: the **Secret** set on the webhook
+
+From then on a delivery without a valid signature is refused, so a leaked URL on its own is not enough to post a booking. Calendly signatures older than five minutes are refused too, which stops a captured delivery from being replayed. **Remove** goes back to the URL alone.
 
 Bookings map to `booked`, `rescheduled`, and `canceled` states. Calendly models a reschedule as a cancel plus a new booking; Warmbly understands this and shows one **Rescheduled** event rather than a stray cancellation. Inbound bookings are idempotent, so a re-delivered event updates the existing meeting instead of duplicating it.
 

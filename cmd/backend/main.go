@@ -172,6 +172,7 @@ func main() {
 
 	var serviceAccount string
 	var keySet keyfunc.Keyfunc
+	var tasksWebhookURL string
 
 	var tokenService token.TokenService
 	var authService auth.AuthService
@@ -1338,6 +1339,7 @@ func main() {
 				errs.CaptureFatal(err)
 				log.Fatal(err)
 			}
+			tasksWebhookURL = cloudTasksCfg.WebhookURL
 			gclient, err := gtasks.NewClient(ctx, cloudTasksCfg.QueueName, cloudTasksCfg.WebhookURL, serviceAccount, cloudTasksCfg.EmulatorHost)
 			if err != nil {
 				errs.CaptureFatal(err)
@@ -2325,6 +2327,7 @@ func main() {
 		ServiceAccount: serviceAccount,
 		KeySet:         keySet,
 		AppEnv:         os.Getenv("APP_ENV"),
+		Audience:       tasksWebhookURL,
 	}
 
 	log.Printf("Starting the backend on %s", addr)

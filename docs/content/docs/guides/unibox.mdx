@@ -126,7 +126,9 @@ What you see is the message as it was sent: paragraphs, line breaks, lists, tabl
 
 HTML mail renders in an isolated frame, so a sender's styling cannot leak into the dashboard and nothing in the message can run code. Links open in a new tab and carry no referrer. If the stored copy of a message cannot be read, Warmbly shows the preview it has and says so instead of failing to open the conversation.
 
-Warmbly removes its open-tracking pixels from the displayed copy, including quoted messages. Reading mail here, whether in Inbox, Sent or another view, does not record a campaign open. The delivered email keeps its tracking pixel for recipient opens, and ordinary images still display.
+Warmbly removes its open-tracking pixels from the displayed copy, including quoted messages. Reading mail here, whether in Inbox, Sent or another view, does not record a campaign open. The delivered email keeps its tracking pixel for recipient opens.
+
+Remote images in mail you receive are held back until you ask for them. Any sender can put a tracking pixel in a message, and loading it would tell them when you read it, your IP address and your mail client. A message that references remote images, backgrounds or fonts shows a bar with **Load images**; click it to show them for that message. Images embedded in the message itself display straight away, and your own sent messages are not affected.
 
 Recognized quoted history collapses behind **Show quoted text**. Click it to read the full chain. Messages made entirely of quoted content and ambiguous inline replies stay visible. Outgoing messages from the connected mailbox have a blue left border and an **Outgoing** badge.
 

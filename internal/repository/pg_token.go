@@ -19,6 +19,10 @@ type TokenRepository interface {
 	GetSession(ctx context.Context, sessionID uuid.UUID) (*models.Session, *errx.Error)
 	ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]*models.Session, *errx.Error)
 	RefreshToken(ctx context.Context, sessionID uuid.UUID, oldRefreshNonce, refreshNonce, accessNonce string, issuedAt time.Time) *errx.Error
+	// RevokeOnRefreshReuse revokes the session when the presented refresh nonce
+	// is neither current nor the one rotated away from after raceSince, and
+	// reports whether it did.
+	RevokeOnRefreshReuse(ctx context.Context, sessionID uuid.UUID, presentedNonce string, raceSince time.Time) (bool, *errx.Error)
 	RevokeSession(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, revokedAt time.Time) *errx.Error
 	RevokeSessionByID(ctx context.Context, userID, sessionID uuid.UUID, revokedAt time.Time) (bool, *errx.Error)
 	ListOtherActiveSessionIDs(ctx context.Context, userID, exceptID uuid.UUID) ([]uuid.UUID, *errx.Error)
@@ -261,7 +265,7 @@ func (r *tokenRepository) RefreshToken(ctx context.Context, sessionID uuid.UUID,
 	query := `
 		UPDATE sessions
 		SET last_refreshed_at = $5,
-		 access_nonce = $1, refresh_nonce = $2
+		 access_nonce = $1, refresh_nonce = $2, previous_refresh_nonce = $3
 		WHERE refresh_nonce = $3 AND id = $4
 	`
 
@@ -286,6 +290,26 @@ func (r *tokenRepository) RefreshToken(ctx context.Context, sessionID uuid.UUID,
 	}
 
 	return nil
+}
+
+func (r *tokenRepository) RevokeOnRefreshReuse(ctx context.Context, sessionID uuid.UUID, presentedNonce string, raceSince time.Time) (bool, *errx.Error) {
+	query := `
+		UPDATE sessions
+		SET revoked_at = now()
+		WHERE id = $1
+		  AND revoked_at IS NULL
+		  AND refresh_nonce IS DISTINCT FROM $2
+		  AND NOT (previous_refresh_nonce IS NOT DISTINCT FROM $2 AND last_refreshed_at > $3)
+	`
+
+	params := []any{sessionID, presentedNonce, raceSince}
+
+	cmd, err := r.DB.Exec(ctx, query, params...)
+	if err != nil {
+		db.CaptureError(err, query, params, "exec")
+		return false, errx.InternalError()
+	}
+	return cmd.RowsAffected() > 0, nil
 }
 
 func (r *tokenRepository) RevokeSession(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, revokedAt time.Time) *errx.Error {

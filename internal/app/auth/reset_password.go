@@ -172,6 +172,18 @@ func (s *authService) ResetPasswordConfirm(ctx context.Context, data *ResetPassw
 		return errx.ErrToken
 	}
 
+	if perr := crypt.PasswordError(data.Password); perr != nil {
+		return perr
+	}
+
+	// A reset may follow a compromise, so every session ends first and a
+	// failure refuses the reset while the link is still good for a retry.
+	if s.tokenService != nil {
+		if err := s.tokenService.RevokeOtherSessions(ctx, sess.UserID, uuid.Nil); err != nil {
+			return err
+		}
+	}
+
 	if err := s.deletePasswordResetSession(ctx, sess.SessionID); err != nil {
 		return err
 	}
@@ -181,10 +193,6 @@ func (s *authService) ResetPasswordConfirm(ctx context.Context, data *ResetPassw
 	// resetting, and an attacker cannot keep the lock on by guessing.
 	s.clearLoginFailures(ctx, normalizeEmail(sess.Email))
 
-	if perr := crypt.PasswordError(data.Password); perr != nil {
-		return perr
-	}
-
 	passwordHash, hashErr := argon2.Hash(data.Password)
 	if hashErr != nil {
 		errs.CaptureException(hashErr)
@@ -193,16 +201,6 @@ func (s *authService) ResetPasswordConfirm(ctx context.Context, data *ResetPassw
 
 	if err := s.authRepository.ResetPassword(ctx, sess.UserID, passwordHash); err != nil {
 		return err
-	}
-
-	// A forgotten-password reset means the account may be compromised: evict
-	// every existing session (no current device to keep — uuid.Nil matches
-	// none, so all are revoked) so a reset always fully cuts off prior access.
-	if s.tokenService != nil {
-		if err := s.tokenService.RevokeOtherSessions(ctx, sess.UserID, uuid.Nil); err != nil {
-			errs.CaptureException(err)
-			// Non-fatal: the password is already reset.
-		}
 	}
 
 	return nil

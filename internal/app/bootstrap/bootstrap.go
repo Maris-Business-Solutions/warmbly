@@ -109,6 +109,9 @@ func (s *Service) createOwner(ctx context.Context, address string) error {
 		if plain == "" {
 			return fmt.Errorf("bootstrap: WARMBLY_BOOTSTRAP_EMAIL is set but neither WARMBLY_BOOTSTRAP_PASSWORD_HASH nor WARMBLY_BOOTSTRAP_PASSWORD is")
 		}
+		if perr := crypt.PasswordError(plain); perr != nil {
+			return fmt.Errorf("bootstrap: WARMBLY_BOOTSTRAP_PASSWORD is refused: %s", perr.Message)
+		}
 		log.Printf("Warning: WARMBLY_BOOTSTRAP_PASSWORD is a plaintext password in an environment variable. Prefer WARMBLY_BOOTSTRAP_PASSWORD_HASH.")
 		hashed, herr := argon2.Hash(plain)
 		if herr != nil {

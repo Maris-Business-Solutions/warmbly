@@ -15,7 +15,7 @@ import (
 
 func (s *service) BeginLogin(ctx context.Context) (*LoginChallenge, *errx.Error) {
 	options, sessionData, err := s.web.BeginDiscoverableLogin(
-		webauthn.WithUserVerification(protocol.VerificationPreferred),
+		webauthn.WithUserVerification(protocol.VerificationRequired),
 	)
 	if err != nil {
 		return nil, errx.ErrPasskey
@@ -46,6 +46,12 @@ func (s *service) FinishLogin(ctx context.Context, session string, credential []
 	parsed, perr := protocol.ParseCredentialRequestResponseBytes(credential)
 	if perr != nil {
 		return nil, errx.ErrPasskey
+	}
+
+	// The session counts as multi-factor, which only a user-verified assertion
+	// earns. The flag is inside the signed authenticator data validated below.
+	if !parsed.Response.AuthenticatorData.Flags.HasUserVerified() {
+		return nil, errx.ErrPasskeyUserVerification
 	}
 
 	// The discoverable assertion carries the user handle; resolve the account
@@ -79,15 +85,8 @@ func (s *service) FinishLogin(ctx context.Context, session string, credential []
 		}
 	}
 
-	// No TOTP step, deliberately. A user-verified passkey is a possession
-	// factor bound to this origin and already satisfies multi-factor on its
-	// own, so demanding a second one adds friction without adding security.
-	// Social sign-in is the opposite case and does run the 2FA gate
-	// (auth.finishLoginAs), because there the second factor is the identity
-	// provider's business, not something this deployment can observe.
-	// A passkey is itself multi-factor: the credential never leaves the device
-	// and the platform unlocks it with a biometric or a PIN. That is why this
-	// path skips the TOTP gate, and it is why the session counts as verified.
+	// No TOTP step: a user-verified passkey is possession plus a PIN or
+	// biometric, so it is multi-factor on its own and the session is verified.
 	tok, xerr := s.token.GenerateMFASession(ctx, user.ID, user.Email, ipaddr, userAgent, token.AuthProviderWebAuthn)
 	if xerr != nil {
 		return nil, xerr

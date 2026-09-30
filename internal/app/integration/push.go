@@ -213,7 +213,18 @@ func (s *service) UpdateConnectionConfig(ctx context.Context, orgID, connID uuid
 	default:
 		return nil, fmt.Errorf("invalid sync direction %q", syncDirection)
 	}
-	raw, err := json.Marshal(configCapabilities)
+	// The signing secret is server-held and never sent to the dashboard, so a
+	// save carries the stored one over and ignores any value in the request.
+	next := make(map[string]any, len(configCapabilities)+1)
+	for k, v := range configCapabilities {
+		if k != models.ConfigCapabilitiesSigningSecret {
+			next[k] = v
+		}
+	}
+	if stored := configString(conn.ConfigCapabilities, models.ConfigCapabilitiesSigningSecret); stored != "" {
+		next[models.ConfigCapabilitiesSigningSecret] = stored
+	}
+	raw, err := json.Marshal(next)
 	if err != nil {
 		return nil, err
 	}

@@ -47,11 +47,6 @@ type Store interface {
 	// "never had one — generate now" from "lookup failed — bail out".)
 	Get(ctx context.Context, orgID uuid.UUID) (string, error)
 
-	// Delete removes the stored DEK. Idempotent: deleting a missing key is
-	// not an error. Use with extreme caution — see package docs on
-	// unrecoverability.
-	Delete(ctx context.Context, orgID uuid.UUID) error
-
 	// Name returns a short identifier ("postgres", "http") for admin UI
 	// display and audit logs.
 	Name() string

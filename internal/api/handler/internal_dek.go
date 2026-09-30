@@ -89,18 +89,6 @@ func (h *Handler) InternalPutDEK(c *gin.Context) {
 	}
 }
 
-func (h *Handler) InternalDeleteDEK(c *gin.Context) {
-	id, ok := parseOrgID(c)
-	if !ok {
-		return
-	}
-	if err := h.EncryptedKeys.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
 // InternalDecryptDEK opens a sealed data key for a node, so the node needs no
 // credential for the KMS behind it.
 //
