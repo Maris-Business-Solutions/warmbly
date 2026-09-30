@@ -18,7 +18,11 @@ type cachedOffer struct {
 	at    time.Time
 }
 
+// rememberOffer keeps Cloud's answer; a Cloud that sends none does not serve redirects.
 func (s *service) rememberOffer(o *models.PoolLinkRedirectOffer) {
+	if o == nil {
+		o = &models.PoolLinkRedirectOffer{}
+	}
 	s.mu.Lock()
 	s.offer = cachedOffer{offer: o, at: time.Now()}
 	s.mu.Unlock()
@@ -39,7 +43,10 @@ func (s *service) OnDisconnect(fn func(context.Context)) {
 // answer; with none yet, the offer is nil while linked stays true.
 func (s *service) RedirectOffer(ctx context.Context) (*models.PoolLinkRedirectOffer, bool) {
 	l, err := s.repo.Get(ctx)
-	if err != nil || l == nil {
+	if err != nil {
+		return nil, true // unknown reads as unreachable, never as "not linked"
+	}
+	if l == nil {
 		return nil, false
 	}
 	s.mu.Lock()
@@ -53,7 +60,9 @@ func (s *service) RedirectOffer(ctx context.Context) (*models.PoolLinkRedirectOf
 		return cached.offer, true
 	}
 	s.rememberOffer(info.Redirects)
-	return info.Redirects, true
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.offer.offer, true
 }
 
 func redirectPath(domain string) string { return "/instance/redirects/" + url.PathEscape(domain) }

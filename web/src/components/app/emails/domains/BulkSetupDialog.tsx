@@ -104,7 +104,7 @@ function Dialog({
     const served = (d: SendingDomain): RedirectServer => (servedPick === null && d.redirect ? d.redirect.served_by : server);
     const selfServed = redirectTargets.filter((d) => !vendorForwards(d.vendor_domain));
     const keeping = servedPick === null ? selfServed.filter((d) => d.redirect && d.redirect.served_by !== server).length : 0;
-    const movingLive = servedPick === null ? [] : selfServed.filter((d) => d.redirect?.verified && d.redirect.served_by !== servedPick);
+    const movingLive = servedPick === null ? [] : selfServed.filter((d) => d.redirect?.verified && d.redirect.served_by !== server);
     // Domains a vendor forwards never reach Cloud, so they do not count against its room.
     const cloudBound = selfServed.filter((d) => served(d) === "cloud" && d.redirect?.served_by !== "cloud").length;
     const cloudRoom = cloud.offer ? Math.max(0, cloud.offer.limit - cloud.offer.used) : 0;
@@ -197,7 +197,7 @@ function Dialog({
     function start() {
         if (issue || running) return;
         if (movingLive.length > 0) {
-            const to = servedPick === "cloud" ? "Warmbly Cloud" : "this server";
+            const to = server === "cloud" ? "Warmbly Cloud" : "this server";
             confirm.show(
                 `${movingLive.length === 1 ? `${movingLive[0].domain} is live and moves` : `${movingLive.length} live redirects move`} to ${to}. Their root records change, so ${movingLive.length === 1 ? "it pauses" : "they pause"} until the new records are in place. Continue?`,
                 run,

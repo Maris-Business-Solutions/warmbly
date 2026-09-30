@@ -17,7 +17,7 @@ export interface CloudServing {
 export function useCloudServing(): CloudServing {
     const auth = useAuthConfig();
     const selfHosted = !!auth.data?.self_hosted;
-    const status = useCloudLinkStatus(selfHosted);
+    const status = useCloudLinkStatus(selfHosted, 60_000);
     const offer = status.data?.info?.redirects ?? null;
     const connected = !!status.data?.connected;
     return {

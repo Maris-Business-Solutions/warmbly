@@ -40,6 +40,7 @@ func (s *Service) cloudServable(ctx context.Context, orgID uuid.UUID, domain str
 		case !linked:
 			return errx.NewWithIdentifier(errx.Conflict, ErrIDCloudUnavailable, "Connect this instance to Warmbly Cloud to serve redirects from there.")
 		case offer == nil:
+			// Linked, but Cloud has not answered since this process started.
 			return errx.NewWithIdentifier(errx.ServiceUnavailable, ErrIDCloudUnreachable, "Warmbly Cloud could not be reached. Try again in a moment.")
 		case !offer.Available:
 			return errx.NewWithIdentifier(errx.Conflict, ErrIDCloudUnavailable, "Warmbly Cloud does not serve redirects for this instance right now.")
@@ -56,8 +57,12 @@ func (s *Service) cloudServable(ctx context.Context, orgID uuid.UUID, domain str
 }
 
 // cloudRefusal keeps Cloud's own refusal (its code and sentence), and names Cloud when it could not be reached.
+// Cloud's 401 is about the link token, never the caller's session, so it must not reach the dashboard as one.
 func cloudRefusal(xerr *errx.Error) *errx.Error {
-	if xerr.Code == errx.ServiceUnavailable || xerr.Code == errx.Internal {
+	switch {
+	case cloudGone(xerr):
+		return errx.NewWithIdentifier(errx.Conflict, ErrIDCloudUnavailable, "This instance is no longer linked to Warmbly Cloud. Reconnect it in Settings, or serve the redirect from this server.")
+	case xerr.Code >= 500 || xerr.Code == errx.TooManyRequests:
 		return errx.NewWithIdentifier(errx.ServiceUnavailable, ErrIDCloudUnreachable, "Warmbly Cloud could not be reached. Try again in a moment.")
 	}
 	return xerr
@@ -65,8 +70,11 @@ func cloudRefusal(xerr *errx.Error) *errx.Error {
 
 // cloudGone is a Cloud answer meaning the redirect is no longer served there: none there, or no link at all.
 func cloudGone(xerr *errx.Error) bool {
+	if xerr.Code == errx.Unauthorized || xerr.Code == errx.Forbidden {
+		return true // a revoked link: Cloud dropped its redirects with it
+	}
 	switch xerr.Identifier {
-	case ErrIDRemoteNotFound, "cloud_link_not_connected", "pool_link_revoked":
+	case ErrIDRemoteNotFound, "cloud_link_not_connected", "pool_link_revoked", "pool_link_instance_not_found", "unauthorized":
 		return true
 	}
 	return false
@@ -122,6 +130,10 @@ func (s *Service) checkCloud(ctx context.Context, r *models.DomainRedirect, forc
 		if cloudGone(xerr) {
 			return s.unlink(ctx, r)
 		}
+		// Cloud refusing the row (its limit, another workspace's domain) is an answer, not an outage.
+		if xerr.Code < 500 && xerr.Code != errx.TooManyRequests {
+			return s.stop(ctx, r, xerr.Message)
+		}
 		if err := s.redirects.SetCheck(ctx, r.ID, r.Verified, r.LastError); err != nil && !errors.Is(err, repository.ErrRedirectTaken) {
 			return nil, errx.InternalError()
 		}
@@ -134,7 +146,11 @@ func (s *Service) checkCloud(ctx context.Context, r *models.DomainRedirect, forc
 }
 
 func (s *Service) unlink(ctx context.Context, r *models.DomainRedirect) (*models.DomainRedirect, *errx.Error) {
-	if err := s.redirects.SetCheck(ctx, r.ID, false, unlinkedMessage); err != nil {
+	return s.stop(ctx, r, unlinkedMessage)
+}
+
+func (s *Service) stop(ctx context.Context, r *models.DomainRedirect, why string) (*models.DomainRedirect, *errx.Error) {
+	if err := s.redirects.SetCheck(ctx, r.ID, false, why); err != nil {
 		return nil, errx.InternalError()
 	}
 	if err := s.redirects.SetReach(ctx, r.ID, nil); err != nil {
@@ -148,9 +164,7 @@ func (s *Service) MarkCloudUnlinked(ctx context.Context) {
 	_ = s.redirects.UnverifyCloudServed(ctx, unlinkedMessage)
 }
 
-// The Cloud side: redirects this deployment serves for a linked self-hosted
-// instance. The row belongs to the link, sits in the linked workspace, and is
-// verified against this deployment's own DNS proof and tracking host.
+// The Cloud side: rows served for a linked instance, proven against this deployment's own TXT value and tracking host.
 
 // LinkedOffer is what this deployment offers a linked instance; unavailable without a tracking host.
 func (s *Service) LinkedOffer(ctx context.Context, instanceID uuid.UUID) *models.PoolLinkRedirectOffer {
@@ -237,7 +251,12 @@ func (s *Service) LinkedSet(ctx context.Context, inst *models.PoolLinkInstance, 
 	if !ok {
 		return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDLimit, "This instance has reached the number of redirects Warmbly Cloud serves for it.")
 	}
-	return s.check(ctx, r, true)
+	out, xerr := s.check(ctx, r, true)
+	// A new row the instance is told was refused must not stay behind, counted and unlisted.
+	if xerr != nil && existing == nil {
+		_, _ = s.redirects.DeleteLinked(ctx, inst.ID, domain)
+	}
+	return out, xerr
 }
 
 func (s *Service) LinkedVerify(ctx context.Context, inst *models.PoolLinkInstance, domain string) (*models.DomainRedirect, *errx.Error) {

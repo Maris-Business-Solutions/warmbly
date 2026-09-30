@@ -19,6 +19,7 @@ type fakeCloud struct {
 	down     bool
 	unlinked bool
 	deletes  []string
+	putErr   *errx.Error
 }
 
 func newFakeCloud() *fakeCloud {
@@ -47,6 +48,9 @@ func (f *fakeCloud) RedirectOffer(context.Context) (*models.PoolLinkRedirectOffe
 func (f *fakeCloud) PutRedirect(_ context.Context, domain string, in models.DomainRedirectRequest) (*models.DomainRedirect, *errx.Error) {
 	if xerr := f.fail(); xerr != nil {
 		return nil, xerr
+	}
+	if f.putErr != nil {
+		return nil, f.putErr
 	}
 	r := &models.DomainRedirect{Domain: domain, TargetURL: in.TargetURL, IncludeWWW: *in.IncludeWWW, ServeHost: "t.warmbly.cloud",
 		Records: []models.DNSRecord{{Purpose: "root", Type: "A", Name: domain, Value: "198.51.100.7"}}, LastError: "The TXT record is not there yet."}
@@ -357,5 +361,50 @@ func TestBulkRedirectsGoToCloudWithoutATrackingHostHere(t *testing.T) {
 	}
 	if _, xerr := s.BulkSetup(ctx, uuid.New(), uuid.New(), BulkInput{Domains: []string{"acme.io"}, TrackingLabel: "link"}); xerr == nil || xerr.Identifier != ErrIDNoTracking {
 		t.Fatalf("tracking without a tracking host = %v", xerr)
+	}
+}
+
+func TestARevokedLinkNeverReachesTheDashboardAsA401(t *testing.T) {
+	s, _ := newTest(baseDNS())
+	cloud := newFakeCloud()
+	cloud.putErr = errx.NewWithIdentifier(errx.Unauthorized, "cloud_link_remote", "Warmbly Cloud answered 401")
+	s.WireCloud(cloud)
+	_, xerr := s.SetRedirect(context.Background(), uuid.New(), uuid.New(), "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud})
+	if xerr == nil || xerr.Code == errx.Unauthorized || xerr.Identifier != ErrIDCloudUnavailable {
+		t.Fatalf("a revoked link answered %v", xerr)
+	}
+}
+
+func TestCloudRefusingALostRowStopsIt(t *testing.T) {
+	s, repo := newTest(baseDNS())
+	cloud := newFakeCloud()
+	s.WireCloud(cloud)
+	ctx := context.Background()
+	org := uuid.New()
+	r, _ := s.SetRedirect(ctx, org, uuid.New(), "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud})
+	cloud.rows["acme.io"].Verified = true
+	r, _ = s.VerifyRedirect(ctx, org, "acme.io")
+	delete(cloud.rows, "acme.io")
+	cloud.putErr = errx.NewWithIdentifier(errx.Conflict, ErrIDLimit, "at the limit")
+	if r, _ = s.check(ctx, repo.rows[r.ID], false); r.Verified || r.LastError != "at the limit" {
+		t.Fatalf("a row Cloud refused to take back still reads live: %+v", r)
+	}
+}
+
+func TestARefusedNewLinkedRowDoesNotStayBehind(t *testing.T) {
+	dns := baseDNS()
+	s, repo := newTest(dns)
+	ctx := context.Background()
+	inst := &models.PoolLinkInstance{ID: uuid.New(), OrganizationID: uuid.New()}
+	// Another workspace already serves the domain verified, so the new row cannot verify.
+	other := &models.DomainRedirect{ID: uuid.New(), OrganizationID: uuid.New(), Domain: "frost.io", TargetURL: "https://x.com", Verified: true, ServedBy: models.RedirectServedByInstance}
+	repo.rows[other.ID] = other
+	dns.ips["frost.io"] = []string{"203.0.113.10"}
+	dns.txt["_warmbly.frost.io"] = []string{s.proof.Value(inst.OrganizationID, "frost.io")}
+	if _, xerr := s.LinkedSet(ctx, inst, "frost.io", models.DomainRedirectRequest{TargetURL: "frost.se"}); xerr == nil || xerr.Identifier != ErrIDTaken {
+		t.Fatalf("refusal = %v", xerr)
+	}
+	if n, _ := repo.CountLinked(ctx, inst.ID); n != 0 {
+		t.Fatalf("a refused row stayed on Cloud, counted against the instance: %d", n)
 	}
 }

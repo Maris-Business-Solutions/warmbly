@@ -257,6 +257,15 @@ func TestLiveDomainRedirectServing(t *testing.T) {
 		got.Reach == nil || got.Reach.Hint != models.RedirectHintNotRouted || got.Reach.CheckedAt == nil {
 		t.Fatalf("round trip = %+v, %v", got, err)
 	}
+	// A verdict from a newer Cloud this schema does not know is dropped, never a failed write.
+	mustImport(t, redirects.SetReach(ctx, cloudRow.ID, &models.RedirectReach{Status: "brand_new", Hint: "brand_new"}))
+	if got, _ = redirects.Get(ctx, f.org, domain); got.Reach != nil {
+		t.Fatalf("an unknown status was stored: %+v", got.Reach)
+	}
+	mustImport(t, redirects.SetReach(ctx, cloudRow.ID, &models.RedirectReach{Status: models.RedirectReachOK, Hint: "brand_new"}))
+	if got, _ = redirects.Get(ctx, f.org, domain); got.Reach == nil || got.Reach.Hint != "" {
+		t.Fatalf("an unknown hint was stored: %+v", got.Reach)
+	}
 	if taken, _ := redirects.CloudServedElsewhere(ctx, f.other, domain); !taken {
 		t.Fatal("another workspace was not told Cloud already serves the domain")
 	}

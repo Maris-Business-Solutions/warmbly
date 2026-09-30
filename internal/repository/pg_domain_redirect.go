@@ -246,9 +246,9 @@ func (r *domainRedirectRepository) SetReach(ctx context.Context, id uuid.UUID, r
 		hint, detail, proxy string
 		checkedAtExpr       = "NULL"
 	)
-	if reach != nil {
+	if reach != nil && knownReachStatus(reach.Status) {
 		s := string(reach.Status)
-		status, hint, detail, proxy, checkedAtExpr = &s, string(reach.Hint), reach.Detail, knownProxy(reach.Proxy), "now()"
+		status, hint, detail, proxy, checkedAtExpr = &s, knownHint(reach.Hint), reach.Detail, knownProxy(reach.Proxy), "now()"
 	}
 	query := `UPDATE domain_redirects SET reach_status = $2, reach_hint = $3, reach_detail = $4, reach_proxy = $5, reach_checked_at = ` + checkedAtExpr + ` WHERE id = $1`
 	if _, err := r.DB.Exec(ctx, query, id, status, hint, detail, proxy); err != nil {
@@ -256,6 +256,24 @@ func (r *domainRedirectRepository) SetReach(ctx context.Context, id uuid.UUID, r
 		return err
 	}
 	return nil
+}
+
+// knownReachStatus and knownHint keep a verdict mirrored from a newer Cloud inside the columns' CHECKs.
+func knownReachStatus(s models.RedirectReachStatus) bool {
+	switch s {
+	case models.RedirectReachOK, models.RedirectReachNotReaching, models.RedirectReachHTTPSError, models.RedirectReachUnreachable:
+		return true
+	}
+	return false
+}
+
+func knownHint(h models.RedirectReachHint) string {
+	switch h {
+	case models.RedirectHintNotRouted, models.RedirectHintHostHeader, models.RedirectHintWrongTarget, models.RedirectHintCertificate,
+		models.RedirectHintNoListener, models.RedirectHintSettling:
+		return string(h)
+	}
+	return ""
 }
 
 // knownProxy keeps a mirrored proxy name inside the column's CHECK; an unknown one is dropped, not refused.

@@ -1,15 +1,4 @@
--- Where a redirect is served from, and whether visitors actually reach it.
---
--- served_by: 'instance' is this deployment's tracking service; 'cloud' is
--- Warmbly Cloud serving it for a linked self-hosted instance, whose verdict
--- and records this row mirrors (remote_records, remote_host).
---
--- linked_instance_id is the Cloud side of the same arrangement: the row a
--- linked instance asked Cloud to serve. It belongs to the link, not to the
--- workspace, so revoking the link removes it.
---
--- reach_* is the last HTTP check of the domain itself. DNS verification
--- proves the name points here; this proves a visitor gets the redirect.
+-- Where a redirect is served from (remote_* mirrors Cloud when it serves it), the link a Cloud row belongs to, and the last visit to the domain.
 
 ALTER TABLE public.domain_redirects
     ADD COLUMN served_by text NOT NULL DEFAULT 'instance'

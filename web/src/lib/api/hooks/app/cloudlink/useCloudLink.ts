@@ -28,8 +28,9 @@ export const POOL_LINK_KEY = ["pool-link"];
 
 // Self-hosted side.
 
-export function useCloudLinkStatus(enabled = true) {
-    return useQuery({ queryKey: [...CLOUD_LINK_KEY, "status"], queryFn: getCloudLinkStatus, enabled, staleTime: 10_000 });
+// Each read asks Warmbly Cloud, so a surface that only needs the redirect offer can take a longer staleTime.
+export function useCloudLinkStatus(enabled = true, staleTime = 10_000) {
+    return useQuery({ queryKey: [...CLOUD_LINK_KEY, "status"], queryFn: getCloudLinkStatus, enabled, staleTime });
 }
 
 export function useCloudLinkMailboxes(enabled = true) {

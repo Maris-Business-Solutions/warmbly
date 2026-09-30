@@ -32,8 +32,12 @@ type ReachProber interface {
 
 type httpReach struct{ transport http.RoundTripper }
 
-// NewHTTPReach probes over the SSRF-hardened transport, on the two ports a browser uses.
-func NewHTTPReach() ReachProber { return &httpReach{transport: safehttp.NewTransport("80", "443")} }
+// NewHTTPReach probes over the SSRF-hardened transport, on the two ports a browser uses, holding no idle sockets to customer hosts.
+func NewHTTPReach() ReachProber {
+	t := safehttp.NewTransport("80", "443")
+	t.DisableKeepAlives = true
+	return &httpReach{transport: t}
+}
 
 // hit is what one scheme answered; an empty hint on a nil error is the redirect working.
 type hit struct {
