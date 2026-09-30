@@ -11,8 +11,7 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
-// Root redirects Warmbly Cloud serves for a linked self-hosted instance. Every
-// route is scoped to the calling instance's own rows.
+// Root redirects Warmbly Cloud serves for a linked instance; every route is scoped to the calling instance's rows.
 
 func (h *Handler) poolLinkRedirectCaller(c *gin.Context) (*models.PoolLinkInstance, bool) {
 	inst := middleware.GetPoolLinkInstance(c)
@@ -55,8 +54,7 @@ func (h *Handler) PoolLinkGetRedirect(c *gin.Context) {
 	c.JSON(http.StatusOK, r)
 }
 
-// PoolLinkPutRedirect is PUT /pool-link/instance/redirects/:domain. Idempotent:
-// the domain keeps its TXT value, so a retry changes nothing already in place.
+// PoolLinkPutRedirect is PUT /pool-link/instance/redirects/:domain; idempotent, the domain keeps its TXT value.
 func (h *Handler) PoolLinkPutRedirect(c *gin.Context) {
 	inst, ok := h.poolLinkRedirectCaller(c)
 	if !ok {

@@ -15,6 +15,9 @@ ALTER TABLE public.domain_redirects
         CONSTRAINT domain_redirects_reach_proxy_check CHECK (reach_proxy IN ('', 'traefik', 'nginx', 'caddy', 'apache', 'cloudflare', 'iis', 'litespeed')),
     ADD COLUMN reach_checked_at timestamptz;
 
+-- One workspace per instance hands a domain to Cloud, which keeps one row per domain for the link.
+CREATE UNIQUE INDEX idx_domain_redirects_cloud_domain ON public.domain_redirects (domain) WHERE served_by = 'cloud';
+
 CREATE INDEX idx_domain_redirects_linked_instance
     ON public.domain_redirects (linked_instance_id)
     WHERE linked_instance_id IS NOT NULL;

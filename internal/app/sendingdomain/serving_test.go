@@ -52,10 +52,24 @@ func (f *fakeCloud) PutRedirect(_ context.Context, domain string, in models.Doma
 	if f.putErr != nil {
 		return nil, f.putErr
 	}
-	r := &models.DomainRedirect{Domain: domain, TargetURL: in.TargetURL, IncludeWWW: *in.IncludeWWW, ServeHost: "t.warmbly.cloud",
+	if old, ok := f.rows[domain]; ok {
+		old.TargetURL, old.IncludeWWW = in.TargetURL, *in.IncludeWWW
+		return old, nil
+	}
+	r := &models.DomainRedirect{Domain: domain, TargetURL: in.TargetURL, IncludeWWW: *in.IncludeWWW, ServeHost: "t.warmbly.cloud", CreatedAt: time.Now(),
 		Records: []models.DNSRecord{{Purpose: "root", Type: "A", Name: domain, Value: "198.51.100.7"}}, LastError: "The TXT record is not there yet."}
 	f.rows[domain] = r
 	return r, nil
+}
+func (f *fakeCloud) ListRedirects(context.Context) ([]models.DomainRedirect, *errx.Error) {
+	if xerr := f.fail(); xerr != nil {
+		return nil, xerr
+	}
+	var out []models.DomainRedirect
+	for _, r := range f.rows {
+		out = append(out, *r)
+	}
+	return out, nil
 }
 func (f *fakeCloud) GetRedirect(_ context.Context, domain string) (*models.DomainRedirect, *errx.Error) {
 	if xerr := f.fail(); xerr != nil {
@@ -433,4 +447,96 @@ func (r *raceRedirects) Get(ctx context.Context, org uuid.UUID, domain string) (
 		r.rows[r.plant.ID], r.plant = r.plant, nil
 	}
 	return got, err
+}
+
+func TestACloudOutageOnSaveLeavesTheRedirectForTheSweep(t *testing.T) {
+	s, repo := newTest(baseDNS())
+	cloud := newFakeCloud()
+	s.WireCloud(cloud)
+	ctx := context.Background()
+	org := uuid.New()
+	cloud.putErr = errx.NewWithIdentifier(errx.ServiceUnavailable, "cloud_link_unreachable", "timeout")
+	r, xerr := s.SetRedirect(ctx, org, uuid.New(), "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud})
+	if xerr != nil || r.ServedBy != models.RedirectServedByCloud || r.Verified || r.LastError != pendingCloudMessage {
+		t.Fatalf("an outage on save = %v %+v", xerr, r)
+	}
+	cloud.putErr = nil
+	if _, xerr = s.check(ctx, repo.rows[r.ID], false); xerr != nil || cloud.rows["acme.io"] == nil {
+		t.Fatalf("the sweep did not send the pending redirect: %v", xerr)
+	}
+}
+
+func TestACloudRefusalOnSaveRestoresTheRedirect(t *testing.T) {
+	dns := baseDNS()
+	s, repo := newTest(dns)
+	cloud := newFakeCloud()
+	s.WireCloud(cloud)
+	ctx := context.Background()
+	org, user := uuid.New(), uuid.New()
+	cloud.putErr = errx.NewWithIdentifier(errx.Conflict, ErrIDLimit, "at the limit")
+	if _, xerr := s.SetRedirect(ctx, org, user, "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud}); xerr == nil || xerr.Identifier != ErrIDLimit {
+		t.Fatalf("refusal = %v", xerr)
+	}
+	if len(repo.rows) != 0 {
+		t.Fatal("a new redirect Cloud refused was kept")
+	}
+	// An existing redirect served here goes back to exactly that, and re-verifies.
+	cloud.putErr = nil
+	dns.ips["acme.io"] = []string{"203.0.113.10"}
+	dns.txt["_warmbly.acme.io"] = []string{s.proof.Value(org, "acme.io")}
+	if r, _ := s.SetRedirect(ctx, org, user, "acme.io", RedirectInput{TargetURL: "acme.com"}); !r.Verified {
+		t.Fatal("not live here")
+	}
+	cloud.putErr = errx.NewWithIdentifier(errx.Conflict, ErrIDLimit, "at the limit")
+	_, _ = s.SetRedirect(ctx, org, user, "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud})
+	got, _ := repo.Get(ctx, org, "acme.io")
+	if got == nil || got.ServedBy != models.RedirectServedByInstance || !got.Verified {
+		t.Fatalf("a refused move did not put the redirect back: %+v", got)
+	}
+}
+
+func TestTheSweepReleasesCloudRedirectsNothingHereHas(t *testing.T) {
+	s, _ := newTest(baseDNS())
+	cloud := newFakeCloud()
+	s.WireCloud(cloud)
+	ctx := context.Background()
+	old := &models.DomainRedirect{Domain: "gone.io", CreatedAt: time.Now().Add(-time.Hour)}
+	young := &models.DomainRedirect{Domain: "saving.io", CreatedAt: time.Now()}
+	cloud.rows["gone.io"], cloud.rows["saving.io"] = old, young
+	if _, xerr := s.SetRedirect(ctx, uuid.New(), uuid.New(), "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud}); xerr != nil {
+		t.Fatal(xerr)
+	}
+	cloud.rows["acme.io"].CreatedAt = time.Now().Add(-time.Hour)
+	s.reconcileCloud(ctx)
+	if cloud.rows["gone.io"] != nil || cloud.rows["saving.io"] == nil || cloud.rows["acme.io"] == nil {
+		t.Fatalf("reconcile kept or released the wrong rows: %v", cloud.deletes)
+	}
+}
+
+func TestCloudHoldingAnOlderTargetIsSentTheCurrentOne(t *testing.T) {
+	s, repo := newTest(baseDNS())
+	cloud := newFakeCloud()
+	s.WireCloud(cloud)
+	ctx := context.Background()
+	r, _ := s.SetRedirect(ctx, uuid.New(), uuid.New(), "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud})
+	cloud.rows["acme.io"].TargetURL = "https://old.example"
+	if _, xerr := s.check(ctx, repo.rows[r.ID], false); xerr != nil || cloud.rows["acme.io"].TargetURL != "https://acme.com" {
+		t.Fatalf("Cloud kept the old target: %v %s", xerr, cloud.rows["acme.io"].TargetURL)
+	}
+}
+
+func TestOnlyADefiniteRefusalStopsACloudRedirect(t *testing.T) {
+	s, repo := newTest(baseDNS())
+	cloud := newFakeCloud()
+	s.WireCloud(cloud)
+	ctx := context.Background()
+	org := uuid.New()
+	r, _ := s.SetRedirect(ctx, org, uuid.New(), "acme.io", RedirectInput{TargetURL: "acme.com", ServedBy: models.RedirectServedByCloud})
+	cloud.rows["acme.io"].Verified = true
+	r, _ = s.VerifyRedirect(ctx, org, "acme.io")
+	delete(cloud.rows, "acme.io")
+	cloud.putErr = errx.NewWithIdentifier(errx.Conflict, ErrIDCloudUnavailable, "deploying")
+	if r, _ = s.check(ctx, repo.rows[r.ID], false); !r.Verified {
+		t.Fatal("a passing Cloud answer took a live redirect down")
+	}
 }

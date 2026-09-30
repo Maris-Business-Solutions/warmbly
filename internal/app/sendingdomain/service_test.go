@@ -71,6 +71,11 @@ func (m *memRedirects) Upsert(_ context.Context, r *models.DomainRedirect, _ *uu
 		r.ServedBy = models.RedirectServedByInstance
 	}
 	for _, e := range m.rows {
+		if r.ServedBy == models.RedirectServedByCloud && e.ServedBy == models.RedirectServedByCloud && e.Domain == r.Domain && e.OrganizationID != r.OrganizationID {
+			return repository.ErrRedirectTaken
+		}
+	}
+	for _, e := range m.rows {
 		if e.OrganizationID == r.OrganizationID && e.Domain == r.Domain {
 			if (e.LinkedInstanceID == nil) != (r.LinkedInstanceID == nil) || (e.LinkedInstanceID != nil && *e.LinkedInstanceID != *r.LinkedInstanceID) {
 				return repository.ErrRedirectOwned
@@ -156,6 +161,15 @@ func (m *memRedirects) UnverifyCloudServed(_ context.Context, last string) error
 		}
 	}
 	return nil
+}
+func (m *memRedirects) CloudServedDomains(context.Context) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, e := range m.rows {
+		if e.ServedBy == models.RedirectServedByCloud {
+			out[e.Domain] = true
+		}
+	}
+	return out, nil
 }
 func (m *memRedirects) CloudServedElsewhere(_ context.Context, org uuid.UUID, domain string) (bool, error) {
 	return m.find(func(e *models.DomainRedirect) bool {

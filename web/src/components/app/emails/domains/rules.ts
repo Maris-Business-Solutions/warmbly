@@ -45,6 +45,17 @@ export function trackingState(d: SendingDomain): TrackingState {
 /** "vendor": the vendor forwards the root; "live" / "pending": the DNS redirect; "blocked": DNS is in place, visitors still do not get it. */
 export type RedirectState = "live" | "blocked" | "vendor" | "pending" | "none";
 
+/** The web servers the redirect check names when one answers in Warmbly's place. */
+export const PROXY_NAMES: Record<string, string> = {
+    traefik: "Traefik",
+    nginx: "nginx",
+    caddy: "Caddy",
+    apache: "Apache",
+    cloudflare: "Cloudflare",
+    iis: "IIS",
+    litespeed: "LiteSpeed",
+};
+
 /** Verified, but opening the domain the way a visitor does did not reach the redirect. */
 export function redirectBlocked(r: DomainRedirect | null | undefined): boolean {
     const s = r?.reach?.status;

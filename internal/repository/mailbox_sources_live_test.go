@@ -266,6 +266,12 @@ func TestLiveDomainRedirectServing(t *testing.T) {
 	if got, _ = redirects.Get(ctx, f.org, domain); got.Reach == nil || got.Reach.Hint != "" {
 		t.Fatalf("an unknown hint was stored: %+v", got.Reach)
 	}
+	// The database, not only the read before it, keeps a domain to one workspace's hands on Cloud.
+	rival := &models.DomainRedirect{ID: uuid.New(), OrganizationID: f.other, Domain: domain, TargetURL: "https://evil.example", VerifyToken: "tok-r",
+		ServedBy: models.RedirectServedByCloud}
+	if err := redirects.Upsert(ctx, rival, &f.owner); !errors.Is(err, ErrRedirectTaken) {
+		t.Fatalf("a second workspace handed the same domain to Cloud: %v", err)
+	}
 	if taken, _ := redirects.CloudServedElsewhere(ctx, f.other, domain); !taken {
 		t.Fatal("another workspace was not told Cloud already serves the domain")
 	}
@@ -310,6 +316,10 @@ func TestLiveDomainRedirectServing(t *testing.T) {
 		if got := due(); got != c.due {
 			t.Fatalf("reach %s: due = %v", c.status, got)
 		}
+	}
+
+	if list, _ := redirects.CloudServedDomains(ctx); list[domain] {
+		t.Fatal("a redirect served here is listed as Cloud's")
 	}
 
 	// The link ending stops every cloud-served row.

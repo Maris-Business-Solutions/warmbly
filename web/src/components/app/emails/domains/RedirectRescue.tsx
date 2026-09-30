@@ -1,6 +1,4 @@
-// Redirects whose DNS is right but that visitors still do not get, gathered on
-// the sending domains page. On a self-hosted instance the way out that needs no
-// server work is Warmbly Cloud, so this offers it, linking first when needed.
+// Redirects whose DNS is right but visitors do not get, with Warmbly Cloud offered as the way out that needs no server work.
 import React from "react";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
@@ -11,12 +9,10 @@ import { useConfirm } from "@/hooks/context/confirm";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import CloudConnectDialog from "@/components/app/cloud/CloudConnectDialog";
-import { redirectBlocked } from "./rules";
+import { PROXY_NAMES, redirectBlocked } from "./rules";
 import { useCloudServing } from "./cloudServing";
 
 const DISMISS_KEY = "warmbly.sendingDomains.redirectRescue";
-
-const PROXY_NAME: Record<string, string> = { traefik: "Traefik", nginx: "nginx", caddy: "Caddy", apache: "Apache" };
 
 export default function RedirectRescue({ all, onOpenDomain }: { all: SendingDomain[]; onOpenDomain: (domain: string) => void }) {
     const cloud = useCloudServing();
@@ -35,8 +31,8 @@ export default function RedirectRescue({ all, onOpenDomain }: { all: SendingDoma
 
     const n = stuck.length;
     const room = cloud.offer ? Math.max(0, cloud.offer.limit - cloud.offer.used) : 0;
-    const proxies = stuck.map((d) => d.redirect?.reach?.proxy ?? "").filter((p) => PROXY_NAME[p]);
-    const proxy = proxies.length > 0 && proxies.every((p) => p === proxies[0]) ? PROXY_NAME[proxies[0]] : "";
+    const proxies = stuck.map((d) => d.redirect?.reach?.proxy ?? "").filter((p) => PROXY_NAMES[p]);
+    const proxy = proxies.length > 0 && proxies.every((p) => p === proxies[0]) ? PROXY_NAMES[proxies[0]] : "";
 
     // One at a time: each is a round trip to Warmbly Cloud, and one refusal (its limit included) must not stop the rest.
     async function moveAll(list: SendingDomain[]) {

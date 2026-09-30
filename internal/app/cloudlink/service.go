@@ -105,6 +105,7 @@ type Service interface {
 
 	// Root redirects Warmbly Cloud serves for this instance (redirects.go).
 	RedirectOffer(ctx context.Context) (*models.PoolLinkRedirectOffer, bool)
+	ListRedirects(ctx context.Context) ([]models.DomainRedirect, *errx.Error)
 	PutRedirect(ctx context.Context, domain string, in models.DomainRedirectRequest) (*models.DomainRedirect, *errx.Error)
 	GetRedirect(ctx context.Context, domain string) (*models.DomainRedirect, *errx.Error)
 	VerifyRedirect(ctx context.Context, domain string) (*models.DomainRedirect, *errx.Error)
@@ -154,6 +155,8 @@ type service struct {
 	sessions map[string]oauthSession
 	tokens   map[uuid.UUID]cachedToken
 	offer    cachedOffer
+	// offerFetch lets one caller ask Cloud for the offer while the others wait for its answer.
+	offerFetch sync.Mutex
 
 	disconnected []func(context.Context)
 }

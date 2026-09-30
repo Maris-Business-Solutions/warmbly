@@ -291,12 +291,10 @@ pub async fn redirect_first(
     next.run(req).await
 }
 
-/// Marks a response as this service's own, so the backend's redirect check can
-/// tell a visit that reached tracking from one a proxy answered.
+/// Marks this service's own answers, so the redirect check can tell them from a proxy's.
 pub const SERVICE_HEADER: &str = "x-warmbly-service";
 
-/// The host a 404 was looked up under, so the same check can tell a rewritten
-/// Host header from a redirect this service has not picked up yet.
+/// The host a 404 was looked up under: a rewritten Host header, or a redirect not picked up yet.
 pub const HOST_HEADER: &str = "x-warmbly-host";
 
 /// A request no route matched: a redirect domain was already answered by

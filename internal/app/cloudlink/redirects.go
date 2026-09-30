@@ -38,9 +38,7 @@ func (s *service) OnDisconnect(fn func(context.Context)) {
 	s.disconnected = append(s.disconnected, fn)
 }
 
-// RedirectOffer is what Cloud serves for this instance, and whether the
-// instance is linked at all. A Cloud that cannot be reached keeps the last
-// answer; with none yet, the offer is nil while linked stays true.
+// RedirectOffer is Cloud's offer and whether the instance is linked; an unreachable Cloud keeps the last answer, nil before any.
 func (s *service) RedirectOffer(ctx context.Context) (*models.PoolLinkRedirectOffer, bool) {
 	l, err := s.repo.Get(ctx)
 	if err != nil {
@@ -49,20 +47,42 @@ func (s *service) RedirectOffer(ctx context.Context) (*models.PoolLinkRedirectOf
 	if l == nil {
 		return nil, false
 	}
-	s.mu.Lock()
-	cached := s.offer
-	s.mu.Unlock()
-	if !cached.at.IsZero() && time.Since(cached.at) < offerTTL {
-		return cached.offer, true
+	fresh := func() (*models.PoolLinkRedirectOffer, bool) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.offer.offer, !s.offer.at.IsZero() && time.Since(s.offer.at) < offerTTL
 	}
+	if o, ok := fresh(); ok {
+		return o, true
+	}
+	s.offerFetch.Lock()
+	defer s.offerFetch.Unlock()
+	if o, ok := fresh(); ok {
+		return o, true
+	}
+	cached, _ := fresh()
 	var info models.PoolLinkInstanceInfo
 	if xerr := s.clientFor(l).do(ctx, http.MethodGet, "/instance", nil, &info); xerr != nil {
-		return cached.offer, true
+		return cached, true
 	}
 	s.rememberOffer(info.Redirects)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.offer.offer, true
+}
+
+func (s *service) ListRedirects(ctx context.Context) ([]models.DomainRedirect, *errx.Error) {
+	l, xerr := s.link(ctx)
+	if xerr != nil {
+		return nil, xerr
+	}
+	var out struct {
+		Data []models.DomainRedirect `json:"data"`
+	}
+	if xerr := s.clientFor(l).do(ctx, http.MethodGet, "/instance/redirects", nil, &out); xerr != nil {
+		return nil, xerr
+	}
+	return out.Data, nil
 }
 
 func redirectPath(domain string) string { return "/instance/redirects/" + url.PathEscape(domain) }

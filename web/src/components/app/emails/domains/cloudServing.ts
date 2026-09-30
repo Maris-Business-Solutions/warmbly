@@ -1,5 +1,4 @@
-// Whether this instance can have Warmbly Cloud serve a root redirect: only a
-// self-hosted instance linked to Cloud, while Cloud has room for one more.
+// Whether Warmbly Cloud can serve this instance's root redirects: self-hosted, linked, and with room for one more.
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
 import { useCloudLinkStatus } from "@/lib/api/hooks/app/cloudlink/useCloudLink";
 import type { PoolLinkRedirectOffer } from "@/lib/api/models/app/cloudlink/CloudLink";

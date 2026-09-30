@@ -3,21 +3,24 @@ package sendingdomain
 import (
 	"context"
 	"errors"
-	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/mailhost"
 	"github.com/warmbly/warmbly/internal/repository"
+	"github.com/warmbly/warmbly/internal/utils/validate"
 )
 
 // CloudRedirects is Warmbly Cloud serving root redirects for this linked instance.
 type CloudRedirects interface {
 	// RedirectOffer is Cloud's offer and whether the instance is linked; a linked instance gets nil while Cloud is unreachable.
 	RedirectOffer(ctx context.Context) (*models.PoolLinkRedirectOffer, bool)
+	ListRedirects(ctx context.Context) ([]models.DomainRedirect, *errx.Error)
 	PutRedirect(ctx context.Context, domain string, in models.DomainRedirectRequest) (*models.DomainRedirect, *errx.Error)
 	GetRedirect(ctx context.Context, domain string) (*models.DomainRedirect, *errx.Error)
 	VerifyRedirect(ctx context.Context, domain string) (*models.DomainRedirect, *errx.Error)
@@ -28,6 +31,25 @@ type CloudRedirects interface {
 func (s *Service) WireCloud(c CloudRedirects) { s.cloud = c }
 
 const unlinkedMessage = "This instance is no longer connected to Warmbly Cloud. Reconnect it in Settings, or serve the redirect from this server."
+
+const pendingCloudMessage = "Warmbly Cloud has not confirmed this redirect yet. Warmbly keeps trying by itself."
+
+// cloudOrphanGrace is how old a Cloud row with no row here must be before the sweep releases it, so a save in flight is never undone.
+const cloudOrphanGrace = 15 * time.Minute
+
+// cloudOutage is an answer that says nothing about the redirect: Cloud was down, slow, or busy.
+func cloudOutage(xerr *errx.Error) bool {
+	return xerr.Code >= 500 || xerr.Code == errx.TooManyRequests
+}
+
+// cloudRefused is a refusal Cloud gives for the redirect itself, which stands until someone changes it.
+func cloudRefused(xerr *errx.Error) bool {
+	switch xerr.Identifier {
+	case ErrIDLimit, ErrIDTaken, ErrIDTarget, ErrIDConsumerDomain, ErrIDNotYours:
+		return true
+	}
+	return false
+}
 
 // cloudServable says whether Cloud may take the domain. One Cloud already serves is only edited, so Cloud's own answer decides.
 func (s *Service) cloudServable(ctx context.Context, orgID uuid.UUID, domain string, alreadyCloud bool) *errx.Error {
@@ -56,8 +78,7 @@ func (s *Service) cloudServable(ctx context.Context, orgID uuid.UUID, domain str
 	return nil
 }
 
-// cloudRefusal keeps Cloud's own refusal (its code and sentence), and names Cloud when it could not be reached.
-// Cloud's 401 is about the link token, never the caller's session, so it must not reach the dashboard as one.
+// cloudRefusal keeps Cloud's refusal but never its 401, which is about the link token, not the caller's session.
 func cloudRefusal(xerr *errx.Error) *errx.Error {
 	switch {
 	case cloudGone(xerr):
@@ -109,8 +130,7 @@ func (s *Service) mirror(ctx context.Context, r *models.DomainRedirect, remote *
 	return s.finish(ctx, r, nil)
 }
 
-// checkCloud asks Cloud for its verdict. A row Cloud lost is put back, an
-// ended link stops the row, and Cloud being unreachable changes nothing.
+// checkCloud mirrors Cloud's verdict: a lost row is sent again, an ended link stops it, an outage changes nothing.
 func (s *Service) checkCloud(ctx context.Context, r *models.DomainRedirect, force bool) (*models.DomainRedirect, *errx.Error) {
 	if s.cloud == nil {
 		return s.unlink(ctx, r)
@@ -122,7 +142,8 @@ func (s *Service) checkCloud(ctx context.Context, r *models.DomainRedirect, forc
 	} else {
 		remote, xerr = s.cloud.GetRedirect(ctx, r.Domain)
 	}
-	if xerr != nil && xerr.Identifier == ErrIDRemoteNotFound {
+	// A row Cloud lost, or holds with an older target (a save whose answer was lost), is sent again.
+	if (xerr != nil && xerr.Identifier == ErrIDRemoteNotFound) || (xerr == nil && (remote.TargetURL != r.TargetURL || remote.IncludeWWW != r.IncludeWWW)) {
 		www := r.IncludeWWW
 		remote, xerr = s.cloud.PutRedirect(ctx, r.Domain, models.DomainRedirectRequest{TargetURL: r.TargetURL, IncludeWWW: &www})
 	}
@@ -130,8 +151,7 @@ func (s *Service) checkCloud(ctx context.Context, r *models.DomainRedirect, forc
 		if cloudGone(xerr) {
 			return s.unlink(ctx, r)
 		}
-		// Cloud refusing the row (its limit, another workspace's domain) is an answer, not an outage.
-		if xerr.Code < 500 && xerr.Code != errx.TooManyRequests {
+		if cloudRefused(xerr) {
 			return s.stop(ctx, r, xerr.Message)
 		}
 		if err := s.redirects.SetCheck(ctx, r.ID, r.Verified, r.LastError); err != nil && !errors.Is(err, repository.ErrRedirectTaken) {
@@ -157,6 +177,28 @@ func (s *Service) stop(ctx context.Context, r *models.DomainRedirect, why string
 		return nil, errx.InternalError()
 	}
 	return s.finish(ctx, r, nil)
+}
+
+// reconcileCloud releases what Cloud serves for this instance that no workspace here has Cloud serve any more.
+func (s *Service) reconcileCloud(ctx context.Context) {
+	if s.cloud == nil {
+		return
+	}
+	remote, xerr := s.cloud.ListRedirects(ctx)
+	if xerr != nil {
+		return
+	}
+	local, err := s.redirects.CloudServedDomains(ctx)
+	if err != nil {
+		return
+	}
+	for _, r := range remote {
+		if !local[r.Domain] && time.Since(r.CreatedAt) > cloudOrphanGrace {
+			if xerr := s.cloud.DeleteRedirect(ctx, r.Domain); xerr != nil && !cloudGone(xerr) {
+				log.Warn().Str("domain", r.Domain).Str("code", xerr.ResponseCode()).Msg("domain redirect sweep: could not release a Cloud redirect")
+			}
+		}
+	}
 }
 
 // MarkCloudUnlinked stops every cloud-served redirect claiming to be live, once the link to Cloud ends.
@@ -206,12 +248,10 @@ func (s *Service) LinkedGet(ctx context.Context, inst *models.PoolLinkInstance, 
 	return r, nil
 }
 
-// LinkedSet serves (or updates) a redirect for a linked instance. Ownership is
-// proven here, by this deployment's own TXT value and its own tracking host,
-// never taken on the instance's word.
+// LinkedSet serves (or updates) a redirect for a linked instance; ownership is proven here, never taken on its word.
 func (s *Service) LinkedSet(ctx context.Context, inst *models.PoolLinkInstance, domain string, in models.DomainRedirectRequest) (*models.DomainRedirect, *errx.Error) {
 	domain = normalizeDomain(domain)
-	if domain == "" || !plausibleDomain(domain) {
+	if !validate.TrackingHostname(domain) {
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDNotYours, "Enter a domain.")
 	}
 	if mailhost.SharedProvider(domain) {
@@ -282,17 +322,4 @@ func (s *Service) LinkedDelete(ctx context.Context, inst *models.PoolLinkInstanc
 		return linkedNotFound()
 	}
 	return nil
-}
-
-// plausibleDomain refuses what cannot be a registrable name before any DNS work.
-func plausibleDomain(d string) bool {
-	if len(d) > 253 || !strings.Contains(d, ".") {
-		return false
-	}
-	for _, c := range d {
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '.') {
-			return false
-		}
-	}
-	return true
 }

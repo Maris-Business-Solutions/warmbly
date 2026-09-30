@@ -130,6 +130,7 @@ On a self-hosted instance [linked to Warmbly Cloud](/guides/warmbly-cloud/), a r
 - Cloud checks the records and opens the domain on its own schedule, the same one described above. Your instance shows Cloud's verdict, records and last visit, and reads them again on its own schedule and on **Check now**.
 - Moving a redirect between this server and Cloud changes its root records, so a live redirect pauses until the new records are in place. The dashboard asks before it moves one.
 - Only the domain, the website and the `www` setting go to Cloud. See [data control](/development/data-control/#outbound-calls).
+- If Cloud cannot be reached when you save, the redirect is kept as waiting for Cloud and sent as soon as it answers. A redirect Cloud still serves that no workspace here has any more, after a workspace is deleted for example, is released within about half an hour.
 - Disconnecting the instance, or unlinking it from Warmbly Cloud, stops every redirect Cloud served for it. Each one then says so and can be moved back to this server. A redirect Cloud no longer has while the link is still up is put back by the next check.
 
 ### Limits

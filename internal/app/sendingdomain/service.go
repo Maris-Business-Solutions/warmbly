@@ -189,8 +189,7 @@ func (s *Service) ApplyTracking(ctx context.Context, orgID uuid.UUID, domain, ho
 // RedirectInput sets a domain's redirect; an empty ServedBy keeps where it is served from.
 type RedirectInput = models.DomainRedirectRequest
 
-// SetRedirect records (or updates) the redirect and checks it once: DNS here,
-// or Warmbly Cloud's verdict when Cloud serves it.
+// SetRedirect records (or updates) the redirect and checks it once: DNS here, or Cloud's verdict when Cloud serves it.
 func (s *Service) SetRedirect(ctx context.Context, orgID, userID uuid.UUID, domain string, in RedirectInput) (*models.DomainRedirect, *errx.Error) {
 	domain = normalizeDomain(domain)
 	if xerr := s.ownDomain(ctx, orgID, domain); xerr != nil {
@@ -231,30 +230,49 @@ func (s *Service) SetRedirect(ctx context.Context, orgID, userID uuid.UUID, doma
 		return nil, errx.ErrInvalid
 	}
 
-	var remote *models.DomainRedirect
-	if server == models.RedirectServedByCloud {
-		// Cloud first, so a refusal there leaves nothing half-saved here.
-		if remote, xerr = s.cloud.PutRedirect(ctx, domain, models.DomainRedirectRequest{TargetURL: target, IncludeWWW: &www}); xerr != nil {
-			return nil, cloudRefusal(xerr)
-		}
-	} else if existing != nil && existing.ServedBy == models.RedirectServedByCloud {
+	if server == models.RedirectServedByInstance && existing != nil && existing.ServedBy == models.RedirectServedByCloud {
 		if xerr := s.releaseCloud(ctx, domain); xerr != nil {
 			return nil, xerr
 		}
 	}
 
+	// The row is written first, so it claims the domain before Cloud hears of it and the sweep can always finish the job.
 	r := &models.DomainRedirect{ID: uuid.New(), OrganizationID: orgID, Domain: domain, TargetURL: target, IncludeWWW: www,
 		VerifyToken: s.proof.Value(orgID, domain), ServedBy: server}
 	if err := s.redirects.Upsert(ctx, r, &userID); err != nil {
-		if errors.Is(err, repository.ErrRedirectOwned) {
+		switch {
+		case errors.Is(err, repository.ErrRedirectOwned):
 			return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDLinked, "This domain's redirect is managed by a linked self-hosted instance. Change it there.")
+		case errors.Is(err, repository.ErrRedirectTaken):
+			return nil, errx.NewWithIdentifier(errx.Conflict, ErrIDTaken, "Another workspace on this instance already redirects this domain.")
 		}
 		return nil, errx.InternalError()
 	}
-	if remote != nil {
+	if server != models.RedirectServedByCloud {
+		return s.check(ctx, r, true)
+	}
+	remote, xerr := s.cloud.PutRedirect(ctx, domain, models.DomainRedirectRequest{TargetURL: target, IncludeWWW: &www})
+	if xerr == nil {
 		return s.mirror(ctx, r, remote)
 	}
-	return s.check(ctx, r, true)
+	if !cloudOutage(xerr) {
+		s.rollback(ctx, r, existing, userID)
+		return nil, cloudRefusal(xerr)
+	}
+	// Cloud may have taken it before the answer was lost; the sweep asks again and sends it if not.
+	return s.stop(ctx, r, pendingCloudMessage)
+}
+
+// rollback puts a row Cloud refused back to what it was before the save.
+func (s *Service) rollback(ctx context.Context, r, before *models.DomainRedirect, userID uuid.UUID) {
+	if before == nil {
+		_, _ = s.redirects.Delete(ctx, r.OrganizationID, r.Domain)
+		return
+	}
+	prev := *before
+	if err := s.redirects.Upsert(ctx, &prev, &userID); err == nil && prev.ServedBy == models.RedirectServedByInstance {
+		_, _ = s.check(ctx, &prev, false)
+	}
 }
 
 // ownDomain refuses a domain the workspace sends nothing from, and the shared providers anyone has an address on.
@@ -517,6 +535,7 @@ func (s *Service) StartSweep(ctx context.Context) {
 			}(&due[i])
 		}
 		wg.Wait()
+		s.reconcileCloud(ctx)
 		return nil
 	})
 }

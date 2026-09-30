@@ -88,6 +88,10 @@ func TestReachProbeNamesWhatAVisitorGets(t *testing.T) {
 		w.Header().Set(TrackingHostHeader, "example.com")
 		w.WriteHeader(http.StatusNotFound)
 	}
+	badGateway := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Server", "nginx")
+		w.WriteHeader(http.StatusBadGateway)
+	}
 	trackingDown := func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set(TrackingServiceHeader, "tracking")
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -112,6 +116,10 @@ func TestReachProbeNamesWhatAVisitorGets(t *testing.T) {
 		{"tracking still redirects to the old target", trackingStale, trackingStale, true, models.RedirectReachOK, models.RedirectHintNone},
 		{"tracking has not picked the redirect up", trackingMiss, trackingMiss, true, models.RedirectReachUnreachable, models.RedirectHintSettling},
 		{"tracking could not look it up", trackingDown, trackingDown, true, models.RedirectReachUnreachable, models.RedirectHintNone},
+		{"the proxy's upstream is down", badGateway, badGateway, true, models.RedirectReachUnreachable, models.RedirectHintNone},
+		{"https works while http settles", trackingMiss, redirectTo(reachTarget), true, models.RedirectReachUnreachable, models.RedirectHintSettling},
+		{"http only upgrades to a bad certificate", upgrade, redirectTo(reachTarget), false, models.RedirectReachHTTPSError, models.RedirectHintCertificate},
+		{"nothing on port 80 and a bad certificate", nil, redirectTo(reachTarget), false, models.RedirectReachNotReaching, models.RedirectHintNoListener},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

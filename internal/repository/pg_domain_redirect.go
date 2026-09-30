@@ -40,6 +40,8 @@ type DomainRedirectRepository interface {
 	SetRemote(ctx context.Context, id uuid.UUID, host string, records []models.DNSRecord) error
 	// UnverifyCloudServed stops every cloud-served row claiming to be live, when the link to Cloud ends.
 	UnverifyCloudServed(ctx context.Context, lastError string) error
+	// CloudServedDomains are the domains this instance has Cloud serve, across workspaces.
+	CloudServedDomains(ctx context.Context) (map[string]bool, error)
 	// CloudServedElsewhere reports another workspace on this instance having the domain served by Cloud.
 	CloudServedElsewhere(ctx context.Context, orgID uuid.UUID, domain string) (bool, error)
 	// Due are rows whose last check is older than their state allows.
@@ -129,6 +131,10 @@ func upsertRedirect(ctx context.Context, q queryRower, d *models.DomainRedirect,
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRedirectOwned
 		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return ErrRedirectTaken // another workspace already has Cloud serve the domain
+		}
 		db.CaptureError(err, query, nil, "queryrow")
 		return err
 	}
@@ -206,8 +212,7 @@ func (r *domainRedirectRepository) List(ctx context.Context, orgID uuid.UUID) ([
 		WHERE organization_id = $1 AND linked_instance_id IS NULL ORDER BY domain`, orgID)
 }
 
-// Due re-checks pending rows and rows that verified but do not reach visitors
-// every 10 minutes for two weeks, then every 6 hours like a healthy row.
+// Due re-checks pending and not-reaching rows every 10 minutes for two weeks, and every row every 6 hours.
 func (r *domainRedirectRepository) Due(ctx context.Context, limit int) ([]models.DomainRedirect, error) {
 	return r.list(ctx, `SELECT `+redirectColumns+` FROM domain_redirects
 		WHERE last_checked_at IS NULL
@@ -315,6 +320,25 @@ func (r *domainRedirectRepository) UnverifyCloudServed(ctx context.Context, last
 		return err
 	}
 	return nil
+}
+
+func (r *domainRedirectRepository) CloudServedDomains(ctx context.Context) (map[string]bool, error) {
+	query := `SELECT domain FROM domain_redirects WHERE served_by = 'cloud'`
+	rows, err := r.DB.Query(ctx, query)
+	if err != nil {
+		db.CaptureError(err, query, nil, "query")
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		out[d] = true
+	}
+	return out, rows.Err()
 }
 
 func (r *domainRedirectRepository) CloudServedElsewhere(ctx context.Context, orgID uuid.UUID, domain string) (bool, error) {

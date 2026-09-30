@@ -1,6 +1,4 @@
-// Where a root redirect is served from, whether visitors actually get it, and
-// how to fix it when they do not. A self-hosted instance linked to Warmbly
-// Cloud can have Cloud serve it, which skips the proxy work on its own server.
+// Where a root redirect is served from, whether visitors get it, and how to fix it (or hand it to Warmbly Cloud) when they do not.
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangleIcon, CheckCircle2Icon, CloudIcon, ExternalLinkIcon, Loader2Icon, ServerIcon, ZapIcon } from "lucide-react";
@@ -8,7 +6,7 @@ import type { DomainRedirect, RedirectServer } from "@/lib/api/models/app/emails
 import timeAgo from "@/lib/helper/timeAgo";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./parts";
-import { redirectBlocked } from "./rules";
+import { PROXY_NAMES, redirectBlocked } from "./rules";
 import type { CloudServing } from "./cloudServing";
 
 /* ── Served from ─────────────────────── */
@@ -232,16 +230,6 @@ const PROXIES: { key: ProxyKey; label: string }[] = [
     { key: "caddy", label: "Caddy" },
 ];
 
-const PROXY_NAME: Record<string, string> = {
-    traefik: "Traefik",
-    nginx: "nginx",
-    caddy: "Caddy",
-    apache: "Apache",
-    cloudflare: "Cloudflare",
-    iis: "IIS",
-    litespeed: "LiteSpeed",
-};
-
 interface Step {
     text: React.ReactNode;
     code?: string;
@@ -318,7 +306,7 @@ export function ReachFix({
 
     const host = redirect.serve_host || "your tracking host";
     const www = redirect.include_www;
-    const named = reach.proxy ? PROXY_NAME[reach.proxy] : "";
+    const named = reach.proxy ? PROXY_NAMES[reach.proxy] : "";
     let intro: React.ReactNode;
     let showProxies = true;
     if (redirect.served_by === "cloud") {

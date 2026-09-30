@@ -4,6 +4,7 @@ DELETE FROM public.domain_redirects WHERE linked_instance_id IS NOT NULL;
 UPDATE public.domain_redirects SET verified = false, verified_at = NULL WHERE served_by = 'cloud';
 
 DROP INDEX IF EXISTS public.idx_domain_redirects_linked_instance;
+DROP INDEX IF EXISTS public.idx_domain_redirects_cloud_domain;
 
 ALTER TABLE public.domain_redirects
     DROP COLUMN IF EXISTS reach_checked_at,

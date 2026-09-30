@@ -18,8 +18,7 @@ import (
 	"github.com/warmbly/warmbly/internal/pkg/safehttp"
 )
 
-// TrackingServiceHeader marks the tracking service's own answers, so a probe
-// can tell a visit that reached it from one a proxy answered.
+// TrackingServiceHeader marks the tracking service's own answers, telling a visit that reached it from one a proxy answered.
 const TrackingServiceHeader = "X-Warmbly-Service"
 
 // TrackingHostHeader is the host the tracking service looked a 404 up under.
@@ -48,7 +47,7 @@ type hit struct {
 	blocked  bool
 	// refused: the address answered that nothing listens there, which a failed hairpin never does.
 	refused bool
-	// transient: the tracking service answered but could not look the redirect up just now.
+	// transient: the tracking service, or a proxy in front of it (a 502 to 504), could not answer just now.
 	transient bool
 	// proxy is the web server that answered, when it says or shows which.
 	proxy string
@@ -112,10 +111,11 @@ func (p *httpReach) fetch(ctx context.Context, raw, domain, target string) hit {
 		}
 	}
 	switch {
+	case res.StatusCode >= 500 && (tracking || res.StatusCode == http.StatusBadGateway || res.StatusCode == http.StatusServiceUnavailable || res.StatusCode == http.StatusGatewayTimeout):
+		// A gateway error means the proxy tried to pass the visit on, which is routing that works.
+		out.transient = true
 	case !tracking:
 		out.hint = models.RedirectHintNotRouted
-	case res.StatusCode >= 500:
-		out.transient = true
 	case sameSite(res.Header.Get(TrackingHostHeader), domain):
 		// The visit arrived under the right name; the lookup behind it has not caught up yet.
 		out.hint = models.RedirectHintSettling
@@ -134,8 +134,7 @@ func certificateError(err error) bool {
 	return errors.As(err, &verify) || errors.As(err, &unknown) || errors.As(err, &hostname) || errors.As(err, &invalid) || errors.As(err, &alert)
 }
 
-// proxyOf names the web server from its Server header, or from Traefik's
-// default 404, which carries none.
+// proxyOf names the web server from its Server header, or from Traefik's default 404, which carries none.
 func proxyOf(res *http.Response, body []byte) string {
 	server := strings.ToLower(res.Header.Get("Server"))
 	for _, name := range []string{"traefik", "nginx", "caddy", "apache", "cloudflare", "litespeed"} {
@@ -226,8 +225,12 @@ func combineHits(domain, target string, plain, secure hit) models.RedirectReach 
 	switch {
 	case plain.transient || secure.transient:
 		return models.RedirectReach{Status: models.RedirectReachUnreachable,
-			Detail: fmt.Sprintf("Warmbly's tracking service answered for %s but could not look the redirect up just now.", domain)}
-	case secure.hint == models.RedirectHintCertificate || plain.hint == models.RedirectHintCertificate:
+			Detail: fmt.Sprintf("Opening %s got an answer, but the service behind it could not respond just now, which is usually Warmbly restarting. It is checked again later.", domain)}
+	case plain.hint == models.RedirectHintSettling || secure.hint == models.RedirectHintSettling:
+		return models.RedirectReach{Status: models.RedirectReachUnreachable, Hint: models.RedirectHintSettling,
+			Detail: fmt.Sprintf("Warmbly's tracking service received the visit to %s but has not picked up the redirect yet. It is checked again in a few minutes.", domain)}
+	case secure.hint == models.RedirectHintCertificate && (plain.ok() || plain.hint == models.RedirectHintCertificate):
+		// Also when http only upgrades to https: the visitor still meets the certificate.
 		return models.RedirectReach{Status: models.RedirectReachHTTPSError, Hint: models.RedirectHintCertificate,
 			Detail: fmt.Sprintf("https://%s has no valid certificate, so browsers show a security warning instead of the redirect.", domain)}
 	case plain.ok():
@@ -236,9 +239,9 @@ func combineHits(domain, target string, plain, secure hit) models.RedirectReach 
 	case secure.ok():
 		return models.RedirectReach{Status: models.RedirectReachNotReaching, Hint: models.RedirectHintNoListener,
 			Detail: fmt.Sprintf("http://%s does not answer, so visitors who type the domain without https get nothing.", domain)}
-	case plain.hint == models.RedirectHintSettling || secure.hint == models.RedirectHintSettling:
-		return models.RedirectReach{Status: models.RedirectReachUnreachable, Hint: models.RedirectHintSettling,
-			Detail: fmt.Sprintf("Warmbly's tracking service received the visit to %s but has not picked up the redirect yet. It is checked again in a few minutes.", domain)}
+	case secure.hint == models.RedirectHintCertificate:
+		return models.RedirectReach{Status: models.RedirectReachNotReaching, Hint: models.RedirectHintNoListener,
+			Detail: fmt.Sprintf("http://%s does not answer, and https://%s has no valid certificate.", domain, domain)}
 	case plain.refused || secure.refused:
 		return models.RedirectReach{Status: models.RedirectReachNotReaching, Hint: models.RedirectHintNoListener,
 			Detail: fmt.Sprintf("Nothing listens on ports 80 and 443 at %s's address, so visitors get no answer.", domain)}
