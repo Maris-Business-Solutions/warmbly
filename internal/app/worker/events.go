@@ -27,6 +27,7 @@ func (w *WorkerService) InitEvents() {
 	Register(w, models.WorkerEventTypeEmailValidation, w.HandleEmailValidation)
 	Register(w, models.WorkerEventTypeWarmupAction, w.HandleWarmupAction)
 	Register(w, models.WorkerEventTypeMessageSeen, w.HandleMessageSeen)
+	Register(w, models.WorkerEventTypeMessageFolder, w.HandleMessageFolder)
 	Register(w, models.WorkerEventTypeMailboxIdentity, w.HandleMailboxIdentity)
 }
 

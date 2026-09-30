@@ -140,6 +140,10 @@ type Email struct {
 	// own copy, so the flag is ignored for them.
 	SaveToSent bool `json:"save_to_sent"`
 
+	// RelayFolderMoves makes Archive, Delete and Move to inbox in the unibox
+	// move the message in the mailbox too. On by default.
+	RelayFolderMoves bool `json:"relay_folder_moves"`
+
 	Tags []string `json:"tags"`
 
 	CreatedAt time.Time `json:"created_at"`
@@ -692,6 +696,9 @@ type UpdateEmail struct {
 	// off when the submission server files its own copy, or the folder ends up
 	// with two of everything.
 	SaveToSent *bool `json:"save_to_sent"`
+
+	// RelayFolderMoves turns the unibox's filing relay to the mailbox on or off.
+	RelayFolderMoves *bool `json:"relay_folder_moves"`
 
 	Tags []string `json:"tags"`
 }

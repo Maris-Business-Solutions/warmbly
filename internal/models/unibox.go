@@ -411,8 +411,8 @@ type MarkSeen struct {
 }
 
 // MoveFolder re-files messages into one canonical folder (Archive = archive,
-// Delete = trash, Move to inbox = inbox). Store-side only: the provider copy
-// is not moved, so the message stays where it is in the user's mail client.
+// Delete = trash, Move to inbox = inbox). The store changes first; the move
+// is then relayed to each mailbox that has relay_folder_moves on.
 type MoveFolder struct {
 	EmailIDs []uuid.UUID `json:"email_ids"`
 	// ThreadIDs files whole conversations. A row in the list knows its thread
@@ -587,6 +587,69 @@ type SeenRelayTarget struct {
 	// leave the provider holding the earlier answer.
 	Seen bool
 	Ref  MessageSeenRef
+}
+
+// MessageFolderAction relays a unibox filing to one mailbox's provider. The
+// worker answers each message it moved with a Relayed UPDATE_FOLDER.
+type MessageFolderAction struct {
+	EmailID uuid.UUID `json:"email_id" avro:"email_id"`
+	// Folder is the canonical destination: inbox, archive or trash.
+	Folder   string             `json:"folder" avro:"folder"`
+	Messages []MessageFolderRef `json:"messages" avro:"messages"`
+}
+
+// MessageFolderRef names one message to move, in every provider's terms.
+type MessageFolderRef struct {
+	// ID is the unibox row, named in the worker's answer.
+	ID           uuid.UUID `json:"id" avro:"id"`
+	ProviderID   string    `json:"provider_id,omitempty" avro:"provider_id"`
+	UID          uint32    `json:"uid,omitempty" avro:"uid"`
+	FolderPath   string    `json:"folder_path,omitempty" avro:"folder_path"`
+	RFCMessageID string    `json:"rfc_message_id,omitempty" avro:"rfc_message_id"`
+	// ThreadID re-keys a Graph message in the map under the id its move gives it.
+	ThreadID string `json:"thread_id,omitempty" avro:"thread_id"`
+	// ProviderFolder is where the provider last reported the message.
+	ProviderFolder string `json:"provider_folder,omitempty" avro:"provider_folder"`
+}
+
+// FiledMessage is one row a filing matched, and whether it left another
+// folder to get there.
+type FiledMessage struct {
+	ID    uuid.UUID
+	Moved bool
+}
+
+// FolderRelayChunk bounds one MESSAGE_FOLDER event, under Gmail's 1000 ids
+// per batchModify.
+const FolderRelayChunk = 500
+
+// FolderRelayTarget is one message resolved for the folder relay.
+type FolderRelayTarget struct {
+	EmailID  uuid.UUID
+	WorkerID uuid.UUID
+	Provider string
+	// Folder is the canonical folder the row holds now, read back rather than
+	// taken from the request, like SeenRelayTarget.Seen.
+	Folder string
+	Ref    MessageFolderRef
+}
+
+// RelaysFolderMove reports whether a filing has to happen at the provider. A
+// row the filing moved goes even when provider_folder agrees, since an Undo
+// can beat the previous filing's answer. Sent copies stay in Sent on IMAP and
+// Outlook; Gmail files whole conversations, and archiving a sent copy is a
+// no-op there. Drafts never move.
+func RelaysFolderMove(provider, providerFolder, folder string, moved bool) bool {
+	if !FilableFolder(folder) || (providerFolder == folder && !moved) {
+		return false
+	}
+	switch providerFolder {
+	case FolderDrafts:
+		return false
+	case FolderSent:
+		return provider == string(InboxProviderGoogle) && folder != FolderArchive
+	}
+	return true
 }
 
 // FlagSeen is the RFC 3501 read-state flag. Every provider is mapped onto it

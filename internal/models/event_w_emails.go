@@ -51,6 +51,15 @@ type JobEventFolderUpdate struct {
 	EmailID uuid.UUID `json:"email_id" avro:"email_id"`
 	ID      uuid.UUID `json:"id" avro:"id"`
 	Folder  string    `json:"folder" avro:"folder"`
+	// Relayed answers a MESSAGE_FOLDER: the provider has the message in Folder
+	// because Warmbly put it there, so only provider_folder follows.
+	Relayed bool `json:"relayed,omitempty" avro:"relayed"`
+	// Where the move left the message, when its handle changed with it: the
+	// new Graph id, or the IMAP folder, UIDVALIDITY and UID.
+	ProviderID string `json:"provider_id,omitempty" avro:"provider_id"`
+	FolderPath string `json:"folder_path,omitempty" avro:"folder_path"`
+	Mailbox    uint32 `json:"mailbox,omitempty" avro:"mailbox"`
+	UID        uint32 `json:"uid,omitempty" avro:"uid"`
 }
 
 type JobEventEmailUpdate struct {

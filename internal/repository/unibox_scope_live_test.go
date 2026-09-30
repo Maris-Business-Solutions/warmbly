@@ -148,7 +148,7 @@ func TestLiveUniboxScopeArchiveLeavesTheWorkingViews(t *testing.T) {
 		t.Fatal("the conversation is not in Awaiting reply to begin with")
 	}
 
-	if err := repo.MoveThreadsToFolder(ctx, f.org, []string{"thread-filed"}, models.FolderArchive); err != nil {
+	if _, err := repo.MoveThreadsToFolder(ctx, f.org, []string{"thread-filed"}, models.FolderArchive); err != nil {
 		t.Fatalf("MoveThreadsToFolder: %v", err)
 	}
 
@@ -218,7 +218,7 @@ func TestLiveUniboxScopeArchiveTakesTheWholeConversation(t *testing.T) {
 	f.scopedMessage(t, repo, "thread-pair", "them@example.com", models.FolderInbox, now.Add(-time.Hour))
 	f.scopedMessage(t, repo, "thread-pair", "them@example.com", models.FolderInbox, now)
 
-	if err := repo.MoveThreadsToFolder(ctx, f.org, []string{"thread-pair"}, models.FolderArchive); err != nil {
+	if _, err := repo.MoveThreadsToFolder(ctx, f.org, []string{"thread-pair"}, models.FolderArchive); err != nil {
 		t.Fatalf("MoveThreadsToFolder: %v", err)
 	}
 
@@ -240,7 +240,7 @@ func TestLiveUniboxScopeMoveThreadsIsOrgScoped(t *testing.T) {
 	ctx := context.Background()
 
 	id := theirs.scopedMessage(t, repo, "thread-theirs-only", "them@example.com", models.FolderInbox, time.Now().UTC())
-	if err := repo.MoveThreadsToFolder(ctx, mine.org, []string{"thread-theirs-only"}, models.FolderArchive); err != nil {
+	if _, err := repo.MoveThreadsToFolder(ctx, mine.org, []string{"thread-theirs-only"}, models.FolderArchive); err != nil {
 		t.Fatalf("MoveThreadsToFolder: %v", err)
 	}
 

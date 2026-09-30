@@ -54,6 +54,9 @@ type ImapConn interface {
 	// MoveToFolder reports whether the message actually moved; a message
 	// already in the destination is left where it is.
 	MoveToFolder(ctx context.Context, sourceMailbox, dstFolder string, uid uint32) (bool, error)
+	// MoveUIDs is the unibox's filing relay: many UIDs out of one folder in
+	// one command, answering old UID -> new UID when the server reports it.
+	MoveUIDs(ctx context.Context, src, dst string, uids []uint32) (map[uint32]uint32, uint32, error)
 	RemoveFromSpam(ctx context.Context, sourceMailbox, inboxName string, uid uint32) error
 	// MarkNotJunk swaps the junk keywords for the not-junk ones before a
 	// warmup message is moved out of Junk.

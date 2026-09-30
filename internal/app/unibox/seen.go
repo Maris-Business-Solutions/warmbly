@@ -149,9 +149,8 @@ func (s *uniboxService) publishSeenRelay(ctx context.Context, orgID uuid.UUID, c
 	}
 }
 
-// MoveFolderBulk backs Archive, Delete and Move to inbox in the thread header.
-// Store-side only: the provider copy stays where it is, and provider_folder is
-// left alone so the sync can still tell a real provider move from a flag scan.
+// MoveFolderBulk backs Archive, Delete and Move to inbox. The store is filed
+// first; provider_folder waits for the worker's answer to the relay.
 func (s *uniboxService) MoveFolderBulk(ctx context.Context, orgID uuid.UUID, data *models.MoveFolder) (*models.MoveFolder, *errx.Error) {
 	if len(data.EmailIDs) > 500 || len(data.ThreadIDs) > 500 {
 		return nil, errx.ErrSeenMax
@@ -163,13 +162,83 @@ func (s *uniboxService) MoveFolderBulk(ctx context.Context, orgID uuid.UUID, dat
 	}
 	// Filing by conversation is what the list rows use; the reader still names
 	// the messages it has loaded.
-	if err := s.uniboxRepository.MoveThreadsToFolder(ctx, orgID, data.ThreadIDs, data.Folder); err != nil {
+	byThread, err := s.uniboxRepository.MoveThreadsToFolder(ctx, orgID, data.ThreadIDs, data.Folder)
+	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
 	}
-	if err := s.uniboxRepository.MoveToFolderBulk(ctx, orgID, data.EmailIDs, data.Folder); err != nil {
+	byID, err := s.uniboxRepository.MoveToFolderBulk(ctx, orgID, data.EmailIDs, data.Folder)
+	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
 	}
+	s.relayFolder(ctx, orgID, append(byThread, byID...))
 	return data, nil
+}
+
+// relayFolder carries a filing out to the mailboxes, detached and never
+// retried, like relaySeen.
+func (s *uniboxService) relayFolder(ctx context.Context, orgID uuid.UUID, filed []models.FiledMessage) {
+	if s.publisher == nil || len(filed) == 0 {
+		return
+	}
+	go func() {
+		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), seenRelayTimeout)
+		defer cancel()
+		s.publishFolderRelay(bg, orgID, filed)
+	}()
+}
+
+func (s *uniboxService) publishFolderRelay(ctx context.Context, orgID uuid.UUID, filed []models.FiledMessage) {
+	// A row named by thread and by id comes back twice, unmoved the second
+	// time, so either report moving it counts.
+	ids := make([]uuid.UUID, 0, len(filed))
+	moved := make(map[uuid.UUID]bool, len(filed))
+	for _, f := range filed {
+		if _, ok := moved[f.ID]; !ok {
+			ids = append(ids, f.ID)
+		}
+		moved[f.ID] = moved[f.ID] || f.Moved
+	}
+	targets, err := s.uniboxRepository.FolderRelayTargets(ctx, orgID, ids)
+	if err != nil {
+		errs.CaptureException(err)
+		return
+	}
+
+	// The destination is the folder each row holds now, so concurrent filings
+	// leave the provider agreeing with the store.
+	type relayKey struct {
+		emailID uuid.UUID
+		folder  string
+	}
+	batches := make(map[relayKey][]models.MessageFolderRef)
+	workers := make(map[uuid.UUID]uuid.UUID, len(targets))
+	var order []relayKey
+	for _, t := range targets {
+		if !models.RelaysFolderMove(t.Provider, t.Ref.ProviderFolder, t.Folder, moved[t.Ref.ID]) {
+			continue
+		}
+		key := relayKey{emailID: t.EmailID, folder: t.Folder}
+		if _, ok := batches[key]; !ok {
+			workers[t.EmailID] = t.WorkerID
+			order = append(order, key)
+		}
+		batches[key] = append(batches[key], t.Ref)
+	}
+
+	for _, key := range order {
+		refs := batches[key]
+		for start := 0; start < len(refs); start += models.FolderRelayChunk {
+			end := min(start+models.FolderRelayChunk, len(refs))
+			batch := &models.MessageFolderAction{EmailID: key.emailID, Folder: key.folder, Messages: refs[start:end]}
+			if err := s.publisher.PublishMessageFolder(ctx, workers[key.emailID], batch); err != nil {
+				log.Warn().Err(err).
+					Str("email_account_id", key.emailID.String()).
+					Str("folder", key.folder).
+					Int("messages", len(batch.Messages)).
+					Msg("could not relay the unibox filing to the mailbox provider")
+			}
+		}
+	}
 }

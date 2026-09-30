@@ -181,6 +181,31 @@
               "default": "",
               "name": "folder",
               "type": "string"
+            },
+            {
+              "default": false,
+              "name": "relayed",
+              "type": "boolean"
+            },
+            {
+              "default": "",
+              "name": "provider_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "folder_path",
+              "type": "string"
+            },
+            {
+              "default": 0,
+              "name": "mailbox",
+              "type": "long"
+            },
+            {
+              "default": 0,
+              "name": "uid",
+              "type": "long"
             }
           ],
           "name": "warmbly.events.JobEventFolderUpdate",

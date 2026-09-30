@@ -236,6 +236,10 @@ SMTP mailboxes get a **Keep a copy of sent mail** toggle, on by default. SMTP su
 
 Turn it off when your provider already saves its own copy of anything submitted over SMTP, which Gmail, Fastmail and Zoho do, or the folder ends up with two of every message. Gmail and Outlook mailboxes connected with OAuth never show the toggle: their APIs file the copy themselves. Warmup mail is never filed, since it would bury your real sent mail.
 
+### Filing in the mailbox
+
+**Mirror Archive and Delete** is on by default for every mailbox. With it on, Archive, Delete and Move to inbox in the [unibox](/guides/unibox/#filing-in-the-mailbox-too) move the message in the mailbox too: Gmail gains or loses its Inbox label or goes to Trash, Outlook moves it to Archive, Deleted Items or Inbox, and an IMAP mailbox moves it between its Archive, Trash and INBOX folders. Delete always lands in the mailbox's own trash, never a permanent delete. Turn it off to keep filing inside Warmbly for this mailbox; the conversation still leaves the unibox view you filed it from, and the mailbox keeps it where it was.
+
 The same tab sets the **display name**, **reply-to** (empty uses the mailbox address), **signature** in plain text and HTML, and **tags** for grouping. Tags belong to the workspace: one anybody creates is there for every teammate, on every mailbox. A new display name is on the From header of the next message the mailbox sends, campaign, reply or warmup alike; nothing needs to be reconnected.
 
 The HTML signature is placed in a block of its own one line below the body, so it arrives without the stack of blank lines above it that Apple Mail and Outlook used to show. Put any extra spacing you want inside the signature itself. On a body laid out in HTML it goes inside the container the email was built in, so it lines up with the copy it signs off rather than sitting under it at the left edge of the window (the same placement as the [opt-out line](/guides/unsubscribe/#where-it-appears)). The plain-text signature follows the body after a single blank line.
