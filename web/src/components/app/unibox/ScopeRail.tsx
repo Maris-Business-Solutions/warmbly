@@ -4,14 +4,16 @@
 // language for every row: a quiet icon, the label, a bare tabular count.
 //
 //   Compose drafts               (only when there are any)
+//   Favorites                    (only once a row is starred; any section's rows)
 //   Mail: All mail / Inbox / Unread / Awaiting reply / Agent drafts / Snoozed
 //         Drafts / Sent / Scheduled / Archive / Spam / Trash
 //   Views                        (premade, over the automatic labels)
 //   Mailboxes / Labels / Tags   (collapsible, searchable past 8 items)
 //
 // Every section folds and can be moved; Mail and Views rows can be hidden and
-// reordered. All of it is a per-browser preference: hiding is only visual, so
-// a scope's URL and shortcuts keep working.
+// reordered, and any row can be starred into Favorites, where it can be renamed
+// and reordered too. All of it is a per-browser preference: hiding is only
+// visual, so a scope's URL and shortcuts keep working.
 //
 // Today and This week are not rows: the filter sheet's date range covers
 // them, and the rail is for the places mail lives, not for every slice of it.
@@ -46,12 +48,15 @@ import {
   MoonIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  PencilLineIcon,
   OctagonAlertIcon,
   ReplyIcon,
   RotateCcwIcon,
   SearchIcon,
   SendIcon,
   SparklesIcon,
+  StarIcon,
+  StarOffIcon,
   Trash2Icon,
   ClockIcon,
   FlameIcon,
@@ -62,7 +67,12 @@ import {
   XIcon,
 } from "lucide-react";
 import { useAppStore } from "@/stores";
-import { applyRailOrder } from "@/stores/slices/uiSlice";
+import {
+  applyRailOrder,
+  cleanUniboxRailFavoriteName,
+  UNIBOX_RAIL_FAVORITE_NAME_MAX,
+  type UniboxRailFavorite,
+} from "@/stores/slices/uiSlice";
 import useUniboxOverview from "@/lib/api/hooks/app/unibox/useUniboxOverview";
 import useMarkSeen from "@/lib/api/hooks/app/unibox/useMarkSeen";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
@@ -79,8 +89,7 @@ import {
   PopoverMenuTrigger,
 } from "@/components/ui/popover-menu";
 import type { UniboxFolder } from "@/lib/api/models/app/unibox/UniboxSearch";
-import { TagMeaningTooltip } from "@/components/ui/tag-meaning-tooltip";
-import { isAutomaticTag } from "@/lib/unibox/tagMeanings";
+import { isAutomaticTag, tagMeaning } from "@/lib/unibox/tagMeanings";
 import { UNIBOX_VIEWS, viewCategories, type UniboxViewId } from "@/lib/unibox/views";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { shortcutLabel } from "@/components/ui/shortcut-tooltip";
@@ -143,7 +152,7 @@ const VIEW_ICONS: Record<UniboxViewId, React.ReactNode> = {
 const COLLAPSE_THRESHOLD = 8;
 const COLLAPSED_VISIBLE = 6;
 
-const SECTION_IDS = ["mail", "views", "mailboxes", "labels", "tags"];
+const SECTION_IDS = ["favorites", "mail", "views", "mailboxes", "labels", "tags"];
 
 // The sidebar's fold easing, so both navigators move alike.
 const EASE = [0.2, 0, 0, 1] as const;
@@ -187,6 +196,28 @@ interface SectionControls {
   unfoldAll: () => void;
 }
 
+// A toast that says what just left the rail and can put it back.
+function undoToast(id: string, message: string, onUndo: () => void) {
+  toast(
+    (t) => (
+      <span className="flex items-center gap-3">
+        <span>{message}</span>
+        <button
+          type="button"
+          onClick={() => {
+            onUndo();
+            toast.dismiss(t.id);
+          }}
+          className="shrink-0 font-medium text-sky-700 hover:text-sky-800"
+        >
+          Undo
+        </button>
+      </span>
+    ),
+    { id },
+  );
+}
+
 export function ScopeRail({ scope, onChange }: ScopeRailProps) {
   const overview = useUniboxOverview();
   const data = overview.data;
@@ -198,6 +229,18 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
   const setSectionOrder = useAppStore((s) => s.setUniboxRailSectionOrder);
   const folded = useAppStore((s) => s.uniboxRailFolded);
   const setFolded = useAppStore((s) => s.setUniboxRailFolded);
+  const setRowsHidden = useAppStore((s) => s.setUniboxRailRowsHidden);
+  const favorites = useAppStore((s) => s.uniboxRailFavorites);
+  const toggleFavorite = useAppStore((s) => s.toggleUniboxRailFavorite);
+  const setFavorites = useAppStore((s) => s.setUniboxRailFavorites);
+  // Every favorite as editing began, so an unticked one keeps its place and name until Done.
+  const [favoritesDraft, setFavoritesDraft] = React.useState<UniboxRailFavorite[] | null>(null);
+  // A scope opened from its own section keeps the highlight there, not in Favorites.
+  const [homePick, setHomePick] = React.useState<string | null>(null);
+  const onFavoritesEditing = React.useCallback(
+    (on: boolean) => setFavoritesDraft(on ? useAppStore.getState().uniboxRailFavorites : null),
+    [],
+  );
 
   const active = scopeKey(scope);
   const folderCounts = React.useMemo(() => {
@@ -284,7 +327,144 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
       })
     : [];
 
+  const mailboxRows: RailRow[] = (data?.mailboxes ?? []).map((m) => ({
+    key: `mailbox:${m.id}`,
+    label: m.email,
+    icon: <MailOpenIcon className={ICON} />,
+    count: m.unread || undefined,
+    accent: m.unread > 0,
+    noun: "mailbox",
+    search: `${m.email} ${m.name}`,
+    onOpen: () => onChange({ kind: "mailbox", mailboxId: m.id }),
+  }));
+
+  const labelRows: RailRow[] = (data?.categories ?? []).map((c) => ({
+    key: `category:${c.id}`,
+    label: c.title,
+    icon: <Dot color={c.color} />,
+    count: c.unread || c.total || undefined,
+    accent: c.unread > 0,
+    noun: "label",
+    tooltip: tagMeaning(c.title) || undefined,
+    onOpen: () => onChange({ kind: "category", categoryId: c.id }),
+  }));
+
+  const tagRows: RailRow[] = (data?.tags ?? []).map((t) => ({
+    key: `tag:${t.id}`,
+    label: t.title,
+    icon: <Dot color={t.color} />,
+    count: t.unread || t.total || undefined,
+    accent: t.unread > 0,
+    noun: "tag",
+    onOpen: () => onChange({ kind: "tag", tagId: t.id }),
+  }));
+
+  // Favorites resolve against every other section, so a row always carries its live count.
+  const everyRow = new Map(
+    [...mailRows, ...viewRows, ...mailboxRows, ...labelRows, ...tagRows].map((r) => [r.key, r]),
+  );
+  const favoriteList = favoritesDraft ?? favorites;
+  const favoriteKeys = new Set(favorites.map((f) => f.key));
+  const favoriteRows: RailRow[] = favoriteList.flatMap((f) => {
+    const r = everyRow.get(f.key);
+    if (!r) return [];
+    return [
+      {
+        ...r,
+        label: f.name ?? r.label,
+        original: f.name ? r.label : undefined,
+        noun: "favorite",
+        onOpen: () => {
+          setHomePick(null);
+          r.onOpen();
+        },
+      },
+    ];
+  });
+
+  // One row carries the highlight: the favorite, unless the scope was opened from its own section.
+  const inFavorites = favoriteKeys.has(active) && homePick !== active && favoriteRows.some((r) => r.key === active);
+  const homeActive = inFavorites ? "" : active;
+  const home = (rows: RailRow[]) =>
+    rows.map((r) => ({
+      ...r,
+      onOpen: () => {
+        setHomePick(r.key);
+        r.onOpen();
+      },
+    }));
+
+  // Writes the favorites; while editing, the draft keeps unticked ones in place.
+  const writeFavorites = (next: UniboxRailFavorite[], kept = favoriteKeys) => {
+    if (favoritesDraft) setFavoritesDraft(next);
+    setFavorites(next.filter((f) => kept.has(f.key)));
+  };
+
+  const addFavorite = (row: RailRow) => {
+    if (favoriteKeys.has(row.key)) return;
+    toggleFavorite(row.key);
+    toast(`${row.label} added to Favorites.`, { id: `rail-favorite:${row.key}` });
+  };
+
+  const removeFavorite = (key: string, label: string) => {
+    const before = useAppStore.getState().uniboxRailFavorites;
+    const at = before.findIndex((f) => f.key === key);
+    if (at < 0) return;
+    const entry = before[at];
+    setFavorites(before.filter((f) => f.key !== key));
+    undoToast(`rail-favorite:${key}`, `${label} removed from Favorites.`, () => {
+      const now = useAppStore.getState().uniboxRailFavorites;
+      if (now.some((f) => f.key === key)) return;
+      const next = [...now];
+      next.splice(Math.min(at, next.length), 0, entry);
+      setFavorites(next);
+    });
+  };
+
+  const clearFavorites = () => {
+    const before = useAppStore.getState().uniboxRailFavorites;
+    setFavorites([]);
+    undoToast("rail-favorites-cleared", "Favorites cleared.", () => {
+      const now = useAppStore.getState().uniboxRailFavorites;
+      setFavorites([...before, ...now.filter((f) => !before.some((b) => b.key === f.key))]);
+    });
+  };
+
+  const renameFavorite = (row: RailRow, name: string) => {
+    const clean = cleanUniboxRailFavoriteName(name);
+    const own = clean && clean !== (row.original ?? row.label) ? clean : undefined;
+    writeFavorites(favoriteList.map((f) => (f.key !== row.key ? f : own ? { key: f.key, name: own } : { key: f.key })));
+  };
+
+  const favoriteItem = (row: RailRow) =>
+    favoriteKeys.has(row.key) ? (
+      <PopoverMenuItem icon={<StarOffIcon className={MENU_ICON} />} onSelect={() => removeFavorite(row.key, row.label)}>
+        Remove from Favorites
+      </PopoverMenuItem>
+    ) : (
+      <PopoverMenuItem icon={<StarIcon className={MENU_ICON} />} onSelect={() => addFavorite(row)}>
+        Add to Favorites
+      </PopoverMenuItem>
+    );
+
+  const favoriteToggle = (row: RailRow) => (
+    <FavoriteToggle
+      on={favoriteKeys.has(row.key)}
+      label={row.label}
+      onToggle={() => (favoriteKeys.has(row.key) ? removeFavorite(row.key, row.label) : toggleFavorite(row.key))}
+    />
+  );
+
+  const hideWithUndo = (row: RailRow) => {
+    setRowsHidden([row.key], true);
+    const when = row.key === active ? " once you leave it" : "";
+    undoToast(`rail-hidden:${row.key}`, `${row.label} is hidden from the rail${when}.`, () =>
+      setRowsHidden([row.key], false),
+    );
+  };
+
   const present = applyRailOrder(SECTION_IDS, sectionOrder).filter((id) => {
+    if (id === "favorites") return favoriteRows.length > 0 || favoritesDraft !== null;
     if (id === "views") return !!data?.categories?.some((c) => isAutomaticTag(c.title));
     if (id === "labels") return !!data?.categories?.length;
     if (id === "tags") return !!data?.tags?.length;
@@ -311,14 +491,86 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
 
   const section = (id: string) => {
     switch (id) {
-      case "mail":
+      case "favorites":
         return (
           <RailSection
+            id="favorites"
+            label="Favorites"
+            rows={favoriteRows}
+            order={favoriteList.map((f) => f.key)}
+            activeKey={inFavorites ? active : ""}
+            controls={controls("favorites")}
+            isOff={(k) => !favoriteKeys.has(k)}
+            toggleOff={(k) => {
+              const kept = new Set(favoriteKeys);
+              if (!kept.delete(k)) kept.add(k);
+              writeFavorites(favoriteList, kept);
+            }}
+            commitOrder={(keys) => {
+              const byKey = new Map(favoriteList.map((f) => [f.key, f]));
+              // Favorites that resolve to no row yet (still loading) keep their place at the end.
+              writeFavorites([...keys.flatMap((k) => byKey.get(k) ?? []), ...favoriteList.filter((f) => !keys.includes(f.key))]);
+            }}
+            editLabel="Edit favorites"
+            editHint="Drag to reorder, untick to remove"
+            onEditingChange={onFavoritesEditing}
+            onRename={renameFavorite}
+            menuItems={(startEditing) => (
+              <>
+                <PopoverMenuItem icon={<PencilIcon className={MENU_ICON} />} onSelect={startEditing}>
+                  Edit favorites…
+                </PopoverMenuItem>
+                <PopoverMenuItem icon={<StarOffIcon className={MENU_ICON} />} onSelect={clearFavorites}>
+                  Remove all favorites
+                </PopoverMenuItem>
+              </>
+            )}
+            rowMenu={(row, ctx) => (
+              <>
+                <MoveItems row={row} ctx={ctx} />
+                <PopoverMenuItem
+                  icon={<PencilLineIcon className={MENU_ICON} />}
+                  onSelect={ctx.startRenaming}
+                  trailing={<PopoverMenuKbd>F2</PopoverMenuKbd>}
+                >
+                  Rename…
+                </PopoverMenuItem>
+                <PopoverMenuItem
+                  icon={<StarOffIcon className={MENU_ICON} />}
+                  onSelect={() => removeFavorite(row.key, row.label)}
+                >
+                  Remove from Favorites
+                </PopoverMenuItem>
+                <PopoverMenuSeparator />
+                <PopoverMenuItem icon={<PencilIcon className={MENU_ICON} />} onSelect={ctx.startEditing}>
+                  Edit favorites…
+                </PopoverMenuItem>
+              </>
+            )}
+            editExtra={(row, ctx) => (
+              <button
+                type="button"
+                onClick={ctx.startRenaming}
+                aria-label={`Rename ${row.label}`}
+                title="Rename"
+                className="size-5 mr-1 shrink-0 rounded inline-flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 transition-colors"
+              >
+                <PencilLineIcon className="w-3 h-3" />
+              </button>
+            )}
+          />
+        );
+      case "mail":
+        return (
+          <FixedSection
             id="mail"
             label="Mail"
-            rows={mailRows}
-            activeKey={active}
+            rows={home(mailRows)}
+            activeKey={homeActive}
             controls={controls("mail")}
+            favoriteItem={favoriteItem}
+            favoriteToggle={favoriteToggle}
+            onHide={hideWithUndo}
             footer={
               // The queue meter only once the allowance is 70% used.
               data &&
@@ -333,7 +585,16 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
         );
       case "views":
         return (
-          <RailSection id="views" label="Views" rows={viewRows} activeKey={active} controls={controls("views")} />
+          <FixedSection
+            id="views"
+            label="Views"
+            rows={home(viewRows)}
+            activeKey={homeActive}
+            controls={controls("views")}
+            favoriteItem={favoriteItem}
+            favoriteToggle={favoriteToggle}
+            onHide={hideWithUndo}
+          />
         );
       case "mailboxes":
         return (
@@ -341,22 +602,11 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
             id="mailboxes"
             label="Mailboxes"
             controls={controls("mailboxes")}
-            items={data?.mailboxes ?? []}
-            isActive={(m) => active === `mailbox:${m.id}`}
-            hasAccent={(m) => m.unread > 0}
+            rows={home(mailboxRows)}
+            activeKey={homeActive}
+            rowMenu={favoriteItem}
             emptyText={overview.isPending ? "Loading…" : "No mailboxes connected."}
             searchPlaceholder="Filter mailboxes"
-            getSearchKey={(m) => `${m.email} ${m.name}`}
-            renderItem={(m) => (
-              <Item
-                icon={<MailOpenIcon className={ICON} />}
-                label={m.email}
-                count={m.unread || undefined}
-                accent={m.unread > 0}
-                active={active === `mailbox:${m.id}`}
-                onClick={() => onChange({ kind: "mailbox", mailboxId: m.id })}
-              />
-            )}
           />
         );
       case "labels":
@@ -365,25 +615,11 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
             id="labels"
             label="Labels"
             controls={controls("labels")}
-            items={data?.categories ?? []}
-            isActive={(c) => active === `category:${c.id}`}
-            hasAccent={(c) => c.unread > 0}
+            rows={home(labelRows)}
+            activeKey={homeActive}
+            rowMenu={favoriteItem}
             emptyText="No labels yet."
             searchPlaceholder="Filter labels"
-            getSearchKey={(c) => c.title}
-            renderItem={(c) => (
-              <TagMeaningTooltip title={c.title}>
-                <Item
-                  icon={<Dot color={c.color} />}
-                  label={c.title}
-                  hideNativeTitle={isAutomaticTag(c.title)}
-                  count={c.unread || c.total || undefined}
-                  accent={c.unread > 0}
-                  active={active === `category:${c.id}`}
-                  onClick={() => onChange({ kind: "category", categoryId: c.id })}
-                />
-              </TagMeaningTooltip>
-            )}
           />
         );
       case "tags":
@@ -392,22 +628,11 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
             id="tags"
             label="Tags"
             controls={controls("tags")}
-            items={data?.tags ?? []}
-            isActive={(t) => active === `tag:${t.id}`}
-            hasAccent={(t) => t.unread > 0}
+            rows={home(tagRows)}
+            activeKey={homeActive}
+            rowMenu={favoriteItem}
             emptyText="No tags yet."
             searchPlaceholder="Filter tags"
-            getSearchKey={(t) => t.title}
-            renderItem={(t) => (
-              <Item
-                icon={<Dot color={t.color} />}
-                label={t.title}
-                count={t.unread || t.total || undefined}
-                accent={t.unread > 0}
-                active={active === `tag:${t.id}`}
-                onClick={() => onChange({ kind: "tag", tagId: t.id })}
-              />
-            )}
           />
         );
       default:
@@ -443,11 +668,13 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
           <div className="px-3 pb-2 empty:hidden">
             <ComposeDraftsItem />
           </div>
-          {present.map((id) => (
-            <motion.div key={id} layout="position" transition={transition}>
-              {section(id)}
-            </motion.div>
-          ))}
+          <AnimatePresence initial={false}>
+            {present.map((id) => (
+              <motion.div key={id} layout="position" transition={transition} {...FOLD}>
+                {section(id)}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </motion.nav>
       </LayoutGroup>
     </MotionConfig>
@@ -466,18 +693,30 @@ function Dot({ color }: { color?: string }) {
   );
 }
 
-// One Mail or Views row. `key` is its scopeKey, which is what hiding and
-// ordering store.
+// One rail row. `key` is its scopeKey, which is what hiding, ordering and
+// favorites store.
 interface RailRow {
   key: string;
   label: string;
+  // The row's own label when a favorite shows a name the user gave it.
+  original?: string;
   icon: React.ReactNode;
   count?: number;
   accent?: boolean;
-  noun?: "folder" | "view";
+  noun?: "folder" | "view" | "mailbox" | "label" | "tag" | "favorite";
   tooltip?: string;
+  search?: string;
   onOpen: () => void;
   onMarkAllRead?: () => void;
+}
+
+// What a row's menu and edit form can do to it.
+interface RowContext {
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  move: (delta: -1 | 1) => void;
+  startEditing: () => void;
+  startRenaming: () => void;
 }
 
 // A menu that opens from its "…" button or, on right-click, at the pointer.
@@ -515,6 +754,7 @@ function SectionHeader({
   count,
   editing,
   onEdit,
+  editLabel = `Edit ${label} rows`,
   hiddenCount,
   menu,
 }: {
@@ -526,6 +766,7 @@ function SectionHeader({
   count?: number;
   editing?: boolean;
   onEdit?: () => void;
+  editLabel?: string;
   hiddenCount?: number;
   menu: React.ReactNode;
 }) {
@@ -612,8 +853,8 @@ function SectionHeader({
               type="button"
               data-rail-options
               onClick={onEdit}
-              title={`Edit ${label} rows`}
-              aria-label={`Edit ${label} rows`}
+              title={editLabel}
+              aria-label={editLabel}
               aria-describedby={hiddenCount ? hiddenId : undefined}
               className="shrink-0 size-5 rounded inline-flex items-center justify-center text-slate-400 hover:text-slate-700 focus-visible:text-slate-700 hover:bg-slate-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 transition-colors"
               {...pop}
@@ -703,14 +944,49 @@ function SectionMenuItems({
   );
 }
 
-// RailSection: a fixed list of rows (Mail, Views) that folds, and whose rows
-// the user can hide and reorder. The row you are on is never hidden.
-function RailSection({
+// The start of every Mail, Views and Favorites row menu: mark read, then move.
+function MoveItems({ row, ctx }: { row: RailRow; ctx: RowContext }) {
+  return (
+    <>
+      {row.onMarkAllRead && (
+        <>
+          <PopoverMenuItem icon={<MailOpenIcon className={MENU_ICON} />} onSelect={row.onMarkAllRead}>
+            Mark all as read
+          </PopoverMenuItem>
+          <PopoverMenuSeparator />
+        </>
+      )}
+      <PopoverMenuItem
+        icon={<ArrowUpIcon className={MENU_ICON} />}
+        disabled={!ctx.canMoveUp}
+        onSelect={() => ctx.move(-1)}
+        trailing={<PopoverMenuKbd>{shortcutLabel("alt+↑")}</PopoverMenuKbd>}
+      >
+        Move up
+      </PopoverMenuItem>
+      <PopoverMenuItem
+        icon={<ArrowDownIcon className={MENU_ICON} />}
+        disabled={!ctx.canMoveDown}
+        onSelect={() => ctx.move(1)}
+        trailing={<PopoverMenuKbd>{shortcutLabel("alt+↓")}</PopoverMenuKbd>}
+      >
+        Move down
+      </PopoverMenuItem>
+    </>
+  );
+}
+
+// FixedSection: Mail and Views, a shipped list of rows the user can hide,
+// reorder and star into Favorites.
+function FixedSection({
   id,
   label,
   rows,
   activeKey,
   controls,
+  favoriteItem,
+  favoriteToggle,
+  onHide,
   footer,
 }: {
   id: string;
@@ -718,19 +994,127 @@ function RailSection({
   rows: RailRow[];
   activeKey: string;
   controls: SectionControls;
+  favoriteItem: (row: RailRow) => React.ReactNode;
+  favoriteToggle: (row: RailRow) => React.ReactNode;
+  onHide: (row: RailRow) => void;
+  footer?: React.ReactNode;
+}) {
+  const hiddenKeys = useAppStore((s) => s.uniboxRailHidden);
+  const toggleRow = useAppStore((s) => s.toggleUniboxRailRow);
+  const setRowsHidden = useAppStore((s) => s.setUniboxRailRowsHidden);
+  const storedOrder = useAppStore((s) => s.uniboxRailOrder[id]);
+  const setOrder = useAppStore((s) => s.setUniboxRailOrder);
+
+  const defaults = rows.map((r) => r.key);
+  const order = applyRailOrder(defaults, storedOrder);
+  const isHidden = (k: string) => hiddenKeys.includes(k);
+  const hiddenHere = defaults.filter(isHidden);
+
+  return (
+    <RailSection
+      id={id}
+      label={label}
+      rows={rows}
+      order={order}
+      activeKey={activeKey}
+      controls={controls}
+      footer={footer}
+      isOff={isHidden}
+      toggleOff={toggleRow}
+      commitOrder={(keys) => setOrder(id, sameOrder(keys, defaults) ? null : keys)}
+      offCount={hiddenHere.length}
+      editHint="Drag to reorder, untick to hide"
+      reset={{
+        disabled: hiddenHere.length === 0 && sameOrder(order, defaults),
+        run: () => {
+          setRowsHidden(defaults, false);
+          setOrder(id, null);
+        },
+      }}
+      menuItems={(startEditing) => (
+        <>
+          <PopoverMenuItem icon={<PencilIcon className={MENU_ICON} />} onSelect={startEditing}>
+            Edit rows…
+          </PopoverMenuItem>
+          {hiddenHere.length > 0 && (
+            <PopoverMenuItem icon={<EyeIcon className={MENU_ICON} />} onSelect={() => setRowsHidden(hiddenHere, false)}>
+              Show {hiddenHere.length} hidden {hiddenHere.length === 1 ? "row" : "rows"}
+            </PopoverMenuItem>
+          )}
+        </>
+      )}
+      rowMenu={(row, ctx) => (
+        <>
+          <MoveItems row={row} ctx={ctx} />
+          <PopoverMenuItem icon={<EyeOffIcon className={MENU_ICON} />} onSelect={() => onHide(row)}>
+            Hide from rail
+          </PopoverMenuItem>
+          {favoriteItem(row)}
+          <PopoverMenuSeparator />
+          <PopoverMenuItem icon={<PencilIcon className={MENU_ICON} />} onSelect={ctx.startEditing}>
+            Edit {label} rows…
+          </PopoverMenuItem>
+        </>
+      )}
+      editExtra={favoriteToggle}
+    />
+  );
+}
+
+// RailSection: an ordered list of rows that folds and has an edit mode, where
+// each row can be ticked off (hidden, or out of Favorites) and reordered. The
+// row you are on is never ticked out of sight.
+function RailSection({
+  id,
+  label,
+  rows,
+  order,
+  activeKey,
+  controls,
+  isOff,
+  toggleOff,
+  commitOrder,
+  offCount = 0,
+  editLabel,
+  editHint,
+  reset,
+  menuItems,
+  rowMenu,
+  editExtra,
+  onRename,
+  onEditingChange,
+  footer,
+}: {
+  id: string;
+  label: string;
+  rows: RailRow[];
+  // Every row key, ticked off or not, in rail order.
+  order: string[];
+  activeKey: string;
+  controls: SectionControls;
+  isOff: (key: string) => boolean;
+  toggleOff: (key: string) => void;
+  commitOrder: (keys: string[]) => void;
+  offCount?: number;
+  editLabel?: string;
+  editHint: string;
+  reset?: { run: () => void; disabled: boolean };
+  menuItems: (startEditing: () => void) => React.ReactNode;
+  rowMenu: (row: RailRow, ctx: RowContext) => React.ReactNode;
+  editExtra?: (row: RailRow, ctx: RowContext) => React.ReactNode;
+  onRename?: (row: RailRow, name: string) => void;
+  onEditingChange?: (editing: boolean) => void;
   footer?: React.ReactNode;
 }) {
   const panelId = React.useId();
   const transition = useRailTransition();
   const folded = useAppStore((s) => s.uniboxRailFolded[id] ?? false);
   const toggleSection = useAppStore((s) => s.toggleUniboxRailSection);
-  const hiddenKeys = useAppStore((s) => s.uniboxRailHidden);
-  const toggleRow = useAppStore((s) => s.toggleUniboxRailRow);
-  const setRowsHidden = useAppStore((s) => s.setUniboxRailRowsHidden);
-  const storedOrder = useAppStore((s) => s.uniboxRailOrder[id]);
-  const setOrder = useAppStore((s) => s.setUniboxRailOrder);
   // Local on purpose: editing is a moment, not a preference.
   const [editing, setEditing] = React.useState(false);
+  const [renaming, setRenaming] = React.useState<string | null>(null);
+  // The row to hand focus back to once a rename ends from the keyboard.
+  const refocusRow = React.useRef<string | null>(null);
   // The order while a drag is in flight; committed once, on the drop.
   const [draft, setDraft] = React.useState<string[] | null>(null);
   // Mirrors `draft` so a drop that lands before the next render still commits it.
@@ -750,6 +1134,7 @@ function RailSection({
   const setEditMode = (on: boolean) => {
     setSwapped(true);
     updateDraft(null);
+    setRenaming(null);
     setEditing(on);
   };
 
@@ -758,6 +1143,7 @@ function RailSection({
   React.useEffect(() => {
     if (editing === wasEditing.current) return;
     wasEditing.current = editing;
+    onEditingChange?.(editing);
     if (editing) {
       firstEditRowRef.current?.focus();
       return;
@@ -765,7 +1151,14 @@ function RailSection({
     const focused = document.activeElement;
     if (focused && focused !== document.body && !sectionRef.current?.contains(focused)) return;
     sectionRef.current?.querySelector<HTMLButtonElement>("[data-rail-options]")?.focus();
-  }, [editing]);
+  }, [editing, onEditingChange]);
+
+  React.useEffect(() => {
+    const key = refocusRow.current;
+    if (renaming !== null || !key) return;
+    refocusRow.current = null;
+    sectionRef.current?.querySelector<HTMLElement>(`[data-rail-row="${key}"]`)?.focus();
+  }, [renaming]);
 
   // A click anywhere else ends editing, as Done would.
   React.useEffect(() => {
@@ -773,6 +1166,9 @@ function RailSection({
     const onDown = (e: MouseEvent) => {
       const t = e.target as Element | null;
       if (!t || sectionRef.current?.contains(t) || t.closest?.("[data-floating]")) return;
+      // A rename in progress is kept, as leaving its field would keep it.
+      const focused = document.activeElement;
+      if (focused instanceof HTMLInputElement && sectionRef.current?.contains(focused)) focused.blur();
       setEditing(false);
       draftRef.current = null;
       setDraft(null);
@@ -781,19 +1177,13 @@ function RailSection({
     return () => document.removeEventListener("mousedown", onDown, true);
   }, [editing]);
 
-  const defaults = rows.map((r) => r.key);
-  const orderKeys = draft ?? applyRailOrder(defaults, storedOrder);
+  const orderKeys = draft ?? order;
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const ordered = orderKeys.flatMap((k) => byKey.get(k) ?? []);
-  const isHidden = (k: string) => hiddenKeys.includes(k);
-  const wanted = ordered.filter((r) => r.key === activeKey || !isHidden(r.key));
+  const wanted = ordered.filter((r) => r.key === activeKey || !isOff(r.key));
   const open = editing || !folded;
   const shown = editing ? ordered : open ? wanted : wanted.filter((r) => r.key === activeKey);
   const dot = !open && wanted.some((r) => r.key !== activeKey && r.accent);
-  const hiddenHere = defaults.filter(isHidden);
-  const isDefault = hiddenHere.length === 0 && sameOrder(applyRailOrder(defaults, storedOrder), defaults);
-
-  const commit = (keys: string[]) => setOrder(id, sameOrder(keys, defaults) ? null : keys);
 
   // Steps past the neighbour the user can see, so a hidden row never swallows a
   // move; a folded section shows no neighbours, so nothing moves there.
@@ -806,55 +1196,43 @@ function RailSection({
     const at = visibleForMove.findIndex((r) => r.key === key);
     const neighbour = visibleForMove[at + delta];
     if (at < 0 || !neighbour) return;
-    commit(moveNextTo(orderKeys, key, neighbour.key, delta));
+    commitOrder(moveNextTo(orderKeys, key, neighbour.key, delta));
     setAnnouncement(`${byKey.get(key)?.label} moved to position ${at + delta + 1} of ${visibleForMove.length}`);
   };
 
-  const hideWithUndo = (row: RailRow) => {
-    setRowsHidden([row.key], true);
-    const when = row.key === activeKey ? " once you leave it" : "";
-    toast(
-      (t) => (
-        <span className="flex items-center gap-3">
-          <span>
-            {row.label} is hidden from the rail{when}.
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setRowsHidden([row.key], false);
-              toast.dismiss(t.id);
-            }}
-            className="shrink-0 font-medium text-sky-700 hover:text-sky-800"
-          >
-            Undo
-          </button>
-        </span>
-      ),
-      { id: `rail-hidden:${row.key}` },
-    );
-  };
-
-  const reset = () => {
-    setRowsHidden(defaults, false);
-    setOrder(id, null);
+  const runReset = () => {
+    reset?.run();
     updateDraft(null);
     setAnnouncement(`${label} rows are back to the default`);
   };
 
+  const finishRename = (row: RailRow, name: string | null, fromKey: boolean) => {
+    if (name !== null && onRename) {
+      onRename(row, name);
+      const clean = cleanUniboxRailFavoriteName(name);
+      const original = row.original ?? row.label;
+      setAnnouncement(clean && clean !== original ? `Renamed to ${clean}` : `${original} uses its own name again`);
+    }
+    if (fromKey) refocusRow.current = row.key;
+    setRenaming(null);
+  };
+
+  const ctxFor = (r: RailRow): RowContext => ({
+    canMoveUp: canMove(r.key, -1),
+    canMoveDown: canMove(r.key, 1),
+    move: (d) => move(r.key, d),
+    startEditing: () => setEditMode(true),
+    startRenaming: () => setRenaming(r.key),
+  });
+
   const menu = (
     <SectionMenuItems open={open} onToggle={() => toggleSection(id)} controls={controls}>
-      <PopoverMenuItem icon={<PencilIcon className={MENU_ICON} />} onSelect={() => setEditMode(true)}>
-        Edit rows…
-      </PopoverMenuItem>
-      {hiddenHere.length > 0 && (
-        <PopoverMenuItem icon={<EyeIcon className={MENU_ICON} />} onSelect={() => setRowsHidden(hiddenHere, false)}>
-          Show {hiddenHere.length} hidden {hiddenHere.length === 1 ? "row" : "rows"}
+      {menuItems(() => setEditMode(true))}
+      {reset && (
+        <PopoverMenuItem icon={<RotateCcwIcon className={MENU_ICON} />} disabled={reset.disabled} onSelect={runReset}>
+          Reset to default
         </PopoverMenuItem>
       )}
-      <PopoverMenuItem icon={<RotateCcwIcon className={MENU_ICON} />} disabled={isDefault} onSelect={reset}>
-        Reset to default
-      </PopoverMenuItem>
     </SectionMenuItems>
   );
 
@@ -877,7 +1255,8 @@ function RailSection({
         dot={dot}
         editing={editing}
         onEdit={() => setEditMode(!editing)}
-        hiddenCount={editing ? 0 : hiddenHere.length}
+        editLabel={editLabel}
+        hiddenCount={editing ? 0 : offCount}
         menu={menu}
       />
       <Reorder.Group
@@ -889,44 +1268,67 @@ function RailSection({
         className="px-2 space-y-px"
       >
         <AnimatePresence initial={false}>
-          {shown.map((r, i) => (
-            <RailRowItem
-              key={r.key}
-              row={r}
-              sectionLabel={label}
-              active={r.key === activeKey}
-              editing={editing}
-              swapped={swapped}
-              hidden={isHidden(r.key)}
-              buttonRef={i === 0 ? firstEditRowRef : undefined}
-              canMoveUp={canMove(r.key, -1)}
-              canMoveDown={canMove(r.key, 1)}
-              onMove={(d) => move(r.key, d)}
-              onToggleHidden={() => toggleRow(r.key)}
-              onHide={() => hideWithUndo(r)}
-              onEdit={() => setEditMode(true)}
-              onDragEnd={() => {
-                if (draftRef.current) commit(draftRef.current);
-                updateDraft(null);
-              }}
-            />
-          ))}
+          {shown.map((r, i) => {
+            const ctx = ctxFor(r);
+            const rename =
+              onRename && renaming === r.key ? (
+                <RenameRow row={r} onDone={(name, fromKey) => finishRename(r, name, fromKey)} />
+              ) : null;
+            return (
+              <RailRowItem
+                key={r.key}
+                row={r}
+                editing={editing}
+                swapped={swapped}
+                onDragEnd={() => {
+                  if (draftRef.current) commitOrder(draftRef.current);
+                  updateDraft(null);
+                }}
+                view={
+                  rename ?? (
+                    <MenuRow
+                      row={r}
+                      active={r.key === activeKey}
+                      onMove={ctx.move}
+                      onRename={onRename ? ctx.startRenaming : undefined}
+                      menu={rowMenu(r, ctx)}
+                    />
+                  )
+                }
+                edit={(drag) =>
+                  rename ?? (
+                    <EditRow
+                      row={r}
+                      off={isOff(r.key)}
+                      drag={drag}
+                      buttonRef={i === 0 ? firstEditRowRef : undefined}
+                      onToggle={() => toggleOff(r.key)}
+                      onMove={ctx.move}
+                      extra={editExtra?.(r, ctx)}
+                    />
+                  )
+                }
+              />
+            );
+          })}
         </AnimatePresence>
       </Reorder.Group>
       <AnimatePresence initial={false}>
         {editing && (
           <motion.div key="edit-footer" {...FOLD} transition={transition}>
             <div className="mx-4 mt-1 flex items-center justify-between gap-2 text-[10.5px] text-slate-400">
-              <span>Drag to reorder, untick to hide</span>
-              <button
-                type="button"
-                onClick={reset}
-                disabled={isDefault}
-                className="shrink-0 inline-flex items-center gap-1 h-5 px-1.5 -mr-1.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 transition-colors"
-              >
-                <RotateCcwIcon className="w-3 h-3" />
-                Reset
-              </button>
+              <span>{editHint}</span>
+              {reset && (
+                <button
+                  type="button"
+                  onClick={runReset}
+                  disabled={reset.disabled}
+                  className="shrink-0 inline-flex items-center gap-1 h-5 px-1.5 -mr-1.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 transition-colors"
+                >
+                  <RotateCcwIcon className="w-3 h-3" />
+                  Reset
+                </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -943,37 +1345,21 @@ function RailSection({
   );
 }
 
-// One Mail or Views row, as it folds, reorders and swaps into its edit form.
+// One reorderable row, as it folds, moves and swaps into its edit form.
 function RailRowItem({
   row,
-  sectionLabel,
-  active,
   editing,
   swapped,
-  hidden,
-  buttonRef,
-  canMoveUp,
-  canMoveDown,
-  onMove,
-  onToggleHidden,
-  onHide,
-  onEdit,
   onDragEnd,
+  view,
+  edit,
 }: {
   row: RailRow;
-  sectionLabel: string;
-  active: boolean;
   editing: boolean;
   swapped: boolean;
-  hidden: boolean;
-  buttonRef?: React.Ref<HTMLButtonElement>;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMove: (delta: -1 | 1) => void;
-  onToggleHidden: () => void;
-  onHide: () => void;
-  onEdit: () => void;
   onDragEnd: () => void;
+  view: React.ReactNode;
+  edit: (drag: DragControls) => React.ReactNode;
 }) {
   const transition = useRailTransition();
   const drag = useDragControls();
@@ -1000,84 +1386,30 @@ function RailRowItem({
         animate={{ opacity: 1, x: 0 }}
         transition={transition}
       >
-        {editing ? (
-          <EditRow
-            row={row}
-            hidden={hidden}
-            drag={drag}
-            buttonRef={buttonRef}
-            onToggle={onToggleHidden}
-            onMove={onMove}
-          />
-        ) : (
-          <MenuRow
-            row={row}
-            active={active}
-            onMove={onMove}
-            menu={
-              <>
-                {row.onMarkAllRead && (
-                  <>
-                    <PopoverMenuItem icon={<MailOpenIcon className={MENU_ICON} />} onSelect={row.onMarkAllRead}>
-                      Mark all as read
-                    </PopoverMenuItem>
-                    <PopoverMenuSeparator />
-                  </>
-                )}
-                <PopoverMenuItem
-                  icon={<ArrowUpIcon className={MENU_ICON} />}
-                  disabled={!canMoveUp}
-                  onSelect={() => onMove(-1)}
-                  trailing={<PopoverMenuKbd>{shortcutLabel("alt+↑")}</PopoverMenuKbd>}
-                >
-                  Move up
-                </PopoverMenuItem>
-                <PopoverMenuItem
-                  icon={<ArrowDownIcon className={MENU_ICON} />}
-                  disabled={!canMoveDown}
-                  onSelect={() => onMove(1)}
-                  trailing={<PopoverMenuKbd>{shortcutLabel("alt+↓")}</PopoverMenuKbd>}
-                >
-                  Move down
-                </PopoverMenuItem>
-                <PopoverMenuItem icon={<EyeOffIcon className={MENU_ICON} />} onSelect={onHide}>
-                  Hide from rail
-                </PopoverMenuItem>
-                <PopoverMenuSeparator />
-                <PopoverMenuItem icon={<PencilIcon className={MENU_ICON} />} onSelect={onEdit}>
-                  Edit {sectionLabel} rows…
-                </PopoverMenuItem>
-              </>
-            }
-          />
-        )}
+        {editing ? edit(drag) : view}
       </motion.div>
     </Reorder.Item>
   );
 }
 
-function CollapsibleSection<T extends { id: string }>({
+function CollapsibleSection({
   id,
   label,
   controls,
-  items,
-  isActive,
-  hasAccent,
+  rows: items,
+  activeKey,
+  rowMenu,
   emptyText,
   searchPlaceholder,
-  getSearchKey,
-  renderItem,
 }: {
   id: string;
   label: string;
   controls: SectionControls;
-  items: T[];
-  isActive: (item: T) => boolean;
-  hasAccent: (item: T) => boolean;
+  rows: RailRow[];
+  activeKey: string;
+  rowMenu: (row: RailRow) => React.ReactNode;
   emptyText: string;
   searchPlaceholder: string;
-  getSearchKey: (item: T) => string;
-  renderItem: (item: T) => React.ReactNode;
 }) {
   const panelId = React.useId();
   const transition = useRailTransition();
@@ -1089,8 +1421,8 @@ function CollapsibleSection<T extends { id: string }>({
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
-    return items.filter((it) => getSearchKey(it).toLowerCase().includes(q));
-  }, [items, search, getSearchKey]);
+    return items.filter((it) => (it.search ?? it.label).toLowerCase().includes(q));
+  }, [items, search]);
 
   const showSearch = items.length > COLLAPSE_THRESHOLD;
   const showCollapse = filtered.length > COLLAPSE_THRESHOLD;
@@ -1098,8 +1430,8 @@ function CollapsibleSection<T extends { id: string }>({
     showCollapse && !expanded ? filtered.slice(0, COLLAPSED_VISIBLE) : filtered;
   const hidden = filtered.length - visible.length;
   // Folded, only the row you are on stays, even one "Show all" would have tucked away.
-  const rows = sectionOpen ? visible : items.filter(isActive);
-  const dot = !sectionOpen && items.some((it) => !isActive(it) && hasAccent(it));
+  const rows = sectionOpen ? visible : items.filter((it) => it.key === activeKey);
+  const dot = !sectionOpen && items.some((it) => it.key !== activeKey && it.accent);
   const message = !sectionOpen
     ? null
     : items.length === 0
@@ -1168,8 +1500,8 @@ function CollapsibleSection<T extends { id: string }>({
         <div className="space-y-px">
           <AnimatePresence initial={false}>
             {rows.map((it) => (
-              <motion.div key={it.id} {...FOLD} transition={transition}>
-                {renderItem(it)}
+              <motion.div key={it.key} {...FOLD} transition={transition}>
+                <MenuRow row={it} active={it.key === activeKey} menu={rowMenu(it)} />
               </motion.div>
             ))}
           </AnimatePresence>
@@ -1276,17 +1608,19 @@ function Count({ value, accent, active }: { value: number; accent?: boolean; act
   );
 }
 
-// MenuRow: a Mail or Views row with a "…" menu beside it and the same menu on
+// MenuRow: a rail row with a "…" menu beside it and the same menu on
 // right-click. The trigger is the row button's sibling, never its child.
 function MenuRow({
   row,
   active,
   onMove,
+  onRename,
   menu,
 }: {
   row: RailRow;
   active: boolean;
-  onMove: (delta: -1 | 1) => void;
+  onMove?: (delta: -1 | 1) => void;
+  onRename?: () => void;
   menu: React.ReactNode;
 }) {
   const rowMenu = useAnchoredMenu();
@@ -1297,7 +1631,13 @@ function MenuRow({
         data-rail-row={row.key}
         onClick={row.onOpen}
         onKeyDown={(e) => {
-          if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+          if (e.key === "F2" && onRename && !e.altKey && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            onRename();
+            return;
+          }
+          if (!onMove || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
           e.preventDefault();
           e.stopPropagation();
           onMove(e.key === "ArrowUp" ? -1 : 1);
@@ -1309,7 +1649,7 @@ function MenuRow({
           active ? ROW_ACTIVE : ROW_IDLE,
           rowMenu.open && !active && "bg-slate-50",
         )}
-        title={row.tooltip ? undefined : row.label}
+        title={row.tooltip ? undefined : row.original ? `${row.label} (${row.original})` : row.label}
       >
         {active && <ActiveMark />}
         <span className={cn("shrink-0 transition-colors", active ? "text-slate-800" : "text-slate-400 group-hover/folder:text-slate-600")}>
@@ -1355,21 +1695,23 @@ function MenuRow({
 }
 
 // EditRow: a row while its section is edited. The grip drags it (or moves it
-// with the arrow keys); the rest is a checkbox, checked meaning shown.
+// with the arrow keys); the rest is a checkbox, checked meaning it stays.
 function EditRow({
   row,
-  hidden,
+  off,
   drag,
   buttonRef,
   onToggle,
   onMove,
+  extra,
 }: {
   row: RailRow;
-  hidden: boolean;
+  off: boolean;
   drag: DragControls;
   buttonRef?: React.Ref<HTMLButtonElement>;
   onToggle: () => void;
   onMove: (delta: -1 | 1) => void;
+  extra?: React.ReactNode;
 }) {
   const moveKey = (e: React.KeyboardEvent, from: "row" | "grip") => {
     if (from === "row" && !e.altKey) return;
@@ -1393,74 +1735,114 @@ function EditRow({
         ref={buttonRef}
         type="button"
         role="checkbox"
-        aria-checked={!hidden}
+        aria-checked={!off}
         data-rail-row={row.key}
         onClick={onToggle}
         onKeyDown={(e) => moveKey(e, "row")}
         className="flex-1 min-w-0 h-7 pl-1 pr-2 flex items-center gap-2.5 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
       >
         <motion.span
-          key={hidden ? "off" : "on"}
+          key={off ? "off" : "on"}
           className="flex"
           initial={{ scale: 0.7 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 600, damping: 26 }}
         >
-          <CheckSquare checked={!hidden} tone="sky" />
+          <CheckSquare checked={!off} tone="sky" />
         </motion.span>
-        <span className={cn("shrink-0 transition-colors", hidden ? "text-slate-300" : "text-slate-400")}>
+        <span className={cn("shrink-0 transition-colors", off ? "text-slate-300" : "text-slate-400")}>
           {row.icon}
         </span>
         <span
           className={cn(
             "truncate min-w-0 flex-1 text-[12.5px] transition-colors",
-            hidden ? "text-slate-400" : "text-slate-700",
+            off ? "text-slate-400" : "text-slate-700",
           )}
         >
           {row.label}
         </span>
       </button>
+      {extra}
     </div>
   );
 }
 
-function Item({
-  icon,
-  label,
-  hideNativeTitle,
-  count,
-  accent,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  hideNativeTitle?: boolean;
-  count?: number;
-  accent?: boolean;
-  active?: boolean;
-  onClick: () => void;
-}) {
+// The star beside a Mail or Views row in edit mode: in Favorites or not.
+function FavoriteToggle({ on, label, onToggle }: { on: boolean; label: string; onToggle: () => void }) {
   return (
     <button
       type="button"
-      data-rail-row
-      onClick={onClick}
-      // A scope, not a page, so "true" rather than the nav's "page".
-      aria-current={active ? "true" : undefined}
-      className={cn("group/item relative isolate", ROW, active ? ROW_ACTIVE : ROW_IDLE)}
-      title={hideNativeTitle ? undefined : label}
+      aria-pressed={on}
+      aria-label={`Favorite ${label}`}
+      title={on ? "Remove from Favorites" : "Add to Favorites"}
+      onClick={onToggle}
+      className="group/star size-5 mr-1 shrink-0 rounded inline-flex items-center justify-center hover:bg-slate-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 transition-colors"
     >
-      {active && <ActiveMark />}
-      <span className={cn("shrink-0 transition-colors", active ? "text-slate-800" : "text-slate-400 group-hover/item:text-slate-600")}>
-        {icon}
-      </span>
-      <span className={cn("truncate min-w-0 flex-1 text-[12.5px]", active && "font-medium")}>
-        {label}
-      </span>
-      {count !== undefined && count !== null && (
-        <Count value={count} accent={accent} active={active} />
-      )}
+      <motion.span
+        key={on ? "on" : "off"}
+        className="flex"
+        initial={{ scale: 0.7 }}
+        animate={{ scale: 1 }}
+        transition={{ type: "spring", stiffness: 600, damping: 26 }}
+      >
+        <StarIcon
+          className={cn(
+            "w-3.5 h-3.5 transition-colors",
+            on ? "fill-amber-400 text-amber-500" : "text-slate-300 group-hover/star:text-slate-500",
+          )}
+        />
+      </motion.span>
     </button>
+  );
+}
+
+// RenameRow: a favorite's name, edited in place. Enter or leaving the field
+// keeps it, Escape drops the edit, and an empty name goes back to the row's own.
+function RenameRow({
+  row,
+  onDone,
+}: {
+  row: RailRow;
+  onDone: (name: string | null, fromKey: boolean) => void;
+}) {
+  const original = row.original ?? row.label;
+  const [value, setValue] = React.useState(row.label);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const done = React.useRef(false);
+  const finish = (name: string | null, fromKey: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(name, fromKey);
+  };
+
+  React.useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <div className="h-7 pl-2 pr-1 flex items-center gap-2.5 rounded-md border border-sky-400 ring-2 ring-sky-100 bg-white">
+      <span className="shrink-0 text-slate-400">{row.icon}</span>
+      <input
+        ref={inputRef}
+        value={value}
+        maxLength={UNIBOX_RAIL_FAVORITE_NAME_MAX}
+        placeholder={original}
+        aria-label={`Name for ${original} in Favorites`}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            finish(value, true);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            finish(null, true);
+          }
+        }}
+        onBlur={() => finish(value, false)}
+        className="flex-1 min-w-0 h-5 bg-transparent text-[12.5px] text-slate-900 placeholder:text-slate-400 outline-none"
+      />
+    </div>
   );
 }
