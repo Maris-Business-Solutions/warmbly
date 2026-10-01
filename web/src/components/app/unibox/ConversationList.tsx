@@ -568,6 +568,14 @@ export function ConversationList({
                       selected={picked.has(item.key)}
                       selecting={selecting}
                       onToggleSelect={toggleSelect}
+                      // Only ticked rows get it, so a change in the selection
+                      // re-renders those and not the whole list.
+                      selection={
+                        picked.has(item.key) && selectedIds.length > 1
+                          ? selectedIds
+                          : undefined
+                      }
+                      onSelectionDone={clearSelection}
                       actions={actions}
                       email={{
                         id: item.row.id,

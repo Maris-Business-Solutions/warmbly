@@ -4,10 +4,12 @@
 // something is assigned; the header's meta line shows the chips), the panel
 // has a search-or-create header, an assigned-chips row, and color-dotted
 // checkbox rows. Assigns at the thread level via PUT /unibox/thread/labels.
+// The panel is exported on its own for the conversation row's menu.
 
 import React from "react";
 import { CheckIcon, Loader2Icon, PlusIcon, TagIcon } from "lucide-react";
 import toast from "react-hot-toast";
+import { useIsMutating } from "@tanstack/react-query";
 
 import {
   PopoverMenu,
@@ -18,7 +20,9 @@ import { CategoryChip } from "@/components/app/contacts/CategoryPicker";
 import { useUserProfile } from "@/hooks/context/user";
 import useCreateCategory from "@/lib/api/hooks/app/categories/useCreateCategory";
 import useThreadLabels from "@/lib/api/hooks/app/unibox/useThreadLabels";
-import useSetThreadLabels from "@/lib/api/hooks/app/unibox/useSetThreadLabels";
+import useSetThreadLabels, {
+  setThreadLabelsKey,
+} from "@/lib/api/hooks/app/unibox/useSetThreadLabels";
 import { TagMeaningTooltip } from "@/components/ui/tag-meaning-tooltip";
 import { errorMessage } from "@/lib/errors/message";
 
@@ -29,6 +33,52 @@ interface Props {
 }
 
 export function ThreadLabelMenu({ threadId, open, onOpenChange }: Props) {
+  const labelsQ = useThreadLabels(threadId);
+  const saving = useIsMutating({ mutationKey: setThreadLabelsKey(threadId) }) > 0;
+  const assigned = (labelsQ.data ?? []).length > 0;
+
+  return (
+    <PopoverMenu
+      align="end"
+      side="bottom"
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      <PopoverMenuTrigger asChild>
+        <button
+          aria-label="Label this conversation (press c)"
+          title="Label (c)"
+          className={`size-7 rounded-md inline-flex items-center justify-center transition-colors ${
+            open || assigned
+              ? open
+                ? "bg-slate-100 text-slate-900"
+                : "text-sky-700 hover:bg-slate-100"
+              : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+          }`}
+        >
+          {saving ? (
+            <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <TagIcon className="w-[15px] h-[15px]" />
+          )}
+        </button>
+      </PopoverMenuTrigger>
+      <PopoverMenuContent className="p-0">
+        <ThreadLabelPanel threadId={threadId} />
+      </PopoverMenuContent>
+    </PopoverMenu>
+  );
+}
+
+// The search-or-create box and the label rows, mounted only while shown.
+export function ThreadLabelPanel({
+  threadId,
+  shortcutHint = true,
+}: {
+  threadId: string;
+  /** The `c` hint names the open conversation, so a list row leaves it out. */
+  shortcutHint?: boolean;
+}) {
   const { user } = useUserProfile();
   const categories = React.useMemo(
     () => user.categories ?? [],
@@ -38,10 +88,6 @@ export function ThreadLabelMenu({ threadId, open, onOpenChange }: Props) {
   const setLabels = useSetThreadLabels(threadId);
   const createCategory = useCreateCategory();
   const [query, setQuery] = React.useState("");
-
-  React.useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
 
   const current = React.useMemo(() => labelsQ.data ?? [], [labelsQ.data]);
   const currentIds = React.useMemo(
@@ -83,32 +129,6 @@ export function ThreadLabelMenu({ threadId, open, onOpenChange }: Props) {
   };
 
   return (
-    <PopoverMenu
-      align="end"
-      side="bottom"
-      open={open}
-      onOpenChange={onOpenChange}
-    >
-      <PopoverMenuTrigger asChild>
-        <button
-          aria-label="Label this conversation (press c)"
-          title="Label (c)"
-          className={`size-7 rounded-md inline-flex items-center justify-center transition-colors ${
-            open || current.length > 0
-              ? open
-                ? "bg-slate-100 text-slate-900"
-                : "text-sky-700 hover:bg-slate-100"
-              : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
-          }`}
-        >
-          {setLabels.isPending ? (
-            <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <TagIcon className="w-[15px] h-[15px]" />
-          )}
-        </button>
-      </PopoverMenuTrigger>
-      <PopoverMenuContent className="p-0">
         <div className="w-[260px]">
           {/* Search-or-create header. */}
           <div className="px-2.5 py-2 border-b border-slate-200 flex items-center gap-1.5">
@@ -209,12 +229,12 @@ export function ThreadLabelMenu({ threadId, open, onOpenChange }: Props) {
 
           <div className="px-2.5 h-7 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
             <span>Labels are shared with contacts</span>
-            <kbd className="h-4 px-1 rounded border border-slate-200 bg-slate-50 font-mono inline-flex items-center">
-              c
-            </kbd>
+            {shortcutHint && (
+              <kbd className="h-4 px-1 rounded border border-slate-200 bg-slate-50 font-mono inline-flex items-center">
+                c
+              </kbd>
+            )}
           </div>
         </div>
-      </PopoverMenuContent>
-    </PopoverMenu>
   );
 }
