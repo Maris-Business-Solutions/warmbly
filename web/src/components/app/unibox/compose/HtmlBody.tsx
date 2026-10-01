@@ -31,9 +31,9 @@ export function HtmlBody({
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                     e.preventDefault();
                     onSend();
-                } else if (e.key === "Escape" && document.querySelector('[data-floating], [role="alertdialog"]')) {
-                    // A link or image popover is the innermost layer; the composer stays.
-                    e.stopPropagation();
+                } else if (e.key === "Escape" && (e.target as HTMLElement).closest?.("[data-floating]")) {
+                    // A link or image popover is the innermost layer and closes itself.
+                    return;
                 } else if (e.key === "Escape" && onEscape) {
                     e.preventDefault();
                     e.stopPropagation();

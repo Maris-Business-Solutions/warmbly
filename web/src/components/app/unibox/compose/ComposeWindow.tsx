@@ -475,6 +475,8 @@ function ComposeWindowInner({
             )}
             onKeyDown={(e) => {
                 if (e.key === "Escape") {
+                    // A portaled popover (template picker, link form) closes itself first.
+                    if ((e.target as HTMLElement).closest?.("[data-floating]")) return;
                     // Floating AI layers portal to <body> and stop their own
                     // Escape; reaching here means nothing else claimed it.
                     e.stopPropagation();

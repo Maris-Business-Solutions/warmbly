@@ -578,6 +578,18 @@ describe("reply composer drafts", () => {
         expect(confirmShow).toHaveBeenCalledOnce();
         expect(body()).toHaveValue(template.body_plain);
     });
+
+    it("closes the link popover, not the composer, on Escape in HTML mode", () => {
+        const onClose = vi.fn();
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={onClose} />);
+        fireEvent.click(screen.getByRole("button", { name: /Template/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Use Brochure" }));
+        fireEvent.click(screen.getByTitle("Insert link"));
+        fireEvent.keyDown(screen.getByRole("button", { name: "Apply" }), { key: "Escape" });
+        expect(onClose).not.toHaveBeenCalled();
+        fireEvent.keyDown(document.getElementById("reply-body") as HTMLElement, { key: "Escape" });
+        expect(onClose).toHaveBeenCalledOnce();
+    });
 });
 
 function setupStorage() {
