@@ -1515,6 +1515,13 @@ func main() {
 			FeatureGate:  featureGateService,
 			Skills:       skillsService,
 			AppBaseURL:   cfg.GetStringOptional(ctx, "APP_BASE_URL", "app_base_url", ""),
+			// tasksService is built later in boot, so it is read at call time.
+			WarmupScheduler: func(ctx context.Context, accountID uuid.UUID) error {
+				if tasksService == nil {
+					return nil
+				}
+				return tasksService.EnsureWarmupScheduled(ctx, accountID)
+			},
 		})
 
 		// Connected MCP servers (client direction): their enabled tools are

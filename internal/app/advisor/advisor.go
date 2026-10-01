@@ -248,11 +248,12 @@ func mailboxAction(id uuid.UUID, label string, args map[string]any, preview ...m
 
 // mailboxHoldAction holds a mailbox out of campaigns and leaves warmup running,
 // which is what every "stop cold sending, keep warming" remedy asks for.
+// Offer it only while the mailbox is sending cold, so Undo never releases an earlier hold.
 func mailboxHoldAction(id uuid.UUID, label string) *models.AdvisorAction {
 	return withUndo(toolAction("set_mailbox_send_hold", label,
 		map[string]any{"email_account_id": id.String(), "hold": true},
 		change("Cold campaigns", "sending", "held out of campaigns"),
-		change("Warmup", "running", "running (unchanged)"),
+		change("Warmup", "not touched", "not touched"),
 	), map[string]any{"email_account_id": id.String(), "hold": false})
 }
 

@@ -74,6 +74,13 @@ type AdvisorMailbox struct {
 	// InActiveCampaign is true when at least one running campaign can send
 	// through this mailbox (tag match or explicit sender).
 	InActiveCampaign bool
+	// SendLifecycle is active, resting or reserve (held by its owner).
+	SendLifecycle string
+}
+
+// SendingCold is true when campaigns can actually pick this mailbox right now.
+func (m AdvisorMailbox) SendingCold() bool {
+	return m.InActiveCampaign && m.Status == "active" && (m.SendLifecycle == "" || m.SendLifecycle == string(models.SendLifecycleActive))
 }
 
 // AdvisorCampaign is one campaign's configuration plus its window performance.

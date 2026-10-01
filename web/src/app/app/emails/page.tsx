@@ -249,22 +249,33 @@ export default function AddressesPage() {
         else toast.success(`Warmup ${verb} for ${n} mailbox${n > 1 ? "es" : ""}`);
     };
 
+    const boxStatusById = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const e of emailsData.emails ?? []) m.set(e.id, e.status);
+        return m;
+    }, [emailsData.emails]);
+
     // The whole mailbox on or off; warmup and the campaign hold are separate switches.
+    // Only rows whose state is known are switched; the rest stay selected.
+    const [switching, setSwitching] = React.useState(false);
     const bulkSwitch = (on: boolean) => {
-        const ids = selected.filter((id) => {
-            const st = emailsData.emails?.find((e) => e.id === id)?.status;
-            return on ? st === "inactive" : st === "active";
-        });
+        if (switching) return;
+        const ids = selected.filter((id) => boxStatusById.get(id) === (on ? "inactive" : "active"));
         if (ids.length === 0) return;
         const n = ids.length;
         const apply = async () => {
-            const results = await Promise.allSettled(ids.map((id) => updateEmail(id, { status: on ? "active" : "inactive" })));
-            const failed = results.filter((r) => r.status === "rejected").length;
-            await queryClient.invalidateQueries({ queryKey: ["emails", "list"] });
-            await queryClient.invalidateQueries({ queryKey: ["analytics", "accounts"] });
-            setSelected([]);
-            if (failed > 0) toast.error(`${failed} mailbox${failed > 1 ? "es" : ""} couldn't be switched ${on ? "on" : "off"}`);
-            else toast.success(`${n} mailbox${n > 1 ? "es" : ""} switched ${on ? "back on" : "off"}`);
+            setSwitching(true);
+            try {
+                const results = await Promise.allSettled(ids.map((id) => updateEmail(id, { status: on ? "active" : "inactive" })));
+                const failed = results.filter((r) => r.status === "rejected").length;
+                await queryClient.invalidateQueries({ queryKey: ["emails", "list"] });
+                await queryClient.invalidateQueries({ queryKey: ["analytics", "accounts"] });
+                setSelected((prev) => prev.filter((id) => !ids.includes(id)));
+                if (failed > 0) toast.error(`${failed} mailbox${failed > 1 ? "es" : ""} couldn't be switched ${on ? "on" : "off"}`);
+                else toast.success(`${n} mailbox${n > 1 ? "es" : ""} switched ${on ? "back on" : "off"}`);
+            } finally {
+                setSwitching(false);
+            }
         };
         if (on) void apply();
         else confirm.show(switchOffPrompt(n > 1 ? `${n} mailboxes` : "this mailbox"), apply);
@@ -272,12 +283,12 @@ export default function AddressesPage() {
     const selectedStatuses = useMemo(() => {
         const out = { on: 0, off: 0 };
         for (const id of selected) {
-            const st = emailsData.emails?.find((e) => e.id === id)?.status;
+            const st = boxStatusById.get(id);
             if (st === "active") out.on++;
             else if (st === "inactive") out.off++;
         }
         return out;
-    }, [selected, emailsData.emails]);
+    }, [selected, boxStatusById]);
 
     const openDetail = (id: string, tab: string = "overview") => {
         setViewTab(tab);
@@ -583,7 +594,8 @@ export default function AddressesPage() {
                             <button
                                 type="button"
                                 onClick={() => bulkSwitch(true)}
-                                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-sky-700 hover:bg-sky-50 transition-colors"
+                                disabled={switching}
+                                className="disabled:opacity-50 inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-sky-700 hover:bg-sky-50 transition-colors"
                             >
                                 <PowerIcon className="w-3.5 h-3.5" />
                                 Switch on
@@ -593,7 +605,8 @@ export default function AddressesPage() {
                             <button
                                 type="button"
                                 onClick={() => bulkSwitch(false)}
-                                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                                disabled={switching}
+                                className="disabled:opacity-50 inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-slate-600 hover:bg-slate-100 transition-colors"
                             >
                                 <PowerOffIcon className="w-3.5 h-3.5" />
                                 Switch off
@@ -926,7 +939,13 @@ function MailboxRow({
                 ) : (
                     <span
                         className="inline-flex items-center gap-1.5 font-sans text-[11.5px] font-medium"
-                        title={active ? "Warmup is on, but the mailbox is not, so nothing is sent. Switch the mailbox back on to resume." : undefined}
+                        title={
+                            active
+                                ? box.status === "revoked"
+                                    ? "Warmup is on, but the mailbox's access was revoked, so nothing is sent. Reconnect it to resume."
+                                    : "Warmup is on, but the mailbox is not, so nothing is sent. Switch the mailbox back on to resume."
+                                : undefined
+                        }
                     >
                         {active ? (
                             <PowerOffIcon className="w-3 h-3 shrink-0" />
@@ -977,7 +996,7 @@ function MailboxRow({
                             </button>
                         </PopoverMenuTrigger>
                         <PopoverMenuContent minWidth={208}>
-                            <PopoverMenuLabel>Warmup · {inCloud ? (cloudPaused ? "Paused in cloud" : "Warmbly Cloud") : switchedOff && !off ? "Mailbox off" : active ? "Active" : paused ? "Paused" : "Off"}</PopoverMenuLabel>
+                            <PopoverMenuLabel>Warmup · {inCloud ? (cloudPaused ? "Paused in cloud" : "Warmbly Cloud") : box.status === "revoked" && !off ? "Needs reconnect" : switchedOff && !off ? "Mailbox off" : active ? "Active" : paused ? "Paused" : "Off"}</PopoverMenuLabel>
                             {switchedOff && (
                                 <>
                                     <PopoverMenuItem onSelect={power.switchOn} icon={<PowerIcon className="w-3 h-3" />}>

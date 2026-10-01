@@ -265,6 +265,31 @@ func TestSpamPlacementRespectsItsSampleFloorAndBands(t *testing.T) {
 	}
 }
 
+// A mailbox already out of rotation gets no hold, so Undo can never release a hold someone else set.
+func TestHoldFixIsOfferedOnlyWhileSendingCold(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		lifecycle string
+		status    string
+	}{
+		{"held by its owner", "reserve", "active"},
+		{"resting", "resting", "active"},
+		{"switched off", "active", "inactive"},
+	} {
+		m := healthyMailbox()
+		m.SendLifecycle = tc.lifecycle
+		m.Status = tc.status
+		m.WarmupPlacement = models.WarmupPlacementEvidence{MajorDelivered: 100, MajorSpam: 55}
+		m.PoolHealth = "quarantined"
+		found := findingsByKey(Detect(snapshotOf(m), defaults()))
+		for _, key := range []string{"mailbox_spam_placement", "warmup_pool_blocked"} {
+			if f, ok := found[key]; ok && f.Action != nil {
+				t.Errorf("%s: %s offered %q on a mailbox that is not sending cold", tc.name, key, f.Action.Label)
+			}
+		}
+	}
+}
+
 func TestMinSeveritySettingFiltersFindings(t *testing.T) {
 	m := healthyMailbox()
 	m.CampaignLimit = 80 // low-severity on a proven mailbox

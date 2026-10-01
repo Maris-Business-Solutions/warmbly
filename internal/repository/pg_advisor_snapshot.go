@@ -60,7 +60,8 @@ func (r *advisorRepository) loadMailboxes(ctx context.Context, orgID uuid.UUID) 
 			COALESCE(p.health_state, ''), COALESCE(p.last_health_score, 0), COALESCE(p.last_health_reason, ''),
 			COALESCE(p.blocked_until > NOW(), false) AS pool_blocked,
 			COALESCE(err.n, 0),
-			COALESCE(camp.active, false)
+			COALESCE(camp.active, false),
+			ea.send_lifecycle
 		FROM email_accounts ea
 		LEFT JOIN LATERAL (
 			SELECT
@@ -144,6 +145,7 @@ func (r *advisorRepository) loadMailboxes(ctx context.Context, orgID uuid.UUID) 
 			&m.WarmupPlacement.OtherDelivered, &m.WarmupPlacement.OtherSpam,
 			&m.PoolHealth, &m.PoolHealthScore, &m.PoolHealthReason, &m.PoolBlocked,
 			&m.UnresolvedErrs, &m.InActiveCampaign,
+			&m.SendLifecycle,
 		); err != nil {
 			return nil, err
 		}

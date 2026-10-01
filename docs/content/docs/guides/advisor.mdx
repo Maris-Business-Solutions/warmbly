@@ -67,7 +67,7 @@ Two more copy findings run only when the operator has configured TypeSafe (`TYPE
 
 Opening a recommendation walks three screens: **Why** (with the measured numbers), **What changes** (the exact before and after of every field), and **Done** (with **Undo** where revertible).
 
-A finding that asks you to stop cold sending from a mailbox, for spam placement or a lost warmup pool standing, applies [Hold from campaigns](/guides/mailboxes/#holding-a-mailbox-yourself) rather than switching the mailbox off, so its warmup keeps running while it recovers. **Undo** releases the hold.
+A finding that asks you to stop cold sending from a mailbox, for spam placement or a lost warmup pool standing, applies [Hold from campaigns](/guides/mailboxes/#holding-a-mailbox-yourself) rather than switching the mailbox off, and leaves its warmup as it is. It is offered only while campaigns can still pick the mailbox, so a mailbox that is already held, resting or switched off gets no fix, and **Undo** never releases a hold someone else set.
 
 Nothing is applied until you have seen the second screen. The change runs as you, with your permissions, and is written to the audit log. If you can see a finding but lack permission for its fix, applying it is refused rather than silently escalated.
 

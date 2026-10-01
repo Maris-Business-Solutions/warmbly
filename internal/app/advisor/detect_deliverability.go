@@ -207,12 +207,12 @@ func detectSpamPlacement(s *repository.AdvisorSnapshot) []Finding {
 				"major_provider_delivered_7d": p.MajorDelivered,
 				"spam_placement_percent":      band(r),
 				"quarantine_band_percent":     spamPlacementQuarantine,
-				"currently_sending_cold":      m.InActiveCampaign,
+				"currently_sending_cold":      m.SendingCold(),
 				"current_daily_cap":           m.CampaignLimit,
 			},
 		}
 
-		if m.InActiveCampaign && r >= spamPlacementQuarantine {
+		if m.SendingCold() && r >= spamPlacementQuarantine {
 			f.Action = mailboxHoldAction(m.ID, "Hold this mailbox out of campaigns")
 		}
 		out = append(out, f)

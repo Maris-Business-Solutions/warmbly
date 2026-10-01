@@ -77,7 +77,7 @@ func (h *Handler) UpdateEmail(c *gin.Context) {
 	}
 
 	// A mailbox switched back on resumes its warmup now, not on the next reconciler pass.
-	if data.Status != nil && *data.Status == "active" && resp != nil && resp.Warmup != nil && resp.WarmupPausedAt == nil {
+	if data.Status != nil && *data.Status == "active" && resp != nil {
 		_ = h.TasksService.EnsureWarmupScheduled(c.Request.Context(), resp.ID)
 	}
 

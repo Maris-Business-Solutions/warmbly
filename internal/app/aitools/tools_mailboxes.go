@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
 )
@@ -194,6 +195,9 @@ func (d Deps) updateMailbox(ctx context.Context, inv Invocation, args json.RawMe
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
+	if in.Status != nil && *in.Status == "active" {
+		d.seedWarmup(ctx, aid)
+	}
 	d.logAudit(ctx, inv, models.AuditActionUpdate, models.AuditEntityEmailAccount, &aid, nil)
 	return jsonResult(mb)
 }
@@ -227,8 +231,18 @@ func (d Deps) setMailboxWarmup(ctx context.Context, inv Invocation, args json.Ra
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
+	if in.Action == "start" || in.Action == "resume" {
+		d.seedWarmup(ctx, aid)
+	}
 	d.logAudit(ctx, inv, action, models.AuditEntityEmailAccount, &aid, map[string]string{"warmup": in.Action})
 	return jsonResult(mb)
+}
+
+// seedWarmup starts a mailbox's warmup chain now; the reconciler is the backstop.
+func (d Deps) seedWarmup(ctx context.Context, accountID uuid.UUID) {
+	if d.WarmupScheduler != nil {
+		_ = d.WarmupScheduler(ctx, accountID)
+	}
 }
 
 func (d Deps) setMailboxSendHold(ctx context.Context, inv Invocation, args json.RawMessage) (string, error) {

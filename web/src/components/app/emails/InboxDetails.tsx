@@ -1991,7 +1991,7 @@ function SwitchedOffNotice({ mailbox }: { mailbox: Inbox }) {
                     <p className="text-[11.5px] text-slate-600 leading-relaxed mt-0.5">
                         It is not sending campaigns, warming up or syncing mail, whatever its warmup setting says. Its
                         settings, history and worker are kept, so switching it back on picks up where it stopped.
-                        To keep warming while it stays out of campaigns, switch it on and turn on Hold from campaigns below.
+                        To keep it out of campaigns while it warms, turn on Hold from campaigns below first, then switch it back on.
                     </p>
                     <button
                         type="button"
@@ -2021,7 +2021,8 @@ function MailboxPowerCard({ mailbox }: { mailbox: Inbox }) {
                     <div className="text-[12.5px] font-medium text-slate-900">Mailbox on</div>
                     <div className="text-[11px] text-slate-400">
                         Switched off, it neither sends, warms nor syncs, and keeps its settings and history. To stop
-                        only campaign sending and keep warming, use Hold from campaigns on the Overview tab.
+                        only campaign sending and keep warming, use Hold from campaigns on the Overview tab. On a
+                        mailbox that is off, turn the hold on before switching it back on.
                     </div>
                 </div>
                 <Toggle
