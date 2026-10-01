@@ -25,8 +25,10 @@ type ComposeDraft struct {
 	BCC            []string   `json:"bcc"`
 	Subject        string     `json:"subject"`
 	Body           string     `json:"body"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	CreatedAt      time.Time  `json:"created_at"`
+	// BodyHTML is empty while the draft is plain text only.
+	BodyHTML  string    `json:"body_html"`
+	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ComposeRepository backs the compose mailbox picker: which of the org's
@@ -110,8 +112,8 @@ func (r *composeRepository) AddressHistoryByAccount(ctx context.Context, orgID u
 
 func (r *composeRepository) UpsertDraft(ctx context.Context, userID, orgID uuid.UUID, d *ComposeDraft) error {
 	query := `
-		INSERT INTO compose_drafts (id, user_id, organization_id, email_account_id, to_addrs, cc, bcc, subject, body, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+		INSERT INTO compose_drafts (id, user_id, organization_id, email_account_id, to_addrs, cc, bcc, subject, body, body_html, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
 		ON CONFLICT (id) DO UPDATE SET
 			email_account_id = EXCLUDED.email_account_id,
 			to_addrs = EXCLUDED.to_addrs,
@@ -119,10 +121,11 @@ func (r *composeRepository) UpsertDraft(ctx context.Context, userID, orgID uuid.
 			bcc = EXCLUDED.bcc,
 			subject = EXCLUDED.subject,
 			body = EXCLUDED.body,
+			body_html = EXCLUDED.body_html,
 			updated_at = NOW()
 		WHERE compose_drafts.user_id = $2
 	`
-	args := []any{d.ID, userID, orgID, d.EmailAccountID, d.To, d.CC, d.BCC, d.Subject, d.Body}
+	args := []any{d.ID, userID, orgID, d.EmailAccountID, d.To, d.CC, d.BCC, d.Subject, d.Body, d.BodyHTML}
 	if _, err := r.db.Exec(ctx, query, args...); err != nil {
 		db.CaptureError(err, query, args, "exec")
 		return err
@@ -132,7 +135,7 @@ func (r *composeRepository) UpsertDraft(ctx context.Context, userID, orgID uuid.
 
 func (r *composeRepository) ListDrafts(ctx context.Context, userID, orgID uuid.UUID) ([]ComposeDraft, error) {
 	query := `
-		SELECT id, email_account_id, to_addrs, cc, bcc, subject, body, updated_at, created_at
+		SELECT id, email_account_id, to_addrs, cc, bcc, subject, body, body_html, updated_at, created_at
 		FROM compose_drafts
 		WHERE user_id = $1 AND organization_id = $2
 		ORDER BY updated_at DESC
@@ -148,7 +151,7 @@ func (r *composeRepository) ListDrafts(ctx context.Context, userID, orgID uuid.U
 	out := []ComposeDraft{}
 	for rows.Next() {
 		var d ComposeDraft
-		if err := rows.Scan(&d.ID, &d.EmailAccountID, &d.To, &d.CC, &d.BCC, &d.Subject, &d.Body, &d.UpdatedAt, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.EmailAccountID, &d.To, &d.CC, &d.BCC, &d.Subject, &d.Body, &d.BodyHTML, &d.UpdatedAt, &d.CreatedAt); err != nil {
 			continue
 		}
 		if d.To == nil {

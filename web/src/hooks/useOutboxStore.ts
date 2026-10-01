@@ -18,6 +18,8 @@ export interface OutboxReplyPayload {
     bcc: string[];
     subject: string;
     body: string;
+    /** Set when the reply was sent as HTML. */
+    bodyHtml?: string;
     /** The mailbox the reply was queued from, restored with it. */
     emailAccountId: string;
 }
