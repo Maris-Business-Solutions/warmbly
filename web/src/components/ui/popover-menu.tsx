@@ -58,6 +58,14 @@ interface MenuCtx {
 
 const Ctx = createContext<MenuCtx | null>(null);
 
+// Every open menu, oldest first. Opening one closes the others unless it was
+// opened from inside them, and Escape closes only the newest.
+interface OpenMenu {
+    panel: () => HTMLElement | null;
+    close: () => void;
+}
+const openMenus: OpenMenu[] = [];
+
 function useMenu() {
     const c = useContext(Ctx);
     if (!c) throw new Error("PopoverMenu primitives must be used inside <PopoverMenu>");
@@ -217,6 +225,49 @@ export function PopoverMenuContent({
             observer?.disconnect();
         };
     }, [open, side, align, sideOffset, triggerRef, anchorPoint, setOpen]);
+
+    // Read through a ref: callers often pass an inline onOpenChange, and
+    // re-running the effect below would reorder the stack on every render.
+    const setOpenRef = useRef(setOpen);
+    setOpenRef.current = setOpen;
+
+    // One menu at a time, closed by a press anywhere else or by Escape.
+    useEffect(() => {
+        if (!open) return;
+        const self: OpenMenu = { panel: () => ref.current, close: () => setOpenRef.current(false) };
+        // A menu with no trigger (anchored at a point) opened from wherever focus is.
+        const origin = triggerRef.current ?? document.activeElement;
+        // The stack is one chain of nested menus, so the menu holding the origin
+        // and everything below it stay; everything above it closes.
+        let parent = openMenus.length - 1;
+        while (parent >= 0 && !(origin && openMenus[parent].panel()?.contains(origin))) parent--;
+        for (const other of openMenus.slice(parent + 1)) other.close();
+        openMenus.push(self);
+        const onPointerDown = (e: PointerEvent) => {
+            const t = e.target as Node;
+            if (ref.current?.contains(t)) return;
+            if (triggerRef.current?.contains(t)) return;
+            // A press inside another portaled floating layer this menu opened (a
+            // date-picker calendar, a nested SelectMenu) must not close this menu.
+            const el = t as Element | null;
+            if (el && typeof el.closest === "function" && el.closest("[data-floating]")) return;
+            self.close();
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && openMenus[openMenus.length - 1] === self) self.close();
+        };
+        // Capture phase: dialogs stop mousedown propagation on their card so the
+        // backdrop does not close them, which would otherwise swallow this too.
+        // Pointer events so a tap closes it on touch screens as well.
+        document.addEventListener("pointerdown", onPointerDown, true);
+        document.addEventListener("keydown", onKey);
+        return () => {
+            document.removeEventListener("pointerdown", onPointerDown, true);
+            document.removeEventListener("keydown", onKey);
+            const at = openMenus.indexOf(self);
+            if (at >= 0) openMenus.splice(at, 1);
+        };
+    }, [open, triggerRef]);
 
     // Keyboard: focus lands on the panel (never over an autofocused input), and
     // closing hands it back to whatever held it before, if it is still there.

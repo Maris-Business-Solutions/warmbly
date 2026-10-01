@@ -778,7 +778,7 @@ function SectionHeader({
   };
   return (
     <div
-      className="group/section h-7 px-4 flex items-center gap-1"
+      className="group/section h-7 pl-4 pr-3 flex items-center gap-1"
       onContextMenu={editing ? undefined : sectionMenu.onContextMenu}
     >
       <button
@@ -1638,8 +1638,9 @@ function MenuRow({
         }}
         aria-current={active ? "true" : undefined}
         className={cn(
-          "relative isolate pr-7 md:pr-2",
           ROW,
+          // After ROW, whose pr-2 would otherwise win the merge: below md the "…" is always shown.
+          "relative isolate pr-7 md:pr-2",
           active ? ROW_ACTIVE : ROW_IDLE,
           rowMenu.open && !active && "bg-slate-50",
         )}
