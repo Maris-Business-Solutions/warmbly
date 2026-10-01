@@ -891,7 +891,7 @@ function DateRange({
 }) {
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     // The trigger wraps anywhere along the toolbar row, so the panel side is
     // measured, not fixed: a fixed right-0 clipped it against the drawer edge.
     const align = useFlipAlignment(ref, open, 256);

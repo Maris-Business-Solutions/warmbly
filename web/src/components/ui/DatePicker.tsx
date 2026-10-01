@@ -9,6 +9,7 @@ import { CalendarIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import Calendar from "@/components/app/Calendar";
+import useClickOutside from "@/hooks/useClickOutside";
 
 // Parse "yyyy-MM-dd" as a LOCAL date (avoids the UTC shift new Date("yyyy-MM-dd")
 // introduces, which can land the picker a day off in negative-offset timezones).
@@ -41,34 +42,7 @@ export function DatePicker({
     const wrapRef = React.useRef<HTMLDivElement>(null);
     const selected = parseISODate(value);
 
-    // Close on outside click. BUBBLE phase (not capture): the Calendar panel is
-    // portaled to <body> and stops mousedown bubbling, so its own clicks (month
-    // nav, day select) never reach here and don't dismiss it mid-interaction.
-    React.useEffect(() => {
-        if (!open) return;
-        const onDown = (e: MouseEvent | TouchEvent) => {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener("mousedown", onDown);
-        document.addEventListener("touchstart", onDown);
-        return () => {
-            document.removeEventListener("mousedown", onDown);
-            document.removeEventListener("touchstart", onDown);
-        };
-    }, [open]);
-
-    // Escape closes the calendar only: stopped in the window capture phase so
-    // the popover or dialog holding this field stays open.
-    React.useEffect(() => {
-        if (!open) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key !== "Escape") return;
-            e.stopPropagation();
-            setOpen(false);
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [open]);
+    useClickOutside(open, () => setOpen(false), wrapRef);
 
     return (
         <div ref={wrapRef} className={cn("relative inline-flex", className)}>

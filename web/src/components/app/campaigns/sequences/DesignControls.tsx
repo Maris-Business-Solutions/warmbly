@@ -90,7 +90,7 @@ function Panel({
     children: React.ReactNode;
 }) {
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     const { setReference, setFloating, floatingStyle } = useAnchoredFloating(open, {
         placement: "bottom-start",
         gap: 6,

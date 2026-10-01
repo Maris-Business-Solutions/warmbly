@@ -44,7 +44,7 @@ export function ImageMenu({ editor }: { editor: Editor }) {
     const [dragging, setDragging] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
     const fileRef = React.useRef<HTMLInputElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     const { setReference, setFloating, floatingStyle } = useAnchoredFloating(open, {
         placement: "bottom-start",
         gap: 6,

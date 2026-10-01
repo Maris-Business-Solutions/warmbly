@@ -93,7 +93,7 @@ export function NotificationBell() {
     const [filter, setFilter] = React.useState<"all" | "unread">("all");
     const ref = React.useRef<HTMLDivElement>(null);
     const close = React.useCallback(() => setOpen(false), []);
-    useClickOutside(ref, close);
+    useClickOutside(open, close, ref);
 
     const unread = data?.unread ?? 0;
     const items = data?.notifications ?? [];

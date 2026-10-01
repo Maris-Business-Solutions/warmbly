@@ -196,7 +196,7 @@ export default function TextareaAIEdit({
     }, [sel, syncRects]);
 
     // Dismiss when the user clicks anywhere outside the floating layer and
-    // the textarea (mirrors useClickOutside, plus the textarea exception).
+    // the textarea (like useClickOutside, plus the textarea exception).
     React.useEffect(() => {
         if (!open) return;
         const onDown = (e: MouseEvent | TouchEvent) => {

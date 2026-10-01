@@ -133,7 +133,7 @@ export function useSnoozeAdvisorFinding() {
     });
 }
 
-export function useDismissAdvisorFinding() {
+export function useClickOutsideAdvisorFinding() {
     const invalidate = useAdvisorInvalidator();
     return useMutation({
         mutationFn: ({ id, reason }: { id: string; reason: string }) => dismissAdvisorFinding(id, reason),

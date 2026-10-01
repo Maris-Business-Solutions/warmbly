@@ -272,7 +272,7 @@ function CampaignPicker({
     const [enabled, setEnabled] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     const placement = useFlipPlacement(triggerRef, open, 290);
 
     React.useEffect(() => {

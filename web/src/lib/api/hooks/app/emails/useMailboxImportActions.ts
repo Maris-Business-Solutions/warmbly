@@ -51,7 +51,7 @@ export function useCancelMailboxImport(id: string | null) {
     return useJobMutation<void>(id, (i) => cancelMailboxImport(i));
 }
 
-export function useDismissMailboxImport() {
+export function useClickOutsideMailboxImport() {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (id: string) => dismissMailboxImport(id),

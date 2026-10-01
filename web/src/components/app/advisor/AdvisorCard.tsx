@@ -39,7 +39,7 @@ import {
 import { useConfirm } from "@/hooks/context/confirm";
 import {
     useAdvisorFeedback,
-    useDismissAdvisorFinding,
+    useClickOutsideAdvisorFinding,
     useSnoozeAdvisorFinding,
     useUndoAdvisorFinding,
 } from "@/lib/api/hooks/app/advisor/useAdvisor";
@@ -63,7 +63,7 @@ export default function AdvisorCard({ finding, onFix, compact = false, defaultOp
     const confirm = useConfirm();
 
     const snooze = useSnoozeAdvisorFinding();
-    const dismiss = useDismissAdvisorFinding();
+    const dismiss = useClickOutsideAdvisorFinding();
     const undo = useUndoAdvisorFinding();
     const feedback = useAdvisorFeedback();
 

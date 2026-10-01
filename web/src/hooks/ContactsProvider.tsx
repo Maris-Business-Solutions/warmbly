@@ -15,7 +15,7 @@ import Selector from "@/components/app/popup/select/Selector";
 import SelectMenu from "@/components/app/popup/select/SelectMenu";
 import SelectOption from "@/components/app/popup/select/SelectOption";
 import { twColors } from "tailwindv4-colors";
-import useClickOutside from "./useClickOutside";
+import useClickOutside from "@/hooks/useClickOutside";
 import CampaignSelector from "@/components/app/popup/select/CampaignSelector";
 import AddContacts from "@/components/app/AddContacts";
 import BulkEditContactsProvider from "./BulkEditContactsProvider";
@@ -917,7 +917,7 @@ function SortBySelection({
     const [show, setShow] = React.useState<boolean>(false)
     const ref = React.useRef<HTMLDivElement>(null);
 
-    useClickOutside(ref, () => setShow(false))
+    useClickOutside(show, () => setShow(false), ref);
 
     return (<div className="space-y-4">
         <div className="relative" ref={ref}>
@@ -967,7 +967,7 @@ function CustomFieldRow({
     const [show, setShow] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
 
-    useClickOutside(ref, () => setShow(false));
+    useClickOutside(show, () => setShow(false), ref);
 
     return (
     <div className="space-y-2">

@@ -2743,7 +2743,7 @@ function AddNodeMenu({
 }) {
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     return (
         <div ref={ref} className="relative inline-flex">
             {/* Primary click = add an email step (the default, common case). */}
@@ -3833,7 +3833,7 @@ function AIContextToggle({
 function DealNameVariableMenu({ onPick }: { onPick: (token: string) => void }) {
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     return (
         <div ref={ref} className="relative">
             <button
@@ -3873,7 +3873,7 @@ const DEAL_CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "SEK",
 function CurrencyPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     return (
         <div ref={ref} className="relative inline-flex">
             <button

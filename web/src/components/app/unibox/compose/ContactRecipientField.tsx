@@ -89,7 +89,7 @@ export default function ContactRecipientField({
         up: boolean;
     } | null>(null);
     const rootRef = React.useRef<HTMLDivElement>(null);
-    useClickOutside(rootRef, () => setBrowseOpen(false));
+    useClickOutside(browseOpen, () => setBrowseOpen(false), rootRef);
 
     const measureBrowse = React.useCallback(() => {
         const el = rootRef.current;

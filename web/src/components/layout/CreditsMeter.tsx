@@ -38,7 +38,7 @@ export function CreditsMeter() {
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
     const close = React.useCallback(() => setOpen(false), []);
-    useClickOutside(ref, close);
+    useClickOutside(open, close, ref);
 
     // Nothing to gauge when the ledger is bypassed (self-host without billing).
     if (!canSee || !metered || credits.isPending || !credits.data || credits.data.unlimited) return null;

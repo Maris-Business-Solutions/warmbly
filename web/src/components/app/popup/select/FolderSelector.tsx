@@ -12,7 +12,7 @@ export default function FolderSelector({ onAdd, onRemove, selected }: { onAdd: (
     const [show, setShow] = React.useState<boolean>(false);
     const popupRef = React.useRef<HTMLDivElement>(null);
 
-    useClickOutside(popupRef, () => setShow(false))
+    useClickOutside(show, () => setShow(false), popupRef);
 
     return (
         <div className="relative" ref={popupRef}>

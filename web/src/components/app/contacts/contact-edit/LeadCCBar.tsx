@@ -145,7 +145,7 @@ function CCPicker({
     const ref = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const [query, setQuery] = React.useState("");
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     const placement = useFlipPlacement(triggerRef, open, 300);
 
     const q = useDebouncedValue(query.trim(), 250);

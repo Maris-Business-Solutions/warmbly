@@ -35,7 +35,7 @@ export default function CustomFieldKeyInput({
     const [open, setOpen] = React.useState(false);
     const [active, setActive] = React.useState(-1);
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
 
     // Nothing to offer once the name already is a field.
     const matches = keys.includes(value) ? [] : suggestKeys(value, keys);

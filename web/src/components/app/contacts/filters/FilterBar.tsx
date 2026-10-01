@@ -443,9 +443,7 @@ function Pill({
     const open = openKey === id;
     const ref = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
-    useClickOutside(ref, () => {
-        if (open) setOpenKey(null);
-    });
+    useClickOutside(open, () => setOpenKey(null), ref);
     const placement = useFlipPlacement(triggerRef, open, 300);
 
     React.useEffect(() => {

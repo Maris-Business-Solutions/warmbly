@@ -30,7 +30,7 @@ export default function AssigneeTeamPicker({
     const { data: teams } = useTeams();
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
 
     const memberList = members ?? [];
     const teamList = teams ?? [];
