@@ -217,4 +217,22 @@ describe("unibox conversation context menu", SUITE, () => {
         expect(screen.getByPlaceholderText("Label conversation…")).toBeTruthy();
         expect(router.state.location.pathname).toBe("/app/unibox/awaiting");
     });
+
+    it("keeps one menu open across right-clicks and closes on an outside press", async () => {
+        await mount("/app/unibox/awaiting");
+        await settle();
+
+        await rightClick(0);
+        await act(async () => {
+            fireEvent.pointerDown(rowFor(1), { button: 2 });
+        });
+        await rightClick(1);
+        expect(screen.getAllByRole("menu")).toHaveLength(1);
+
+        await act(async () => {
+            fireEvent.pointerDown(document.body);
+        });
+        await settle();
+        expect(screen.queryByRole("menu")).toBeNull();
+    });
 });
