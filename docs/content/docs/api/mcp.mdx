@@ -150,7 +150,7 @@ Every tool is gated by its API permission. `tools/list` returns only the tools y
 | `mark_thread_seen` / `set_thread_labels` | Mark seen, set thread labels | `WRITE_UNIBOX` |
 | `snooze_thread` / `unsnooze_thread` / `cancel_scheduled_send` | Snooze a thread, cancel a queued send | `WRITE_UNIBOX` |
 | `get_mailbox` / `get_warmup_ban_status` | Read a mailbox's config and warmup standing | `READ_EMAILS` |
-| `update_mailbox` / `set_mailbox_warmup` / `set_mailbox_tracking_domain` | Edit mailbox settings, warmup, tracking domain | `WRITE_EMAILS` |
+| `update_mailbox` / `set_mailbox_warmup` / `set_mailbox_send_hold` / `set_mailbox_tracking_domain` | Edit mailbox settings, warmup, the campaign hold, tracking domain | `WRITE_EMAILS` |
 | `submit_warmup_appeal` / `disconnect_mailbox` | Appeal a warmup ban, disconnect a mailbox | `WRITE_EMAILS` |
 | `create_automation_draft` / `list_automations` / `get_automation` | Read automations, create a disabled draft | `INTEGRATIONS` |
 | `update_automation` / `set_automation_enabled` / `delete_automation` | Edit, enable, or delete an automation | `INTEGRATIONS` |

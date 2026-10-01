@@ -213,12 +213,7 @@ func detectSpamPlacement(s *repository.AdvisorSnapshot) []Finding {
 		}
 
 		if m.InActiveCampaign && r >= spamPlacementQuarantine {
-			f.Action = withUndo(mailboxAction(m.ID,
-				"Pause cold sending from this mailbox",
-				map[string]any{"status": "inactive"},
-				change("Mailbox status", "active", "inactive"),
-				change("Warmup", "running", "running (unchanged)"),
-			), map[string]any{"email_account_id": m.ID.String(), "status": "active"})
+			f.Action = mailboxHoldAction(m.ID, "Hold this mailbox out of campaigns")
 		}
 		out = append(out, f)
 	}

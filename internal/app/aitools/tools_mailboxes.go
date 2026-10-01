@@ -36,7 +36,7 @@ func (d Deps) registerMailboxTools(r *Registry) {
 			"email_account_id":      strProp("The mailbox UUID."),
 			"name":                  strProp("Display name."),
 			"reply_to":              strProp("Reply-to address."),
-			"status":                enumProp("Mailbox status.", "active", "inactive"),
+			"status":                enumProp("Mailbox status. inactive switches the mailbox off entirely: no sending, warmup or sync. To stop only cold sending, use set_mailbox_send_hold.", "active", "inactive"),
 			"campaign_limit":        intProp("Max cold-campaign emails per day for this mailbox, 0 to 5000. Default 50; 30-50/day is the safe cold-outreach band."),
 			"min_wait_time":         intProp("Minimum seconds between sends."),
 			"warmup":                boolProp("Enable or disable warmup."),
@@ -66,6 +66,19 @@ func (d Deps) registerMailboxTools(r *Registry) {
 		RequiredOrgPerm: models.PermManageEmails,
 		RequiredAPIPerm: models.APIPermWriteEmails,
 		Handler:         d.setMailboxWarmup,
+	})
+
+	r.Register(Tool{
+		Name:        "set_mailbox_send_hold",
+		Description: "Hold a mailbox out of campaign sending, or release the hold. Warmup keeps running either way; use this, not status, to stop cold sending while a mailbox recovers.",
+		InputSchema: objectSchema(map[string]any{
+			"email_account_id": strProp("The mailbox UUID."),
+			"hold":             boolProp("true holds the mailbox out of campaigns, false puts it back."),
+		}, "email_account_id", "hold"),
+		Risk:            generation.RiskWrite,
+		RequiredOrgPerm: models.PermManageEmails,
+		RequiredAPIPerm: models.APIPermWriteEmails,
+		Handler:         d.setMailboxSendHold,
 	})
 
 	r.Register(Tool{
@@ -216,6 +229,33 @@ func (d Deps) setMailboxWarmup(ctx context.Context, inv Invocation, args json.Ra
 	}
 	d.logAudit(ctx, inv, action, models.AuditEntityEmailAccount, &aid, map[string]string{"warmup": in.Action})
 	return jsonResult(mb)
+}
+
+func (d Deps) setMailboxSendHold(ctx context.Context, inv Invocation, args json.RawMessage) (string, error) {
+	in, err := decodeArgs[struct {
+		EmailAccountID string `json:"email_account_id"`
+		Hold           *bool  `json:"hold"`
+	}](args)
+	if err != nil {
+		return "", err
+	}
+	aid, err := parseUUIDArg(in.EmailAccountID)
+	if err != nil {
+		return "", err
+	}
+	if in.Hold == nil {
+		return "", ErrInvalidArgs
+	}
+	state, xerr := d.Emails.SetSendHold(ctx, inv.OrgID.String(), in.EmailAccountID, *in.Hold)
+	if xerr != nil {
+		return "", fromErrx(xerr)
+	}
+	action := "released"
+	if *in.Hold {
+		action = "held"
+	}
+	d.logAudit(ctx, inv, models.AuditActionUpdate, models.AuditEntityEmailAccount, &aid, map[string]string{"send_hold": action})
+	return jsonResult(state)
 }
 
 func (d Deps) setMailboxTrackingDomain(ctx context.Context, inv Invocation, args json.RawMessage) (string, error) {

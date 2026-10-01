@@ -269,12 +269,7 @@ func detectWarmupPoolBlocked(s *repository.AdvisorSnapshot) []Finding {
 			},
 		}
 		if m.InActiveCampaign {
-			f.Action = withUndo(mailboxAction(m.ID,
-				"Stop cold sending from this mailbox",
-				map[string]any{"status": "inactive"},
-				change("Mailbox status", "active", "inactive"),
-				change("Cold campaigns", "sending", "paused for this mailbox"),
-			), map[string]any{"email_account_id": m.ID.String(), "status": "active"})
+			f.Action = mailboxHoldAction(m.ID, "Hold this mailbox out of campaigns")
 		}
 		out = append(out, f)
 	}

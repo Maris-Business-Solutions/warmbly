@@ -67,6 +67,8 @@ Two more copy findings run only when the operator has configured TypeSafe (`TYPE
 
 Opening a recommendation walks three screens: **Why** (with the measured numbers), **What changes** (the exact before and after of every field), and **Done** (with **Undo** where revertible).
 
+A finding that asks you to stop cold sending from a mailbox, for spam placement or a lost warmup pool standing, applies [Hold from campaigns](/guides/mailboxes/#holding-a-mailbox-yourself) rather than switching the mailbox off, so its warmup keeps running while it recovers. **Undo** releases the hold.
+
 Nothing is applied until you have seen the second screen. The change runs as you, with your permissions, and is written to the audit log. If you can see a finding but lack permission for its fix, applying it is refused rather than silently escalated.
 
 Findings needing a judgement call have no settings preview. Their second screen is the ordered set of manual steps plus a link to the right screen. A missing DMARC record tells you where the `_dmarc` host goes and why the first record should start at `p=none`. Where the remedy is genuinely one sentence, it stays one sentence.

@@ -11,6 +11,8 @@ import useAccountStatuses from "@/lib/api/hooks/app/analytics/useAccountStatuses
 import useFeatureStatus from "@/lib/api/hooks/app/subscription/useFeatureStatus";
 import warmupLifecycle from "@/lib/api/client/app/emails/warmupLifecycle";
 import removeEmail from "@/lib/api/client/app/emails/removeEmail";
+import updateEmail from "@/lib/api/client/app/emails/updateEmail";
+import useMailboxSwitch, { switchOffPrompt } from "@/components/app/emails/useMailboxSwitch";
 import invalidateAfterMailboxRemoval from "@/lib/api/hooks/app/emails/invalidateAfterMailboxRemoval";
 import useRemoveEmail from "@/lib/api/hooks/app/emails/useRemoveEmail";
 import { useUserProfile } from "@/hooks/context/user";
@@ -59,6 +61,8 @@ import {
     PauseIcon,
     PlayIcon,
     PlusIcon,
+    PowerIcon,
+    PowerOffIcon,
     RotateCcwIcon,
     SendIcon,
     Settings2Icon,
@@ -244,6 +248,36 @@ export default function AddressesPage() {
         } else if (failed > 0) toast.error(`${failed} mailbox${failed > 1 ? "es" : ""} couldn't be updated`);
         else toast.success(`Warmup ${verb} for ${n} mailbox${n > 1 ? "es" : ""}`);
     };
+
+    // The whole mailbox on or off; warmup and the campaign hold are separate switches.
+    const bulkSwitch = (on: boolean) => {
+        const ids = selected.filter((id) => {
+            const st = emailsData.emails?.find((e) => e.id === id)?.status;
+            return on ? st === "inactive" : st === "active";
+        });
+        if (ids.length === 0) return;
+        const n = ids.length;
+        const apply = async () => {
+            const results = await Promise.allSettled(ids.map((id) => updateEmail(id, { status: on ? "active" : "inactive" })));
+            const failed = results.filter((r) => r.status === "rejected").length;
+            await queryClient.invalidateQueries({ queryKey: ["emails", "list"] });
+            await queryClient.invalidateQueries({ queryKey: ["analytics", "accounts"] });
+            setSelected([]);
+            if (failed > 0) toast.error(`${failed} mailbox${failed > 1 ? "es" : ""} couldn't be switched ${on ? "on" : "off"}`);
+            else toast.success(`${n} mailbox${n > 1 ? "es" : ""} switched ${on ? "back on" : "off"}`);
+        };
+        if (on) void apply();
+        else confirm.show(switchOffPrompt(n > 1 ? `${n} mailboxes` : "this mailbox"), apply);
+    };
+    const selectedStatuses = useMemo(() => {
+        const out = { on: 0, off: 0 };
+        for (const id of selected) {
+            const st = emailsData.emails?.find((e) => e.id === id)?.status;
+            if (st === "active") out.on++;
+            else if (st === "inactive") out.off++;
+        }
+        return out;
+    }, [selected, emailsData.emails]);
 
     const openDetail = (id: string, tab: string = "overview") => {
         setViewTab(tab);
@@ -543,8 +577,28 @@ export default function AddressesPage() {
                             className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-slate-600 hover:bg-slate-100 transition-colors"
                         >
                             <PauseIcon className="w-3.5 h-3.5" />
-                            Pause
+                            Pause warmup
                         </button>
+                        {selectedStatuses.off > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => bulkSwitch(true)}
+                                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-sky-700 hover:bg-sky-50 transition-colors"
+                            >
+                                <PowerIcon className="w-3.5 h-3.5" />
+                                Switch on
+                            </button>
+                        )}
+                        {selectedStatuses.on > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => bulkSwitch(false)}
+                                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-[12px] font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                            >
+                                <PowerOffIcon className="w-3.5 h-3.5" />
+                                Switch off
+                            </button>
+                        )}
                         <BulkTagPopover ids={selected} />
                         <div className="w-px h-4 bg-slate-200 mx-0.5" />
                         <button
@@ -662,6 +716,9 @@ function MailboxRow({
     const life = useWarmupLifecycle(box.id);
     const confirm = useConfirm();
     const remove = useRemoveEmail(box.id);
+    const power = useMailboxSwitch(box.id, box.email);
+    // Switched off by its owner or the platform; a revoked one needs a reconnect instead.
+    const switchedOff = box.status === "inactive";
 
     // Disconnecting is unrecoverable and takes the mailbox's stored mail with
     // it, so the prompt says that rather than "are you sure". What happens to
@@ -697,6 +754,8 @@ function MailboxRow({
     const off = !box.warmup;
     const paused = !!box.warmup && !!box.warmup_paused_at;
     const active = !!box.warmup && !box.warmup_paused_at;
+    // Warmup only runs on a mailbox that is on, whatever its warmup setting says.
+    const warming = active && box.status === "active";
 
     const tone = healthTone(status);
     const ws = status?.warmup_status;
@@ -722,8 +781,10 @@ function MailboxRow({
         ? cloud?.cloud
             ? `${cloud.cloud.sent_today}/${cloud.cloud.warmup?.target_volume ?? cloud.cloud.settings.base}`
             : "Cloud"
-        : active
+        : warming
         ? `${ws?.current_volume ?? 0}/${ws?.target_volume ?? box.warmup_base}`
+        : active
+            ? "Stopped"
         : paused
             ? "Paused"
             : inCampaign
@@ -733,8 +794,10 @@ function MailboxRow({
         ? cloudPaused
             ? "text-amber-600"
             : "text-sky-600"
-        : active
+        : warming
         ? "text-orange-600"
+        : active
+            ? "text-slate-400"
         : paused
             ? "text-amber-600"
             : inCampaign
@@ -828,7 +891,7 @@ function MailboxRow({
                 </div>
             </td>
             <td className="px-3 overflow-hidden">
-                <MailboxStatusPill box={box} status={status} warming={inCloud ? !cloudPaused : active} />
+                <MailboxStatusPill box={box} status={status} warming={inCloud ? !cloudPaused : warming} />
             </td>
             <td className="px-3 overflow-hidden hidden md:table-cell">
                 {status?.daily_usage ? (
@@ -852,7 +915,7 @@ function MailboxRow({
                         <CloudIcon className="w-3 h-3 shrink-0" />
                         <span>{warmupLabel}</span>
                     </span>
-                ) : active ? (
+                ) : warming ? (
                     <span className="inline-flex items-center gap-1.5" title={`${ws?.current_volume ?? 0} of ${ws?.target_volume ?? box.warmup_base} warmup emails sent today`}>
                         <span className="campaign-grid shrink-0" aria-hidden />
                         <span>
@@ -861,8 +924,13 @@ function MailboxRow({
                         </span>
                     </span>
                 ) : (
-                    <span className="inline-flex items-center gap-1.5 font-sans text-[11.5px] font-medium">
-                        {paused ? (
+                    <span
+                        className="inline-flex items-center gap-1.5 font-sans text-[11.5px] font-medium"
+                        title={active ? "Warmup is on, but the mailbox is not, so nothing is sent. Switch the mailbox back on to resume." : undefined}
+                    >
+                        {active ? (
+                            <PowerOffIcon className="w-3 h-3 shrink-0" />
+                        ) : paused ? (
                             <PauseIcon className="w-3 h-3 shrink-0" />
                         ) : inCampaign ? (
                             <ActivityIcon className="w-3 h-3 shrink-0" />
@@ -905,11 +973,19 @@ function MailboxRow({
                                 disabled={life.isPending}
                                 className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 text-slate-400 hover:text-orange-600 transition-colors cursor-pointer disabled:opacity-50"
                             >
-                                {inCloud ? <CloudIcon className={`w-3.5 h-3.5 ${cloudPaused ? "text-amber-500" : "text-sky-600"}`} /> : <RiFireLine className={`w-3.5 h-3.5 ${active ? "text-orange-500" : paused ? "text-amber-500" : ""}`} />}
+                                {inCloud ? <CloudIcon className={`w-3.5 h-3.5 ${cloudPaused ? "text-amber-500" : "text-sky-600"}`} /> : <RiFireLine className={`w-3.5 h-3.5 ${warming ? "text-orange-500" : paused ? "text-amber-500" : ""}`} />}
                             </button>
                         </PopoverMenuTrigger>
                         <PopoverMenuContent minWidth={208}>
-                            <PopoverMenuLabel>Warmup · {inCloud ? (cloudPaused ? "Paused in cloud" : "Warmbly Cloud") : active ? "Active" : paused ? "Paused" : "Off"}</PopoverMenuLabel>
+                            <PopoverMenuLabel>Warmup · {inCloud ? (cloudPaused ? "Paused in cloud" : "Warmbly Cloud") : switchedOff && !off ? "Mailbox off" : active ? "Active" : paused ? "Paused" : "Off"}</PopoverMenuLabel>
+                            {switchedOff && (
+                                <>
+                                    <PopoverMenuItem onSelect={power.switchOn} icon={<PowerIcon className="w-3 h-3" />}>
+                                        Switch the mailbox back on
+                                    </PopoverMenuItem>
+                                    <PopoverMenuSeparator />
+                                </>
+                            )}
                             {inCloud && (
                                 <>
                                     <PopoverMenuItem
@@ -993,6 +1069,16 @@ function MailboxRow({
                             <PopoverMenuItem onSelect={() => onOpen(box.id, "settings")} icon={<Settings2Icon className="w-3 h-3" />}>
                                 Mailbox settings
                             </PopoverMenuItem>
+                            {switchedOff && (
+                                <PopoverMenuItem onSelect={power.switchOn} icon={<PowerIcon className="w-3 h-3" />}>
+                                    Switch back on
+                                </PopoverMenuItem>
+                            )}
+                            {box.status === "active" && (
+                                <PopoverMenuItem onSelect={power.switchOff} icon={<PowerOffIcon className="w-3 h-3" />}>
+                                    Switch off
+                                </PopoverMenuItem>
+                            )}
                             <PopoverMenuSeparator />
                             {/* The one obvious way to remove a single mailbox. It
                                 used to exist only behind the row checkboxes and the
@@ -1136,7 +1222,7 @@ function MailboxStatusPill({ box, status, warming }: { box: Inbox; status?: Acco
 
     let problem: { label: string; text: string; Icon: LucideIcon; title: string } | null = null;
     if (box.status === "revoked") problem = { label: "Reconnect", text: "text-rose-600", Icon: UnplugIcon, title: "Access was revoked at the provider. Reconnect the mailbox to send and warm again." };
-    else if (box.status !== "active") problem = { label: "Off", text: "text-slate-500", Icon: CircleSlashIcon, title: "Switched off: it neither sends, warms nor syncs." };
+    else if (box.status !== "active") problem = { label: "Off", text: "text-slate-500", Icon: CircleSlashIcon, title: "Switched off: it neither sends, warms nor syncs. Switch it back on from the row's menu or its Settings tab." };
     else if (error) problem = { label: "Error", text: "text-rose-600", Icon: AlertTriangleIcon, title: error.action_required ? `${error.title}. ${error.action_required}` : error.title };
     if (problem) {
         const { Icon } = problem;

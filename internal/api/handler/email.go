@@ -76,6 +76,11 @@ func (h *Handler) UpdateEmail(c *gin.Context) {
 		return
 	}
 
+	// A mailbox switched back on resumes its warmup now, not on the next reconciler pass.
+	if data.Status != nil && *data.Status == "active" && resp != nil && resp.Warmup != nil && resp.WarmupPausedAt == nil {
+		_ = h.TasksService.EnsureWarmupScheduled(c.Request.Context(), resp.ID)
+	}
+
 	// Audit log
 	if accountID, err := uuid.Parse(emailAccountID); err == nil {
 		h.auditOrg(c, models.AuditActionUpdate, models.AuditEntityEmailAccount, &accountID, nil, nil)

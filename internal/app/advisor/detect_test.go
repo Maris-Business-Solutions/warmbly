@@ -254,7 +254,14 @@ func TestSpamPlacementRespectsItsSampleFloorAndBands(t *testing.T) {
 		t.Errorf("55%% spam placement should be critical, got %q", f.Severity)
 	}
 	if f.Action == nil {
-		t.Error("a mailbox this deep in spam while sending cold should offer to stop")
+		t.Fatal("a mailbox this deep in spam while sending cold should offer to stop")
+	}
+	// Stopping cold sending must leave warmup running, so the fix is the hold, never status.
+	if f.Action.Tool != "set_mailbox_send_hold" || f.Action.Undo == nil || f.Action.Undo.Tool != "set_mailbox_send_hold" {
+		t.Errorf("spam placement fix should hold the mailbox and undo by releasing it, got %q", f.Action.Tool)
+	}
+	if strings.Contains(string(f.Action.Args), "status") {
+		t.Errorf("spam placement fix must not switch the mailbox off: %s", f.Action.Args)
 	}
 }
 

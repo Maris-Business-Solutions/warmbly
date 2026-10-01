@@ -124,13 +124,13 @@ var fixTools = map[models.AdvisorCategory][]string{
 		"update_contact_fields", "bulk_edit_contacts", "update_campaign_step",
 	},
 	models.AdvisorCategoryMailbox: {
-		"get_mailbox", "list_mailboxes", "update_mailbox",
+		"get_mailbox", "list_mailboxes", "update_mailbox", "set_mailbox_send_hold",
 	},
 	models.AdvisorCategoryWarmup: {
-		"get_mailbox", "get_warmup_ban_status", "set_mailbox_warmup", "update_mailbox",
+		"get_mailbox", "get_warmup_ban_status", "set_mailbox_warmup", "update_mailbox", "set_mailbox_send_hold",
 	},
 	models.AdvisorCategoryDeliverability: {
-		"get_mailbox", "update_mailbox", "set_mailbox_tracking_domain",
+		"get_mailbox", "update_mailbox", "set_mailbox_send_hold", "set_mailbox_tracking_domain",
 		"verify_campaign_tracking_domain",
 	},
 }
