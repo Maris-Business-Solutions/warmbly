@@ -1,5 +1,5 @@
-// Why a warming mailbox is sending nothing: its mail server refused the last
-// warmup email and none has gone out since.
+// Why a warming mailbox is sending nothing: its last warmup email failed and
+// no later one was confirmed delivered.
 
 import { AlertTriangleIcon } from "lucide-react";
 import type { WarmupSendFailure } from "@/lib/api/models/app/analytics/AccountStatus";
@@ -10,7 +10,7 @@ export default function WarmupSendFailureNote({ failure, cloud = false, classNam
             <AlertTriangleIcon className="w-3 h-3 mt-0.5 shrink-0" />
             <div className="min-w-0">
                 <div>
-                    {cloud ? "Warmbly Cloud could not send the last warmup email from this mailbox." : "The last warmup email from this mailbox was not sent."} Nothing has gone out since, so
+                    {cloud ? "Warmbly Cloud could not send the last warmup email from this mailbox." : "The last warmup email from this mailbox was not sent."} None has been delivered since, so
                     today's count stays where it is.
                 </div>
                 <div className="mt-0.5 font-mono text-[11px] text-rose-600/90 break-words">{failure.message}</div>

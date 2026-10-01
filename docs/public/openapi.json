@@ -37199,7 +37199,7 @@
           },
           "send_failure": {
             "type": "object",
-            "description": "Present while the mailbox's newest warmup send, within the last 24 hours, was refused and none has gone out since. message is the mail server's answer, so the owner can correct the SMTP host, port or credentials.",
+            "description": "Present while the mailbox's newest warmup send, within the last 24 hours, failed and no later send was confirmed delivered. message is the failure reason: the mail server's answer when it gave one, otherwise why the send could not be made (for example the mailbox is not loaded on its worker).",
             "properties": {
               "message": {
                 "type": "string"

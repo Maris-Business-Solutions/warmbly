@@ -47,9 +47,18 @@ func TestLiveLastWarmupSendFailure(t *testing.T) {
 		t.Fatalf("got %+v; a refusal before the window must not be reported", got)
 	}
 
-	// A send that went out after it clears the report.
+	// A later send that was only dispatched has not proved the server takes mail.
+	later := uuid.New()
 	f.exec(`INSERT INTO tasks (id, task_type, email_account_id, status, message_id, completed_at)
-	        VALUES ($1, 'warmup', $2, 'completed', '', NOW() - interval '1 hour')`, uuid.New(), f.account)
+	        VALUES ($1, 'warmup', $2, 'completed', '', NOW() - interval '1 hour')`, later, f.account)
+	f.exec(`INSERT INTO warmup_tokens (token, task_id, sender_account_id, recipient_account_id, conversation_turn)
+	        VALUES ($1, $2, $3, $3, 0)`, uuid.New(), later, f.account)
+	if got, _ := repo.LastWarmupSendFailure(ctx, f.account, since); got == nil {
+		t.Fatal("a dispatched send with no delivery must not clear the report")
+	}
+
+	// Its delivery does.
+	f.exec(`UPDATE warmup_tokens SET sent_message_id = '<delivered@example.test>' WHERE task_id = $1`, later)
 	if got, err := repo.LastWarmupSendFailure(ctx, f.account, since); err != nil || got != nil {
 		t.Fatalf("after a delivered send: got %+v, %v; want nil", got, err)
 	}

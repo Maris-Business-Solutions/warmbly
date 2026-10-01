@@ -187,7 +187,7 @@ type WarmupRepository interface {
 	IncrementReplyCount(ctx context.Context, accountID uuid.UUID, date time.Time) error
 	// FailWarmupSend atomically records the failure and refunds its daily counters.
 	FailWarmupSend(ctx context.Context, accountID, taskID uuid.UUID, date time.Time, title, message string) error
-	// LastWarmupSendFailure is the newest warmup send the worker could not deliver since `since`, when nothing has gone out after it.
+	// LastWarmupSendFailure is the newest warmup send the worker could not deliver since `since`, when no later send was confirmed delivered.
 	LastWarmupSendFailure(ctx context.Context, accountID uuid.UUID, since time.Time) (*models.WarmupSendFailure, error)
 	GetWarmupStatistics(ctx context.Context, accountID uuid.UUID, from, to time.Time) ([]WarmupStatistic, error)
 	GetOrCreateDailyStats(ctx context.Context, accountID uuid.UUID, date time.Time, targetVolume int) (*WarmupStatistic, error)
@@ -1037,6 +1037,7 @@ func (r *warmupRepository) LastWarmupSendFailure(ctx context.Context, accountID 
 		  AND t.updated_at >= $2
 		  AND NOT EXISTS (
 		      SELECT 1 FROM tasks c
+		      JOIN warmup_tokens wt ON wt.task_id = c.id AND wt.sent_message_id <> ''
 		      WHERE c.email_account_id = $1
 		        AND c.task_type = 'warmup'
 		        AND c.status = 'completed'

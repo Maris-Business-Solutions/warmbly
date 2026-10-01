@@ -47,7 +47,7 @@ export interface WarmupStatusInfo {
     send_failure?: WarmupSendFailure;
 }
 
-// The mail server's answer to the warmup send it refused.
+// Why a warmup send failed: the mail server's answer when it gave one.
 export interface WarmupSendFailure {
     message: string;
     at: string;

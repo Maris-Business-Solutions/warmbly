@@ -17,7 +17,7 @@ import (
 )
 
 // errMailboxNotLoaded is what an owner reads when the worker never connected the mailbox.
-const errMailboxNotLoaded = "The mailbox is not connected on its sending server: its mail server could not be reached or refused the login, so nothing was sent. Check the mailbox's connection error."
+const errMailboxNotLoaded = "The sending worker has not loaded this mailbox yet, so nothing was sent. A mail server the worker cannot reach, or one that refuses its login, keeps a mailbox from loading."
 
 func (w *WorkerService) HandleSendEmail(ctx context.Context, sendEmail models.SendEmail) error {
 	log.Info().
