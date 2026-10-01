@@ -38,23 +38,7 @@ import {
     PopoverMenuTrigger,
 } from "@/components/ui/popover-menu";
 import { Checkbox } from "@/components/ui/checkbox";
-
-// htmlToPlain renders the HTML signature down to a plain-text equivalent,
-// turning block elements and <br> into line breaks. Used to keep the plain
-// version in lockstep with the HTML one while "sync" is on.
-function htmlToPlain(html: string): string {
-    const withBreaks = html
-        .replace(/<\s*br\s*\/?>/gi, "\n")
-        .replace(/<\/\s*(p|div|h[1-6]|li|tr)\s*>/gi, "\n");
-    if (typeof DOMParser === "undefined") return withBreaks.replace(/<[^>]+>/g, "");
-    // DOMParser builds an inert document: nothing is fetched and no handler
-    // runs. Assigning innerHTML on a detached div does fire <img onerror>.
-    const doc = new DOMParser().parseFromString(withBreaks, "text/html");
-    // Without this a signature carrying a <style> block put its whole
-    // stylesheet into the plain-text alternative.
-    doc.querySelectorAll("style, script, title, noscript, template").forEach((el) => el.remove());
-    return (doc.body.textContent || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-}
+import { htmlToPlain } from "@/lib/email/composerBody";
 
 // Markup the visual surface cannot host. It edits by assigning innerHTML, so
 // an event handler would run and a <style> block would restyle the dashboard;
@@ -102,6 +86,8 @@ interface EmailEditorProps {
     setSync: (v: boolean) => void;
     code: boolean;
     setCode: (v: boolean) => void;
+    /** What is being edited, for the editor's own copy. */
+    kind?: "signature" | "email";
 }
 
 export default function EmailEditor({
@@ -114,6 +100,7 @@ export default function EmailEditor({
     setSync,
     code,
     setCode,
+    kind = "signature",
 }: EmailEditorProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState<"html" | "preview" | "plain">("html");
@@ -148,17 +135,17 @@ export default function EmailEditor({
 
     function applyUrl() {
         const u = url.trim();
-        const kind = urlPopover;
+        const target = urlPopover;
         setUrl("");
         setUrlPopover(null);
-        if (!u || !kind) return;
+        if (!u || !target) return;
         editorRef.current?.focus();
         const sel = window.getSelection();
         if (savedRange.current && sel) {
             sel.removeAllRanges();
             sel.addRange(savedRange.current);
         }
-        exec(kind === "image" ? "insertImage" : "createLink", u);
+        exec(target === "image" ? "insertImage" : "createLink", u);
     }
 
     // commitHtml writes the HTML signature and, while sync is on, keeps the
@@ -292,7 +279,7 @@ export default function EmailEditor({
                             disabled={forcedSource}
                             title={
                                 forcedSource
-                                    ? "This signature holds markup the visual editor cannot host safely"
+                                    ? `This ${kind} holds markup the visual editor cannot host safely`
                                     : sourceView
                                       ? "Visual editor"
                                       : "Edit HTML source"
@@ -366,7 +353,7 @@ export default function EmailEditor({
                         <RiEyeLine className="mt-px w-3 h-3 shrink-0" />
                         <span>
                             {forcedSource
-                                ? "Edited as source because this signature carries a stylesheet, a document wrapper or an event handler. It is sent exactly as written; use Preview to see it."
+                                ? `Edited as source because this ${kind} carries a stylesheet, a document wrapper or an event handler. It is sent exactly as written; use Preview to see it.`
                                 : "Sent exactly as written. Any <style> block is copied onto the elements it matches at send time, so it survives Outlook and Yahoo."}
                         </span>
                     </p>
@@ -423,7 +410,11 @@ function UrlForm({
                         e.preventDefault();
                         onApply();
                     }
-                    if (e.key === "Escape") onCancel();
+                    if (e.key === "Escape") {
+                        // Closes only this form, not the drawer or composer around it.
+                        e.stopPropagation();
+                        onCancel();
+                    }
                 }}
             />
             <button

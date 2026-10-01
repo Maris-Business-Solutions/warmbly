@@ -8,6 +8,12 @@ import { Link } from "react-router-dom";
 import { FileTextIcon, SearchIcon, SettingsIcon, XIcon } from "lucide-react";
 import type useTemplates from "@/lib/api/hooks/app/templates/useTemplates";
 import type Template from "@/lib/api/models/app/templates/Template";
+import { htmlHasContent, htmlToPlain } from "@/lib/email/composerBody";
+
+// The text a row previews and search matches: the plain body, else the HTML's text.
+function templateText(t: Template): string {
+    return t.body_plain?.trim() ? t.body_plain : htmlToPlain(t.body_html ?? "");
+}
 
 export default function TemplatePickerContent({
     query,
@@ -25,7 +31,7 @@ export default function TemplatePickerContent({
         const q = search.trim().toLowerCase();
         if (!q) return all;
         return all.filter((t) => {
-            const hay = `${t.name} ${t.subject} ${t.body_plain}`.toLowerCase();
+            const hay = `${t.name} ${t.subject} ${templateText(t)}`.toLowerCase();
             return hay.includes(q);
         });
     }, [all, search]);
@@ -144,10 +150,8 @@ function TemplateRow({
     template: Template;
     onPick: () => void;
 }) {
-    const bodyPreview = (template.body_plain ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 120);
+    const bodyPreview = templateText(template).replace(/\s+/g, " ").trim().slice(0, 120);
+    const hasHtml = htmlHasContent(template.body_html ?? "");
 
     return (
         <button
@@ -155,8 +159,18 @@ function TemplateRow({
             onClick={onPick}
             className="w-full text-left rounded-md px-2.5 py-1.5 flex flex-col gap-0.5 hover:bg-slate-50 active:bg-slate-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
         >
-            <span className="text-[12.5px] font-medium text-slate-900 truncate">
-                {template.name}
+            <span className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[12.5px] font-medium text-slate-900 truncate">
+                    {template.name}
+                </span>
+                {hasHtml && (
+                    <span
+                        className="shrink-0 h-4 px-1 rounded bg-sky-50 text-sky-700 text-[9.5px] font-medium inline-flex items-center"
+                        title="Has an HTML body, which is inserted with its formatting"
+                    >
+                        HTML
+                    </span>
+                )}
             </span>
             {bodyPreview && (
                 <span className="text-[11px] text-slate-400 truncate leading-snug">

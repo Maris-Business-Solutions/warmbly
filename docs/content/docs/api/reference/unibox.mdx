@@ -312,7 +312,7 @@ Sends or schedules a reply or a forward from any mailbox in the organization. Th
 | `bcc` | string[] | No | BCC addresses. |
 | `subject` | string | Yes | Subject line. |
 | `body_html` | string | No | HTML body. |
-| `body_plain` | string | No | Plain-text body. |
+| `body_plain` | string | No | Plain-text body. Leave it empty with `body_html` set and the plain-text part is rendered from the HTML, link destinations included. |
 | `in_reply_to` | string[] | No | Message-ID(s) this reply threads under. When omitted, the newest Message-ID in `thread_id` is used. |
 | `thread_id` | string | No | The conversation being answered. |
 | `send_mode` | string | No | `instant` (default), `smart` (next mailbox gap), or `scheduled` (use `scheduled_at`). |

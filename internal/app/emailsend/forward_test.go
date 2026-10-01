@@ -228,3 +228,27 @@ func TestUntrackForwardedRestoresDestinations(t *testing.T) {
 		t.Fatalf("unknown or unsafe tickets must stay as they are:\n%s", h)
 	}
 }
+
+// An HTML-only send keeps its HTML verbatim and still ships a text part.
+func TestSendEmailRendersTheTextPartOfAnHTMLOnlyBody(t *testing.T) {
+	orgID := uuid.New()
+	tasks := &fakeSendTaskRepo{}
+	svc := &emailSendService{
+		taskRepo:  tasks,
+		emailRepo: &fakeSendEmailRepo{account: &models.Email{OrganizationID: &orgID}},
+	}
+	body := `<p>Here is our <a href="https://example.com/brochure.pdf">brochure</a>.</p>`
+	_, xerr := svc.SendEmail(context.Background(), uuid.New(), orgID, uuid.New(), &SendEmailRequest{
+		To: []string{"them@example.com"}, Subject: "Brochure", BodyHTML: body,
+	})
+	if xerr != nil {
+		t.Fatal(xerr)
+	}
+	et := tasks.stored
+	if et.BodyHTML != body {
+		t.Fatalf("html changed: %q", et.BodyHTML)
+	}
+	if et.BodyPlain != "Here is our brochure (https://example.com/brochure.pdf)." || et.Body != et.BodyPlain {
+		t.Fatalf("plain: %q body %q", et.BodyPlain, et.Body)
+	}
+}

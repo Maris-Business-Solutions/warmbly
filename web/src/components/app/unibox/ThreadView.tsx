@@ -217,6 +217,7 @@ export function ThreadView({ threadId, emailId, onClose }: ThreadViewProps) {
       bcc: pendingRestore.bcc,
       subject: pendingRestore.subject,
       body: pendingRestore.body,
+      ...(pendingRestore.bodyHtml ? { body_html: pendingRestore.bodyHtml } : {}),
       email_account_id: pendingRestore.emailAccountId,
     });
   }, [pendingRestore, threadId, openReply]);

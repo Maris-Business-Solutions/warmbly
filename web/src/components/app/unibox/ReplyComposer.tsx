@@ -65,7 +65,18 @@ import {
     PopoverMenuSeparator,
 } from "@/components/ui/popover-menu";
 import { cn } from "@/lib/utils";
-import { plainToHtml } from "@/lib/email/body";
+import {
+    bodyHasContent,
+    MAX_HTML_LEN,
+    outgoingParts,
+    restoreBody,
+    withTemplate,
+    withText,
+    type ComposerBody,
+} from "@/lib/email/composerBody";
+import { useComposerBody } from "@/lib/email/useComposerBody";
+import { HtmlBody, HtmlModeToggle } from "./compose/HtmlBody";
+import type Template from "@/lib/api/models/app/templates/Template";
 import { bareEmail, nameFromAddr } from "@/lib/helper/emailAddress";
 import {
     loadReplyDraft,
@@ -97,6 +108,11 @@ const SCHEDULE_PRESETS: { label: string; at: () => Date }[] = [
 
 // Body length cap. Generous; real replies rarely come close.
 const MAX_BODY_LEN = 4000;
+
+// A plain body keeps the textarea's cap; HTML is capped where it is applied.
+function capPlain(b: ComposerBody): ComposerBody {
+    return b.html === null ? { ...b, plain: b.plain.slice(0, MAX_BODY_LEN) } : b;
+}
 
 // Server cap (GCP Cloud Tasks 30-day ceiling, minus a day of
 // clock-skew headroom). Mirrored client-side so users get an inline
@@ -182,7 +198,9 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
         () => seed ?? (draftKey ? loadReplyDraft(draftKey) : null),
     );
 
-    const [body, setBody] = React.useState(restored?.body ?? "");
+    const bodyState = useComposerBody(restored?.body ?? "", restored?.body_html);
+    const { body, setBody, html } = bodyState;
+    const setBodyValue = bodyState.setValue;
     const [subject, setSubject] = React.useState(restored?.subject ?? initial.subject);
     const [to, setTo] = React.useState<string[]>(
         restored?.to ?? initial.to,
@@ -212,7 +230,17 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
     const [chosenSender, chooseSender] = React.useState<string | null>(() => resolveSender(restored?.email_account_id));
     const accountId = chosenSender ?? defaultAccountId;
     const [isSending, setIsSending] = React.useState(false);
-    const draft = useReplyDraft(draftKey, { to, cc, bcc, subject, body, email_account_id: accountId }, {
+    // body_html only while in HTML mode, so a plain draft serializes as it always has.
+    const draftValue: ReplySeed = {
+        to,
+        cc,
+        bcc,
+        subject,
+        body,
+        ...(html !== null ? { body_html: html } : {}),
+        email_account_id: accountId,
+    };
+    const draft = useReplyDraft(draftKey, draftValue, {
         to: initial.to, cc: [], bcc: [], subject: initial.subject, body: "", email_account_id: defaultAccountId,
     });
     const closeKeepingDraft = () => {
@@ -269,9 +297,9 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
         setBcc(seed.bcc);
         setShowCc(seed.cc.length > 0);
         setShowBcc(seed.bcc.length > 0);
-        setBody(seed.body);
+        setBodyValue(restoreBody(seed.body, seed.body_html));
         chooseSender(resolveSender(seed.email_account_id));
-    }, [seed, resumeDraft, resolveSender]);
+    }, [seed, resumeDraft, resolveSender, setBodyValue]);
 
     // The full Inbox record (signature_html, signature_plain, etc) of the
     // chosen sender, from the global emails store.
@@ -335,11 +363,18 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
     const scheduledCap = overview.data?.scheduled_pending_max ?? 0;
     const scheduleAtCap = scheduledCap > 0 && scheduledUsed >= scheduledCap;
 
-    const trimmedBody = body.trim();
+    const htmlTooLong = (html?.length ?? 0) > MAX_HTML_LEN;
     // A forward's note is optional: the forwarded message is the content.
-    const hasContent = !!trimmedBody || mode === "forward";
+    const hasBody = React.useMemo(() => bodyHasContent(bodyState.value), [bodyState.value]);
+    const hasContent = hasBody || mode === "forward";
     const canSend =
-        hasContent && to.length > 0 && to.every(looksLikeEmail) && !!accountId && !senderProblem && !isSending;
+        hasContent &&
+        !htmlTooLong &&
+        to.length > 0 &&
+        to.every(looksLikeEmail) &&
+        !!accountId &&
+        !senderProblem &&
+        !isSending;
 
     const send = async (scheduledAt?: Date) => {
         if (!canSend && !isSending) {
@@ -363,9 +398,14 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                 toast.error(senderProblem);
                 return;
             }
+            if (htmlTooLong) {
+                toast.error("This email's HTML is too long to send");
+                return;
+            }
         }
 
-        const submittedDraft = { to, cc, bcc, subject, body, email_account_id: accountId };
+        const submittedDraft = draftValue;
+        const parts = outgoingParts(bodyState.value);
         const pauseWith = mode === "reply" ? followUpPause : null;
         const pauseTargets = {
             ...followUps.targets,
@@ -381,8 +421,7 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                 cc: cc.length ? cc : undefined,
                 bcc: bcc.length ? bcc : undefined,
                 subject: sentSubject,
-                body_plain: trimmedBody,
-                body_html: plainToHtml(trimmedBody),
+                ...parts,
                 thread_id: mode === "reply" ? threadId : undefined,
                 forward_message_id: mode === "forward" ? replyTo.id : undefined,
                 ...(scheduledAt
@@ -411,7 +450,8 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                         cc,
                         bcc,
                         subject: sentSubject,
-                        body: trimmedBody,
+                        body: html === null ? parts.body_plain : body,
+                        ...(html !== null ? { bodyHtml: html } : {}),
                         emailAccountId: accountId,
                     },
                 });
@@ -461,22 +501,24 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
         handleSchedule(new Date(customValue));
     };
 
-    const applyTemplate = (name: string, plain: string, subj: string) => {
-        // Replace body if empty; otherwise append under a separator so
-        // the user keeps whatever they already typed.
-        if (!body.trim()) {
-            setBody(plain);
-        } else {
-            setBody((b) => `${b.trimEnd()}\n\n${plain}`);
+    const applyTemplate = (t: Template) => {
+        // Replace body if empty; otherwise append under a separator so the
+        // user keeps whatever they already typed. An HTML body switches the
+        // composer to HTML.
+        const next = capPlain(withTemplate(bodyState.value, t));
+        if ((next.html?.length ?? 0) > MAX_HTML_LEN) {
+            toast.error(`"${t.name}" is too long to add to this email`);
+            return;
         }
+        setBodyValue(next);
         // Only overwrite subject when the user hasn't customised it
         // past the default "Re:" / "Fwd:" prefix.
         const subj0 = subject.trim();
-        if (subj && (/^re:\s*$/i.test(subj0) || /^fwd:\s*$/i.test(subj0))) {
-            setSubject(subj);
+        if (t.subject && (/^re:\s*$/i.test(subj0) || /^fwd:\s*$/i.test(subj0))) {
+            setSubject(t.subject);
         }
         setTemplateOpen(false);
-        toast.success(`Inserted "${name}"`);
+        toast.success(`Inserted "${t.name}"`);
     };
 
     // Three signature states the user might be in. Surfacing all
@@ -732,6 +774,17 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                 light sheen sweeps the textarea while generating and the
                 status/review card floats over the bottom edge. */}
             <div className="relative">
+            {html !== null ? (
+                <HtmlBody
+                    id="reply-body"
+                    state={bodyState}
+                    onSend={() => {
+                        if (canSend) handleInstant();
+                    }}
+                    onEscape={closeKeepingDraft}
+                    className="max-h-[28rem] px-4 py-2.5"
+                />
+            ) : (
             <textarea
                 ref={bodyRef}
                 value={body}
@@ -753,6 +806,7 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                 }}
                 className="w-full min-h-[120px] max-h-72 px-4 py-3 text-[13px] text-slate-800 placeholder:text-slate-400 bg-transparent resize-y focus:outline-none"
             />
+            )}
             {aiDraft.phase === "busy" && (
                 <div className="ai-sheen pointer-events-none absolute inset-0" aria-hidden />
             )}
@@ -771,6 +825,8 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                 sparkle rides the current line (or ⌘J) and opens the write
                 menu at the cursor — ask AI to write, draft a full reply from
                 the thread, or continue the draft. */}
+            {html === null && (
+            <>
             <TextareaAIEdit
                 textareaRef={bodyRef}
                 value={body}
@@ -786,6 +842,8 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                 contextHint={`It is a ${mode === "forward" ? "forward note" : "reply"} with the subject "${subject}".`}
                 maxLen={MAX_BODY_LEN}
             />
+            </>
+            )}
 
             {/* Signature preview / status. Three branches so the user
                 always knows what will (or will not) appear at the
@@ -974,17 +1032,17 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                     <PopoverMenuContent minWidth={340} className="max-w-[92vw]">
                         <TemplatePickerContent
                             query={templatesQuery}
-                            onPick={(t) => applyTemplate(t.name, t.body_plain, t.subject)}
+                            onPick={applyTemplate}
                             onClose={() => setTemplateOpen(false)}
                         />
                     </PopoverMenuContent>
                 </PopoverMenu>
 
+                <HtmlModeToggle state={bodyState} />
+
                 <InsertBookingLink
                     email={to[0]}
-                    onInsert={(text) =>
-                        setBody((b) => (b.trim() ? `${b.trimEnd()}\n\n${text}` : text).slice(0, MAX_BODY_LEN))
-                    }
+                    onInsert={(text) => setBodyValue((b) => capPlain(withText(b, text)))}
                 />
 
                 <span
@@ -1011,9 +1069,11 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                     {signatureState.kind === "none" && "No signature"}
                 </span>
 
-                <span className="font-mono text-[10px] text-slate-400 tabular-nums">
-                    {body.length}/{MAX_BODY_LEN}
-                </span>
+                {html === null && (
+                    <span className="font-mono text-[10px] text-slate-400 tabular-nums">
+                        {body.length}/{MAX_BODY_LEN}
+                    </span>
+                )}
             </div>
         </motion.div>
     );

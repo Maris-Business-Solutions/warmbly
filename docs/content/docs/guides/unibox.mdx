@@ -197,7 +197,7 @@ To keep filing inside Warmbly for one mailbox, turn off **Mirror Archive and Del
 
 ## Replying
 
-Reply, forward, or hover any single message to reply to it specifically. The composer appears when you ask for it or return to a conversation with a saved reply or forward. You can apply a saved **template** or **Insert booking link**.
+Reply, forward, or hover any single message to reply to it specifically. The composer appears when you ask for it or return to a conversation with a saved reply or forward. You can apply a saved **template** or **Insert booking link**. A template with an HTML body keeps its formatting; see [templates and HTML](#templates-and-html).
 
 ### Choosing the sending mailbox
 
@@ -219,7 +219,7 @@ The reply composer offers the same thing for the moment you answer. When the rec
 
 ### Reply drafts
 
-Replies and forwards save after a short typing pause, and save the latest edits when you close the composer, leave the conversation, or reload. Returning to the thread reopens a saved draft, including one addressed to an older message, with the mailbox you picked. **Discard** removes it; successfully queuing a send removes it too. Undoing a send restores the message for editing, from the same mailbox.
+Replies and forwards save after a short typing pause, and save the latest edits when you close the composer, leave the conversation, or reload. Returning to the thread reopens a saved draft, including one addressed to an older message, with the mailbox you picked and its HTML body, if it has one. **Discard** removes it; successfully queuing a send removes it too. Undoing a send restores the message for editing, from the same mailbox.
 
 These reply drafts are personal to your signed-in user and workspace in this browser. They do not sync to other devices, appear in the mailbox's **Drafts** folder, or travel in a [workspace export](/guides/workspace-export-import/). Clearing browser data removes them. **Draft saved** confirms browser storage succeeded; **Draft not saved** means you should copy your text before leaving.
 
@@ -253,9 +253,17 @@ The window title bar carries **Full screen**, which lifts the same composer to t
 
 The picker shows the pick and its reason before sending. Opening it reveals every mailbox with a budget bar (sent today against its limit), a history badge, and an auth-health dot, so overriding is informed. The menu filters by mailbox tag; with a tag selected, Auto picks within that group only, which is the `from_tag_id` field on `POST /unibox/compose`.
 
+### Templates and HTML
+
+**Template** in either composer inserts a saved template from **Templates**. Into an empty body it becomes the body; otherwise it goes under what you have written, and its subject fills the subject line only when that is still empty (in a reply, only when it is a bare `Re:` or `Fwd:`). The picker marks templates that have an HTML body.
+
+A template with an HTML body (**Also send an HTML body** on the template) switches the composer to HTML, and the recipient gets that HTML exactly as written, links behind words and all. The template's plain-text body goes out beside it as the plain-text part, so write both when you want both. A template with only an HTML body gets a plain-text part generated from the HTML, with each link's address after its text.
+
+In HTML mode the body becomes the same editor as a mailbox signature: **HTML** edits the formatted text (or the source, with the code button), **Preview** shows it as a mail client renders it, and **Plain** holds the plain-text part. With **Sync HTML & plain** on, the plain-text part is regenerated from the HTML as you edit; it starts off when the template brought its own plain text. The mailbox signature is still added on send. **HTML** in the action bar switches a plain email to HTML, or back to plain text after asking first, which keeps the plain-text part as the body. AI writing works on plain text only, so it is unavailable in HTML mode.
+
 ### Drafts and history
 
-Typing autosaves to **Drafts** after a pause. Closing keeps the draft; sending or emptying removes it. Drafts sit at the top of the inbox's left rail, resume on any device, and are personal rather than shared.
+Typing autosaves to **Drafts** after a pause, including an HTML body. Closing keeps the draft; sending or emptying removes it. Drafts sit at the top of the inbox's left rail, resume on any device, and are personal rather than shared.
 
 With a recipient set, **History** slides out every conversation you have had with them: tabs split the full thread from just your sent mail, search narrows by subject, rows open the real thread, and the panel notes which mailbox you usually use.
 

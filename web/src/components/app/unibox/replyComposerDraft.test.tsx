@@ -90,7 +90,20 @@ vi.mock("@/components/app/ai/AIDraftBar", () => ({
 }));
 vi.mock("@/components/app/ai/TextareaAIEdit", () => ({ default: () => null }));
 vi.mock("@/components/app/ai/TextareaAICaret", () => ({ default: () => null }));
-vi.mock("./TemplatePicker", () => ({ default: () => null }));
+const template = vi.hoisted(() => ({
+    id: "tpl1",
+    name: "Brochure",
+    subject: "",
+    body_plain: "Here is our brochure: https://example.com/brochure.pdf",
+    body_html: '<p>Here is our <a href="https://example.com/brochure.pdf">brochure</a>.</p>',
+}));
+vi.mock("./TemplatePicker", () => ({
+    default: ({ onPick }: { onPick: (t: typeof template) => void }) => (
+        <button type="button" onClick={() => onPick(template)}>Use Brochure</button>
+    ),
+}));
+const confirmShow = vi.hoisted(() => vi.fn((_text: string, onSubmit: () => void) => onSubmit()));
+vi.mock("@/hooks/context/confirm", () => ({ useConfirm: () => ({ show: confirmShow }) }));
 vi.mock("./InsertBookingLink", () => ({ default: () => null }));
 vi.mock("./compose/ContactRecipientField", () => ({ default: () => null }));
 vi.mock("@/components/ui/DateTimePicker", () => ({ DateTimePicker: () => null }));
@@ -530,8 +543,42 @@ describe("reply composer drafts", () => {
         expect(body()).toHaveValue("Keep me");
     });
 
-});
 
+    it("sends a template's HTML body as the HTML part, with its own plain text beside it", async () => {
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.click(screen.getByRole("button", { name: /Template/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Use Brochure" }));
+        expect(screen.queryByPlaceholderText(/write/i)).toBeNull();
+        await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+        expect(sendReply).toHaveBeenCalledWith(expect.objectContaining({
+            body_html: template.body_html,
+            body_plain: template.body_plain,
+        }));
+    });
+
+    it("keeps a template's HTML in the saved draft and reopens it as HTML", () => {
+        const view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.click(screen.getByRole("button", { name: /Template/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Use Brochure" }));
+        view.unmount();
+        expect(JSON.parse(localStorage.getItem(draftKey()) ?? "{}")).toMatchObject({
+            body: template.body_plain,
+            body_html: template.body_html,
+        });
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        expect(screen.queryByPlaceholderText(/write/i)).toBeNull();
+        expect(screen.getByRole("button", { name: "HTML", pressed: true })).toBeInTheDocument();
+    });
+
+    it("goes back to plain text with the template's plain body after confirming", () => {
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.click(screen.getByRole("button", { name: /Template/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Use Brochure" }));
+        fireEvent.click(screen.getByRole("button", { name: "HTML", pressed: true }));
+        expect(confirmShow).toHaveBeenCalledOnce();
+        expect(body()).toHaveValue(template.body_plain);
+    });
+});
 
 function setupStorage() {
     const values = new Map<string, string>();

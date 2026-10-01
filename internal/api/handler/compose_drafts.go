@@ -48,6 +48,7 @@ type composeDraftUpsertRequest struct {
 	BCC            []string `json:"bcc"`
 	Subject        string   `json:"subject"`
 	Body           string   `json:"body"`
+	BodyHTML       string   `json:"body_html"`
 }
 
 // UpsertComposeDraft — PUT /unibox/drafts/:id
@@ -73,19 +74,20 @@ func (h *Handler) UpsertComposeDraft(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	if len(req.Body) > maxDraftBody || len(req.Subject) > maxDraftSubject ||
+	if len(req.Body) > maxDraftBody || len(req.BodyHTML) > maxDraftBody || len(req.Subject) > maxDraftSubject ||
 		len(req.To) > maxDraftRcpts || len(req.CC) > maxDraftRcpts || len(req.BCC) > maxDraftRcpts {
 		errx.Handle(c, errx.New(errx.BadRequest, "draft is too large"))
 		return
 	}
 
 	d := &repository.ComposeDraft{
-		ID:      id,
-		To:      emptyIfNil(req.To),
-		CC:      emptyIfNil(req.CC),
-		BCC:     emptyIfNil(req.BCC),
-		Subject: req.Subject,
-		Body:    req.Body,
+		ID:       id,
+		To:       emptyIfNil(req.To),
+		CC:       emptyIfNil(req.CC),
+		BCC:      emptyIfNil(req.BCC),
+		Subject:  req.Subject,
+		Body:     req.Body,
+		BodyHTML: req.BodyHTML,
 	}
 	if v := strings.TrimSpace(req.EmailAccountID); v != "" && v != "auto" {
 		if accountID, perr := uuid.Parse(v); perr == nil {
