@@ -29,6 +29,7 @@ import { providerSupported } from "@/app/app/settings/warmbly-cloud/providers";
 import { CloudIcon, MailCheckIcon } from "lucide-react";
 import { PlacementRateBadge } from "@/components/app/placement/PlacementCharts";
 import type { CloudLinkMailboxRow } from "@/lib/api/models/app/cloudlink/CloudLink";
+import { cloudSendFailure, cloudWarmupPaused } from "@/lib/cloudWarmup";
 import buildError from "@/lib/helper/buildError";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import BulkWarmupDialog from "@/components/app/emails/BulkWarmupDialog";
@@ -778,7 +779,7 @@ function MailboxRow({
     const cloudUnenroll = useUnenrollCloudLinkMailbox();
     const cloudLifecycle = useCloudLinkMailboxLifecycle();
     const inCloud = !!cloud?.enrolled;
-    const cloudPaused = !!cloud?.cloud?.warmup?.paused;
+    const cloudPaused = cloudWarmupPaused(cloud?.cloud);
     const cloudSupported = providerSupported(box.provider);
     const cloudRun = async (fn: () => Promise<unknown>, ok: string) => {
         try {
@@ -789,11 +790,12 @@ function MailboxRow({
         }
     };
 
+    // A refused send outranks the count: it is why the count is not moving.
+    const sendFailure = inCloud ? cloudSendFailure(cloud?.cloud) : warming ? ws?.send_failure : undefined;
+
     // Warmup column: what's flowing today and why.
     const warmupLabel = inCloud
-        ? cloud?.cloud
-            ? `${cloud.cloud.sent_today}/${cloud.cloud.warmup?.target_volume ?? cloud.cloud.settings.base}`
-            : "Cloud"
+        ? "Cloud"
         : warming
         ? `${ws?.current_volume ?? 0}/${ws?.target_volume ?? box.warmup_base}`
         : active
@@ -803,10 +805,14 @@ function MailboxRow({
             : inCampaign
                 ? "Health-check"
                 : "Off";
-    const warmupTone = inCloud
+    const warmupTone = sendFailure
+        ? "text-rose-600"
+        : inCloud
         ? cloudPaused
             ? "text-amber-600"
-            : "text-sky-600"
+            : cloud?.cloud
+              ? "text-orange-600"
+              : "text-sky-600"
         : warming
         ? "text-orange-600"
         : active
@@ -853,7 +859,17 @@ function MailboxRow({
                     it has its own trigger and nesting buttons is invalid. */}
                 <div className="flex w-full min-w-0 items-center gap-2">
                 <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(box.id); }} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                    <ProviderLogo id={brand} size="md" title={source.title || source.label} className="rounded-full shrink-0" />
+                    <span className="relative shrink-0">
+                        <ProviderLogo id={brand} size="md" title={source.title || source.label} className="rounded-full" />
+                        {inCloud && (
+                            <span
+                                aria-hidden
+                                className={`absolute -bottom-1 -right-1 size-3.5 rounded-full ring-2 ring-white inline-flex items-center justify-center text-white ${cloudPaused ? "bg-amber-500" : "bg-sky-600"}`}
+                            >
+                                <CloudIcon className="w-2 h-2" strokeWidth={3} />
+                            </span>
+                        )}
+                    </span>
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0 leading-tight">
                             <span className="text-[12.5px] font-medium text-slate-900 truncate">{box.email}</span>
@@ -890,6 +906,12 @@ function MailboxRow({
                             ) : (
                                 <span className="truncate" title={source.title}>{source.label}</span>
                             )}
+                            {inCloud && (
+                                <span className={`inline-flex items-center gap-1 shrink-0 ${cloudPaused ? "text-amber-600" : "text-sky-600"}`}>
+                                    <span className="text-slate-300">·</span>
+                                    <CloudIcon className="w-2.5 h-2.5" /> {cloudPaused ? "Cloud warmup paused" : "Warmed by Warmbly Cloud"}
+                                </span>
+                            )}
                             {inCampaign && (
                                 <span className="hidden sm:inline-flex items-center gap-1 shrink-0 text-sky-600">
                                     <span className="text-slate-300">·</span>
@@ -923,14 +945,38 @@ function MailboxRow({
                 )}
             </td>
             <td className={`px-3 overflow-hidden font-mono text-[12px] tabular-nums ${warmupTone}`}>
-                {inCloud ? (
-                    <span className="inline-flex items-center gap-1.5" title="Warmed by Warmbly Cloud">
+                {inCloud && cloud?.cloud ? (
+                    <span
+                        className="inline-flex items-center gap-1.5"
+                        title={
+                            sendFailure
+                                ? `Warmbly Cloud could not send from this mailbox: ${sendFailure.message}`
+                                : `${cloudPaused ? "Paused in Warmbly Cloud. " : ""}${cloud.cloud.sent_today} of ${cloud.cloud.warmup?.target_volume ?? cloud.cloud.settings.base} warmup emails sent today by Warmbly Cloud`
+                        }
+                    >
+                        {sendFailure ? (
+                            <AlertTriangleIcon className="w-3 h-3 shrink-0" />
+                        ) : cloudPaused ? (
+                            <PauseIcon className="w-3 h-3 shrink-0" />
+                        ) : (
+                            <span className="campaign-grid shrink-0" aria-hidden />
+                        )}
+                        <span>
+                            <AnimatedNumber value={cloud.cloud.sent_today} />
+                            <span className="opacity-60">/{cloud.cloud.warmup?.target_volume ?? cloud.cloud.settings.base}</span>
+                        </span>
+                    </span>
+                ) : inCloud ? (
+                    <span className="inline-flex items-center gap-1.5" title="Waiting for Warmbly Cloud to report">
                         <CloudIcon className="w-3 h-3 shrink-0" />
                         <span>{warmupLabel}</span>
                     </span>
                 ) : warming ? (
-                    <span className="inline-flex items-center gap-1.5" title={`${ws?.current_volume ?? 0} of ${ws?.target_volume ?? box.warmup_base} warmup emails sent today`}>
-                        <span className="campaign-grid shrink-0" aria-hidden />
+                    <span
+                        className="inline-flex items-center gap-1.5"
+                        title={sendFailure ? `The last warmup email was not sent: ${sendFailure.message}` : `${ws?.current_volume ?? 0} of ${ws?.target_volume ?? box.warmup_base} warmup emails sent today`}
+                    >
+                        {sendFailure ? <AlertTriangleIcon className="w-3 h-3 shrink-0" /> : <span className="campaign-grid shrink-0" aria-hidden />}
                         <span>
                             <AnimatedNumber value={ws?.current_volume ?? 0} />
                             <span className="opacity-60">/{ws?.target_volume ?? box.warmup_base}</span>

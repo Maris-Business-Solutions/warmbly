@@ -13,6 +13,8 @@ import useCloudPool from "@/hooks/useCloudPool";
 import { useCloudLinkMailboxLifecycle, useEnrollCloudLinkMailbox, useUnenrollCloudLinkMailbox } from "@/lib/api/hooks/app/cloudlink/useCloudLink";
 import { providerSupported } from "@/app/app/settings/warmbly-cloud/providers";
 import WarmupPartnerDiversity from "./WarmupPartnerDiversity";
+import WarmupSendFailureNote from "./WarmupSendFailureNote";
+import { cloudSendFailure, cloudWarmupPaused } from "@/lib/cloudWarmup";
 
 export default function CloudWarmupCard({ mailboxId, email, provider }: { mailboxId: string; email: string; provider: string }) {
     const pool = useCloudPool();
@@ -47,6 +49,7 @@ export default function CloudWarmupCard({ mailboxId, email, provider }: { mailbo
 
     const row = pool.rowFor(mailboxId);
     const cloud = row?.cloud;
+    const sendFailure = cloudSendFailure(cloud);
     const supported = providerSupported(provider);
 
     if (!row?.enrolled) {
@@ -71,7 +74,7 @@ export default function CloudWarmupCard({ mailboxId, email, provider }: { mailbo
         );
     }
 
-    const paused = !!cloud?.warmup?.paused;
+    const paused = cloudWarmupPaused(cloud);
     const health = cloud?.health?.state;
     return (
         <div className="px-5 py-4">
@@ -121,6 +124,14 @@ export default function CloudWarmupCard({ mailboxId, email, provider }: { mailbo
                         </button>
                     </div>
                 </div>
+                {sendFailure && <WarmupSendFailureNote failure={sendFailure} cloud className="pl-10" />}
+                {cloud?.warmup?.partner_limit && !sendFailure && (
+                    <p className="mt-2 pl-10 text-[11.5px] text-slate-500 leading-relaxed">
+                        {cloud.warmup.partner_limit.reachable === 0
+                            ? "No partner in the pool can take this mailbox's warmup right now, so nothing goes out until one frees up. The cloud checks again every few hours."
+                            : `The ramp is at ${cloud.warmup.partner_limit.ramp_target} today, but only ${cloud.warmup.partner_limit.reachable} ${cloud.warmup.partner_limit.reachable === 1 ? "partner is" : "partners are"} available, and a mailbox never writes to the same partner twice in a day.`}
+                    </p>
+                )}
                 {cloud?.health && <WarmupPartnerDiversity health={cloud.health} className="pl-10" />}
             </div>
         </div>

@@ -43,6 +43,14 @@ export interface WarmupStatusInfo {
     ramp_hold?: WarmupRampHold;
     /** Present while today's target is capped by the partners the mailbox can still reach. */
     partner_limit?: WarmupPartnerLimit;
+    /** Present while the newest warmup send was refused and none has gone out since. */
+    send_failure?: WarmupSendFailure;
+}
+
+// The mail server's answer to the warmup send it refused.
+export interface WarmupSendFailure {
+    message: string;
+    at: string;
 }
 
 // A target held below the ramp because a mailbox never writes to the same

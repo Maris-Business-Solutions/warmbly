@@ -37196,6 +37196,19 @@
                 "description": "What the ramp alone would send today."
               }
             }
+          },
+          "send_failure": {
+            "type": "object",
+            "description": "Present while the mailbox's newest warmup send, within the last 24 hours, was refused and none has gone out since. message is the mail server's answer, so the owner can correct the SMTP host, port or credentials.",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
           }
         }
       },

@@ -168,7 +168,17 @@ func (s *emailService) UpdateSMTPIMAPCredentials(ctx context.Context, orgID *uui
 		return nil, errx.InternalError()
 	}
 
-	return s.reconnectAccount(ctx, accountID)
+	account, xerr = s.reconnectAccount(ctx, accountID)
+	if xerr != nil {
+		return nil, xerr
+	}
+	// Warmbly Cloud sends this mailbox's warmup with its own copy of the credential.
+	if s.cloudCredentials != nil {
+		if xerr := s.cloudCredentials.RefreshCredentials(ctx, *orgID, accountID); xerr != nil {
+			log.Warn().Str("account_id", accountID.String()).Str("code", xerr.Identifier).Msg("cloud link: new credential not handed to Warmbly Cloud; it keeps the old one until the mailbox is enrolled again")
+		}
+	}
+	return account, nil
 }
 
 // reconnectAccount is the shared tail of both reconnect flows: reactivate,

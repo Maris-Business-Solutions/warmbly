@@ -285,6 +285,12 @@ func (s *analyticsService) accountStatus(ctx context.Context, orgID, accountID u
 			RampHold:      hold,
 			PartnerLimit:  limit,
 		}
+		if s.warmupRepo != nil && email.IsWarmingActive() {
+			// A day of refusals is what an owner can still act on; older ones were fixed or are stale.
+			if f, err := s.warmupRepo.LastWarmupSendFailure(ctx, email.ID, time.Now().Add(-24*time.Hour)); err == nil {
+				warmupStatus.SendFailure = f
+			}
+		}
 	}
 
 	coldRamp := s.coldRampInfo(ctx, email)

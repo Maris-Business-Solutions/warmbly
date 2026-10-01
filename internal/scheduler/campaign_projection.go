@@ -9,6 +9,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/app/behavior"
 	"github.com/warmbly/warmbly/internal/app/warmupramp"
+	"github.com/warmbly/warmbly/internal/bitmask"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
 )
@@ -148,7 +149,7 @@ func warmupOnDay(p *projectedSender, localNoon time.Time) (int, []span) {
 	if !a.IsWarmingActive() || p.state == models.EstimateSenderHealthHold {
 		return 0, nil
 	}
-	if a.WarmupDays > 0 && a.WarmupDays&(1<<int(localNoon.Weekday())) == 0 {
+	if a.WarmupDays > 0 && !bitmask.HasWeekday(uint8(a.WarmupDays), localNoon.Weekday()) {
 		return 0, nil
 	}
 	days := 0

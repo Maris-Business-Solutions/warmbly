@@ -53,13 +53,15 @@ A Google or Microsoft mailbox you connect directly on app.warmbly.com shows up i
 
 ### Which existing mailboxes can be enrolled
 
-Mailboxes connected with **SMTP/IMAP** (including Google Workspace and Microsoft 365 through an app password) can be enrolled as they are: the instance sends the credential to the cloud and keeps its own copy.
+Mailboxes connected with **SMTP/IMAP** (including Google Workspace and Microsoft 365 through an app password) can be enrolled as they are: the instance sends the credential to the cloud and keeps its own copy. Changing the mailbox's SMTP/IMAP settings on your instance later hands the new credential to the cloud as well.
+
+The cloud connects to your mail server over the internet, so both SMTP and IMAP need TLS or STARTTLS. A mailbox set to security `none`, which only works for a mail server on your instance's own machine, is refused at enrollment with `pool_link_cleartext_mailbox`.
 
 A Google or Microsoft mailbox that was signed in with your instance's own OAuth app cannot be enrolled, because that grant can only be refreshed by the app that issued it. Remove it and add it again through Warmbly Cloud to warm it there.
 
 ## What your instance shows
 
-Once linked, the **Mailboxes** page marks every enrolled mailbox with a blue **Cloud** badge, shows the cloud's daily count in the warmup column, and offers **Warm in Warmbly Cloud**, pause, resume and remove in each row's warmup menu. The mailbox drawer's Warmup tab shows the same block with the cloud's numbers in place of the local controls. Any member can see this; enrolling needs the manage mailboxes permission and linking needs manage settings.
+Once linked, the **Mailboxes** page marks every enrolled mailbox with a blue **Cloud** badge on its address and its avatar and a "Warmed by Warmbly Cloud" line under it (amber while paused), shows the cloud's daily count in the warmup column with the same warming animation local warmup uses, and offers **Warm in Warmbly Cloud**, pause, resume and remove in each row's warmup menu. The mailbox drawer's Warmup tab shows the same block with the cloud's numbers in place of the local controls. Any member can see this; enrolling needs the manage mailboxes permission and linking needs manage settings.
 
 **Settings > Warmbly Cloud** lists every active mailbox with a switch for whether it is in the pool. For enrolled mailboxes it shows the cloud's view:
 
@@ -70,6 +72,12 @@ Once linked, the **Mailboxes** page marks every enrolled mailbox with a blue **C
 | 7 days | Total sent, and how many landed in spam at partners |
 
 Pause and resume per mailbox from the same row. Warmup settings (start volume, daily increase, ceiling, reply rate, window, days) are taken from the mailbox's own settings on your instance at enrollment time.
+
+### When the count stays at zero
+
+Warmbly Cloud sends the warmup mail itself, connecting to your mail server's SMTP from its own network rather than from your instance. A server that accepts only your instance's address, an SMTP host that resolves to a private or internal address, or a port your host blocks from outside will refuse it while your own sending keeps working. When that happens the warmup column turns red with a warning icon, and the mailbox's Warmup tab shows the server's own answer (for example a refused connection or a rejected login) until a send goes through again. Fix the SMTP host, port or allowlist on your mail server; nothing needs re-enrolling.
+
+The count can also hold below the target when the pool has fewer partners free for the mailbox today than the ramp asks for, since a mailbox never writes to the same partner twice in a day. The Warmup tab says so with how many partners are available, and the cloud checks again every few hours.
 
 ## Free and Premium
 
