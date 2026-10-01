@@ -3,6 +3,7 @@ import { CalendarIcon, XIcon } from "lucide-react";
 import Calendar from "../../Calendar";
 import { format } from "date-fns";
 import { Label } from "@/components/ui/field";
+import useClickOutside from "@/hooks/useClickOutside";
 
 export default function DateSelect({
     title,
@@ -18,19 +19,7 @@ export default function DateSelect({
     const [open, setOpen] = React.useState(false);
     const modalRef = React.useRef<HTMLDivElement>(null);
 
-    React.useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
-                setOpen(false);
-            }
-        };
-        if (open) {
-            document.addEventListener("mousedown", handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [open]);
+    useClickOutside(open, () => setOpen(false), modalRef);
 
     return (
         <div className="relative w-full">

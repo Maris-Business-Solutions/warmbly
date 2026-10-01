@@ -29,7 +29,7 @@ function formatWhen(iso: string | Date): string {
 export default function ComposeDraftsItem() {
     const [open, setOpen] = React.useState(false);
     const boxRef = React.useRef<HTMLDivElement>(null);
-    useClickOutside(boxRef, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), boxRef);
 
     const draftsQ = useComposeDrafts();
     const deleteMut = useDeleteComposeDraft();

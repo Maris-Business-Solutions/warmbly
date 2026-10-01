@@ -1,0 +1,97 @@
+// The one way a dropdown, popover or picker closes itself: a press anywhere
+// outside it, Escape, or another one opening. Every floating layer in the
+// dashboard goes through this so they all behave the same.
+
+import { useEffect, useRef, type RefObject } from "react";
+
+type ElRef = RefObject<HTMLElement | null>;
+
+// Every open layer, oldest first. Opening one closes the others unless it was
+// opened from inside them, and Escape closes only the newest.
+interface Layer {
+    contains: (node: Node) => boolean;
+    close: () => void;
+}
+
+const layers: Layer[] = [];
+
+const FOCUSABLE = "button:not(:disabled), [href], input:not(:disabled), select, textarea, [tabindex]:not([tabindex=\"-1\"])";
+
+/**
+ * Close an open floating layer on a press outside `inside`, on Escape (newest
+ * layer first), and when another layer opens outside it. `inside[0]` is where
+ * the layer was opened from (its trigger, or a wrapper holding trigger and
+ * panel). A portaled panel marked `[data-floating]` counts as inside it.
+ */
+export default function useClickOutside(open: boolean, onClose: () => void, inside: ElRef | ElRef[]) {
+    // Through refs: callers pass inline closures and ref arrays, and re-running
+    // the effect on every render would reorder the stack.
+    const dismiss = useRef(onClose);
+    dismiss.current = onClose;
+    const refs = useRef<ElRef[]>([]);
+    refs.current = Array.isArray(inside) ? inside : [inside];
+
+    useEffect(() => {
+        if (!open) return;
+        const contains = (node: Node) => refs.current.some((r) => r.current?.contains(node));
+        const self: Layer = { contains, close: () => dismiss.current() };
+
+        // The stack is one chain of nested layers: the one holding the origin and
+        // everything below it stay, everything above it closes. Opened from inside
+        // a floating panel the stack cannot see, it closes nothing.
+        const origin = refs.current[0]?.current ?? document.activeElement;
+        let parent = layers.length - 1;
+        while (parent >= 0 && !(origin && layers[parent].contains(origin))) parent--;
+        const nested = parent < 0 && !!origin?.closest?.("[data-floating]");
+        if (!nested) for (const other of layers.slice(parent + 1)) other.close();
+        layers.push(self);
+
+        // A floating layer this one opened (its own portaled panel, a calendar, a
+        // nested menu) is inside it; the panel or dialog holding it is not.
+        const isInside = (node: Node) => {
+            if (contains(node)) return true;
+            const floating = (node as Element).closest?.("[data-floating]");
+            return !!floating && !refs.current.some((r) => r.current && floating.contains(r.current));
+        };
+        const onPointerDown = (e: PointerEvent) => {
+            if (!isInside(e.target as Node)) self.close();
+        };
+        // Escape takes the innermost layer only, and stops there so the dialog or
+        // drawer holding it stays open. Focus inside goes back to where it was opened.
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== "Escape" || layers[layers.length - 1] !== self) return;
+            // A modal opened above this layer (the confirm, a dialog) owns Escape first.
+            const modals = document.querySelectorAll('[role="alertdialog"], [aria-modal="true"]');
+            const above = Array.from(modals).some((m) => !refs.current.some((r) => r.current && m.contains(r.current)));
+            if (above) return;
+            e.stopPropagation();
+            const active = document.activeElement;
+            const origin = refs.current[0]?.current;
+            self.close();
+            if (!origin?.isConnected || !active || !isInside(active)) return;
+            const target = origin.matches(FOCUSABLE) ? origin : origin.querySelector<HTMLElement>(FOCUSABLE);
+            target?.focus({ preventScroll: true });
+        };
+        // A press inside an iframe (an email body) never reaches this document; it only blurs the window.
+        let blurTimer: ReturnType<typeof setTimeout> | undefined;
+        const onBlur = () => {
+            blurTimer = setTimeout(() => {
+                if (document.activeElement?.tagName === "IFRAME") self.close();
+            });
+        };
+        // Capture phase: dialogs stop mousedown propagation on their card so the
+        // backdrop does not close them, which would otherwise swallow this too.
+        // Pointer events so a tap closes it on touch screens as well.
+        document.addEventListener("pointerdown", onPointerDown, true);
+        document.addEventListener("keydown", onKey, true);
+        window.addEventListener("blur", onBlur);
+        return () => {
+            clearTimeout(blurTimer);
+            document.removeEventListener("pointerdown", onPointerDown, true);
+            document.removeEventListener("keydown", onKey, true);
+            window.removeEventListener("blur", onBlur);
+            const at = layers.indexOf(self);
+            if (at >= 0) layers.splice(at, 1);
+        };
+    }, [open]);
+}

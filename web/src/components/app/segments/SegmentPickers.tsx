@@ -49,7 +49,7 @@ export function MultiPicker({
     const [query, setQuery] = React.useState("");
     const ref = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     const placement = useFlipPlacement(triggerRef, open, 270);
 
     const byId = React.useMemo(() => new Map(options.map((o) => [o.id, o])), [options]);

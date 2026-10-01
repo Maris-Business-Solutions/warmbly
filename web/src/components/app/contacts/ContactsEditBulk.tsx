@@ -438,7 +438,7 @@ function FieldRow({
     const [showType, setShowType] = React.useState(false);
     const dropRef = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
-    useClickOutside(dropRef, () => setShowType(false));
+    useClickOutside(showType, () => setShowType(false), dropRef);
     const typePlacement = useFlipPlacement(triggerRef, showType, 180);
     const { data: existingKeys = [] } = useCustomFieldKeys();
     const typeDef = FIELD_TYPES.find((t) => t.id === field.type)!;

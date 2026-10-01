@@ -56,7 +56,7 @@ export default function TaskTypePicker({
     const [query, setQuery] = React.useState("");
     const ref = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     // ~290px: 33px search input + 56 max-h list (224px) + the "No type"
     // row + borders, so the flip kicks in before a tall list clips.
     const placement = useFlipPlacement(triggerRef, open, 290);
@@ -416,7 +416,7 @@ function SwatchPopover({
     onClose: () => void;
 }) {
     const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, onClose);
+    useClickOutside(true, onClose, ref);
 
     return (
         <motion.div

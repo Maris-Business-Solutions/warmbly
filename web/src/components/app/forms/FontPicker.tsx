@@ -13,6 +13,7 @@ import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
 
 import { FONT_CATALOG, ensureFont, resolveDesign } from "./designCore";
+import useClickOutside from "@/hooks/useClickOutside";
 
 export default function FontPicker({
     value,
@@ -23,6 +24,7 @@ export default function FontPicker({
 }) {
     const [open, setOpen] = React.useState(false);
     const panelRef = React.useRef<HTMLDivElement | null>(null);
+    const triggerRef = React.useRef<HTMLButtonElement | null>(null);
     const { setReference, setFloating, floatingStyle } = useAnchoredFloating(open, {
         placement: "bottom-start",
         gap: 6,
@@ -38,26 +40,7 @@ export default function FontPicker({
         for (const key of Object.keys(FONT_CATALOG)) ensureFont(resolveDesign({ font_family: key }));
     }, [open]);
 
-    React.useEffect(() => {
-        if (!open) return;
-        const onDown = (e: MouseEvent | TouchEvent) => {
-            if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.stopPropagation();
-                setOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", onDown, true);
-        document.addEventListener("touchstart", onDown, true);
-        document.addEventListener("keydown", onKey, true);
-        return () => {
-            document.removeEventListener("mousedown", onDown, true);
-            document.removeEventListener("touchstart", onDown, true);
-            document.removeEventListener("keydown", onKey, true);
-        };
-    }, [open]);
+    useClickOutside(open, () => setOpen(false), [triggerRef, panelRef]);
 
     const setRefs = React.useCallback(
         (el: HTMLDivElement | null) => {
@@ -70,7 +53,10 @@ export default function FontPicker({
     return (
         <>
             <button
-                ref={(el) => setReference(el)}
+                ref={(el) => {
+                    triggerRef.current = el;
+                    setReference(el);
+                }}
                 type="button"
                 aria-label="Font"
                 aria-expanded={open}

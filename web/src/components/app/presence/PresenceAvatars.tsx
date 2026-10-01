@@ -76,7 +76,7 @@ export default function PresenceAvatars() {
     const ref = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
     const { pathname } = useLocation();
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
 
     if (members.length === 0) return null;
 

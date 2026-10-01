@@ -59,7 +59,7 @@ export default function MailboxPicker({
     const [anchor, setAnchor] = React.useState<{ top: number; left: number; up: boolean } | null>(null);
     const boxRef = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
-    useClickOutside(boxRef, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), boxRef);
 
     const storeEmails = useAppStore((s) => s.emails);
     const storeTags = useAppStore((s) => s.tags);
@@ -217,14 +217,6 @@ export default function MailboxPicker({
                                     : { top: anchor.top }),
                             }}
                             className="max-w-[calc(100vw-16px)] rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden"
-                            onKeyDown={(e) => {
-                                // Innermost layer only: the composer around it keeps its own Escape.
-                                if (e.key !== "Escape") return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setOpen(false);
-                                triggerRef.current?.focus();
-                            }}
                         >
                             {/* Search + tag filter header: one compact row */}
                             <div className="px-1.5 pt-1.5 pb-1 border-b border-slate-100 flex items-center gap-1">

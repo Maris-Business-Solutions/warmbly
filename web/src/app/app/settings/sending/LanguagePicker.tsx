@@ -21,7 +21,7 @@ export default function LanguagePicker({ value, onChange }: { value: string[]; o
         setOpen(false);
         setQuery("");
     }, []);
-    useClickOutside(ref, close);
+    useClickOutside(open, close, ref);
     const placement = useFlipPlacement(triggerRef, open, 270);
 
     const filtered = React.useMemo(() => {

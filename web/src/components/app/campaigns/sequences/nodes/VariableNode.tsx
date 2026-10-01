@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { BracesIcon, XIcon, CheckIcon } from "lucide-react";
 import useCustomFieldKeys from "@/lib/api/hooks/app/contacts/useCustomFieldKeys";
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
+import useClickOutside from "@/hooks/useClickOutside";
 import {
     STANDARD_VARS,
     buildToken,
@@ -212,25 +213,7 @@ function VariableChipEditor({
         [setFloating],
     );
 
-    React.useEffect(() => {
-        const onDown = (e: MouseEvent | TouchEvent) => {
-            if (!localRef.current?.contains(e.target as Node)) onClose();
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.stopPropagation();
-                onClose();
-            }
-        };
-        document.addEventListener("mousedown", onDown, true);
-        document.addEventListener("touchstart", onDown, true);
-        document.addEventListener("keydown", onKey, true);
-        return () => {
-            document.removeEventListener("mousedown", onDown, true);
-            document.removeEventListener("touchstart", onDown, true);
-            document.removeEventListener("keydown", onKey, true);
-        };
-    }, [onClose]);
+    useClickOutside(true, onClose, localRef);
 
     const options = [
         ...STANDARD_VARS.map((v) => ({ key: v.key, label: v.label })),

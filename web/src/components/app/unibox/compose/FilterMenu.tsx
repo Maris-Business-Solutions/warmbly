@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, ChevronDownIcon, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import useClickOutside from "@/hooks/useClickOutside";
 
 export interface FilterMenuOption {
     id: string;
@@ -41,34 +42,7 @@ export default function FilterMenu({
     const ref = React.useRef<HTMLDivElement>(null);
     const panelRef = React.useRef<HTMLDivElement>(null);
 
-    // Own outside-close handling instead of useClickOutside: the trigger
-    // usually lives inside a data-floating panel, which the shared hook
-    // deliberately ignores — so clicking elsewhere in that panel (or the
-    // sibling filter) would never close this menu. Anything outside the
-    // trigger and this menu's own dropdown closes it; Escape too.
-    React.useEffect(() => {
-        if (!open) return;
-        const onDown = (e: MouseEvent | TouchEvent) => {
-            const t = e.target as Node;
-            if (ref.current?.contains(t)) return;
-            if (panelRef.current?.contains(t)) return;
-            setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.stopPropagation();
-                setOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", onDown, true);
-        document.addEventListener("touchstart", onDown, true);
-        document.addEventListener("keydown", onKey, true);
-        return () => {
-            document.removeEventListener("mousedown", onDown, true);
-            document.removeEventListener("touchstart", onDown, true);
-            document.removeEventListener("keydown", onKey, true);
-        };
-    }, [open]);
+    useClickOutside(open, () => setOpen(false), [ref, panelRef]);
 
     const active = options.find((o) => o.id === value) ?? null;
 

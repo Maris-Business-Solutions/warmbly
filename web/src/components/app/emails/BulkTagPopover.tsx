@@ -44,7 +44,7 @@ export default function BulkTagPopover({ ids }: { ids: string[] }) {
 
     const ref = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     // ~330px: toggle + search header + max-h-48 list + footer.
     const placement = useFlipPlacement(triggerRef, open, 330);
 

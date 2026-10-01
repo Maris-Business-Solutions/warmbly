@@ -5,7 +5,7 @@ import CampaignSelector from '@/components/app/popup/select/CampaignSelector';
 import Selector from '@/components/app/popup/select/Selector';
 import { RiAddLine, RiCloseLine } from '@remixicon/react';
 import React, { createContext, useContext } from 'react';
-import useClickOutside from './useClickOutside';
+import useClickOutside from "@/hooks/useClickOutside";
 import SelectMenu from '@/components/app/popup/select/SelectMenu';
 import SelectOption from '@/components/app/popup/select/SelectOption';
 import MiniTextArea from '@/components/app/popup/MiniTextArea';
@@ -251,7 +251,7 @@ function FieldEdit({
     const [show, setShow] = React.useState<boolean>(false);
     const dropRef = React.useRef<HTMLDivElement>(null)
 
-    useClickOutside(dropRef, () => setShow(false))
+    useClickOutside(show, () => setShow(false), dropRef);
     return (
         <div className='space-y-2'>
             <div className='flex gap-2'>

@@ -56,7 +56,7 @@ export default function CategoryPicker({
     const [query, setQuery] = React.useState("");
     const ref = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLDivElement>(null);
-    useClickOutside(ref, () => setOpen(false));
+    useClickOutside(open, () => setOpen(false), ref);
     // ~270px: 33px search input + 56 max-h list (224px) + borders.
     const placement = useFlipPlacement(triggerRef, open, 270);
 

@@ -12,6 +12,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { PipetteIcon } from "lucide-react";
 
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
+import useClickOutside from "@/hooks/useClickOutside";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -94,6 +95,7 @@ export default function ColorPicker({
     const [open, setOpen] = React.useState(false);
     const [text, setText] = React.useState(current);
     const panelRef = React.useRef<HTMLDivElement | null>(null);
+    const triggerRef = React.useRef<HTMLButtonElement | null>(null);
     const { setReference, setFloating, floatingStyle } = useAnchoredFloating(open, {
         placement: "bottom-start",
         gap: 6,
@@ -101,27 +103,7 @@ export default function ColorPicker({
 
     React.useEffect(() => setText(current), [current]);
 
-    // Capture phase: a dialog card that stops mousedown must not swallow this.
-    React.useEffect(() => {
-        if (!open) return;
-        const onDown = (e: MouseEvent | TouchEvent) => {
-            if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.stopPropagation();
-                setOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", onDown, true);
-        document.addEventListener("touchstart", onDown, true);
-        document.addEventListener("keydown", onKey, true);
-        return () => {
-            document.removeEventListener("mousedown", onDown, true);
-            document.removeEventListener("touchstart", onDown, true);
-            document.removeEventListener("keydown", onKey, true);
-        };
-    }, [open]);
+    useClickOutside(open, () => setOpen(false), [triggerRef, panelRef]);
 
     const hsv = hexToHsv(HEX_RE.test(current) ? current : fallback);
 
@@ -149,7 +131,10 @@ export default function ColorPicker({
     return (
         <>
             <button
-                ref={(el) => setReference(el)}
+                ref={(el) => {
+                    triggerRef.current = el;
+                    setReference(el);
+                }}
                 type="button"
                 disabled={disabled}
                 aria-label={ariaLabel ?? "Pick a color"}

@@ -27,7 +27,7 @@ export default function CampaignSelector({ onAdd, onRemove, selected, reverse }:
 
     const popupRef = React.useRef<HTMLDivElement>(null);
 
-    useClickOutside(popupRef, () => setShow(false))
+    useClickOutside(show, () => setShow(false), popupRef);
 
     return (
         <div className="relative" ref={popupRef}>

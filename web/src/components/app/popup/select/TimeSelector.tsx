@@ -4,6 +4,7 @@ import SelectMenu from "./SelectMenu";
 import SelectOption from "./SelectOption";
 import { RiTimeLine } from "@remixicon/react";
 import { timeOptions, to12Hour } from "@/lib/core/time";
+import useClickOutside from "@/hooks/useClickOutside";
 
 export default function TimeSelector({
     value,
@@ -15,22 +16,7 @@ export default function TimeSelector({
     const [show, setShow] = React.useState<boolean>(false);
     const popupRef = React.useRef<HTMLDivElement>(null);
 
-    React.useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (
-            show && 
-            popupRef.current && 
-            !popupRef.current.contains(event.target as Node)
-            ) {
-            setShow(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [show]);
+    useClickOutside(show, () => setShow(false), popupRef);
 
     return (
         <div className="relative" ref={popupRef}>

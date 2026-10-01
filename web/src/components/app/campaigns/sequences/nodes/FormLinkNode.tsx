@@ -20,6 +20,7 @@ import { Link2Icon, XIcon, CheckIcon } from "lucide-react";
 import { useForms } from "@/lib/api/hooks/app/forms";
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
 import { buildFormLinkToken } from "@/lib/templateVars";
+import useClickOutside from "@/hooks/useClickOutside";
 
 declare module "@tiptap/core" {
     interface Commands<ReturnType> {
@@ -190,25 +191,7 @@ function FormLinkChipEditor({
         [setFloating],
     );
 
-    React.useEffect(() => {
-        const onDown = (e: MouseEvent | TouchEvent) => {
-            if (!localRef.current?.contains(e.target as Node)) onClose();
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.stopPropagation();
-                onClose();
-            }
-        };
-        document.addEventListener("mousedown", onDown, true);
-        document.addEventListener("touchstart", onDown, true);
-        document.addEventListener("keydown", onKey, true);
-        return () => {
-            document.removeEventListener("mousedown", onDown, true);
-            document.removeEventListener("touchstart", onDown, true);
-            document.removeEventListener("keydown", onKey, true);
-        };
-    }, [onClose]);
+    useClickOutside(true, onClose, localRef);
 
     return (
         <motion.div

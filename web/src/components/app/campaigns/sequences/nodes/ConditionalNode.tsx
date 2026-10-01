@@ -15,6 +15,7 @@ import useCustomFieldKeys from "@/lib/api/hooks/app/contacts/useCustomFieldKeys"
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
 import { STANDARD_VARS, buildToken, cleanFieldName, isStandardKey } from "@/lib/templateVars";
 import { markJustInserted, consumeJustInserted, freshId } from "./justInserted";
+import useClickOutside from "@/hooks/useClickOutside";
 
 interface ConditionalAttrs {
     expr: string; // the condition after `{{if `, e.g. `.Company` or `eq .Industry "SaaS"`
@@ -323,25 +324,7 @@ function ConditionalBuilder({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [field, op, value, raw, thenText, elseText, showElse, rawMode]);
 
-    React.useEffect(() => {
-        const onDown = (e: MouseEvent | TouchEvent) => {
-            if (!localRef.current?.contains(e.target as Node)) onClose();
-        };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.stopPropagation();
-                onClose();
-            }
-        };
-        document.addEventListener("mousedown", onDown, true);
-        document.addEventListener("touchstart", onDown, true);
-        document.addEventListener("keydown", onKey, true);
-        return () => {
-            document.removeEventListener("mousedown", onDown, true);
-            document.removeEventListener("touchstart", onDown, true);
-            document.removeEventListener("keydown", onKey, true);
-        };
-    }, [onClose]);
+    useClickOutside(true, onClose, localRef);
 
     const fields = [
         ...STANDARD_VARS.map((v) => v.key),
