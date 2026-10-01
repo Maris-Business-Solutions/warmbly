@@ -116,6 +116,31 @@ running_image() {
     | .[0].meta.image // empty'
 }
 
+# The id of a deployment of image $2 that is still starting, or nothing.
+deployment_in_flight() {
+  deployments_json "$1" | jq -r --arg img "$2" '
+    map(select((.meta.image // "") == $img
+      and (.status | IN("QUEUED", "WAITING", "BUILDING", "DEPLOYING", "INITIALIZING"))))
+    | sort_by(.createdAt) | reverse | .[0].id // empty'
+}
+
+# Succeeds once a deployment other than $2 carrying image $3 exists, within $4 seconds.
+deployment_appeared() {
+  service="$1"
+  previous_id="$2"
+  image="$3"
+  limit="$4"
+  waited=0
+  while [ "$waited" -lt "$limit" ]; do
+    found=$(deployments_json "$service" | jq -r --arg prev "$previous_id" --arg img "$image" '
+      map(select(.id != $prev and (.meta.image // "") == $img)) | .[0].id // empty')
+    [ -n "$found" ] && return 0
+    sleep 3
+    waited=$((waited + 3))
+  done
+  return 1
+}
+
 # Waits for a deployment that is NOT $2, carries image $3, and reached SUCCESS.
 wait_for_deployment() {
   service="$1"
@@ -239,10 +264,21 @@ roll_service() {
     return 0
   fi
 
-  previous_id=$(newest_deployment_id "$service")
-  railway service source connect --image "$image" --service "$service" --environment "$ENVIRONMENT" >/dev/null
-  railway deployment redeploy --service "$service" --environment "$ENVIRONMENT" --from-source --yes >/dev/null
-  wait_for_deployment "$service" "$previous_id" "$image"
+  # One deployment per roll: a second one replaces the first mid-boot, and the
+  # backend migrates on boot, so a migration killed halfway leaves the schema dirty.
+  in_flight=$(deployment_in_flight "$service" "$image")
+  if [ -n "$in_flight" ]; then
+    printf '    deployment %s of this image is already starting; waiting for it\n' "$in_flight"
+    wait_for_deployment "$service" "" "$image"
+  else
+    previous_id=$(newest_deployment_id "$service")
+    railway service source connect --image "$image" --service "$service" --environment "$ENVIRONMENT" >/dev/null
+    # Connecting an image deploys it; redeploy only when that did not happen.
+    if ! deployment_appeared "$service" "$previous_id" "$image" 30; then
+      railway deployment redeploy --service "$service" --environment "$ENVIRONMENT" --from-source --yes >/dev/null
+    fi
+    wait_for_deployment "$service" "$previous_id" "$image"
+  fi
 
   if [ "$service" = "backend" ]; then
     check_health "$service" 1
