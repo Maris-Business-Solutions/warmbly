@@ -93,6 +93,7 @@ import { isAutomaticTag, tagMeaning } from "@/lib/unibox/tagMeanings";
 import { UNIBOX_VIEWS, viewCategories, type UniboxViewId } from "@/lib/unibox/views";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { shortcutLabel } from "@/components/ui/shortcut-tooltip";
+import { useAnchoredMenu } from "@/hooks/useAnchoredMenu";
 
 export type UniboxScope =
   | { kind: "all" }
@@ -736,29 +737,6 @@ interface RowContext {
   move: (delta: -1 | 1) => void;
   startEditing: () => void;
   startRenaming: () => void;
-}
-
-// A menu that opens from its "…" button or, on right-click, at the pointer.
-function useAnchoredMenu() {
-  const [open, setOpen] = React.useState(false);
-  const [point, setPoint] = React.useState<{ x: number; y: number } | null>(null);
-  const onContextMenu = (e: React.MouseEvent<HTMLElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // A keyboard context-menu key reports 0,0: open under the element instead.
-    const r = e.currentTarget.getBoundingClientRect();
-    setPoint(e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: r.left + 12, y: r.bottom });
-    setOpen(true);
-  };
-  const menuProps = {
-    open,
-    anchorPoint: point,
-    onOpenChange: (o: boolean) => {
-      if (o) setPoint(null);
-      setOpen(o);
-    },
-  };
-  return { open, onContextMenu, menuProps };
 }
 
 // The header every rail section shares: a fold toggle, a dot when a folded
