@@ -1892,22 +1892,26 @@ func (r *warmupRepository) RetireWarmupSentCopy(ctx context.Context, token uuid.
 // removal seen later is still recognised as warmup rather than tampering.
 func (r *warmupRepository) PruneWarmupEventsBefore(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
-	for _, q := range []string{
-		`DELETE FROM warmup_tampering_events
-		 WHERE created_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`,
-		`DELETE FROM warmup_spam_reports WHERE created_at < $1`,
-		`DELETE FROM warmup_spam_moves
+	// Each statement gets only the arguments it references; pgx refuses an extra one.
+	for _, st := range []struct {
+		query string
+		args  []any
+	}{
+		{`DELETE FROM warmup_tampering_events
+		 WHERE created_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`, []any{before}},
+		{`DELETE FROM warmup_spam_reports WHERE created_at < $1`, []any{before}},
+		{`DELETE FROM warmup_spam_moves
 		 WHERE decided_at IS NOT NULL
-		   AND observed_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`,
-		`DELETE FROM mailbox_owner_activity
-		 WHERE bucket < NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupOwnerActivityKeepDays) + `)`,
-		`DELETE FROM warmup_received WHERE created_at < $1 AND retired_at IS NOT NULL`,
-		`DELETE FROM warmup_tokens
+		   AND observed_at < LEAST($1, NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupTamperingKeepDays) + `))`, []any{before}},
+		{`DELETE FROM mailbox_owner_activity
+		 WHERE bucket < NOW() - make_interval(days => ` + strconv.Itoa(config.WarmupOwnerActivityKeepDays) + `)`, nil},
+		{`DELETE FROM warmup_received WHERE created_at < $1 AND retired_at IS NOT NULL`, []any{before}},
+		{`DELETE FROM warmup_tokens
 		 WHERE created_at < $1
 		   AND (sent_message_id = '' OR sent_retired_at IS NOT NULL
-		        OR sender_account_id IN (SELECT id FROM email_accounts WHERE provider = 'smtp_imap'))`,
+		        OR sender_account_id IN (SELECT id FROM email_accounts WHERE provider = 'smtp_imap'))`, []any{before}},
 	} {
-		cmd, err := r.db.Exec(ctx, q, before)
+		cmd, err := r.db.Exec(ctx, st.query, st.args...)
 		if err != nil {
 			return total, err
 		}

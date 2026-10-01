@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/config"
 )
 
 // The retention sweep reaches only warmup mail past its window, on a mailbox
@@ -175,6 +176,10 @@ func TestLiveWarmupMailRetention(t *testing.T) {
 	// and leaves a receipt whose mail may still be in the mailbox.
 	exec(`UPDATE warmup_received SET created_at = NOW() - interval '400 days' WHERE internal_id IN ($1, $2)`, oldFollowing, oldIdle)
 	exec(`UPDATE warmup_tokens SET created_at = NOW() - interval '400 days' WHERE token IN ($1, $2)`, oldSent, smtpSent)
+	// Owner activity keeps its own window, whatever the instance's is.
+	exec(`INSERT INTO mailbox_owner_activity (email_account_id, bucket) VALUES
+	        ($1, NOW() - make_interval(days => $2::int + 1)), ($1, NOW() - interval '1 day')`,
+		following, config.WarmupOwnerActivityKeepDays)
 	if _, err := repo.PruneWarmupEventsBefore(ctx, time.Now().AddDate(0, 0, -365)); err != nil {
 		t.Fatalf("PruneWarmupEventsBefore: %v", err)
 	}
@@ -187,5 +192,9 @@ func TestLiveWarmupMailRetention(t *testing.T) {
 	var tokens int
 	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM warmup_tokens WHERE token IN ($1, $2)`, oldSent, smtpSent).Scan(&tokens); err != nil || tokens != 0 {
 		t.Fatalf("retired and SMTP tokens past the window: count=%d err=%v, want both pruned", tokens, err)
+	}
+	var buckets int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM mailbox_owner_activity WHERE email_account_id = $1`, following).Scan(&buckets); err != nil || buckets != 1 {
+		t.Fatalf("owner activity after the prune: count=%d err=%v, want only the recent bucket", buckets, err)
 	}
 }
