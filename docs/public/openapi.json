@@ -37196,6 +37196,19 @@
                 "description": "What the ramp alone would send today."
               }
             }
+          },
+          "send_failure": {
+            "type": "object",
+            "description": "Present while the mailbox's newest warmup send, within the last 24 hours, failed and no later send was confirmed delivered. message is the failure reason: the mail server's answer when it gave one, otherwise why the send could not be made (for example the mailbox is not loaded on its worker).",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
           }
         }
       },

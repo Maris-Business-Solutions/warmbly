@@ -31,3 +31,19 @@ func TestClockMinutes(t *testing.T) {
 		}
 	}
 }
+
+func TestClockHHMM(t *testing.T) {
+	tests := map[string]string{
+		"08:00:00.000000": "08:00",
+		"17:56:00":        "17:56",
+		"9:05":            "09:05",
+		"":                "",
+		"25:00":           "",
+		"noon":            "",
+	}
+	for in, want := range tests {
+		if got := ClockHHMM(in); got != want {
+			t.Errorf("ClockHHMM(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

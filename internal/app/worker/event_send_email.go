@@ -16,6 +16,9 @@ import (
 	"github.com/warmbly/warmbly/internal/pkg/emsg"
 )
 
+// errMailboxNotLoaded is what an owner reads when the worker never connected the mailbox.
+const errMailboxNotLoaded = "The sending worker has not loaded this mailbox yet, so nothing was sent. A mail server the worker cannot reach, or one that refuses its login, keeps a mailbox from loading."
+
 func (w *WorkerService) HandleSendEmail(ctx context.Context, sendEmail models.SendEmail) error {
 	log.Info().
 		Str("task_id", sendEmail.TaskID.String()).
@@ -33,8 +36,7 @@ func (w *WorkerService) HandleSendEmail(ctx context.Context, sendEmail models.Se
 		// the reconciler has not re-shipped it yet. Leave the send for
 		// redelivery a few times so a queued ADD_EMAIL gets processed first,
 		// then report the failure so the control plane retries the step.
-		err := fmt.Errorf("email account %s not found in worker", sendEmail.EmailID.String())
-		return w.failSend(ctx, sendEmail, err.Error(), true)
+		return w.failSend(ctx, sendEmail, errMailboxNotLoaded, true)
 	}
 
 	// Decrypt subject

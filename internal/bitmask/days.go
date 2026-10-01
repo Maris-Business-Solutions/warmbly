@@ -1,6 +1,9 @@
 package bitmask
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 const validDaysMask uint8 = (1 << 7) - 1
 
@@ -44,4 +47,9 @@ func MaskToDays(mask uint8) []string {
 
 func DefaultDays() uint8 {
 	return DaysToMask([]string{"monday", "tuesday", "wednesday", "thursday", "friday"})
+}
+
+// HasWeekday reports whether a Monday-first mask (bit 0 = Monday) includes wd.
+func HasWeekday(mask uint8, wd time.Weekday) bool {
+	return mask&(1<<((uint(wd)+6)%7)) != 0
 }

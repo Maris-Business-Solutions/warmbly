@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/warmbly/warmbly/internal/app/behavior"
+	"github.com/warmbly/warmbly/internal/bitmask"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/mailhost"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
-// findNextValidDay finds the next valid day based on campaign days bitmask
-// Bit 0 = Sunday, Bit 1 = Monday, ..., Bit 6 = Saturday
+// findNextValidDay finds the next day the Monday-first days mask allows.
 func findNextValidDay(from time.Time, daysBitmask uint8, tz *time.Location) time.Time {
 	if daysBitmask == 0 {
 		// If no days specified, allow all days
@@ -24,8 +24,7 @@ func findNextValidDay(from time.Time, daysBitmask uint8, tz *time.Location) time
 
 	// Try up to 7 days
 	for i := 0; i < 7; i++ {
-		dayOfWeek := int(candidate.Weekday())
-		if (daysBitmask & (1 << dayOfWeek)) != 0 {
+		if bitmask.HasWeekday(daysBitmask, candidate.Weekday()) {
 			return candidate
 		}
 		candidate = candidate.Add(24 * time.Hour)

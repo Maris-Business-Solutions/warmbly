@@ -113,6 +113,7 @@ import { useConfirm } from "@/hooks/context/confirm";
 import { usePresenceResource } from "@/hooks/PresenceProvider";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import { cn } from "@/lib/utils";
+import WarmupSendFailureNote from "./WarmupSendFailureNote";
 
 /* ── small themed primitives ─────────────────────── */
 
@@ -1334,6 +1335,7 @@ function WarmupTab({ form, update, status, mailbox, canWarmup = true }: { form: 
                             never writes to the same partner twice in a day. It sends more as partners free up.
                         </p>
                     )}
+                    {ws.send_failure && <WarmupSendFailureNote failure={ws.send_failure} />}
                 </div>
             )}
 

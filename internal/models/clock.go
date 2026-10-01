@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -27,4 +28,13 @@ func ClockMinutes(v string, fallback int) int {
 		return fallback
 	}
 	return hour*60 + minute
+}
+
+// ClockHHMM renders a clock value in the "HH:MM" form writes accept, or "" when it cannot be read.
+func ClockHHMM(v string) string {
+	m := ClockMinutes(v, -1)
+	if m < 0 {
+		return ""
+	}
+	return fmt.Sprintf("%02d:%02d", m/60, m%60)
 }

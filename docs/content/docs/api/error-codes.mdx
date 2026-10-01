@@ -214,6 +214,7 @@ The [inbox vendor](/guides/mailbox-import/#import-from-an-inbox-vendor) routes (
 | `domain_redirect_cloud_unreachable` | 503 | Warmbly Cloud could not be reached while saving, moving or removing a redirect it serves, so nothing changed. Retry |
 | `domain_redirect_limit` | 409 | Warmbly Cloud already serves 200 redirects for this linked instance |
 | `pool_link_redirect_not_found` | 404 | On Warmbly Cloud's linked-instance API: Cloud serves no redirect for this domain for the calling instance |
+| `pool_link_cleartext_mailbox` | 422 | Enrolling a mailbox in [Warmbly Cloud](/guides/warmbly-cloud/), or updating its credential there: SMTP or IMAP uses security `none`. Cloud reaches the mail server over the internet and needs TLS or STARTTLS on both legs. Switch the mailbox to TLS, or keep warming it on the instance |
 | `sending_domain_bulk_invalid` | 400 | A bulk setup named no domain, more than 100, neither a `tracking_label` nor a `redirect_url`, a `tracking_label` that is not one DNS label, or a `served_by` other than `instance` or `cloud` |
 | `tracking_host_not_configured` | 400 | This instance has no tracking host (`TRACKING_DOMAIN`), so it cannot serve a tracking domain or a redirect |
 

@@ -187,6 +187,8 @@ type WarmupRepository interface {
 	IncrementReplyCount(ctx context.Context, accountID uuid.UUID, date time.Time) error
 	// FailWarmupSend atomically records the failure and refunds its daily counters.
 	FailWarmupSend(ctx context.Context, accountID, taskID uuid.UUID, date time.Time, title, message string) error
+	// LastWarmupSendFailure is the newest warmup send the worker could not deliver since `since`, when no later send was confirmed delivered.
+	LastWarmupSendFailure(ctx context.Context, accountID uuid.UUID, since time.Time) (*models.WarmupSendFailure, error)
 	GetWarmupStatistics(ctx context.Context, accountID uuid.UUID, from, to time.Time) ([]WarmupStatistic, error)
 	GetOrCreateDailyStats(ctx context.Context, accountID uuid.UUID, date time.Time, targetVolume int) (*WarmupStatistic, error)
 
@@ -1019,6 +1021,38 @@ func (r *warmupRepository) FailWarmupSend(ctx context.Context, accountID, taskID
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (r *warmupRepository) LastWarmupSendFailure(ctx context.Context, accountID uuid.UUID, since time.Time) (*models.WarmupSendFailure, error) {
+	// Only failures the worker answered with (status failed); a dead-lettered
+	// dispatch is the platform's own problem and says nothing about the server.
+	f := &models.WarmupSendFailure{}
+	err := r.db.QueryRow(ctx, `
+		SELECT tf.message, t.updated_at
+		FROM tasks t
+		JOIN task_failures tf ON tf.task_id = t.id
+		WHERE t.email_account_id = $1
+		  AND t.task_type = 'warmup'
+		  AND t.status = 'failed'
+		  AND t.updated_at >= $2
+		  AND NOT EXISTS (
+		      SELECT 1 FROM tasks c
+		      JOIN warmup_tokens wt ON wt.task_id = c.id AND wt.sent_message_id <> ''
+		      WHERE c.email_account_id = $1
+		        AND c.task_type = 'warmup'
+		        AND c.status = 'completed'
+		        AND c.completed_at > t.updated_at
+		  )
+		ORDER BY t.updated_at DESC
+		LIMIT 1
+	`, accountID, since).Scan(&f.Message, &f.At)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // PoolSpamPlacementRate returns the pool-wide warmup spam-placement rate (%)

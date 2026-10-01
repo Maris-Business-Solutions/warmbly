@@ -4,6 +4,8 @@
 // Cloud side:        GET/POST /pool-link/*    (the /connect approval page and
 //                    the workspace's linked instances)
 
+import type { WarmupPartnerLimit, WarmupSendFailure } from "@/lib/api/models/app/analytics/AccountStatus";
+
 export type PoolLinkCodeStatus = "pending" | "approved" | "claimed" | "denied";
 
 export interface PoolLinkOrgInfo {
@@ -98,6 +100,9 @@ export interface PoolLinkWarmupStatus {
     max_volume: number;
     reply_rate: number;
     days_active: number;
+    /** Older clouds do not send these. */
+    partner_limit?: WarmupPartnerLimit;
+    send_failure?: WarmupSendFailure;
 }
 
 export interface PoolLinkWarmupHealth {

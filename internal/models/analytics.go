@@ -287,6 +287,14 @@ type WarmupStatusInfo struct {
 	// partners the mailbox can still reach, so a target below the ramp is
 	// never an unexplained drop.
 	PartnerLimit *WarmupPartnerLimit `json:"partner_limit,omitempty"`
+	// SendFailure is present while the newest warmup send failed and no later one was confirmed delivered.
+	SendFailure *WarmupSendFailure `json:"send_failure,omitempty"`
+}
+
+// WarmupSendFailure is why a warmup send failed: the server's answer when it gave one.
+type WarmupSendFailure struct {
+	Message string    `json:"message"`
+	At      time.Time `json:"at"`
 }
 
 // WarmupPartnerLimit explains a target held below the ramp because a mailbox
