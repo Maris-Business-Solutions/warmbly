@@ -11,7 +11,7 @@ import {
     PopoverMenuTrigger,
 } from "@/components/ui/popover-menu";
 import useMailboxImports from "@/lib/api/hooks/app/emails/useMailboxImports";
-import { useClickOutsideMailboxImport } from "@/lib/api/hooks/app/emails/useMailboxImportActions";
+import { useDismissMailboxImport } from "@/lib/api/hooks/app/emails/useMailboxImportActions";
 import { type MailboxImport } from "@/lib/api/models/app/emails/MailboxImport";
 import { vendorLabel } from "@/lib/api/models/app/emails/MailboxSources";
 import { useConfirm } from "@/hooks/context/confirm";
@@ -143,7 +143,7 @@ export default function MailboxImportsMenu() {
 
 function ImportEntry({ job, onOpen }: { job: MailboxImport; onOpen: () => void }) {
     const confirm = useConfirm();
-    const dismiss = useClickOutsideMailboxImport();
+    const dismiss = useDismissMailboxImport();
     const st = jobState(job);
     const live = job.status === "running";
 

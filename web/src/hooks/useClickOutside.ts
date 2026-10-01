@@ -60,6 +60,10 @@ export default function useClickOutside(open: boolean, onClose: () => void, insi
         // drawer holding it stays open. Focus inside goes back to where it was opened.
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== "Escape" || layers[layers.length - 1] !== self) return;
+            // A modal opened above this layer (the confirm, a dialog) owns Escape first.
+            const modals = document.querySelectorAll('[role="alertdialog"], [aria-modal="true"]');
+            const above = Array.from(modals).some((m) => !refs.current.some((r) => r.current && m.contains(r.current)));
+            if (above) return;
             e.stopPropagation();
             const active = document.activeElement;
             const origin = refs.current[0]?.current;

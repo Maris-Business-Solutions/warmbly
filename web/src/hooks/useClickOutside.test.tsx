@@ -85,6 +85,28 @@ describe("useClickOutside", () => {
         document.removeEventListener("keydown", onKey);
     });
 
+    it("leaves Escape to a confirm opened above it, and still takes it inside a modal", () => {
+        const { unmount } = render(
+            <>
+                <Drop name="A" />
+                <div role="alertdialog" />
+            </>,
+        );
+        toggle("A");
+        fireEvent.keyDown(document.body, { key: "Escape" });
+        expect(isOpen("A")).toBe(true);
+        unmount();
+
+        render(
+            <div aria-modal="true">
+                <Drop name="B" />
+            </div>,
+        );
+        toggle("B");
+        fireEvent.keyDown(document.body, { key: "Escape" });
+        expect(isOpen("B")).toBe(false);
+    });
+
     it("closes the open dropdown when another one opens", () => {
         render(
             <>

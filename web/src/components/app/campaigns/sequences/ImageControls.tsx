@@ -59,20 +59,6 @@ export function ImageMenu({ editor }: { editor: Editor }) {
     const del = useDeleteEmailImage();
     const confirm = useConfirm();
 
-    React.useEffect(() => {
-        if (!open) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key !== "Escape") return;
-            // The delete confirmation sits above this menu, so Escape belongs
-            // to it first: only the innermost layer closes.
-            if (document.querySelector("[role='alertdialog']")) return;
-            e.stopPropagation();
-            setOpen(false);
-        };
-        document.addEventListener("keydown", onKey, true);
-        return () => document.removeEventListener("keydown", onKey, true);
-    }, [open]);
-
     const pick = async (files: FileList | File[] | null) => {
         const file = Array.from(files ?? [])[0];
         if (!file) return;
