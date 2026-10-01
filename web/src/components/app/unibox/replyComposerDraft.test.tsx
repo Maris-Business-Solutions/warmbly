@@ -86,7 +86,7 @@ vi.mock("@/hooks/useOutboxStore", () => ({
 // is about; they are rendered as nothing so the textarea is the only writer.
 vi.mock("@/components/app/ai/AIDraftBar", () => ({
     default: () => null,
-    useAIDraft: () => ({ state: "idle", start: () => {}, keep: () => {}, discard: () => {} }),
+    useAIDraft: () => ({ state: "idle", phase: "idle", start: () => {}, keep: () => {}, discard: () => {} }),
 }));
 vi.mock("@/components/app/ai/TextareaAIEdit", () => ({ default: () => null }));
 vi.mock("@/components/app/ai/TextareaAICaret", () => ({ default: () => null }));

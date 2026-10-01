@@ -69,12 +69,13 @@ import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { cn } from "@/lib/utils";
 import {
-    MAX_HTML_LEN,
     bodyHasContent,
+    bodyTooLong,
+    capPlain,
+    htmlHasContent,
     outgoingParts,
     withTemplate,
     withText,
-    type ComposerBody,
 } from "@/lib/email/composerBody";
 import { useComposerBody } from "@/lib/email/useComposerBody";
 import { HtmlBody, HtmlModeToggle } from "./HtmlBody";
@@ -130,11 +131,6 @@ function draftSnapshot(d: {
     email_account_id?: string | null;
 }): string {
     return JSON.stringify([d.to, d.cc, d.bcc, d.subject, d.body, d.body_html ?? "", d.email_account_id ?? "auto"]);
-}
-
-// A plain body keeps the textarea's cap; HTML is capped where it is applied.
-function capPlain(b: ComposerBody): ComposerBody {
-    return b.html === null ? { ...b, plain: b.plain.slice(0, MAX_BODY_LEN) } : b;
 }
 
 const SCHEDULE_PRESETS: { label: string; at: () => Date }[] = [
@@ -212,8 +208,12 @@ function ComposeWindowInner({
     // switches the composer to HTML. The template subject only fills an empty
     // subject line, never overwrites yours.
     const applyTemplate = (t: Template) => {
+        if (aiDraft.phase !== "idle" && htmlHasContent(t.body_html ?? "")) {
+            toast.error("Keep or discard the AI draft before adding an HTML template");
+            return;
+        }
         const next = capPlain(withTemplate(bodyState.value, t));
-        if ((next.html?.length ?? 0) > MAX_HTML_LEN) {
+        if (bodyTooLong(next)) {
             toast.error(`"${t.name}" is too long to add to this email`);
             return;
         }
@@ -303,7 +303,7 @@ function ComposeWindowInner({
 
     const sendMut = useComposeSend();
     const hasBody = React.useMemo(() => bodyHasContent(bodyState.value), [bodyState.value]);
-    const htmlTooLong = (html?.length ?? 0) > MAX_HTML_LEN;
+    const htmlTooLong = React.useMemo(() => bodyTooLong(bodyState.value), [bodyState.value]);
     const canSend =
         to.length > 0 &&
         to.every(looksLikeEmail) &&
@@ -872,7 +872,7 @@ function ComposeWindowInner({
                         </PopoverMenuContent>
                     </PopoverMenu>
 
-                    <HtmlModeToggle state={bodyState} />
+                    <HtmlModeToggle state={bodyState} disabled={aiDraft.phase !== "idle"} />
 
                     <InsertBookingLink
                         email={to[0]}

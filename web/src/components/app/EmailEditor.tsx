@@ -38,7 +38,23 @@ import {
     PopoverMenuTrigger,
 } from "@/components/ui/popover-menu";
 import { Checkbox } from "@/components/ui/checkbox";
-import { htmlToPlain } from "@/lib/email/composerBody";
+
+// htmlToPlain renders the HTML signature down to a plain-text equivalent,
+// turning block elements and <br> into line breaks. Used to keep the plain
+// version in lockstep with the HTML one while "sync" is on.
+function htmlToPlain(html: string): string {
+    const withBreaks = html
+        .replace(/<\s*br\s*\/?>/gi, "\n")
+        .replace(/<\/\s*(p|div|h[1-6]|li|tr)\s*>/gi, "\n");
+    if (typeof DOMParser === "undefined") return withBreaks.replace(/<[^>]+>/g, "");
+    // DOMParser builds an inert document: nothing is fetched and no handler
+    // runs. Assigning innerHTML on a detached div does fire <img onerror>.
+    const doc = new DOMParser().parseFromString(withBreaks, "text/html");
+    // Without this a signature carrying a <style> block put its whole
+    // stylesheet into the plain-text alternative.
+    doc.querySelectorAll("style, script, title, noscript, template").forEach((el) => el.remove());
+    return (doc.body.textContent || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 // Markup the visual surface cannot host. It edits by assigning innerHTML, so
 // an event handler would run and a <style> block would restyle the dashboard;
@@ -88,6 +104,8 @@ interface EmailEditorProps {
     setCode: (v: boolean) => void;
     /** What is being edited, for the editor's own copy. */
     kind?: "signature" | "email";
+    /** Renders the HTML to the synced plain text; signatures keep their own rendering. */
+    toPlain?: (html: string) => string;
 }
 
 export default function EmailEditor({
@@ -101,6 +119,7 @@ export default function EmailEditor({
     code,
     setCode,
     kind = "signature",
+    toPlain = htmlToPlain,
 }: EmailEditorProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState<"html" | "preview" | "plain">("html");
@@ -152,7 +171,7 @@ export default function EmailEditor({
     // plain-text version derived from it so the two stay identical.
     function commitHtml(html: string) {
         setHtmlText(html);
-        if (sync) setPlainText(htmlToPlain(html));
+        if (sync) setPlainText(toPlain(html));
     }
 
     function exec(command: string, value?: string) {
@@ -302,7 +321,7 @@ export default function EmailEditor({
                             onChange={(e) => {
                                 const on = e.target.checked;
                                 setSync(on);
-                                if (on) setPlainText(htmlToPlain(htmlText));
+                                if (on) setPlainText(toPlain(htmlText));
                             }}
                         />
                         <span className="hidden sm:inline">Sync HTML &amp; plain</span>

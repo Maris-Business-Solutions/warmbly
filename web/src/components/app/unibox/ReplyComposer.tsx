@@ -67,12 +67,13 @@ import {
 import { cn } from "@/lib/utils";
 import {
     bodyHasContent,
-    MAX_HTML_LEN,
+    bodyTooLong,
+    capPlain,
+    htmlHasContent,
     outgoingParts,
     restoreBody,
     withTemplate,
     withText,
-    type ComposerBody,
 } from "@/lib/email/composerBody";
 import { useComposerBody } from "@/lib/email/useComposerBody";
 import { HtmlBody, HtmlModeToggle } from "./compose/HtmlBody";
@@ -108,11 +109,6 @@ const SCHEDULE_PRESETS: { label: string; at: () => Date }[] = [
 
 // Body length cap. Generous; real replies rarely come close.
 const MAX_BODY_LEN = 4000;
-
-// A plain body keeps the textarea's cap; HTML is capped where it is applied.
-function capPlain(b: ComposerBody): ComposerBody {
-    return b.html === null ? { ...b, plain: b.plain.slice(0, MAX_BODY_LEN) } : b;
-}
 
 // Server cap (GCP Cloud Tasks 30-day ceiling, minus a day of
 // clock-skew headroom). Mirrored client-side so users get an inline
@@ -230,14 +226,14 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
     const [chosenSender, chooseSender] = React.useState<string | null>(() => resolveSender(restored?.email_account_id));
     const accountId = chosenSender ?? defaultAccountId;
     const [isSending, setIsSending] = React.useState(false);
-    // body_html only while in HTML mode, so a plain draft serializes as it always has.
+    // body_html only when there is HTML, so a plain or empty draft serializes as it always has.
     const draftValue: ReplySeed = {
         to,
         cc,
         bcc,
         subject,
         body,
-        ...(html !== null ? { body_html: html } : {}),
+        ...(html ? { body_html: html } : {}),
         email_account_id: accountId,
     };
     const draft = useReplyDraft(draftKey, draftValue, {
@@ -363,7 +359,7 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
     const scheduledCap = overview.data?.scheduled_pending_max ?? 0;
     const scheduleAtCap = scheduledCap > 0 && scheduledUsed >= scheduledCap;
 
-    const htmlTooLong = (html?.length ?? 0) > MAX_HTML_LEN;
+    const htmlTooLong = React.useMemo(() => bodyTooLong(bodyState.value), [bodyState.value]);
     // A forward's note is optional: the forwarded message is the content.
     const hasBody = React.useMemo(() => bodyHasContent(bodyState.value), [bodyState.value]);
     const hasContent = hasBody || mode === "forward";
@@ -505,8 +501,12 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
         // Replace body if empty; otherwise append under a separator so the
         // user keeps whatever they already typed. An HTML body switches the
         // composer to HTML.
+        if (aiDraft.phase !== "idle" && htmlHasContent(t.body_html ?? "")) {
+            toast.error("Keep or discard the AI draft before adding an HTML template");
+            return;
+        }
         const next = capPlain(withTemplate(bodyState.value, t));
-        if ((next.html?.length ?? 0) > MAX_HTML_LEN) {
+        if (bodyTooLong(next)) {
             toast.error(`"${t.name}" is too long to add to this email`);
             return;
         }
@@ -1038,7 +1038,7 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                     </PopoverMenuContent>
                 </PopoverMenu>
 
-                <HtmlModeToggle state={bodyState} />
+                <HtmlModeToggle state={bodyState} disabled={aiDraft.phase !== "idle"} />
 
                 <InsertBookingLink
                     email={to[0]}

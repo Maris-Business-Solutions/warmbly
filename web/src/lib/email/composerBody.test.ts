@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-    htmlToPlain,
+    bodyHasContent,
+    bodyTooLong,
+    MAX_PART_BYTES,
+    MAX_PLAIN_LEN,
     outgoingParts,
     restoreBody,
     toHtmlMode,
     toPlainMode,
-    withHtml,
     withTemplate,
     withText,
     type ComposerBody,
@@ -15,32 +17,6 @@ const empty: ComposerBody = { plain: "", html: null, sync: false };
 const brochureHtml = '<p>Here is our <a href="https://example.com/brochure.pdf">brochure</a>.</p>';
 const brochurePlain = "Here is our brochure: https://example.com/brochure.pdf";
 
-describe("htmlToPlain", () => {
-    it("keeps paragraphs and puts a link's destination after its label", () => {
-        expect(htmlToPlain("<p>One</p><p>Two <a href=\"https://x.com/a\">here</a></p>")).toBe(
-            "One\n\nTwo here (https://x.com/a)",
-        );
-    });
-
-    it("drops stylesheets and hidden preheaders and collapses source whitespace", () => {
-        const html = `<html><head><style>p{color:red}</style></head><body>
-            <div style="display:none">preheader</div>
-            <p>Hello
-               there</p></body></html>`;
-        expect(htmlToPlain(html)).toBe("Hello there");
-    });
-
-    it("breaks lines at <br> and bullets list items", () => {
-        expect(htmlToPlain("a<br>b<ul><li>x</li><li>y</li></ul>c")).toBe("a\nb\n\n- x\n- y\n\nc");
-        expect(htmlToPlain("<div>one</div><div>two</div>")).toBe("one\ntwo");
-    });
-
-    it("does not repeat a link whose label is its address", () => {
-        expect(htmlToPlain('<a href="https://x.com">https://x.com</a>')).toBe("https://x.com");
-        expect(htmlToPlain('<a href="mailto:a@x.com">a@x.com</a>')).toBe("a@x.com");
-    });
-});
-
 describe("withTemplate", () => {
     it("carries a template's HTML body verbatim into an empty composer (#761)", () => {
         const b = withTemplate(empty, { body_plain: brochurePlain, body_html: brochureHtml });
@@ -48,12 +24,11 @@ describe("withTemplate", () => {
         expect(outgoingParts(b)).toEqual({ body_html: brochureHtml, body_plain: brochurePlain });
     });
 
-    it("derives the plain part from an HTML-only template and keeps it in sync", () => {
+    it("previews a plain part for an HTML-only template and leaves the sent one to the server", () => {
         const b = withTemplate(empty, { body_plain: "", body_html: brochureHtml });
         expect(b.sync).toBe(true);
         expect(b.plain).toBe("Here is our brochure (https://example.com/brochure.pdf).");
-        const edited = withHtml(b, "<p>Hi</p>");
-        expect(edited.plain).toBe("Hi");
+        expect(outgoingParts(b)).toEqual({ body_html: brochureHtml, body_plain: "" });
     });
 
     it("keeps a plain template in a plain composer", () => {
@@ -62,8 +37,7 @@ describe("withTemplate", () => {
     });
 
     it("treats an empty placeholder HTML body as no HTML", () => {
-        const b = withTemplate(empty, { body_plain: "Thanks!", body_html: "<div></div>" });
-        expect(b.html).toBeNull();
+        expect(withTemplate(empty, { body_plain: "Thanks!", body_html: "<div></div>" }).html).toBeNull();
     });
 
     it("appends an HTML template under text already typed", () => {
@@ -81,6 +55,25 @@ describe("withTemplate", () => {
     });
 });
 
+describe("content and limits", () => {
+    it("does not count a stale plain part once the HTML is emptied", () => {
+        expect(bodyHasContent({ html: "<br>", plain: brochurePlain, sync: false })).toBe(false);
+        expect(bodyHasContent({ html: '<img src="https://x.com/a.png">', plain: "", sync: true })).toBe(true);
+    });
+
+    it("measures HTML in bytes, as the drafts endpoint does", () => {
+        const wide = "é".repeat(MAX_PART_BYTES / 2 + 1);
+        expect(wide.length).toBeLessThan(MAX_PART_BYTES);
+        expect(bodyTooLong({ html: `<p>${wide}</p>`, plain: "", sync: true })).toBe(true);
+        expect(bodyTooLong({ html: brochureHtml, plain: brochurePlain, sync: false })).toBe(false);
+    });
+
+    it("caps the plain body when leaving HTML", () => {
+        const long = "a".repeat(MAX_PLAIN_LEN + 50);
+        expect(toPlainMode({ html: "<p>x</p>", plain: long, sync: false }).plain).toHaveLength(MAX_PLAIN_LEN);
+    });
+});
+
 describe("mode switches", () => {
     it("turns typed text into HTML and back", () => {
         const html = toHtmlMode({ ...empty, plain: "a < b\nc" });
@@ -89,8 +82,7 @@ describe("mode switches", () => {
     });
 
     it("keeps an authored plain part when leaving HTML", () => {
-        const b: ComposerBody = { html: brochureHtml, plain: brochurePlain, sync: false };
-        expect(toPlainMode(b).plain).toBe(brochurePlain);
+        expect(toPlainMode({ html: brochureHtml, plain: brochurePlain, sync: false }).plain).toBe(brochurePlain);
     });
 
     it("appends text to an HTML body", () => {

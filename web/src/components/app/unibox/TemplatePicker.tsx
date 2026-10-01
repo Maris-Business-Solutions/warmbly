@@ -10,9 +10,15 @@ import type useTemplates from "@/lib/api/hooks/app/templates/useTemplates";
 import type Template from "@/lib/api/models/app/templates/Template";
 import { htmlHasContent, htmlToPlain } from "@/lib/email/composerBody";
 
-// The text a row previews and search matches: the plain body, else the HTML's text.
-function templateText(t: Template): string {
-    return t.body_plain?.trim() ? t.body_plain : htmlToPlain(t.body_html ?? "");
+// What a row previews and search matches (the plain body, else the HTML's text), parsed once per list.
+interface TemplateMeta {
+    text: string;
+    hasHtml: boolean;
+}
+
+function templateMeta(t: Template): TemplateMeta {
+    const hasHtml = htmlHasContent(t.body_html ?? "");
+    return { hasHtml, text: t.body_plain?.trim() ? t.body_plain : hasHtml ? htmlToPlain(t.body_html) : "" };
 }
 
 export default function TemplatePickerContent({
@@ -26,15 +32,16 @@ export default function TemplatePickerContent({
 }) {
     const [search, setSearch] = React.useState("");
     const all = React.useMemo(() => query.data ?? [], [query.data]);
+    const meta = React.useMemo(() => new Map(all.map((t) => [t.id, templateMeta(t)])), [all]);
     const showSearch = all.length > 5;
     const filtered = React.useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return all;
         return all.filter((t) => {
-            const hay = `${t.name} ${t.subject} ${templateText(t)}`.toLowerCase();
+            const hay = `${t.name} ${t.subject} ${meta.get(t.id)?.text ?? ""}`.toLowerCase();
             return hay.includes(q);
         });
-    }, [all, search]);
+    }, [all, meta, search]);
 
     return (
         <div className="w-[340px] max-w-[92vw]">
@@ -111,6 +118,7 @@ export default function TemplatePickerContent({
                         <TemplateRow
                             key={t.id}
                             template={t}
+                            meta={meta.get(t.id) ?? templateMeta(t)}
                             onPick={() => {
                                 onPick(t);
                                 onClose();
@@ -145,13 +153,15 @@ export default function TemplatePickerContent({
 // background alone.
 function TemplateRow({
     template,
+    meta,
     onPick,
 }: {
     template: Template;
+    meta: TemplateMeta;
     onPick: () => void;
 }) {
-    const bodyPreview = templateText(template).replace(/\s+/g, " ").trim().slice(0, 120);
-    const hasHtml = htmlHasContent(template.body_html ?? "");
+    const bodyPreview = meta.text.replace(/\s+/g, " ").trim().slice(0, 120);
+    const { hasHtml } = meta;
 
     return (
         <button

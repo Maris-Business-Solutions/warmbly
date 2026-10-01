@@ -5,7 +5,7 @@ import React from "react";
 import { CodeXmlIcon } from "lucide-react";
 import EmailEditor from "@/components/app/EmailEditor";
 import { useConfirm } from "@/hooks/context/confirm";
-import { htmlHasContent, toHtmlMode, toPlainMode } from "@/lib/email/composerBody";
+import { htmlHasContent, htmlToPlain, toHtmlMode, toPlainMode } from "@/lib/email/composerBody";
 import type { ComposerBodyState } from "@/lib/email/useComposerBody";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +31,9 @@ export function HtmlBody({
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                     e.preventDefault();
                     onSend();
+                } else if (e.key === "Escape" && document.querySelector('[data-floating], [role="alertdialog"]')) {
+                    // A link or image popover is the innermost layer; the composer stays.
+                    e.stopPropagation();
                 } else if (e.key === "Escape" && onEscape) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -49,12 +52,13 @@ export function HtmlBody({
                 setSync={state.setSync}
                 code={code}
                 setCode={setCode}
+                toPlain={htmlToPlain}
             />
         </div>
     );
 }
 
-export function HtmlModeToggle({ state }: { state: ComposerBodyState }) {
+export function HtmlModeToggle({ state, disabled }: { state: ComposerBodyState; disabled?: boolean }) {
     const confirm = useConfirm();
     const on = state.html !== null;
     const toggle = () => {
@@ -75,10 +79,17 @@ export function HtmlModeToggle({ state }: { state: ComposerBodyState }) {
         <button
             type="button"
             onClick={toggle}
+            disabled={disabled}
             aria-pressed={on}
-            title={on ? "Switch back to plain text" : "Write this email in HTML"}
+            title={
+                disabled
+                    ? "Keep or discard the AI draft first"
+                    : on
+                      ? "Switch back to plain text"
+                      : "Write this email in HTML"
+            }
             className={cn(
-                "h-7 px-2 rounded-md border text-[12px] inline-flex items-center gap-1 transition-colors",
+                "h-7 px-2 rounded-md border text-[12px] inline-flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                 on
                     ? "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300"
                     : "border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900",
