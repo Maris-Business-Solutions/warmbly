@@ -462,6 +462,38 @@ describe("row menu", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("closes on a press anywhere else, and on Escape", () => {
+    mountRail();
+    fireEvent.contextMenu(rowOf("Unread"), { clientX: 40, clientY: 80 });
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.contextMenu(rowOf("Unread"), { clientX: 40, clientY: 80 });
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("keeps one menu open: a second right-click or a section menu replaces the first", () => {
+    mountRail();
+    fireEvent.contextMenu(rowOf("Unread"), { clientX: 40, clientY: 80 });
+    // Keyboard context-menu key: no pointer press to close the first one.
+    fireEvent.contextMenu(rowOf("Inbox"));
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(screen.getByRole("menuitem", { name: "Mark all as read" })).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Mail section options"));
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(screen.getByRole("menuitem", { name: "Fold section" })).toBeTruthy();
+  });
+
+  it("leaves the count room beside the always-visible phone \"…\"", () => {
+    mountRail();
+    const row = rowOf("Inbox");
+    expect(row.className.split(" ")).toContain("pr-7");
+    expect(row.className.split(" ")).not.toContain("pr-2");
+  });
+
   it("disables moves the row cannot make", () => {
     mountRail();
     fireEvent.click(screen.getByLabelText("All mail actions"));

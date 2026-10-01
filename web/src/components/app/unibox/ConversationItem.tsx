@@ -8,20 +8,24 @@
 // has more than one, quietly at the end of the preview.
 //
 // Triage happens on the row: Archive and a three-dot menu sit where the
-// timestamp is, so clearing a conversation never means opening it first. The
-// row is a div rather than a button because those controls nest inside it and
-// nested buttons are invalid HTML; each of them stops propagation so acting on
-// a row never also opens it.
+// timestamp is, and a right-click opens the same menu at the pointer, so
+// clearing a conversation never means opening it first. The row is a div
+// rather than a button because those controls nest inside it and nested
+// buttons are invalid HTML; each of them stops propagation so acting on a row
+// never also opens it.
 
 import React from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     ArchiveIcon,
+    ExternalLinkIcon,
     InboxIcon,
     MailCheckIcon,
     MailOpenIcon,
     MoonIcon,
     MoreHorizontalIcon,
+    TagIcon,
     TrashIcon,
 } from "lucide-react";
 
@@ -30,6 +34,8 @@ import { useAppStore } from "@/stores";
 import { useResourceViewers } from "@/hooks/PresenceProvider";
 import type { ConversationActions } from "@/hooks/useConversationActions";
 import { SNOOZE_PRESETS } from "@/lib/unibox/snooze";
+import { useAnchoredMenu } from "@/hooks/useAnchoredMenu";
+import { ThreadLabelPanel } from "./ThreadLabelMenu";
 import {
     PopoverMenu,
     PopoverMenuContent,
@@ -76,6 +82,13 @@ interface ConversationItemProps {
   /** Shift extends from the last row ticked, the way a file list does. */
   onToggleSelect?: (threadId: string, next: boolean, extend: boolean) => void;
   /**
+   * Every ticked conversation, set while this row is one of several ticked.
+   * A right-click on it then acts on all of them, as a file list does.
+   */
+  selection?: string[];
+  /** Called once a right-click acted on `selection`. */
+  onSelectionDone?: () => void;
+  /**
    * Filing, read state and snooze. Passed in rather than taken from the hook
    * here so a long list holds one set of mutations, not one per row.
    */
@@ -88,6 +101,8 @@ export function ConversationItem({
   selected = false,
   selecting = false,
   onToggleSelect,
+  selection,
+  onSelectionDone,
   actions,
 }: ConversationItemProps) {
   const selectedThreadId = useAppStore((s) => s.selectedThreadId);
@@ -122,13 +137,22 @@ export function ConversationItem({
     setSelectedAccountId(email.account_id ?? null);
   };
 
-
+  const menu = useAnchoredMenu();
 
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={open}
+      onContextMenu={(e) => {
+        // React bubbles a right-click inside the portaled menu up to here;
+        // that one should leave the menu where it is.
+        if (!e.currentTarget.contains(e.target as Node)) {
+          e.preventDefault();
+          return;
+        }
+        menu.onContextMenu(e);
+      }}
       onKeyDown={(e) => {
         // Only the row itself activates: keydown from a nested control bubbles
         // here, and Enter on the three-dot button must open its menu.
@@ -148,7 +172,9 @@ export function ConversationItem({
           ? "bg-sky-100/60"
           : isSelected
             ? "bg-sky-50"
-            : "hover:bg-slate-50",
+            : menu.open
+              ? "bg-slate-50"
+              : "hover:bg-slate-50",
       )}
     >
       {/* Gutter: the tick box, or the unread dot when nothing is being
@@ -289,6 +315,9 @@ export function ConversationItem({
         unread={unread}
         scope={scope}
         actions={actions}
+        menu={menu}
+        selection={selection}
+        onSelectionDone={onSelectionDone}
       />
     </div>
   );
@@ -296,25 +325,73 @@ export function ConversationItem({
 
 // The row's own triage controls: Archive inline, everything else one click
 // deeper. Shown on hover from md up and always on touch, where there is no
-// hover to reveal them with.
+// hover to reveal them with. The menu is also the row's right-click menu.
 function RowActions({
   threadId,
   unread,
   scope,
   actions,
+  menu,
+  selection,
+  onSelectionDone,
 }: {
   threadId: string;
   unread: boolean;
   scope?: string;
   actions: ConversationActions;
+  menu: ReturnType<typeof useAnchoredMenu>;
+  selection?: string[];
+  onSelectionDone?: () => void;
 }) {
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const [snoozeMode, setSnoozeMode] = React.useState(false);
+  const [mode, setMode] = React.useState<"actions" | "snooze" | "labels">("actions");
+  const openThreadId = useAppStore((s) => s.selectedThreadId);
+  const setSelectedThreadId = useAppStore((s) => s.setSelectedThreadId);
+  const setSelectedAccountId = useAppStore((s) => s.setSelectedAccountId);
+  const { scope: urlScope } = useParams<{ scope?: string }>();
+  const [searchParams] = useSearchParams();
 
   const filed = scope === "archive" || scope === "trash";
   const snoozedScope = scope === "snoozed";
 
+  // The "…" button acts on its own row; a right-click on a ticked row acts on
+  // the whole selection.
+  const bulk = menu.fromPointer && selection && selection.length > 1 ? selection : null;
+  const targets = bulk ?? [threadId];
+
+  // Anything that takes the conversation out of the list closes it in the
+  // reader too, as the reader's own buttons do. Marking it unread has to as
+  // well, or the open reader marks it read again straight away.
+  const run = (fn: () => void | Promise<void>, closesReader = true) => {
+    if (closesReader && openThreadId && targets.includes(openThreadId)) {
+      setSelectedThreadId(null);
+      setSelectedAccountId(null);
+    }
+    const done = Promise.resolve(fn());
+    if (bulk) void done.finally(() => onSelectionDone?.());
+  };
+
+  const openInNewTab = () => {
+    const ref = searchParams.get("ref");
+    let href = `/app/unibox/${urlScope ?? "inbox"}/${encodeURIComponent(threadId)}`;
+    if (ref) href += `?ref=${encodeURIComponent(ref)}`;
+    window.open(href, "_blank", "noopener");
+  };
+
+  // A submenu replaces the item that opened it, so hand the keyboard to its
+  // first item rather than leaving it on the page.
+  const focusFirstItem = React.useCallback((el: HTMLDivElement | null) => {
+    const active = document.activeElement;
+    if (!el || (active && active !== document.body)) return;
+    el.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true });
+  }, []);
+
   const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const fade = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+    transition: { duration: 0.12, ease: [0.16, 1, 0.3, 1] as const },
+  };
 
   return (
     <div
@@ -326,7 +403,7 @@ function RowActions({
     >
       <RowButton
         label={filed ? "Move to inbox" : "Archive"}
-        onClick={() => actions.file([threadId], filed ? "inbox" : "archive")}
+        onClick={() => run(() => actions.file([threadId], filed ? "inbox" : "archive"))}
         disabled={actions.filing}
         // Touch gets the menu only: two always-on buttons would crowd the row
         // at the width a phone has.
@@ -341,10 +418,10 @@ function RowActions({
 
       <PopoverMenu
         align="end"
-        open={menuOpen}
+        {...menu.menuProps}
         onOpenChange={(o) => {
-          setMenuOpen(o);
-          if (!o) setSnoozeMode(false);
+          menu.menuProps.onOpenChange(o);
+          if (!o) setMode("actions");
         }}
       >
         <PopoverMenuTrigger asChild>
@@ -356,67 +433,97 @@ function RowActions({
             <MoreHorizontalIcon className="w-3.5 h-3.5" />
           </button>
         </PopoverMenuTrigger>
-        <PopoverMenuContent>
+        <PopoverMenuContent className={mode === "labels" ? "p-0" : undefined}>
           <AnimatePresence mode="wait" initial={false}>
-            {snoozeMode ? (
-              <motion.div
-                key="snooze"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
-              >
+            {mode === "snooze" ? (
+              <motion.div key="snooze" ref={focusFirstItem} {...fade}>
                 <PopoverMenuLabel>Snooze until</PopoverMenuLabel>
                 {SNOOZE_PRESETS.map((p) => (
                   <PopoverMenuItem
                     key={p.label}
-                    onSelect={() => actions.snooze([threadId], p.until())}
+                    onSelect={() => run(() => actions.snooze(targets, p.until()))}
                   >
                     {p.label}
                   </PopoverMenuItem>
                 ))}
                 <PopoverMenuSeparator />
                 <PopoverMenuItem
-                  onSelect={() => setSnoozeMode(false)}
+                  onSelect={() => setMode("actions")}
                   closeOnSelect={false}
                 >
                   Back
                 </PopoverMenuItem>
               </motion.div>
+            ) : mode === "labels" ? (
+              <motion.div key="labels" {...fade}>
+                <ThreadLabelPanel threadId={threadId} shortcutHint={false} />
+              </motion.div>
             ) : (
-              <motion.div
-                key="actions"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <PopoverMenuItem
-                  icon={
-                    unread ? (
-                      <MailOpenIcon className="w-3.5 h-3.5" />
-                    ) : (
-                      <MailCheckIcon className="w-3.5 h-3.5" />
-                    )
-                  }
-                  onSelect={() => actions.setSeen([threadId], unread)}
-                >
-                  {unread ? "Mark as read" : "Mark as unread"}
-                </PopoverMenuItem>
+              <motion.div key="actions" {...fade}>
+                {bulk ? (
+                  <>
+                    <PopoverMenuLabel>
+                      {bulk.length.toLocaleString()} conversations
+                    </PopoverMenuLabel>
+                    <PopoverMenuItem
+                      icon={<MailOpenIcon className="w-3.5 h-3.5" />}
+                      onSelect={() => run(() => actions.setSeen(targets, true), false)}
+                    >
+                      Mark as read
+                    </PopoverMenuItem>
+                    <PopoverMenuItem
+                      icon={<MailCheckIcon className="w-3.5 h-3.5" />}
+                      onSelect={() => run(() => actions.setSeen(targets, false))}
+                    >
+                      Mark as unread
+                    </PopoverMenuItem>
+                  </>
+                ) : (
+                  <>
+                    <PopoverMenuItem
+                      icon={<ExternalLinkIcon className="w-3.5 h-3.5" />}
+                      onSelect={openInNewTab}
+                    >
+                      Open in new tab
+                    </PopoverMenuItem>
+                    <PopoverMenuSeparator />
+                    <PopoverMenuItem
+                      icon={
+                        unread ? (
+                          <MailOpenIcon className="w-3.5 h-3.5" />
+                        ) : (
+                          <MailCheckIcon className="w-3.5 h-3.5" />
+                        )
+                      }
+                      onSelect={() => run(() => actions.setSeen(targets, unread), !unread)}
+                    >
+                      {unread ? "Mark as read" : "Mark as unread"}
+                    </PopoverMenuItem>
+                  </>
+                )}
                 {snoozedScope ? (
                   <PopoverMenuItem
                     icon={<MoonIcon className="w-3.5 h-3.5" />}
-                    onSelect={() => actions.unsnooze([threadId])}
+                    onSelect={() => run(() => actions.unsnooze(targets))}
                   >
                     Un-snooze now
                   </PopoverMenuItem>
                 ) : (
                   <PopoverMenuItem
                     icon={<MoonIcon className="w-3.5 h-3.5" />}
-                    onSelect={() => setSnoozeMode(true)}
+                    onSelect={() => setMode("snooze")}
                     closeOnSelect={false}
                   >
                     Snooze…
+                  </PopoverMenuItem>
+                )}
+                {!bulk && (
+                  <PopoverMenuItem
+                    icon={<TagIcon className="w-3.5 h-3.5" />}
+                    onSelect={() => setMode("labels")}
+                    closeOnSelect={false}
+                  >
+                    Labels…
                   </PopoverMenuItem>
                 )}
                 <PopoverMenuSeparator />
@@ -424,7 +531,7 @@ function RowActions({
                   <PopoverMenuItem
                     icon={<InboxIcon className="w-3.5 h-3.5" />}
                     disabled={actions.filing}
-                    onSelect={() => actions.file([threadId], "inbox")}
+                    onSelect={() => run(() => actions.file(targets, "inbox"))}
                   >
                     Move to inbox
                   </PopoverMenuItem>
@@ -432,7 +539,7 @@ function RowActions({
                   <PopoverMenuItem
                     icon={<ArchiveIcon className="w-3.5 h-3.5" />}
                     disabled={actions.filing}
-                    onSelect={() => actions.file([threadId], "archive")}
+                    onSelect={() => run(() => actions.file(targets, "archive"))}
                   >
                     Archive
                   </PopoverMenuItem>
@@ -442,7 +549,7 @@ function RowActions({
                     danger
                     icon={<TrashIcon className="w-3.5 h-3.5" />}
                     disabled={actions.filing}
-                    onSelect={() => actions.file([threadId], "trash")}
+                    onSelect={() => run(() => actions.file(targets, "trash"))}
                   >
                     Delete
                   </PopoverMenuItem>

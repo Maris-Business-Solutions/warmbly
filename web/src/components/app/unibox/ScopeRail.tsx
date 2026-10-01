@@ -93,6 +93,7 @@ import { isAutomaticTag, tagMeaning } from "@/lib/unibox/tagMeanings";
 import { UNIBOX_VIEWS, viewCategories, type UniboxViewId } from "@/lib/unibox/views";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { shortcutLabel } from "@/components/ui/shortcut-tooltip";
+import { useAnchoredMenu } from "@/hooks/useAnchoredMenu";
 
 export type UniboxScope =
   | { kind: "all" }
@@ -738,29 +739,6 @@ interface RowContext {
   startRenaming: () => void;
 }
 
-// A menu that opens from its "…" button or, on right-click, at the pointer.
-function useAnchoredMenu() {
-  const [open, setOpen] = React.useState(false);
-  const [point, setPoint] = React.useState<{ x: number; y: number } | null>(null);
-  const onContextMenu = (e: React.MouseEvent<HTMLElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // A keyboard context-menu key reports 0,0: open under the element instead.
-    const r = e.currentTarget.getBoundingClientRect();
-    setPoint(e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: r.left + 12, y: r.bottom });
-    setOpen(true);
-  };
-  const menuProps = {
-    open,
-    anchorPoint: point,
-    onOpenChange: (o: boolean) => {
-      if (o) setPoint(null);
-      setOpen(o);
-    },
-  };
-  return { open, onContextMenu, menuProps };
-}
-
 // The header every rail section shares: a fold toggle, a dot when a folded
 // section hides a highlighted count, and on the right a count or the row
 // editor's pencil, then the section's own menu.
@@ -800,7 +778,7 @@ function SectionHeader({
   };
   return (
     <div
-      className="group/section h-7 px-4 flex items-center gap-1"
+      className="group/section h-7 pl-4 pr-3 flex items-center gap-1"
       onContextMenu={editing ? undefined : sectionMenu.onContextMenu}
     >
       <button
@@ -1660,8 +1638,9 @@ function MenuRow({
         }}
         aria-current={active ? "true" : undefined}
         className={cn(
-          "relative isolate pr-7 md:pr-2",
           ROW,
+          // After ROW, whose pr-2 would otherwise win the merge: below md the "…" is always shown.
+          "relative isolate pr-7 md:pr-2",
           active ? ROW_ACTIVE : ROW_IDLE,
           rowMenu.open && !active && "bg-slate-50",
         )}
