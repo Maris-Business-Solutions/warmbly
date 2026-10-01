@@ -40,8 +40,11 @@ import {
     HelpCircleIcon,
     RefreshCwIcon,
     TrashIcon,
+    PowerIcon,
+    PowerOffIcon,
     type LucideIcon,
 } from "lucide-react";
+import useMailboxSwitch from "@/components/app/emails/useMailboxSwitch";
 import toast from "react-hot-toast";
 
 import type Inbox from "@/lib/api/models/app/emails/Inbox";
@@ -473,7 +476,7 @@ function Detail({ mailbox, onClose, initialTab = "overview", canWarmup = true }:
                     </div>
                 </div>
                 <span className={cn("h-5 px-2 rounded-full border text-[10px] font-semibold uppercase tracking-wide inline-flex items-center shrink-0", statusTone(mailbox.status))}>
-                    {mailbox.status}
+                    {mailbox.status === "inactive" ? "Off" : mailbox.status}
                 </span>
                 <ResourceViewers resource={mailbox.id ? `mailbox:${mailbox.id}` : null} className="shrink-0" />
                 <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0">
@@ -700,6 +703,7 @@ function OverviewTab({ status, loading, mailbox }: { status?: import("@/lib/api/
 
     return (
         <div className="divide-y divide-slate-200/60">
+            {mailbox.status === "inactive" && <SwitchedOffNotice mailbox={mailbox} />}
             {mailbox.provider === "gmail" && mailbox.auth_method !== "delegated" && <SigninRetiringNotice mailbox={mailbox} />}
             {/* Whatever the Advisor has on this mailbox, above the numbers that
                 produced it. This is where a row flag and a deep link both land. */}
@@ -1975,6 +1979,63 @@ function SendIdentityCard({
  * takes before asking, and the copy differs by provider because what happens to
  * the connection does: Google accepts a revocation and Microsoft does not.
  */
+// Off stops everything, so the way back sits where the drawer opens.
+function SwitchedOffNotice({ mailbox }: { mailbox: Inbox }) {
+    const power = useMailboxSwitch(mailbox.id, mailbox.email);
+    return (
+        <div className="px-5 py-4">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 flex items-start gap-2">
+                <PowerOffIcon className="w-3.5 h-3.5 mt-px shrink-0 text-slate-500" />
+                <div className="min-w-0 flex-1">
+                    <p className="text-[12.5px] font-medium text-slate-900">This mailbox is switched off</p>
+                    <p className="text-[11.5px] text-slate-600 leading-relaxed mt-0.5">
+                        It is not sending campaigns, warming up or syncing mail, whatever its warmup setting says. Its
+                        settings, history and worker are kept, so switching it back on picks up where it stopped.
+                        To keep it out of campaigns while it warms, turn on Hold from campaigns below first, then switch it back on.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={power.switchOn}
+                        disabled={power.pending}
+                        className="mt-2 h-7 px-2.5 inline-flex items-center gap-1.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium disabled:opacity-60 transition-colors"
+                    >
+                        <PowerIcon className="w-3.5 h-3.5" />
+                        {power.pending ? "Switching on…" : "Switch back on"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// The mailbox's own on/off switch; a revoked mailbox is turned back on by reconnecting.
+function MailboxPowerCard({ mailbox }: { mailbox: Inbox }) {
+    const power = useMailboxSwitch(mailbox.id, mailbox.email);
+    if (mailbox.status !== "active" && mailbox.status !== "inactive") return null;
+    const on = mailbox.status === "active";
+    return (
+        <div className="px-5 py-5 space-y-3">
+            <Eyebrow>Mailbox</Eyebrow>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="text-[12.5px] font-medium text-slate-900">Mailbox on</div>
+                    <div className="text-[11px] text-slate-400">
+                        Switched off, it neither sends, warms nor syncs, and keeps its settings and history. To stop
+                        only campaign sending and keep warming, use Hold from campaigns on the Overview tab. On a
+                        mailbox that is off, turn the hold on before switching it back on.
+                    </div>
+                </div>
+                <Toggle
+                    value={on}
+                    onChange={(v) => (v ? power.switchOn() : power.switchOff())}
+                    disabled={power.pending}
+                    ariaLabel="Mailbox on"
+                />
+            </div>
+        </div>
+    );
+}
+
 function DisconnectCard({ mailbox, onDisconnected }: { mailbox: Inbox; onDisconnected: () => void }) {
     const confirm = useConfirm();
     const remove = useRemoveEmail(mailbox.id);
@@ -1988,7 +2049,7 @@ function DisconnectCard({ mailbox, onDisconnected }: { mailbox: Inbox; onDisconn
 
     const ask = () =>
         confirm.show(
-            `Disconnect ${mailbox.email}? This deletes its imported mail, warmup history and credentials, and cannot be undone. Set the mailbox inactive instead if you only want it to stop sending.`,
+            `Disconnect ${mailbox.email}? This deletes its imported mail, warmup history and credentials, and cannot be undone. Switch the mailbox off instead if you only want it to stop.`,
             async () => {
                 try {
                     await remove.mutateAsync();
@@ -2212,6 +2273,8 @@ function SettingsTab({ form, update, mailbox, onDisconnected }: { form: Inbox; u
             <TrackingDomainCard mailbox={mailbox} />
 
             <DirectMailTrackingControl mailbox={mailbox} />
+
+            <MailboxPowerCard mailbox={mailbox} />
 
             <DisconnectCard mailbox={mailbox} onDisconnected={onDisconnected} />
 

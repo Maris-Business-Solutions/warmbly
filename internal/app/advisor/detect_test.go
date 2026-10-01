@@ -254,7 +254,39 @@ func TestSpamPlacementRespectsItsSampleFloorAndBands(t *testing.T) {
 		t.Errorf("55%% spam placement should be critical, got %q", f.Severity)
 	}
 	if f.Action == nil {
-		t.Error("a mailbox this deep in spam while sending cold should offer to stop")
+		t.Fatal("a mailbox this deep in spam while sending cold should offer to stop")
+	}
+	// Stopping cold sending must leave warmup running, so the fix is the hold, never status.
+	if f.Action.Tool != "set_mailbox_send_hold" || f.Action.Undo == nil || f.Action.Undo.Tool != "set_mailbox_send_hold" {
+		t.Errorf("spam placement fix should hold the mailbox and undo by releasing it, got %q", f.Action.Tool)
+	}
+	if strings.Contains(string(f.Action.Args), "status") {
+		t.Errorf("spam placement fix must not switch the mailbox off: %s", f.Action.Args)
+	}
+}
+
+// A mailbox already out of rotation gets no hold, so Undo can never release a hold someone else set.
+func TestHoldFixIsOfferedOnlyWhileSendingCold(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		lifecycle string
+		status    string
+	}{
+		{"held by its owner", "reserve", "active"},
+		{"resting", "resting", "active"},
+		{"switched off", "active", "inactive"},
+	} {
+		m := healthyMailbox()
+		m.SendLifecycle = tc.lifecycle
+		m.Status = tc.status
+		m.WarmupPlacement = models.WarmupPlacementEvidence{MajorDelivered: 100, MajorSpam: 55}
+		m.PoolHealth = "quarantined"
+		found := findingsByKey(Detect(snapshotOf(m), defaults()))
+		for _, key := range []string{"mailbox_spam_placement", "warmup_pool_blocked"} {
+			if f, ok := found[key]; ok && f.Action != nil {
+				t.Errorf("%s: %s offered %q on a mailbox that is not sending cold", tc.name, key, f.Action.Label)
+			}
+		}
 	}
 }
 

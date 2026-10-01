@@ -227,7 +227,7 @@ func detectWarmupPoolBlocked(s *repository.AdvisorSnapshot) []Finding {
 		// dangerous case: the platform has already judged it unsafe for shared
 		// reputation surfaces, and it is still mailing strangers.
 		severity := models.AdvisorHigh
-		if m.InActiveCampaign {
+		if m.SendingCold() {
 			severity = models.AdvisorCritical
 		}
 
@@ -251,7 +251,7 @@ func detectWarmupPoolBlocked(s *repository.AdvisorSnapshot) []Finding {
 				"The warmup pool has marked %s as %s%s. Pool standing is the platform's own read on whether a mailbox is safe to keep in shared reputation surfaces, and it moved before mailbox providers did%s.",
 				m.Email, state,
 				map[bool]string{true: " (" + m.PoolHealthReason + ")", false: ""}[m.PoolHealthReason != ""],
-				map[bool]string{true: ". This mailbox is still running cold campaigns", false: ""}[m.InActiveCampaign]),
+				map[bool]string{true: ". This mailbox is still running cold campaigns", false: ""}[m.SendingCold()]),
 			Remedy: "Stop cold sending from this mailbox until it requalifies. Re-entry needs healthy authentication, no recent complaints or hard-bounce spikes, and spam placement back under 10% on a fresh sample.",
 			Steps: []string{
 				"Take the mailbox off every active campaign. Nothing else matters while it is still mailing strangers.",
@@ -265,16 +265,11 @@ func detectWarmupPoolBlocked(s *repository.AdvisorSnapshot) []Finding {
 				"pool_state":             state,
 				"pool_health_reason":     m.PoolHealthReason,
 				"pool_type":              m.WarmupPoolType,
-				"currently_sending_cold": m.InActiveCampaign,
+				"currently_sending_cold": m.SendingCold(),
 			},
 		}
-		if m.InActiveCampaign {
-			f.Action = withUndo(mailboxAction(m.ID,
-				"Stop cold sending from this mailbox",
-				map[string]any{"status": "inactive"},
-				change("Mailbox status", "active", "inactive"),
-				change("Cold campaigns", "sending", "paused for this mailbox"),
-			), map[string]any{"email_account_id": m.ID.String(), "status": "active"})
+		if m.SendingCold() {
+			f.Action = mailboxHoldAction(m.ID, "Hold this mailbox out of campaigns")
 		}
 		out = append(out, f)
 	}
