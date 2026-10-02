@@ -99,71 +99,81 @@ selected() {
   esac
 }
 
+# Prints the deployment list; fails rather than printing nothing when the CLI
+# or its JSON does not answer, so a failed query is never read as "no deployment".
 deployments_json() {
-  railway deployment list --service "$1" --environment "$ENVIRONMENT" --json 2>/dev/null
-}
-
-# The newest deployment's id, whatever its status. Captured before a redeploy so
-# the wait can tell the new deployment from the one it replaced, which is more
-# reliable than comparing timestamps across two clocks.
-newest_deployment_id() {
-  deployments_json "$1" | jq -r 'sort_by(.createdAt) | reverse | .[0].id // empty'
+  out=$(railway deployment list --service "$1" --environment "$ENVIRONMENT" --json 2>/dev/null) || return 1
+  printf '%s' "$out" | jq -e 'type == "array"' >/dev/null 2>&1 || return 1
+  printf '%s' "$out"
 }
 
 running_image() {
-  deployments_json "$1" | jq -r '
+  list=$(deployments_json "$1") || die "could not list $1 deployments"
+  printf '%s' "$list" | jq -r '
     map(select(.status == "SUCCESS")) | sort_by(.createdAt) | reverse
     | .[0].meta.image // empty'
 }
 
+# Every deployment id the service has, as a JSON array, taken before a change.
+deployment_ids() {
+  list=$(deployments_json "$1") || die "could not list $1 deployments"
+  printf '%s' "$list" | jq -c '[.[].id]'
+}
+
 # The id of a deployment of image $2 that is still starting, or nothing.
 deployment_in_flight() {
-  deployments_json "$1" | jq -r --arg img "$2" '
+  list=$(deployments_json "$1") || die "could not list $1 deployments"
+  printf '%s' "$list" | jq -r --arg img "$2" '
     map(select((.meta.image // "") == $img
       and (.status | IN("QUEUED", "WAITING", "BUILDING", "DEPLOYING", "INITIALIZING"))))
     | sort_by(.createdAt) | reverse | .[0].id // empty'
 }
 
-# Succeeds once a deployment other than $2 carrying image $3 exists, within $4 seconds.
-deployment_appeared() {
+# Prints the newest deployment of image $3 whose id is not in the JSON array $2,
+# polling for up to $4 seconds and checking once more at the deadline. Prints
+# nothing when none appeared; a failed query stops the roll instead.
+new_deployment_id() {
   service="$1"
-  previous_id="$2"
+  known="$2"
   image="$3"
   limit="$4"
   waited=0
-  while [ "$waited" -lt "$limit" ]; do
-    found=$(deployments_json "$service" | jq -r --arg prev "$previous_id" --arg img "$image" '
-      map(select(.id != $prev and (.meta.image // "") == $img)) | .[0].id // empty')
-    [ -n "$found" ] && return 0
+  while :; do
+    list=$(deployments_json "$service") || die "could not list $service deployments; not redeploying blind"
+    found=$(printf '%s' "$list" | jq -r --argjson known "$known" --arg img "$image" '
+      map(select((.id as $id | $known | index($id) | not) and (.meta.image // "") == $img))
+      | sort_by(.createdAt) | reverse | .[0].id // empty')
+    if [ -n "$found" ]; then
+      printf '%s' "$found"
+      return 0
+    fi
+    [ "$waited" -ge "$limit" ] && return 0
     sleep 3
     waited=$((waited + 3))
   done
-  return 1
 }
 
-# Waits for a deployment that is NOT $2, carries image $3, and reached SUCCESS.
+# Waits for deployment $2 of service $1 to reach SUCCESS.
 wait_for_deployment() {
   service="$1"
-  previous_id="$2"
+  deployment_id="$2"
   image="$3"
   waited=0
 
   while [ "$waited" -lt "$WAIT_TIMEOUT_SECONDS" ]; do
-    entry=$(deployments_json "$service" | jq -r --arg prev "$previous_id" --arg img "$image" '
-      map(select(.id != $prev and (.meta.image // "") == $img))
-      | sort_by(.createdAt) | reverse | .[0] | "\(.status // "")|\(.id // "")"')
-    status="${entry%%|*}"
+    list=$(deployments_json "$service") || die "could not list $service deployments while waiting for $deployment_id"
+    status=$(printf '%s' "$list" | jq -r --arg id "$deployment_id" 'map(select(.id == $id)) | .[0].status // ""')
 
     case "$status" in
       SUCCESS)
         printf '    %s is live on %s\n' "$service" "$image"
         return 0
         ;;
-      FAILED | CRASHED)
-        die "$service deployment ${entry##*|} ended $status; nothing after it was rolled"
+      FAILED | CRASHED | REMOVED)
+        die "$service deployment $deployment_id ended $status; nothing after it was rolled"
         ;;
       "")
-        printf '    waiting for a deployment to appear (%ss)\n' "$waited"
+        printf '    waiting for deployment %s to be listed (%ss)\n' "$deployment_id" "$waited"
         ;;
       *)
         printf '    %s (%ss)\n' "$status" "$waited"
@@ -269,16 +279,19 @@ roll_service() {
   in_flight=$(deployment_in_flight "$service" "$image")
   if [ -n "$in_flight" ]; then
     printf '    deployment %s of this image is already starting; waiting for it\n' "$in_flight"
-    wait_for_deployment "$service" "" "$image"
+    deployment_id="$in_flight"
   else
-    previous_id=$(newest_deployment_id "$service")
+    known=$(deployment_ids "$service")
     railway service source connect --image "$image" --service "$service" --environment "$ENVIRONMENT" >/dev/null
     # Connecting an image deploys it; redeploy only when that did not happen.
-    if ! deployment_appeared "$service" "$previous_id" "$image" 30; then
+    deployment_id=$(new_deployment_id "$service" "$known" "$image" 30)
+    if [ -z "$deployment_id" ]; then
       railway deployment redeploy --service "$service" --environment "$ENVIRONMENT" --from-source --yes >/dev/null
+      deployment_id=$(new_deployment_id "$service" "$known" "$image" 60)
+      [ -n "$deployment_id" ] || die "$service: no deployment of $image appeared after redeploying"
     fi
-    wait_for_deployment "$service" "$previous_id" "$image"
   fi
+  wait_for_deployment "$service" "$deployment_id" "$image"
 
   if [ "$service" = "backend" ]; then
     check_health "$service" 1
