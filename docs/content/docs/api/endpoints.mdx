@@ -228,7 +228,7 @@ A source's `column_mapping` is validated when the source is written, not on its 
 
 `PATCH /unibox/folder` re-files into `inbox`, `archive` or `trash`. Name the messages with `email_ids`, the conversations with `thread_ids`, or both; up to 500 of each. Prefer `thread_ids` when you have one: filing part of a conversation leaves it listed, because a thread shows wherever any message of it still sits. The move is then relayed to each mailbox with `relay_folder_moves` on (the default): the provider's copy is archived, moved to its trash, or put back in its inbox, after the response and best-effort, and the next sync will not undo a filing either way, because the provider's placement is tracked separately and followed only when the provider itself moves the message. `sent`, `drafts` and `spam` are placements a provider reaches rather than somewhere a person files mail, so they are rejected with a `400`. See [filing a conversation](/guides/unibox/#filing-a-conversation).
 
-`PATCH /unibox/seen` takes the same two forms: `email_ids` for individual messages, `thread_ids` for whole conversations. `folder` sweeps one folder instead and cannot be combined with either.
+`PATCH /unibox/seen` takes the same two forms: `email_ids` for individual messages, `thread_ids` for whole conversations. `folder` sweeps one folder instead and cannot be combined with either. Unread by conversation marks only its newest received message, and a sent or draft copy is never marked unread.
 
 `GET /unibox` lists every working folder by default. Spam, trash and archive stay out, so a conversation you file leaves every view rather than only the Inbox folder; pass `include_archived=true` for the All mail behaviour, or `folder=archive` to read the folder itself.
 

@@ -10328,7 +10328,7 @@
       "patch": {
         "operationId": "unibox_mark_seen",
         "summary": "Mark messages seen",
-        "description": "Marks messages as read or unread, org-wide. Name them with `email_ids`, whole conversations with `thread_ids`, or sweep a folder with `folder`. Up to 500 ids of each per call.",
+        "description": "Marks messages as read or unread, org-wide. Name them with `email_ids`, whole conversations with `thread_ids`, or sweep a folder with `folder`. Up to 500 ids of each per call. Read covers every message a conversation holds; unread marks only its newest received message. A sent or draft copy is never marked unread.",
         "tags": [
           "unibox"
         ],
