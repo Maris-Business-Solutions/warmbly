@@ -7,7 +7,7 @@ export default function useThread(threadId: string | null, emailId?: string) {
         // (ThreadLimitMax = 500 in internal/app/unibox/config.go), so
         // we don't pass a limit — the server picks the right one.
         queryKey: ["unibox", "thread", threadId, emailId ?? null],
-        queryFn: () => getThread(threadId!, { emailId }),
+        queryFn: ({ signal }) => getThread(threadId!, { emailId, signal }),
         enabled: !!threadId,
         staleTime: 30_000,
     })

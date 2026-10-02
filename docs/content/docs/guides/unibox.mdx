@@ -287,7 +287,7 @@ Scheduled and smart-queued sends skip the undo window, since they already wait. 
 
 ## Realtime
 
-Nothing needs refreshing. New mail appears in the list, updates the open thread, and raises the unread count on its own. The count on **Unibox** in the navigation (and in the browser tab) is the number of unread conversations in **Inbox**, the view it opens, so it never points at mail that view does not list: sent mail, drafts, archived, snoozed and automated conversations are left out. Read-state changes, replies, scheduled sends, snoozes, and label changes all refresh the affected views, keeping rail counts, the list, and the open thread consistent.
+Nothing needs refreshing. New mail appears in the list, updates the open thread, and raises the unread count on its own. The open conversation updates as soon as its mail changes; rail counts, lists and analytics catch up within a couple of seconds, so a burst of incoming mail refreshes them once instead of once per message. The count on **Unibox** in the navigation (and in the browser tab) is the number of unread conversations in **Inbox**, the view it opens, so it never points at mail that view does not list: sent mail, drafts, archived, snoozed and automated conversations are left out. Read-state changes, replies, scheduled sends, snoozes, and label changes all refresh the affected views, keeping rail counts, the list, and the open thread consistent.
 
 <Callout type="info" title="Keeping inboxes healthy">
 Replying promptly supports sender reputation, which warmup and good deliverability practice protect. See [Deliverability](/guides/deliverability/).

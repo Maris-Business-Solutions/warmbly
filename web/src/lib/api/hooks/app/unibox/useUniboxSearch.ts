@@ -15,8 +15,8 @@ export default function useUniboxSearch(params: UniboxSearchParams, scopeKey: st
         string | null
     >({
         queryKey: ["unibox", "search", params, scopeKey],
-        queryFn: ({ pageParam }) =>
-            searchIncoming({ ...params, cursor: pageParam ?? undefined, limit: 50 }),
+        queryFn: ({ pageParam, signal }) =>
+            searchIncoming({ ...params, cursor: pageParam ?? undefined, limit: 50 }, signal),
         initialPageParam: null,
         getNextPageParam: (last) => (last.pagination.has_more ? last.pagination.next_cursor : undefined),
         staleTime: 30_000,

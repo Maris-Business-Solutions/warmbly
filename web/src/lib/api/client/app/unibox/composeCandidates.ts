@@ -7,6 +7,7 @@ import type { ComposeCandidatesResponse } from "@/lib/api/models/app/unibox/Comp
 
 export default async function composeCandidates(
     address = "",
+    signal?: AbortSignal,
 ): Promise<ComposeCandidatesResponse> {
     const usp = new URLSearchParams();
     if (address) usp.set("to", address);
@@ -15,5 +16,6 @@ export default async function composeCandidates(
         method: "GET",
         url: `/unibox/compose/candidates${qs ? `?${qs}` : ""}`,
         authorization: true,
+        signal,
     });
 }

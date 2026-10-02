@@ -1,7 +1,7 @@
 import type UniboxEmail from "@/lib/api/models/app/unibox/UniboxEmail";
 import Request from "../../Request";
 
-export default async function getIncoming(accountId?: string, cursor?: string): Promise<UniboxEmail[]> {
+export default async function getIncoming(accountId?: string, cursor?: string, signal?: AbortSignal): Promise<UniboxEmail[]> {
     const params = new URLSearchParams();
     if (accountId) params.append("account_id", accountId);
     if (cursor) params.append("cursor", cursor);
@@ -12,5 +12,6 @@ export default async function getIncoming(accountId?: string, cursor?: string): 
         method: "GET",
         url,
         authorization: true,
+        signal,
     })
 }

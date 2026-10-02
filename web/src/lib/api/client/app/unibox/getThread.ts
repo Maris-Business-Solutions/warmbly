@@ -7,7 +7,7 @@ import Request from "../../Request";
 
 export default async function getThread(
     threadId: string,
-    opts: { emailId?: string; limit?: number } = {},
+    opts: { emailId?: string; limit?: number; signal?: AbortSignal } = {},
 ): Promise<UniboxThread> {
     const params = new URLSearchParams();
     params.append("thread_id", threadId);
@@ -18,5 +18,6 @@ export default async function getThread(
         method: "GET",
         url: `/unibox/thread?${params.toString()}`,
         authorization: true,
+        signal: opts.signal,
     })
 }

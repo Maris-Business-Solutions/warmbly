@@ -10,11 +10,13 @@ interface Response {
 
 export default async function getThreadLabels(
   threadId: string,
+  signal?: AbortSignal,
 ): Promise<MiniCategory[]> {
   const res = await Request<Response>({
     method: "GET",
     url: `/unibox/thread/labels?thread_id=${encodeURIComponent(threadId)}`,
     authorization: true,
+    signal,
   });
   return res.data ?? [];
 }
