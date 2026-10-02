@@ -54,7 +54,8 @@ type UniboxRepository interface {
 	// ids that actually changed, which is what gets relayed to the provider.
 	MarkSeenBulk(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, seen bool) ([]uuid.UUID, error)
 	// MarkSeenByThreads is MarkSeenBulk addressed by conversation, for callers
-	// that hold a list row rather than the ids inside it.
+	// that hold a list row rather than the ids inside it. Unread reaches only
+	// each conversation's newest received message.
 	MarkSeenByThreads(ctx context.Context, orgID uuid.UUID, threadIDs []string, seen bool) ([]uuid.UUID, error)
 	// MarkSeenByFolder flips the read state of every message in one canonical
 	// folder for the whole workspace (the sidebar's "mark all as read").
@@ -177,6 +178,8 @@ var mailFieldsPreview = []string{
 const (
 	foldersOutsideWorkingViews = `('spam', 'trash', 'archive')`
 	foldersOutsideAllMail      = `('spam', 'trash')`
+	// Our own copies. Nothing marks one unread: nobody has a sent message to read.
+	foldersOutbound = `('sent', 'drafts')`
 )
 
 // automatedThreadSQL is the predicate "no person wrote in this conversation":
@@ -883,6 +886,7 @@ func (r *uniboxRepository) MarkSeenBulk(ctx context.Context, orgID uuid.UUID, id
 	rows, err := r.db.Query(ctx,
 		`UPDATE unibox_emails SET seen = $1, updated_at = NOW()
 		 WHERE id = ANY($3) AND seen <> $1
+		   AND ($1 OR folder NOT IN `+foldersOutbound+`)
 		   AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)
 		 RETURNING id`,
 		seen, orgID, ids,
@@ -905,18 +909,31 @@ func (r *uniboxRepository) MarkSeenBulk(ctx context.Context, orgID uuid.UUID, id
 
 // MarkSeenByThreads is MarkSeenBulk addressed by conversation. The key is the
 // same one the list collapses on, so an id that never got a thread still
-// resolves to its own single message.
+// resolves to its own single message. Read covers the whole conversation;
+// unread, as in Gmail, only its newest received message, preferring one that
+// is not in spam or trash.
 func (r *uniboxRepository) MarkSeenByThreads(ctx context.Context, orgID uuid.UUID, threadIDs []string, seen bool) ([]uuid.UUID, error) {
 	if len(threadIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := r.db.Query(ctx,
-		`UPDATE unibox_emails SET seen = $1, updated_at = NOW()
+	query := `UPDATE unibox_emails SET seen = $1, updated_at = NOW()
 		 WHERE COALESCE(NULLIF(thread_id, ''), id::text) = ANY($3) AND seen <> $1
 		   AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)
-		 RETURNING id`,
-		seen, orgID, threadIDs,
-	)
+		 RETURNING id`
+	if !seen {
+		query = `UPDATE unibox_emails SET seen = $1, updated_at = NOW()
+		 WHERE seen <> $1 AND id IN (
+			SELECT DISTINCT ON (COALESCE(NULLIF(thread_id, ''), id::text)) id
+			FROM unibox_emails
+			WHERE COALESCE(NULLIF(thread_id, ''), id::text) = ANY($3)
+			  AND folder NOT IN ` + foldersOutbound + `
+			  AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)
+			ORDER BY COALESCE(NULLIF(thread_id, ''), id::text),
+			         folder IN ('spam', 'trash'), internal_date DESC, id DESC
+		 )
+		 RETURNING id`
+	}
+	rows, err := r.db.Query(ctx, query, seen, orgID, threadIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -939,6 +956,7 @@ func (r *uniboxRepository) MarkSeenByFolder(ctx context.Context, orgID uuid.UUID
 	rows, err := r.db.Query(ctx,
 		`UPDATE unibox_emails SET seen = $1, updated_at = NOW()
 		 WHERE folder = $3 AND seen <> $1
+		   AND ($1 OR folder NOT IN `+foldersOutbound+`)
 		   AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $2)
 		 RETURNING id`,
 		seen, orgID, folder,

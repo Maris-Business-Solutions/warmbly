@@ -17,7 +17,7 @@ import (
 func (d Deps) registerInboxActionTools(r *Registry) {
 	r.Register(Tool{
 		Name:        "mark_thread_seen",
-		Description: "Mark all messages in a thread seen (or unseen).",
+		Description: "Mark a thread seen (every message) or unseen (its newest received message, as in Gmail).",
 		InputSchema: objectSchema(map[string]any{
 			"thread_id": strProp("The thread id."),
 			"seen":      boolProp("true to mark seen (default), false to mark unseen."),
@@ -120,7 +120,8 @@ func (d Deps) markThreadSeen(ctx context.Context, inv Invocation, args json.RawM
 	if in.Seen != nil {
 		seen = *in.Seen
 	}
-	if _, xerr := d.Unibox.MarkSeenBulk(ctx, inv.OrgID, &models.MarkSeen{EmailIDs: ids, Seen: seen}); xerr != nil {
+	// By thread, so unseen follows the same rule as the inbox's Mark as unread.
+	if _, xerr := d.Unibox.MarkSeenBulk(ctx, inv.OrgID, &models.MarkSeen{ThreadIDs: []string{in.ThreadID}, Seen: seen}); xerr != nil {
 		return "", fromErrx(xerr)
 	}
 	return jsonResult(map[string]any{"ok": true, "updated": len(ids), "seen": seen})

@@ -151,6 +151,8 @@ Labels mark conversations and contacts. Mailbox tags mark the mailboxes themselv
 
 A conversation is unread when any message inside is unseen, marked by a blue dot in the margin, bolder text, and a blue timestamp. Opening it marks its messages seen and updates the counts, and so does **Mark as read** on the row or on a selection, without opening anything.
 
+**Mark as unread** works like it does in Gmail: only the newest message you received in the conversation turns unread, so the conversation is unread again wherever that message sits. Your own sent replies are never marked unread, so the conversation does not light up in Sent, and Gmail does not label your sent copy unread either. Marking it unread from the open conversation closes it, because the reader marks whatever it shows as read.
+
 Read state travels both ways. A message arriving already read is stored that way, and reading a conversation here marks it read in the mailbox itself, so Gmail, Outlook and any IMAP mailbox stop showing it bold too. **Mark as unread** does the same in reverse, and **Mark all as read** on a folder carries the whole sweep across. Only a real change travels: opening a conversation you have already read costs nothing at the provider.
 
 The relay runs on the worker that holds the mailbox, just after Warmbly's own copy is updated, so the dashboard never waits on it. If the mailbox is between workers at that moment, or the provider refuses, Warmbly keeps your read state and the mailbox keeps its own; nothing retries, because the next sync reports whatever the provider actually thinks.
