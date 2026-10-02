@@ -135,6 +135,12 @@ const followUpSweepInterval = time.Hour
 // touched in three months is not one anybody is about to chase.
 const followUpSweepWindow = 90
 
+// followUpSweepBudget is how long one pass may page through a workspace before the next resumes it.
+const followUpSweepBudget = 2 * time.Minute
+
+// followUpSweepFresh is how recent a thread's activity is to be swept first in every pass.
+const followUpSweepFresh = 3 * followUpSweepInterval
+
 func (s *JobsService) sweepFollowUps(ctx context.Context) {
 	if s.InboxTagger == nil || s.EmailRepository == nil {
 		return
@@ -148,14 +154,17 @@ func (s *JobsService) sweepFollowUps(ctx context.Context) {
 			log.Warn().Err(err).Msg("follow-up sweep: could not list workspaces")
 		}
 		for _, orgID := range orgs {
-			since := time.Now().AddDate(0, 0, -followUpSweepWindow)
-			if p, serr := s.InboxTagger.SweepFollowUps(ctx, orgID, since, 0); serr != nil {
+			if p, serr := s.InboxTagger.SweepFollowUps(ctx, orgID, inboxtag.FollowUpSweep{
+				Since:  time.Now().AddDate(0, 0, -followUpSweepWindow),
+				Fresh:  followUpSweepFresh,
+				Budget: followUpSweepBudget,
+			}); serr != nil {
 				if ctx.Err() != nil {
 					return
 				}
 				log.Warn().Err(serr).Str("org_id", orgID.String()).Msg("follow-up sweep failed")
 			} else if p.Threads > 0 {
-				log.Debug().Str("org_id", orgID.String()).Int("threads", p.Threads).Msg("follow-up sweep")
+				log.Debug().Str("org_id", orgID.String()).Int("threads", p.Threads).Int("pages", p.Pages).Bool("cycle_complete", p.Complete).Msg("follow-up sweep")
 				if s.StreamingPublisher != nil {
 					s.StreamingPublisher.PublishEmailUpdated(ctx, &pubsub.EmailInboxEvent{OrgID: orgID.String()})
 				}

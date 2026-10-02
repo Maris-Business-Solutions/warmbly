@@ -185,7 +185,6 @@ func runInboxTagFollowUps(ctx context.Context, args []string) error {
 	fs := newFlagSet("inbox-tag follow-ups")
 	org := fs.String("org", "", "organization id, or the owner's email address")
 	days := fs.Int("days", 90, "how far back to consider threads")
-	limit := fs.Int("limit", 2000, "most threads to sweep in this run")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -215,7 +214,8 @@ func runInboxTagFollowUps(ctx context.Context, args []string) error {
 		true,
 	)
 
-	p, err := svc.SweepFollowUps(ctx, orgID, time.Now().AddDate(0, 0, -*days), *limit)
+	// A full cycle of its own, so the hourly sweep's position is left where it was.
+	p, err := svc.SweepFollowUps(ctx, orgID, inboxtag.FollowUpSweep{Since: time.Now().AddDate(0, 0, -*days), Full: true})
 	if err != nil {
 		return fmt.Errorf("follow-up sweep: %w", err)
 	}

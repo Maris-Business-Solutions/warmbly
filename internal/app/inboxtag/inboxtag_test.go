@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -231,6 +232,9 @@ type fakeRepo struct {
 	inReplyTo []string
 	reopened  []string
 	states    []repository.ThreadFollowUpState
+	cursor    *repository.FollowUpPosition
+	pages     int
+	base      time.Time
 }
 
 func (f *fakeRepo) Claim(_ context.Context, _, _ uuid.UUID, id, _ string) (bool, error) {
@@ -281,8 +285,53 @@ func (f *fakeRepo) Reopen(_ context.Context, _ uuid.UUID, id, _ string) ([]strin
 	return []string{"cold-inbound", "needs-review"}, nil
 }
 
-func (f *fakeRepo) ThreadStates(context.Context, uuid.UUID, time.Time, int) ([]repository.ThreadFollowUpState, error) {
-	return f.states, nil
+// fakeMailbox holds every fake thread; states are in walk order, one message each.
+var fakeMailbox = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+
+// position puts thread i one minute older than thread i-1, counting back from base.
+func (f *fakeRepo) position(i int) repository.FollowUpPosition {
+	base := f.base
+	if base.IsZero() {
+		base = time.Now()
+	}
+	return repository.FollowUpPosition{
+		MailboxID: fakeMailbox,
+		At:        base.Add(-time.Duration(i) * time.Minute),
+		RowID:     uuid.NewSHA1(uuid.Nil, []byte(strconv.Itoa(i))),
+	}
+}
+
+func (f *fakeRepo) FollowUpMailboxes(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return []uuid.UUID{fakeMailbox}, nil
+}
+
+func (f *fakeRepo) FollowUpPage(_ context.Context, _, _ uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
+	f.pages++
+	start := 0
+	if after != nil {
+		for start < len(f.states) && f.position(start).RowID != after.RowID {
+			start++
+		}
+		start++
+	}
+	var page repository.FollowUpPage
+	for i := start; i < len(f.states) && i < start+limit && !f.position(i).At.Before(since); i++ {
+		st := f.states[i]
+		st.Position = f.position(i)
+		page.States = append(page.States, st)
+		page.Rows++
+		page.Last = &st.Position
+	}
+	return page, nil
+}
+
+func (f *fakeRepo) FollowUpCursor(context.Context, uuid.UUID) (*repository.FollowUpPosition, error) {
+	return f.cursor, nil
+}
+
+func (f *fakeRepo) SaveFollowUpCursor(_ context.Context, _ uuid.UUID, pos *repository.FollowUpPosition) error {
+	f.cursor = pos
+	return nil
 }
 
 func (f *fakeRepo) GetByMessageID(_ context.Context, _ uuid.UUID, id string) (*repository.InboxTagResult, error) {

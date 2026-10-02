@@ -338,7 +338,7 @@ func TestSweepSeedsWorkspaceLabels(t *testing.T) {
 	svc.WireSettings(fakeSettings{s: models.InboxTaggingSettings{
 		Questions: []models.InboxTagQuestion{laterMaybe(models.InboxTagQuestionAction{}), roleQuestion()},
 	}})
-	if _, err := svc.SweepFollowUps(context.Background(), uuid.New(), time.Now().Add(-time.Hour), 10); err != nil {
+	if _, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{Since: time.Now().Add(-time.Hour)}); err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
 	for _, want := range []string{"later-maybe", "recruiter", "hiring-manager"} {

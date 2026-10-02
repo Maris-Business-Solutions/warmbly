@@ -2,6 +2,8 @@ package inboxtag
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -138,6 +140,9 @@ type fakeCategories struct {
 	labels  map[string]map[string]bool
 	seeded  []string
 	removed map[string][]string
+	// synced counts follow-up syncs per thread; onSync runs after each.
+	synced map[string]int
+	onSync func()
 }
 
 func (f *fakeCategories) EnsureCategory(_ context.Context, _ uuid.UUID, slug string) (uuid.UUID, error) {
@@ -174,6 +179,13 @@ func (f *fakeCategories) SyncExclusiveLabels(ctx context.Context, orgID uuid.UUI
 	if want != "" {
 		f.labels[threadID][want] = true
 	}
+	if f.synced == nil {
+		f.synced = map[string]int{}
+	}
+	f.synced[threadID]++
+	if f.onSync != nil {
+		f.onSync()
+	}
 	return nil
 }
 func (f *fakeCategories) RemoveAutoLabels(_ context.Context, _ uuid.UUID, threadID string, slugs []string) error {
@@ -198,7 +210,7 @@ func TestSweepNeedsNoModel(t *testing.T) {
 	asker := &countingAsker{}
 	svc := NewService(asker, repo, cats, nil, true)
 
-	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), now.AddDate(0, 0, -90), 0)
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{Since: now.AddDate(0, 0, -90)})
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
@@ -235,7 +247,7 @@ func TestSweepReplacesRatherThanAccumulates(t *testing.T) {
 	svc := NewService(&countingAsker{}, repo, cats, nil, true)
 	orgID := uuid.New()
 
-	if _, err := svc.SweepFollowUps(context.Background(), orgID, now.AddDate(0, 0, -90), 0); err != nil {
+	if _, err := svc.SweepFollowUps(context.Background(), orgID, FollowUpSweep{Since: now.AddDate(0, 0, -90)}); err != nil {
 		t.Fatalf("first sweep: %v", err)
 	}
 	if !cats.has("t-1", LabelFollowUp) {
@@ -246,7 +258,7 @@ func TestSweepReplacesRatherThanAccumulates(t *testing.T) {
 	repo.states[0].LastInboundAt = now.AddDate(0, 0, -3)
 	repo.states[0].LastKind = KindHumanReply
 	repo.states[0].BestIntent = IntentWantsInfo
-	if _, err := svc.SweepFollowUps(context.Background(), orgID, now.AddDate(0, 0, -90), 0); err != nil {
+	if _, err := svc.SweepFollowUps(context.Background(), orgID, FollowUpSweep{Since: now.AddDate(0, 0, -90)}); err != nil {
 		t.Fatalf("second sweep: %v", err)
 	}
 	if !cats.has("t-1", LabelNeedsReply) {
@@ -258,10 +270,164 @@ func TestSweepReplacesRatherThanAccumulates(t *testing.T) {
 
 	// We answer, so nothing is owed either way yet.
 	repo.states[0].LastOutboundAt = now
-	if _, err := svc.SweepFollowUps(context.Background(), orgID, now.AddDate(0, 0, -90), 0); err != nil {
+	if _, err := svc.SweepFollowUps(context.Background(), orgID, FollowUpSweep{Since: now.AddDate(0, 0, -90)}); err != nil {
 		t.Fatalf("third sweep: %v", err)
 	}
 	if cats.has("t-1", LabelNeedsReply) {
 		t.Error("still asking us to reply after we did")
+	}
+}
+
+// quietThreads is n threads we wrote to an hour ago, with one we wrote to
+// eight days ago at index stale, which is due a Follow up.
+func quietThreads(n, stale int) []repository.ThreadFollowUpState {
+	now := time.Now()
+	out := make([]repository.ThreadFollowUpState, n)
+	for i := range out {
+		out[i] = repository.ThreadFollowUpState{ThreadID: fmt.Sprintf("t-%d", i), LastOutboundAt: now.Add(-time.Hour)}
+	}
+	out[stale].LastOutboundAt = now.AddDate(0, 0, -8)
+	return out
+}
+
+// A thread outside the newest 2,000 is reached: each pass takes one page and
+// the next resumes after it, until the cycle ends and starts again at the newest.
+func TestSweepPagesThroughEveryThread(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(2500, 2400)}
+	cats := &fakeCategories{}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+	orgID := uuid.New()
+	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), Budget: time.Nanosecond, PageSize: 500}
+
+	passes := 0
+	for {
+		passes++
+		p, err := svc.SweepFollowUps(context.Background(), orgID, opts)
+		if err != nil {
+			t.Fatalf("pass %d: %v", passes, err)
+		}
+		if p.Pages != 1 {
+			t.Fatalf("pass %d read %d pages under a spent budget, want 1", passes, p.Pages)
+		}
+		if p.Complete {
+			break
+		}
+		if repo.cursor == nil {
+			t.Fatalf("pass %d stopped mid-cycle without saving where", passes)
+		}
+		if passes > 10 {
+			t.Fatal("the cycle never completed")
+		}
+	}
+	if passes != 6 {
+		t.Errorf("took %d passes, want 6 (five full pages and the empty one that ends the cycle)", passes)
+	}
+	if !cats.has("t-2400", LabelFollowUp) {
+		t.Error("the stale thread beyond the newest 2,000 was never labelled")
+	}
+	for i := range 2500 {
+		if n := cats.synced[fmt.Sprintf("t-%d", i)]; n != 1 {
+			t.Fatalf("t-%d was evaluated %d times in one cycle, want once", i, n)
+		}
+	}
+	if repo.cursor != nil {
+		t.Fatalf("a finished cycle left a cursor at %+v", repo.cursor)
+	}
+
+	// The next cycle starts again at the newest thread.
+	if _, err := svc.SweepFollowUps(context.Background(), orgID, opts); err != nil {
+		t.Fatalf("next cycle: %v", err)
+	}
+	if cats.synced["t-0"] != 2 || cats.synced["t-500"] != 1 {
+		t.Errorf("next cycle evaluated t-0 %d and t-500 %d times, want it to restart at the newest page", cats.synced["t-0"], cats.synced["t-500"])
+	}
+}
+
+// A pass cut off mid-page keeps the cursor on the last thread it evaluated, and
+// the next pass picks up right after it.
+func TestSweepResumesAfterTheLastEvaluatedThread(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(1200, 1100)}
+	cats := &fakeCategories{}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+	orgID := uuid.New()
+	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	cats.onSync = func() {
+		if calls++; calls == 700 {
+			cancel()
+		}
+	}
+	if _, err := svc.SweepFollowUps(ctx, orgID, opts); !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted sweep returned %v, want context.Canceled", err)
+	}
+	if repo.cursor == nil || repo.cursor.RowID != repo.position(699).RowID {
+		t.Fatalf("cursor %+v, want the 700th thread, the last one evaluated", repo.cursor)
+	}
+
+	cats.onSync = nil
+	p, err := svc.SweepFollowUps(context.Background(), orgID, opts)
+	if err != nil {
+		t.Fatalf("resumed sweep: %v", err)
+	}
+	if p.Threads != 500 || !p.Complete {
+		t.Fatalf("resumed sweep evaluated %d threads (complete %v), want the 500 left", p.Threads, p.Complete)
+	}
+	for i := range 1200 {
+		if n := cats.synced[fmt.Sprintf("t-%d", i)]; n != 1 {
+			t.Fatalf("t-%d evaluated %d times across the interrupted and resumed passes, want once", i, n)
+		}
+	}
+	if !cats.has("t-1100", LabelFollowUp) {
+		t.Error("the stale thread after the interruption was never labelled")
+	}
+}
+
+// A reply mid-cycle is swept in the next pass, not when the cycle comes back round.
+func TestSweepTakesFreshThreadsFirstWhenResuming(t *testing.T) {
+	now := time.Now()
+	repo := &fakeRepo{states: quietThreads(3000, 2999), base: now}
+	// They answered an hour ago in a thread we chased a week ago.
+	repo.states[60] = repository.ThreadFollowUpState{ThreadID: "t-60", LastOutboundAt: now.AddDate(0, 0, -7), LastInboundAt: now.Add(-time.Hour), BestIntent: IntentWantsInfo, LastKind: KindHumanReply}
+	cats := &fakeCategories{labels: map[string]map[string]bool{"t-60": {LabelFollowUp: true}}}
+	pos := repo.position(1000)
+	repo.cursor = &pos
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{
+		Since: now.AddDate(0, 0, -90), Fresh: 3*time.Hour + 30*time.Second, Budget: time.Nanosecond, PageSize: 500,
+	})
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if cats.has("t-60", LabelFollowUp) {
+		t.Error("a thread they answered still wears Follow up while the cycle is elsewhere")
+	}
+	if cats.synced["t-1001"] != 1 {
+		t.Error("the cycle did not move on from its cursor in the same pass")
+	}
+	if p.Threads != 181+500 {
+		t.Errorf("swept %d threads, want the 181 fresh ones and one cycle page", p.Threads)
+	}
+}
+
+// An operator's full run neither reads nor moves the hourly sweep's cursor.
+func TestFullSweepLeavesTheCursorAlone(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(1200, 1100)}
+	pos := repo.position(600)
+	repo.cursor = &pos
+	cats := &fakeCategories{}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), Full: true})
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if p.Threads != 1200 || !p.Complete {
+		t.Fatalf("full sweep evaluated %d threads (complete %v), want all 1200", p.Threads, p.Complete)
+	}
+	if repo.cursor == nil || repo.cursor.RowID != pos.RowID {
+		t.Fatalf("full sweep moved the cursor to %+v", repo.cursor)
 	}
 }
