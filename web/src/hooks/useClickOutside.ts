@@ -1,5 +1,5 @@
 // The one way a dropdown, popover or picker closes itself: a press anywhere
-// outside it, Escape, or another one opening. Every floating layer in the
+// outside it (an email body's frame included), Escape, or another one opening. Every floating layer in the
 // dashboard goes through this so they all behave the same.
 
 import { useEffect, useRef, type RefObject } from "react";
@@ -79,6 +79,24 @@ export default function useClickOutside(open: boolean, onClose: () => void, insi
                 if (document.activeElement?.tagName === "IFRAME") self.close();
             });
         };
+        // A tap on a phone does not move focus into the frame either, so a
+        // same-origin frame's own document is listened to as well. A frame
+        // (re)loading while open is picked up on its load.
+        const frameDocs = new Set<Document>();
+        const onFramePress = () => self.close();
+        const watchFrame = (frame: HTMLIFrameElement) => {
+            if (isInside(frame)) return;
+            const doc = frame.contentDocument;
+            if (!doc || frameDocs.has(doc)) return;
+            doc.addEventListener("pointerdown", onFramePress, true);
+            frameDocs.add(doc);
+        };
+        const frames = Array.from(document.querySelectorAll("iframe"));
+        const onFrameLoad = (e: Event) => watchFrame(e.currentTarget as HTMLIFrameElement);
+        for (const frame of frames) {
+            watchFrame(frame);
+            frame.addEventListener("load", onFrameLoad);
+        }
         // Capture phase: dialogs stop mousedown propagation on their card so the
         // backdrop does not close them, which would otherwise swallow this too.
         // Pointer events so a tap closes it on touch screens as well.
@@ -87,6 +105,8 @@ export default function useClickOutside(open: boolean, onClose: () => void, insi
         window.addEventListener("blur", onBlur);
         return () => {
             clearTimeout(blurTimer);
+            for (const doc of frameDocs) doc.removeEventListener("pointerdown", onFramePress, true);
+            for (const frame of frames) frame.removeEventListener("load", onFrameLoad);
             document.removeEventListener("pointerdown", onPointerDown, true);
             document.removeEventListener("keydown", onKey, true);
             window.removeEventListener("blur", onBlur);
