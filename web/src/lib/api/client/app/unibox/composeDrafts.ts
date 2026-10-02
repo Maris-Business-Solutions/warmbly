@@ -28,11 +28,12 @@ export interface ComposeDraftSaveInput {
     body_html?: string;
 }
 
-export async function listComposeDrafts(): Promise<ComposeDraft[]> {
+export async function listComposeDrafts(signal?: AbortSignal): Promise<ComposeDraft[]> {
     const res = await Request<{ data: ComposeDraft[] }>({
         method: "GET",
         url: "/unibox/drafts",
         authorization: true,
+        signal,
     });
     return res.data ?? [];
 }

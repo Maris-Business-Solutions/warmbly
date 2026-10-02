@@ -76,7 +76,7 @@ Reading the list needs `view_organizations`; creating, editing and deleting need
 |---|---|
 | **Live Events** | The event bus as it happens |
 | **Audit Log** | Who did what, from where, across the instance |
-| **Jobs** | Every background loop on the instance with its last run, next run and last error, and a **Run now** that the owning process picks up within about 15 seconds. The backend's and the consumer's loops are in the same list |
+| **Jobs** | Every background loop on the instance with its last run, next run and last error, and a **Run now** that the owning process picks up within about 15 seconds. The backend's and the consumer's loops are in the same list. The next run is stored, so a restart or deploy resumes the schedule instead of starting a fresh interval, a job that came due while the process was down runs shortly after boot, and when several processes host the same job each slot runs once |
 
 ## Instance
 

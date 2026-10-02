@@ -7,6 +7,8 @@ The unified inbox (unibox) is the org-wide view of everything that lands in your
 
 The list, thread, overview, conversation-label, and snooze data is org-scoped, not per-user. Two members of the same organization see the same inbox, the same unread badge, the same threads, and the same conversation labels, whoever applied them. Snoozes are the one exception: they are attached to the calling user.
 
+The list, thread, message, overview, unread-count and conversation-label reads are bounded at 30 seconds, including any wait for a database connection; a read that runs past it is abandoned and answers with the standard `500` error body.
+
 ## List incoming mail
 
 `GET /unibox`
@@ -84,7 +86,7 @@ Returns the number of unread conversations in the Inbox folder, optionally scope
 
 `GET /unibox/overview`
 
-Rolls up the scope rail and top metric strip in one call: unread, today, week, snoozed, awaiting-reply, and pending-scheduled counts, plus per-folder, per-mailbox, per-tag, and per-conversation-label breakdowns. The `folders` array always lists all six canonical folders, zero-filled, in sidebar order; the headline counts exclude `spam` and `trash`. All counts are threads, not messages, except `scheduled_pending`, which counts the sends queued from the organization's mailboxes against the workspace cap in `scheduled_pending_max`. Automated conversations are counted in `automated` and `automated_unread` and left out of `unread`, `today`, `week`, the `inbox` folder and the per-mailbox and per-tag counts; `total` and the label counts still include them. Auth: **Scope** `READ_UNIBOX` · **Org permission** `access_unibox`.
+Rolls up the scope rail and top metric strip in one call: unread, today, week, snoozed, awaiting-reply, and pending-scheduled counts, plus per-folder, per-mailbox, per-tag, and per-conversation-label breakdowns. The `folders` array always lists all six canonical folders, zero-filled, in sidebar order; the headline counts exclude `spam` and `trash`. All counts are threads, not messages, except `scheduled_pending`, which counts the sends queued from the organization's mailboxes against the workspace cap in `scheduled_pending_max`. Automated conversations are counted in `automated` and `automated_unread` and left out of `unread`, `today`, `week`, the `inbox` folder and the per-mailbox and per-tag counts; `total` and the label counts still include them. Concurrent requests from the same organization share one computation, and its result is served for up to one second after it started (`generated_at` is when it started). Auth: **Scope** `READ_UNIBOX` · **Org permission** `access_unibox`.
 
 ### Response
 
@@ -260,7 +262,9 @@ Returns the resulting label set in a `data` array.
 
 `PATCH /unibox/seen`
 
-Marks messages as read or unread, org-wide: either an explicit batch of up to 500 ids, or a whole canonical folder at once. Send one of `email_ids` or `folder`; sending both returns `400`. Auth: **Scope** `WRITE_UNIBOX` · **Org permission** `access_unibox`.
+Marks messages as read or unread, org-wide: an explicit batch of up to 500 message ids, up to 500 conversations, or a whole canonical folder at once. `email_ids` and `thread_ids` can be sent together; `folder` cannot be combined with either and returns `400`. Auth: **Scope** `WRITE_UNIBOX` · **Org permission** `access_unibox`.
+
+Marking a conversation read reads every message in it. Marking one unread works like Gmail: only its newest received message turns unread (one outside spam and trash when there is one), so the conversation shows as unread without your own replies doing the same. A sent or draft copy is never marked unread, whichever field names it.
 
 The change is also carried out to the mailbox itself, so a message marked read here stops showing as unread in Gmail, Outlook or an IMAP mailbox. Opening a message with `GET /unibox/:id` marks it read the same way, relay included. Only messages whose state actually changed are relayed, and the relay is best-effort: it happens after the response, on the worker holding the mailbox, and a mailbox that is unplaced at that moment keeps its own read state until something changes it again. [Filing a conversation](/guides/unibox/#filing-in-the-mailbox-too) is relayed the same way.
 
@@ -269,6 +273,7 @@ The change is also carried out to the mailbox itself, so a message marked read h
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `email_ids` | string[] | No | Message UUIDs to update (max 500). |
+| `thread_ids` | string[] | No | Conversations to update (max 500). |
 | `folder` | string | No | Sweep every message in this folder instead of an id list: one of `inbox`, `sent`, `drafts`, `archive`, `spam`, `trash`. |
 | `seen` | boolean | No | `true` marks as read, `false` marks as unread. |
 

@@ -104,6 +104,9 @@ describe("unibox mark as unread", SUITE, () => {
         const patches = seenPatches();
         expect(patches.length).toBeGreaterThan(0);
         expect(patches.every((p) => p.data?.seen === false)).toBe(true);
+        // By conversation only: naming every message would mark our own sent
+        // copies unread too, where the server picks the newest received one.
+        expect(patches[0].data).toMatchObject({ email_ids: [], thread_ids: [ROWS[0].thread_id] });
     });
 
     it("keeps the open conversation unread when its row menu marks it", async () => {

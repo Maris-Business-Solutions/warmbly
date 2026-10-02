@@ -10,7 +10,7 @@ import listScheduled from "@/lib/api/client/app/unibox/listScheduled";
 export default function useThreadScheduled(threadId: string | undefined) {
     return useQuery({
         queryKey: ["unibox", "scheduled", "thread", threadId ?? ""],
-        queryFn: () => listScheduled({ threadId }),
+        queryFn: ({ signal }) => listScheduled({ threadId, signal }),
         enabled: !!threadId,
         staleTime: 15_000,
         refetchInterval: 30_000,

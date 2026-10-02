@@ -1,7 +1,7 @@
 import axios from "axios";
 import { API_BASE_URL } from "@/lib/information";
 import { noteStep } from "@/lib/observability";
-import { normalizeError } from "./normalizeError";
+import { isRequestCancelled, normalizeError } from "./normalizeError";
 
 const Client = axios.create({
     baseURL: API_BASE_URL,
@@ -10,6 +10,8 @@ const Client = axios.create({
 Client.interceptors.response.use(
     (response) => response,
     (error) => {
+        // An aborted request is the caller's choice, not a failure: no AppError, no trail step.
+        if (isRequestCancelled(error)) throw error;
         const normalized = normalizeError(error);
         noteFailure(error, normalized);
         throw normalized;

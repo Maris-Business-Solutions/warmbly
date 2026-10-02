@@ -60,6 +60,9 @@ export interface UISlice {
   uniboxRailSectionOrder: string[]
   // Favorites, in rail order; each key is a scopeKey from any section.
   uniboxRailFavorites: UniboxRailFavorite[]
+  // Whose saved rail the four fields above hold ("<userId>:<orgId>"); null
+  // for a layout made before the rail was saved to the account.
+  uniboxRailOwner: string | null
 
   // Theme
   theme: Theme
@@ -200,6 +203,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   uniboxRailOrder: {},
   uniboxRailSectionOrder: [],
   uniboxRailFavorites: [],
+  uniboxRailOwner: null,
 
   // Theme
   theme: getInitialTheme(),

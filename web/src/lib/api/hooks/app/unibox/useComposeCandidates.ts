@@ -7,7 +7,7 @@ import composeCandidates from "@/lib/api/client/app/unibox/composeCandidates";
 export default function useComposeCandidates(address: string, enabled = true) {
     return useQuery({
         queryKey: ["unibox", "compose", "candidates", address],
-        queryFn: () => composeCandidates(address),
+        queryFn: ({ signal }) => composeCandidates(address, signal),
         staleTime: 15_000,
         placeholderData: keepPreviousData,
         enabled,

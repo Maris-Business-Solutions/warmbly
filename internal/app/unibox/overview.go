@@ -12,12 +12,38 @@ import (
 
 // Overview rolls up the counts the dashboard's scope rail and top
 // metric strip need into one request, so the dashboard never has to
-// fan out N+M follow-up queries to render those panels.
-func (s *uniboxService) Overview(ctx context.Context, orgID, userID uuid.UUID) (*models.UniboxOverview, *errx.Error) {
-	o, err := s.uniboxRepository.Overview(ctx, orgID)
+// fan out N+M follow-up queries to render those panels. The counts are
+// the organization's whoever asks, so its callers share a computation.
+func (s *uniboxService) Overview(ctx context.Context, orgID, _ uuid.UUID) (*models.UniboxOverview, *errx.Error) {
+	scope := overviewScope{OrgID: orgID}
+	var (
+		o   *models.UniboxOverview
+		err error
+	)
+	if s.overview != nil {
+		o, err = s.overview.get(ctx, scope)
+	} else {
+		o, err = s.computeOverview(ctx, scope)
+	}
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
+	}
+	return o, nil
+}
+
+// ForgetOverview drops the organization's shared overview after a unibox write.
+func (s *uniboxService) ForgetOverview(orgID uuid.UUID) {
+	if s.overview != nil {
+		s.overview.forget(orgID)
+	}
+}
+
+// computeOverview reads only what scope names; the result is shared and read-only.
+func (s *uniboxService) computeOverview(ctx context.Context, scope overviewScope) (*models.UniboxOverview, error) {
+	o, err := s.uniboxRepository.Overview(ctx, scope.OrgID)
+	if err != nil {
+		return nil, err
 	}
 	if len(o.Mailboxes) > OverviewMaxMailboxes {
 		o.Mailboxes = o.Mailboxes[:OverviewMaxMailboxes]
@@ -31,7 +57,7 @@ func (s *uniboxService) Overview(ctx context.Context, orgID, userID uuid.UUID) (
 	// overview is more important than the badge — so we log via
 	// the error reporter and continue with a zero count.
 	if s.taskRepo != nil {
-		if n, err := s.taskRepo.CountScheduledInOrg(ctx, orgID); err == nil {
+		if n, err := s.taskRepo.CountScheduledInOrg(ctx, scope.OrgID); err == nil {
 			o.ScheduledPending = n
 		} else {
 			errs.CaptureException(err)

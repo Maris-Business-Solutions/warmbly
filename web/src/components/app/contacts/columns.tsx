@@ -17,7 +17,7 @@ import {
 import clippedTitle from "@/lib/helper/clippedTitle";
 import type { ContactCampaignProgress, VerificationSource, VerificationStatus } from "@/lib/api/models/app/contacts/Contact";
 import type { SearchContactsSortBy } from "@/lib/api/models/app/contacts/search-contacts.types";
-import type { ViewName } from "@/lib/api/models/app/views/ViewPreferences";
+import type { ColumnViewName } from "@/lib/api/models/app/views/ViewPreferences";
 import { CategoryChip } from "./CategoryPicker";
 import VerificationBadge from "./VerificationBadge";
 import ContactAvatar from "./ContactAvatar";
@@ -177,7 +177,7 @@ const nameColumn: ContactColumn = {
 // leave. Which breakpoint each sized column appears at is then just "does Name
 // still clear ~170px": Leads carries five campaign columns Contacts does not, so
 // company waits longer for room there.
-function companyColumn(view: ViewName): ContactColumn {
+function companyColumn(view: ColumnViewName): ContactColumn {
     return {
         id: "company",
         label: "Company",
@@ -333,7 +333,7 @@ const campaignsColumn: ContactColumn = {
 
 const dateCell = "font-mono text-[11px] text-slate-500 tabular-nums";
 
-const addedColumn = (view: ViewName): ContactColumn => ({
+const addedColumn = (view: ColumnViewName): ContactColumn => ({
     id: "created_at",
     label: "Added",
     width: view === "campaign_leads" ? "w-32" : "w-24",
@@ -387,7 +387,7 @@ export function customColumn(key: string): ContactColumn {
 
 // Every built-in column a view can show, in its natural order. The chooser
 // lists them in this order under "Available".
-export function builtinColumns(view: ViewName): ContactColumn[] {
+export function builtinColumns(view: ColumnViewName): ContactColumn[] {
     if (view === "campaign_leads") {
         return [
             nameColumn,
@@ -428,7 +428,7 @@ export function emptyColumnIds(columns: ContactColumn[], rows: ContactRow[]): Se
 }
 
 // The layout a member sees before choosing anything.
-export const DEFAULT_COLUMNS: Record<ViewName, string[]> = {
+export const DEFAULT_COLUMNS: Record<ColumnViewName, string[]> = {
     contacts: ["name", "company", "phone", "status", "campaigns", "created_at"],
     campaign_leads: ["name", "company", "progress", "opened", "clicked", "replied", "current_step", "sender", "last_activity"],
 };
@@ -440,7 +440,7 @@ export const DEFAULT_COLUMNS: Record<ViewName, string[]> = {
 // is kept even when no contact currently carries it, so the column the member
 // picked does not vanish because an import replaced the field's name.
 export function resolveColumns(
-    view: ViewName,
+    view: ColumnViewName,
     saved: string[] | undefined,
     customKeys: string[],
 ): { visible: ContactColumn[]; available: ContactColumn[] } {
@@ -473,7 +473,7 @@ export interface SortOption {
 }
 
 // The sort choices the toolbar menu offers, beyond what a header click reaches.
-export function sortOptions(view: ViewName): SortOption[] {
+export function sortOptions(view: ColumnViewName): SortOption[] {
     const base: SortOption[] = [
         { key: "created_at", label: "Date added", asc: false },
         { key: "updated_at", label: "Last updated", asc: false },

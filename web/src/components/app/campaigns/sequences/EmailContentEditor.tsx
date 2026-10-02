@@ -44,6 +44,7 @@ import { VARIABLES, htmlToPlain, linkifyUnsubscribe, promptToHtml, renderPreview
 import { LINK_VARIABLES, UNSUBSCRIBE_TOKEN } from "@/lib/templateVars";
 import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
 import { isDocumentBody } from "@/lib/email/pastedEmail";
+import type { ArmSubject } from "./threading";
 
 export default function EmailContentEditor({
     subject,
@@ -72,8 +73,10 @@ export default function EmailContentEditor({
     subjectPlaceholder?: string;
     // A step that replies in the contact's thread has no subject of its own:
     // a reply carries the conversation's. Pass the conversation's subject to
-    // show it read-only in place of the field.
-    subjectLocked?: { subject: string; note: string };
+    // show it read-only in place of the field. `alternates` are the subjects
+    // the opening email's A/B variants carry, which a contact sent one of is
+    // replied to under instead.
+    subjectLocked?: { subject: string; note: string; alternates?: ArmSubject[] };
     bodyPlaceholder?: string;
     // When set, the preview renders for a chosen lead and mailbox and shows the
     // campaign's opt-out footer, signature and attachments.
@@ -283,10 +286,26 @@ export default function EmailContentEditor({
                 </div>
                 {subjectLocked ? (
                     <>
-                        <div className="h-9 px-3 flex items-center rounded-md border border-slate-200 bg-slate-50 text-[13.5px] text-slate-500">
+                        <div className="h-9 px-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 text-[13.5px] text-slate-500">
+                            {!!subjectLocked.alternates?.length && (
+                                <span className="shrink-0 text-[11px] font-medium text-slate-400">Original</span>
+                            )}
                             <span className="truncate">{subjectLocked.subject || "No subject"}</span>
                         </div>
-                        <p className="mt-1.5 text-[10.5px] text-slate-400">{subjectLocked.note}</p>
+                        {subjectLocked.alternates?.map((arm) => (
+                            <div
+                                key={arm.subject}
+                                className="mt-1 h-9 px-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 text-[13.5px] text-slate-500"
+                            >
+                                <span className="shrink-0 text-[11px] font-medium text-slate-400">{arm.name}</span>
+                                <span className="truncate">{arm.subject}</span>
+                            </div>
+                        ))}
+                        <p className="mt-1.5 text-[10.5px] text-slate-400">
+                            {subjectLocked.note}
+                            {!!subjectLocked.alternates?.length &&
+                                " The email that opened the thread is A/B tested, so each contact is replied to under the subject of the version they got."}
+                        </p>
                     </>
                 ) : (
                     <TextInput value={subject} onChange={onSubjectChange} placeholder={subjectPlaceholder} className="w-full h-9 px-3 text-[13.5px]" />

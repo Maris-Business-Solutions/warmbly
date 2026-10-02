@@ -1,5 +1,5 @@
 // useClickOutside is how every dropdown closes: a press outside it, Escape (the
-// innermost one only), or focus moving into an iframe.
+// innermost one only), or focus moving into or a tap landing in an iframe.
 
 import React from "react";
 import { createPortal } from "react-dom";
@@ -139,5 +139,37 @@ describe("useClickOutside", () => {
         fireEvent.blur(window);
         await settle();
         expect(isOpen("A")).toBe(false);
+    });
+
+    // A tap on a phone moves no focus, so only the frame's own document hears it.
+    it("closes on a tap inside a same-origin frame that never takes focus", () => {
+        render(
+            <>
+                <Drop name="A" />
+                <iframe title="body" />
+            </>,
+        );
+        const frameDoc = (screen.getByTitle("body") as HTMLIFrameElement).contentDocument!;
+        toggle("A");
+        fireEvent.pointerDown(frameDoc.body);
+        expect(isOpen("A")).toBe(false);
+
+        // And the listener goes with the layer: reopening still works once.
+        toggle("A");
+        expect(isOpen("A")).toBe(true);
+        fireEvent.pointerDown(frameDoc.body);
+        expect(isOpen("A")).toBe(false);
+    });
+
+    it("stays open on a press inside a frame it holds", () => {
+        render(
+            <Drop name="A">
+                <iframe title="preview" />
+            </Drop>,
+        );
+        toggle("A");
+        const frameDoc = (screen.getByTitle("preview") as HTMLIFrameElement).contentDocument!;
+        fireEvent.pointerDown(frameDoc.body);
+        expect(isOpen("A")).toBe(true);
     });
 });

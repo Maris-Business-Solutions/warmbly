@@ -14,6 +14,11 @@ export interface AppError {
     request_id?: string;
 }
 
+/** True for a request aborted through its AbortSignal (axios CanceledError, ERR_CANCELED). */
+export function isRequestCancelled(error: unknown): boolean {
+    return axios.isCancel(error) || (error as { code?: unknown } | null)?.code === "ERR_CANCELED";
+}
+
 export function normalizeError(error: unknown): AppError {
     if (error instanceof AuthError) {
         return {

@@ -256,7 +256,8 @@ export function ThreadView({ threadId, emailId, onClose }: ThreadViewProps) {
   const setSelectedThreadId = useAppStore((s) => s.setSelectedThreadId);
   const threadIds = () => (q.data?.data ?? []).map((m) => m.id);
   const markUnread = () => {
-    markSeenMutate({ ids: threadIds(), seen: false, threadIds: [threadId] });
+    // By conversation: the server picks its newest received message.
+    markSeenMutate({ seen: false, threadIds: [threadId] });
     setSelectedThreadId(null);
   };
 

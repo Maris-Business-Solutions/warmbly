@@ -97,7 +97,7 @@ import { ColumnChooser, SortMenu, type ViewSortState } from "./ViewControls";
 import { useContactView } from "./useContactView";
 import { readCachedView } from "@/lib/api/hooks/app/views/useViewPreferences";
 import type { SearchContactsSortBy } from "@/lib/api/models/app/contacts/search-contacts.types";
-import type { ViewName } from "@/lib/api/models/app/views/ViewPreferences";
+import type { ColumnViewName } from "@/lib/api/models/app/views/ViewPreferences";
 
 import {
     EmptyBlock,
@@ -202,7 +202,7 @@ export default function ContactsTable({
 
     // The member's saved layout for this list: its columns and its sort. The
     // Leads tab and the contacts page are two views with two layouts.
-    const viewName: ViewName = current_campaign ? "campaign_leads" : "contacts";
+    const viewName: ColumnViewName = current_campaign ? "campaign_leads" : "contacts";
     const view = useContactView(viewName);
 
     const [searchProps, setSearchProps] = React.useState<SearchContacts>(() => {

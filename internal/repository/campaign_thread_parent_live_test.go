@@ -250,3 +250,65 @@ func TestLiveThreadParentStopsAtADeletedStep(t *testing.T) {
 		t.Errorf("conversation subject = %q, want none: the step that sent it is gone", p.Subject)
 	}
 }
+
+// An A/B arm can replace the opening step's subject, so the conversation is
+// whichever arm the contact got, read off the send rather than the step
+// (issue #774): a contact sent Variant B is replied to under Variant B's.
+func TestLiveThreadParentFollowsTheArmTheContactWasSent(t *testing.T) {
+	_, pool := liveContactDB(t)
+	f := newThreadParentFixture(t, pool)
+	first := f.step(0, "Original subject", false)
+	second := f.step(1, "", true)
+	opener := f.send(first, f.mailbox, "<one@test.local>", "thr-1", 120)
+	f.exec(`UPDATE campaign_tasks SET subject = 'Variant B subject' WHERE task_id = $1`, opener)
+
+	if p := f.parent(t); p == nil || p.Subject != "Variant B subject" {
+		t.Fatalf("conversation subject = %+v, want the arm the opener sent", p)
+	}
+
+	// The reply recorded the subject it inherited, so the step after it
+	// threads on the same arm even once the opener's step is gone.
+	reply := f.send(second, f.mailbox, "<two@test.local>", "thr-1", 60)
+	f.exec(`UPDATE campaign_tasks SET subject = 'Variant B subject' WHERE task_id = $1`, reply)
+	f.exec(`DELETE FROM sequences WHERE id = $1`, first)
+	p := f.parent(t)
+	if p == nil || p.MessageID != "<two@test.local>" {
+		t.Fatalf("parent = %+v, want the reply", p)
+	}
+	if p.Subject != "Variant B subject" {
+		t.Errorf("conversation subject = %q, want the arm carried through the reply", p.Subject)
+	}
+}
+
+// A send from before subjects were recorded is walked through to the step
+// that opened the thread, and a recorded opener behind it still wins.
+func TestLiveThreadParentWalksUnrecordedSendsToARecordedOpener(t *testing.T) {
+	_, pool := liveContactDB(t)
+	f := newThreadParentFixture(t, pool)
+	first := f.step(0, "Original subject", false)
+	second := f.step(1, "", true)
+	opener := f.send(first, f.mailbox, "<one@test.local>", "thr-1", 120)
+	f.exec(`UPDATE campaign_tasks SET subject = 'Variant B subject' WHERE task_id = $1`, opener)
+	f.send(second, f.mailbox, "<two@test.local>", "thr-1", 60)
+
+	if p := f.parent(t); p == nil || p.Subject != "Variant B subject" {
+		t.Fatalf("conversation subject = %+v, want the opener's recorded arm", p)
+	}
+}
+
+// A blank recorded subject records nothing, so the walk still reaches the
+// step that opened the conversation.
+func TestLiveThreadParentPassesABlankRecordedSubject(t *testing.T) {
+	_, pool := liveContactDB(t)
+	f := newThreadParentFixture(t, pool)
+	first := f.step(0, "Quick question", false)
+	second := f.step(1, "", true)
+	f.send(first, f.mailbox, "<one@test.local>", "thr-1", 120)
+	reply := f.send(second, f.mailbox, "<two@test.local>", "thr-1", 60)
+	f.exec(`UPDATE campaign_tasks SET subject = '' WHERE task_id = $1`, reply)
+
+	p := f.parent(t)
+	if p == nil || p.Subject != "Quick question" || p.SubjectSent {
+		t.Fatalf("parent = %+v, want the opener's template walked to", p)
+	}
+}
