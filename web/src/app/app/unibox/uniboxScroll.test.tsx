@@ -12,6 +12,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { screen, act, fireEvent } from "@testing-library/react";
 import {
+    findThreadRow,
     installLayoutShims,
     mount,
     resetScrollTops,
@@ -86,8 +87,10 @@ describe("unibox scroll position", SUITE, () => {
         const before = scroller();
         await scrollTo(1200);
 
+        const row4 = await findThreadRow("Subject 4");
+
         await act(async () => {
-            fireEvent.click(screen.getByText("Subject 4").closest('[role="button"]')!);
+            fireEvent.click(row4);
         });
         await settle();
 
@@ -107,8 +110,10 @@ describe("unibox scroll position", SUITE, () => {
         });
         await settle();
 
+        const row2 = await findThreadRow("Subject 2");
+
         await act(async () => {
-            fireEvent.click(screen.getByText("Subject 2").closest('[role="button"]')!);
+            fireEvent.click(row2);
         });
         await settle();
 
@@ -125,8 +130,10 @@ describe("unibox scroll position", SUITE, () => {
         await settle();
         await scrollTo(700);
 
+        const row3 = await findThreadRow("Subject 3");
+
         await act(async () => {
-            fireEvent.click(screen.getByText("Subject 3").closest('[role="button"]')!);
+            fireEvent.click(row3);
         });
         await settle();
         scroller().scrollTop = 0;

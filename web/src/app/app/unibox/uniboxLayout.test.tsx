@@ -26,6 +26,7 @@ import {
     UNIBOX_LIST_MIN_WIDTH,
 } from "@/stores/slices/uiSlice";
 import {
+    findThreadRow,
     installLayoutShims,
     mount,
     resetScrollTops,
@@ -103,8 +104,9 @@ async function drag(fromX: number, toX: number) {
 }
 
 async function openThread(subject: string) {
+    const row = await findThreadRow(subject);
     await act(async () => {
-        fireEvent.click(screen.getByText(subject).closest('[role="button"]')!);
+        fireEvent.click(row);
     });
     await settle();
 }
@@ -134,7 +136,7 @@ describe("unibox desktop layout (#473)", SUITE, () => {
         await mount("/app/unibox/all");
         await settle();
         await openThread("Subject 4");
-        expect(screen.getByPlaceholderText(/Write your reply/)).toHaveValue("My older reply");
+        expect(await screen.findByPlaceholderText(/Write your reply/, undefined, { timeout: 10_000 })).toHaveValue("My older reply");
         await act(async () => fireEvent.click(screen.getByLabelText("Close composer, keeping the draft")));
         await settle();
         expect(screen.queryByPlaceholderText(/Write your reply/)).toBeNull();
@@ -199,7 +201,7 @@ describe("unibox desktop layout (#473)", SUITE, () => {
             await mount("/app/unibox/all");
             await settle();
 
-            const search = screen.getByPlaceholderText(/^Search/i);
+            const search = await screen.findByPlaceholderText(/^Search/i, undefined, { timeout: 10_000 });
             await act(async () => {
                 fireEvent.keyDown(search, { key: "b" });
             });

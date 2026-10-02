@@ -10,7 +10,7 @@
 // and reach `route` through a lazy `await import` of this module.
 
 import React from "react";
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -213,4 +213,10 @@ export async function settle() {
     await act(async () => {
         await new Promise((r) => setTimeout(r, 300));
     });
+}
+
+// The list renders after the shell's own requests, which can outlast settle() on a loaded runner.
+export async function findThreadRow(subject: string): Promise<HTMLElement> {
+    const text = await screen.findByText(subject, undefined, { timeout: 10_000 });
+    return text.closest('[role="button"]') as HTMLElement;
 }

@@ -4,7 +4,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { screen, act, fireEvent } from "@testing-library/react";
-import { installLayoutShims, mount, settle, SUITE } from "./uniboxHarness";
+import { findThreadRow, installLayoutShims, mount, settle, SUITE } from "./uniboxHarness";
 
 beforeAll(installLayoutShims);
 
@@ -43,8 +43,9 @@ vi.mock("@/hooks/context/socket", async (orig) => {
 });
 
 async function openThread(subject: string) {
+    const row = await findThreadRow(subject);
     await act(async () => {
-        fireEvent.click(screen.getByText(subject).closest('[role="button"]')!);
+        fireEvent.click(row);
     });
     await settle();
 }
