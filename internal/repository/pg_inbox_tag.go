@@ -67,9 +67,16 @@ type InboxTagRepository interface {
 	// before they were asked whether they need acting on.
 	ListUncheckedNotifications(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error)
 
-	// ThreadStates backs the follow-up sweep: who spoke last, when, and how far
-	// the thread ever got.
-	ThreadStates(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]ThreadFollowUpState, error)
+	// The FollowUp* methods back the follow-up sweep: a cycle that walks each
+	// mailbox newest first a page at a time, and a check of changed threads.
+	FollowUpMailboxes(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
+	FollowUpPage(ctx context.Context, orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) (FollowUpPage, error)
+	FollowUpPagePositions(ctx context.Context, orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) (FollowUpPage, error)
+	FollowUpChanges(ctx context.Context, orgID uuid.UUID, after FollowUpMark, until time.Time, limit int) ([]FollowUpChange, error)
+	FollowUpThreadStates(ctx context.Context, orgID uuid.UUID, threadIDs []string, since time.Time) ([]ThreadFollowUpState, error)
+	ClaimFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID, lease time.Duration) (*FollowUpSweepState, error)
+	SaveFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID, lease time.Duration, st FollowUpSweepState) (bool, error)
+	ReleaseFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID) error
 
 	// GetByMessageID reads one completed verdict, so the reply classifier, the
 	// inbox agent and the action executor can reuse a judgment already paid
@@ -484,102 +491,4 @@ func (r *inboxTagRepository) PreviousOutbound(ctx context.Context, accountID uui
 		return "", "", err
 	}
 	return body, campaign, nil
-}
-
-// ThreadFollowUpState is one thread's follow-up facts. Every field is read from
-// the database; none of it is inferred, and none of it is asked of a model.
-type ThreadFollowUpState struct {
-	ThreadID       string
-	LastInboundAt  time.Time
-	LastOutboundAt time.Time
-	// BestIntent is the most recent trusted intent in this thread.
-	BestIntent string
-	// LastKind is the classified kind of the newest inbound message, which is
-	// what says whether the "reply" was a person or a mail server.
-	LastKind string
-}
-
-// ThreadStates returns follow-up facts for every thread with activity since a
-// cutoff.
-//
-// Scoped through email_accounts because unibox_emails carries no organization
-// of its own. Follow-up labels use the same organization-plus-thread key as the
-// rest of the unibox.
-func (r *inboxTagRepository) ThreadStates(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]ThreadFollowUpState, error) {
-	const q = `
-	WITH scoped_emails AS (
-		SELECT ue.*
-		FROM unibox_emails ue
-		JOIN email_accounts ea ON ea.id = ue.email_id
-		WHERE ea.organization_id = $1 AND ue.thread_id <> ''
-	),
-	active_threads AS (
-		SELECT DISTINCT thread_id
-		FROM scoped_emails
-		WHERE internal_date >= $2
-	),
-	threads AS (
-			SELECT ue.thread_id,
-			       MAX(ue.internal_date) FILTER (WHERE ue.folder = 'inbox') AS last_in,
-			       MAX(ue.internal_date) FILTER (WHERE ue.folder = 'sent')  AS last_out
-			FROM scoped_emails ue
-			JOIN active_threads active ON active.thread_id = ue.thread_id
-			GROUP BY ue.thread_id
-	),
-	latest_inbound AS (
-		SELECT DISTINCT ON (ue.thread_id)
-		       ue.thread_id, ue.email_id, ue.message_id
-		FROM scoped_emails ue
-		JOIN active_threads active ON active.thread_id = ue.thread_id
-		WHERE ue.folder = 'inbox'
-		ORDER BY ue.thread_id, ue.internal_date DESC
-		)
-		SELECT t.thread_id, t.last_in, t.last_out,
-		       COALESCE(best.intent, ''), COALESCE(newest.kind, '')
-		FROM threads t
-		LEFT JOIN LATERAL (
-			SELECT r.intent
-			FROM inbox_tag_results r
-			JOIN scoped_emails ue
-			  ON ue.email_id = r.email_account_id
-			 AND ue.thread_id = r.thread_id
-			 AND ue.message_id = r.message_id
-			WHERE r.organization_id = $1 AND r.thread_id = t.thread_id
-			  AND r.status = 'complete' AND r.review_reason <> 'intent' AND r.intent <> ''
-			ORDER BY ue.internal_date DESC, r.created_at DESC LIMIT 1
-		) best ON TRUE
-		LEFT JOIN latest_inbound latest ON latest.thread_id = t.thread_id
-		LEFT JOIN inbox_tag_results newest
-		  ON newest.organization_id = $1
-		 AND newest.email_account_id = latest.email_id
-		 AND newest.thread_id = latest.thread_id
-		 AND newest.message_id = latest.message_id
-		 AND newest.status = 'complete'
-		 AND newest.review_reason <> 'kind'
-		WHERE t.last_out IS NOT NULL
-		ORDER BY GREATEST(COALESCE(t.last_in, 'epoch'::timestamptz), t.last_out) DESC
-		LIMIT $3
-	`
-	rows, err := r.db.Query(ctx, q, orgID, since, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []ThreadFollowUpState
-	for rows.Next() {
-		var st ThreadFollowUpState
-		var lastIn, lastOut *time.Time
-		if err := rows.Scan(&st.ThreadID, &lastIn, &lastOut, &st.BestIntent, &st.LastKind); err != nil {
-			return nil, err
-		}
-		if lastIn != nil {
-			st.LastInboundAt = *lastIn
-		}
-		if lastOut != nil {
-			st.LastOutboundAt = *lastOut
-		}
-		out = append(out, st)
-	}
-	return out, rows.Err()
 }

@@ -87,7 +87,9 @@ A thread you wrote to recently wears nothing: there is nothing to do yet, and th
 
 These labels change as the calendar moves, so they are recomputed hourly and **replaced rather than added**. A thread is never wearing both **Follow up** and **Needs reply**; it wears its state, not its history. A reply clears the follow-up label within the hour.
 
-To recompute on demand:
+Every conversation with activity in the last 90 days is checked, however many there are. A large workspace is checked a page at a time: each hourly pass spends a few minutes at most and picks up where the previous one stopped, including after a restart. An older conversation therefore gets its label within one full sweep of the workspace after its day comes, which is one pass for most workspaces and several for a very large one. Each pass first checks every conversation that received mail or had a reply classified since the previous pass, whatever date the message carries, so a reply that synced late still clears its label on the next pass.
+
+To recompute on demand (this checks every conversation in one run and leaves the hourly sweep's place alone):
 
 ```bash
 warmblyctl inbox-tag follow-ups --org you@example.com

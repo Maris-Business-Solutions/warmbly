@@ -926,6 +926,7 @@ var ExcludedTables = map[string]string{
 	"contact_imports":              "Contact imports in progress or recently finished. They are work this instance is doing; the contacts they created travel with the contacts group.",
 	"contact_import_rows":          "The uploaded rows of a contact import and what became of each. They follow contact_imports, which does not travel.",
 	"placement_renders":            "The copy a tracking comparison is sending to each seed, sealed so both halves send the same words. It lives only while the comparison runs, and a copy that had not been sent stays behind with its task.",
+	"inbox_follow_up_sweeps":       "This instance's hourly follow-up sweep state for the workspace: where its cycle stopped (by this instance's mailbox and message row ids), how far it has checked changed conversations, and which walker holds it. The destination starts its own cycle at the newest conversation.",
 	"user_view_preferences":        "Each member's own column layout and sort for the dashboard's lists, and their unibox scope rail arrangement. It belongs to the person rather than the workspace: members are matched by account on import and a layout names custom fields the destination may not hold yet, so everyone starts from the default view and picks their columns again.",
 }
 
