@@ -151,7 +151,7 @@ Labels mark conversations and contacts. Mailbox tags mark the mailboxes themselv
 
 A conversation is unread when any message inside is unseen, marked by a blue dot in the margin, bolder text, and a blue timestamp. Opening it marks its messages seen and updates the counts, and so does **Mark as read** on the row or on a selection, without opening anything.
 
-**Mark as unread** works like it does in Gmail: only the newest message you received in the conversation turns unread, so the conversation is unread again wherever that message sits. Your own sent replies are never marked unread, so the conversation does not light up in Sent, and Gmail does not label your sent copy unread either. Marking it unread from the open conversation closes it, because the reader marks whatever it shows as read.
+**Mark as unread** marks only the newest message you received in the conversation unread, preferring one outside Spam and Trash. If the conversation has no received message, its newest sent copy turns unread instead. Otherwise your own sent copies stay read. Drafts are never marked unread, and marking individual message ids or sweeping a folder never marks sent or draft copies unread. Marking it unread from the open conversation closes it, because the reader marks whatever it shows as read.
 
 Read state travels both ways. A message arriving already read is stored that way, and reading a conversation here marks it read in the mailbox itself, so Gmail, Outlook and any IMAP mailbox stop showing it bold too. **Mark as unread** does the same in reverse, and **Mark all as read** on a folder carries the whole sweep across. Only a real change travels: opening a conversation you have already read costs nothing at the provider.
 
@@ -163,7 +163,7 @@ The thread header carries three filing actions, on the row above the message on 
 
 | Action | Does |
 | --- | --- |
-| Mark as unread | Puts every message in the conversation back to unread and closes it |
+| Mark as unread | Marks the newest received message unread, or the newest sent copy if none was received, and closes it |
 | Archive | Moves the conversation to Archive, so it leaves Inbox |
 | Delete | Moves the conversation to Trash, so it leaves every view except Trash |
 
