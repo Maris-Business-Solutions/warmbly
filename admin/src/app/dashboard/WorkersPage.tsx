@@ -313,7 +313,7 @@ export default function WorkersPage() {
                             <div className="flex flex-col gap-2">
                                 <ToggleFilter checked={activeOnly} onChange={setActiveOnly} label="Active only" />
                                 <ToggleFilter checked={hasMailboxes} onChange={setHasMailboxes} label="Has mailboxes" />
-                                <ToggleFilter checked={hasError} onChange={setHasError} label="Has SSH error" />
+                                <ToggleFilter checked={hasError} onChange={setHasError} label="Has node error" />
                                 <ToggleFilter checked={hasTags} onChange={setHasTags} label="Has tags" />
                             </div>
                         </FilterGroup>

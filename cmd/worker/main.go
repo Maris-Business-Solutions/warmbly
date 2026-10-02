@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/app/cipher"
 	"github.com/warmbly/warmbly/internal/app/worker"
+	wsmtp "github.com/warmbly/warmbly/internal/client/smtpimap/smtp"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/infrastructure/cache"
 	"github.com/warmbly/warmbly/internal/infrastructure/codec"
@@ -256,6 +257,7 @@ func newNodeAgent(workerID uuid.UUID, bindIP string) *nodeagent.Agent {
 		Token:          os.Getenv("ENCRYPTED_KEYS_WORKER_TOKEN"),
 		// Written for the host-side updater installed by `warmbly join`.
 		TargetVersionPath: os.Getenv("WARMBLY_TARGET_VERSION_PATH"),
+		Condition:         wsmtp.EgressCondition,
 	})
 }
 

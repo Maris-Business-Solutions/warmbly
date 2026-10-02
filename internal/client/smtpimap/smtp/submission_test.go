@@ -22,9 +22,10 @@ func (fakeTimeout) Temporary() bool { return false }
 // swapDial installs a dialer for the test and restores the real one after.
 func swapDial(t *testing.T, fn func(ctx context.Context, addr string) (net.Conn, error)) {
 	t.Helper()
-	prev := dialTCP
+	prev, prevEgress := dialTCP, smtpsEgress
 	dialTCP = func(ctx context.Context, _ *net.TCPAddr, addr string) (net.Conn, error) { return fn(ctx, addr) }
-	t.Cleanup(func() { dialTCP = prev })
+	smtpsEgress = &egressState{}
+	t.Cleanup(func() { dialTCP, smtpsEgress = prev, prevEgress })
 }
 
 // A 465 whose SYN is swallowed is taken on 587 after the head start, well

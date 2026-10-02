@@ -170,6 +170,16 @@ var (
 			MailErrorResolveMethodRetry,
 		)
 	}
+	// ErrMailSMTPSEgressBlocked keeps the retryable code but says the block is
+	// the worker's network, so the customer is not sent to debug a healthy server.
+	ErrMailSMTPSEgressBlocked = func(addr string) *MailError {
+		return MError(
+			MailErrorWarning,
+			MailErrorCodeServerUnreachable,
+			fmt.Sprintf("Warmbly's sending network currently blocks outbound port 465, so it could not reach %s, and the server did not answer on port 587 either. The block is on the sending side, not on your mail server. Sending resumes on its own once the port is open; if your server can also accept submission on port 587 with STARTTLS, turning that on gets this mailbox sending now.", addr),
+			MailErrorResolveMethodRetry,
+		)
+	}
 	ErrMailResourceNotFound      = MError(MailErrorWarning, MailErrorCodeNotFound, "The mail server does not have the folder or message that was requested.", MailErrorResolveMethodRetry)
 	ErrMailCondStoreNotSupported = MError(MailErrorCritical, MailErrorCodeUnsupported, "The mail server does not support the required CONDSTORE extension. Synchronization cannot continue.", MailErrorResolveMethodReload)
 	ErrMailInvalidCredentials    = MError(

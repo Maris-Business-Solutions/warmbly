@@ -52,6 +52,10 @@ type Config struct {
 	// in dev where nothing supervises the process.
 	TargetVersionPath string
 
+	// Condition is a standing problem reported on every beat while it lasts,
+	// unlike ReportError, which is reported once. Nil or empty reports none.
+	Condition func() string
+
 	HTTPClient *http.Client
 }
 
@@ -146,6 +150,8 @@ func (a *Agent) beat(ctx context.Context, booted, stopping bool) *models.NodeHea
 	}
 	if p := a.lastErr.Swap(nil); p != nil {
 		beat.LastError = *p
+	} else if a.cfg.Condition != nil {
+		beat.LastError = a.cfg.Condition()
 	}
 
 	body, err := json.Marshal(beat)
