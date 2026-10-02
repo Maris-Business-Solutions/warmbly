@@ -2,9 +2,11 @@ package jobrun
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/warmbly/warmbly/internal/models"
@@ -14,6 +16,10 @@ import (
 type memStore struct {
 	mu  sync.Mutex
 	due map[string]time.Time
+	// failClaims makes the next claims error; applyFailed decides whether the
+	// write behind each one landed anyway.
+	failClaims  int
+	applyFailed bool
 }
 
 func newMemStore() *memStore { return &memStore{due: map[string]time.Time{}} }
@@ -40,6 +46,13 @@ func (m *memStore) Claim(_ context.Context, name string, due, next time.Time) (b
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	stored, ok := m.due[name]
+	if m.failClaims > 0 {
+		m.failClaims--
+		if m.applyFailed && (!ok || stored.Equal(due)) {
+			m.due[name] = next
+		}
+		return false, time.Time{}, errors.New("claim failed")
+	}
 	if !ok || stored.Equal(due) {
 		m.due[name] = next
 		return true, next, nil
@@ -51,6 +64,12 @@ func (m *memStore) set(name string, due time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.due[name] = due.Truncate(time.Microsecond)
+}
+
+func (m *memStore) failNextClaim(applied bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failClaims, m.applyFailed = 1, applied
 }
 
 func (m *memStore) MarkStarted(context.Context, string, time.Time) error { return nil }
@@ -91,109 +110,154 @@ func startLoop(name string, interval time.Duration, runOnBoot bool, runs *atomic
 // Restarting more often than the interval used to push the first run back by
 // a full interval every time, so the job never ran at all.
 func TestLoopIsNotStarvedByRestartsShorterThanItsInterval(t *testing.T) {
-	store := newMemStore()
-	useStore(t, store)
+	synctest.Test(t, func(t *testing.T) {
+		store := newMemStore()
+		useStore(t, store)
 
-	const name = "a"
-	interval := 600 * time.Millisecond
-	offset := phaseOffset(name, interval)
-	restartEvery := offset + (interval-offset)/2
+		const name = "a"
+		interval := time.Hour
+		offset := phaseOffset(name, interval)
+		restartEvery := 40 * time.Minute
 
-	var runs atomic.Int32
-	for i := 0; i < 8; i++ {
-		stop := startLoop(name, interval, false, &runs)
-		time.Sleep(restartEvery)
-		stop()
-	}
-	if got := runs.Load(); got < 2 {
-		t.Fatalf("ran %d times across 8 restarts every %s at a %s interval, want at least 2", got, restartEvery, interval)
-	}
+		var runs atomic.Int32
+		for i := 0; i < 6; i++ {
+			stop := startLoop(name, interval, false, &runs)
+			time.Sleep(restartEvery)
+			stop()
+		}
+		// Four hours of restarts every 40 minutes hold four hourly slots.
+		if got := runs.Load(); got < 3 {
+			t.Fatalf("ran %d times across 6 restarts every %s at a %s interval (offset %s), want at least 3", got, restartEvery, interval, offset)
+		}
+	})
 }
 
 func TestLoopRunsAnOverdueJobRightAfterItsOffset(t *testing.T) {
-	store := newMemStore()
-	useStore(t, store)
+	synctest.Test(t, func(t *testing.T) {
+		store := newMemStore()
+		useStore(t, store)
 
-	const name = "overdue"
-	interval := 2 * time.Second
-	store.set(name, time.Now().Add(-time.Hour))
+		const name = "overdue"
+		interval := time.Hour
+		store.set(name, time.Now().Add(-24*time.Hour))
 
-	var runs atomic.Int32
-	stop := startLoop(name, interval, false, &runs)
-	defer stop()
+		var runs atomic.Int32
+		stop := startLoop(name, interval, false, &runs)
+		defer stop()
 
-	deadline := time.Now().Add(phaseOffset(name, interval) + 300*time.Millisecond)
-	for runs.Load() == 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if runs.Load() != 1 {
-		t.Fatalf("overdue job ran %d times shortly after boot, want once", runs.Load())
-	}
+		time.Sleep(phaseOffset(name, interval) + time.Millisecond)
+		synctest.Wait()
+		if runs.Load() != 1 {
+			t.Fatalf("overdue job ran %d times right after its offset, want once", runs.Load())
+		}
+	})
 }
 
 func TestLoopWaitsOnlyTheRemainderOfAnInterval(t *testing.T) {
-	store := newMemStore()
-	useStore(t, store)
+	synctest.Test(t, func(t *testing.T) {
+		store := newMemStore()
+		useStore(t, store)
 
-	const name = "remaining"
-	interval := 5 * time.Second
-	offset := phaseOffset(name, interval)
-	store.set(name, time.Now().Add(offset+200*time.Millisecond))
+		const name = "remaining"
+		interval := 24 * time.Hour
+		remaining := 3 * time.Hour
+		store.set(name, time.Now().Add(remaining))
 
-	var runs atomic.Int32
-	stop := startLoop(name, interval, false, &runs)
-	defer stop()
+		var runs atomic.Int32
+		stop := startLoop(name, interval, false, &runs)
+		defer stop()
 
-	time.Sleep(offset + 100*time.Millisecond)
-	if runs.Load() != 0 {
-		t.Fatalf("ran before its stored due time")
-	}
-	time.Sleep(400 * time.Millisecond)
-	if runs.Load() != 1 {
-		t.Fatalf("ran %d times by its stored due time, want once without a fresh interval", runs.Load())
-	}
+		time.Sleep(remaining - time.Millisecond)
+		synctest.Wait()
+		if runs.Load() != 0 {
+			t.Fatalf("ran before its stored due time")
+		}
+		time.Sleep(2 * time.Millisecond)
+		synctest.Wait()
+		if runs.Load() != 1 {
+			t.Fatalf("ran %d times at its stored due time, want once without a fresh interval", runs.Load())
+		}
+	})
 }
 
 func TestLoopGivesANewJobItsFullFirstInterval(t *testing.T) {
-	store := newMemStore()
-	useStore(t, store)
+	synctest.Test(t, func(t *testing.T) {
+		store := newMemStore()
+		useStore(t, store)
 
-	const name = "fresh"
-	interval := 600 * time.Millisecond
-	offset := phaseOffset(name, interval)
+		const name = "fresh"
+		interval := time.Hour
+		first := phaseOffset(name, interval) + interval
 
-	var runs atomic.Int32
-	stop := startLoop(name, interval, false, &runs)
-	defer stop()
+		var runs atomic.Int32
+		stop := startLoop(name, interval, false, &runs)
+		defer stop()
 
-	time.Sleep(offset + interval - 100*time.Millisecond)
-	if runs.Load() != 0 {
-		t.Fatalf("new job ran before its first interval")
-	}
-	time.Sleep(250 * time.Millisecond)
-	if runs.Load() != 1 {
-		t.Fatalf("new job ran %d times after its first interval, want once", runs.Load())
-	}
+		time.Sleep(first - time.Millisecond)
+		synctest.Wait()
+		if runs.Load() != 0 {
+			t.Fatalf("new job ran before its first interval")
+		}
+		time.Sleep(2 * time.Millisecond)
+		synctest.Wait()
+		if runs.Load() != 1 {
+			t.Fatalf("new job ran %d times after its first interval, want once", runs.Load())
+		}
+	})
 }
 
 // Two processes hosting the same job share its slots instead of each running it.
 func TestLoopRunsEachSlotOnceAcrossInstances(t *testing.T) {
-	store := newMemStore()
-	useStore(t, store)
+	synctest.Test(t, func(t *testing.T) {
+		store := newMemStore()
+		useStore(t, store)
 
-	const name = "shared"
-	interval := 200 * time.Millisecond
-	store.set(name, time.Now().Add(-time.Second))
+		const name = "shared"
+		interval := time.Hour
+		store.set(name, time.Now().Add(-time.Minute))
 
-	var runs atomic.Int32
-	stopA := startLoop(name, interval, false, &runs)
-	stopB := startLoop(name, interval, false, &runs)
-	time.Sleep(phaseOffset(name, interval) + 5*interval + interval/2)
-	stopA()
-	stopB()
+		var runs atomic.Int32
+		stopA := startLoop(name, interval, false, &runs)
+		stopB := startLoop(name, interval, false, &runs)
+		// The overdue slot after the offset, then five hourly slots.
+		time.Sleep(phaseOffset(name, interval) + 5*interval + interval/2)
+		stopA()
+		stopB()
 
-	if got := runs.Load(); got < 4 || got > 7 {
-		t.Fatalf("two instances ran %d times over about six slots, want one run per slot", got)
+		if got := runs.Load(); got != 6 {
+			t.Fatalf("two instances ran %d times over six slots, want one run per slot", got)
+		}
+	})
+}
+
+// A claim whose outcome is unknown runs its slot once, and the next slot
+// reconciles the store instead of running the earlier slot again.
+func TestLoopRunsASlotOnceAfterAFailedClaim(t *testing.T) {
+	for _, applied := range []bool{false, true} {
+		synctest.Test(t, func(t *testing.T) {
+			store := newMemStore()
+			useStore(t, store)
+
+			const name = "flaky"
+			interval := time.Hour
+			store.set(name, time.Now().Add(time.Minute))
+			store.failNextClaim(applied)
+
+			var runs atomic.Int32
+			stop := startLoop(name, interval, false, &runs)
+			defer stop()
+
+			time.Sleep(time.Minute + time.Millisecond)
+			synctest.Wait()
+			if runs.Load() != 1 {
+				t.Fatalf("applied=%v: the slot with a failed claim ran %d times, want once", applied, runs.Load())
+			}
+			time.Sleep(3 * interval)
+			synctest.Wait()
+			if got := runs.Load(); got != 4 {
+				t.Fatalf("applied=%v: ran %d times over four slots, want 4", applied, got)
+			}
+		})
 	}
 }
 
