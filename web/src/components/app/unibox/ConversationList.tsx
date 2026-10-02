@@ -11,7 +11,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckIcon, PanelLeftIcon, SearchIcon } from "lucide-react";
+import { CheckIcon, PanelLeftIcon, SearchIcon, XIcon } from "lucide-react";
 import { AnimatedRow } from "./AnimatedRow";
 import { ConversationItem } from "./ConversationItem";
 import { SelectionBar } from "./SelectionBar";
@@ -439,14 +439,26 @@ export function ConversationList({
             device hovering a row already shows its box, but the control is
             kept everywhere so the feature is discoverable at all. */}
         {selecting ? (
-          <label className="h-7 px-2 rounded-md inline-flex items-center gap-1.5 text-[11.5px] text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors shrink-0">
-            <Checkbox
-              checked={allSelected}
-              onChange={toggleAll}
-              aria-label={allSelected ? "Deselect all" : "Select all loaded"}
-            />
-            All
-          </label>
+          <span className="inline-flex items-center shrink-0">
+            <label className="h-7 px-2 rounded-md inline-flex items-center gap-1.5 text-[11.5px] text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors">
+              <Checkbox
+                checked={allSelected}
+                onChange={toggleAll}
+                aria-label={allSelected ? "Deselect all" : "Select all loaded"}
+              />
+              All
+            </label>
+            {/* The way out on a phone, where there is no Escape. */}
+            <button
+              type="button"
+              onClick={clearSelection}
+              aria-label="Cancel selection"
+              title="Cancel selection (Esc)"
+              className="h-7 w-7 rounded-md inline-flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            >
+              <XIcon className="w-3.5 h-3.5" />
+            </button>
+          </span>
         ) : (
           <button
             type="button"
