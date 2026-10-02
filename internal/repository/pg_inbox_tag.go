@@ -67,13 +67,16 @@ type InboxTagRepository interface {
 	// before they were asked whether they need acting on.
 	ListUncheckedNotifications(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]BackfillCandidate, error)
 
-	// FollowUpMailboxes, FollowUpPage and the cursor pair back the follow-up
-	// sweep, which walks each mailbox newest first a page at a time.
+	// The FollowUp* methods back the follow-up sweep: a cycle that walks each
+	// mailbox newest first a page at a time, and a check of changed threads.
 	FollowUpMailboxes(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
 	FollowUpPage(ctx context.Context, orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) (FollowUpPage, error)
-	FollowUpCursor(ctx context.Context, orgID uuid.UUID) (*FollowUpPosition, error)
-	// SaveFollowUpCursor stores where the sweep stopped; nil ends the cycle.
-	SaveFollowUpCursor(ctx context.Context, orgID uuid.UUID, pos *FollowUpPosition) error
+	FollowUpPagePositions(ctx context.Context, orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) (FollowUpPage, error)
+	FollowUpChanges(ctx context.Context, orgID uuid.UUID, after FollowUpMark, until time.Time, limit int) ([]FollowUpChange, error)
+	FollowUpThreadStates(ctx context.Context, orgID uuid.UUID, threadIDs []string, since time.Time) ([]ThreadFollowUpState, error)
+	ClaimFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID, lease time.Duration) (*FollowUpSweepState, error)
+	SaveFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID, lease time.Duration, st FollowUpSweepState) (bool, error)
+	ReleaseFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID) error
 
 	// GetByMessageID reads one completed verdict, so the reply classifier, the
 	// inbox agent and the action executor can reuse a judgment already paid

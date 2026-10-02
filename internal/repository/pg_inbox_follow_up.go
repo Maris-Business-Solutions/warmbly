@@ -20,7 +20,7 @@ type ThreadFollowUpState struct {
 	// LastKind is the classified kind of the newest inbound message, which is
 	// what says whether the "reply" was a person or a mail server.
 	LastKind string
-	// Position is the thread's newest message, where the sweep stands once it is evaluated.
+	// Position is the thread's newest message on a cycle page; zero on the changed-thread check.
 	Position FollowUpPosition
 }
 
@@ -41,6 +41,31 @@ type FollowUpPage struct {
 	Last *FollowUpPosition
 }
 
+// FollowUpMark is a place in the stream of stored messages and written verdicts, ordered by (At, RowID).
+type FollowUpMark struct {
+	At    time.Time
+	RowID uuid.UUID
+}
+
+// FollowUpChange is one message stored or verdict written.
+type FollowUpChange struct {
+	At       time.Time
+	RowID    uuid.UUID
+	ThreadID string
+}
+
+// FollowUpSweepState is a workspace's sweep bookkeeping as its walker claimed it.
+type FollowUpSweepState struct {
+	// Cursor is where the cycle stopped; nil starts a cycle at the newest.
+	Cursor *FollowUpPosition
+	// Fresh is how far changed threads have been checked; nil when never.
+	Fresh         *FollowUpMark
+	PageFailures  int
+	FreshFailures int
+	// Now is the database clock at the claim.
+	Now time.Time
+}
+
 func (r *inboxTagRepository) FollowUpMailboxes(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := r.db.Query(ctx, `SELECT id FROM email_accounts WHERE organization_id = $1 ORDER BY id`, orgID)
 	if err != nil {
@@ -58,16 +83,9 @@ func (r *inboxTagRepository) FollowUpMailboxes(ctx context.Context, orgID uuid.U
 	return out, rows.Err()
 }
 
-// FollowUpPage reads one bounded page of a mailbox and resolves facts only for threads whose newest workspace message is on it.
-func (r *inboxTagRepository) FollowUpPage(ctx context.Context, orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) (FollowUpPage, error) {
-	args := []any{orgID, mailboxID, since, limit}
-	keyset := ""
-	if after != nil {
-		keyset = `AND (ue.internal_date, ue.id) < ($5, $6)`
-		args = append(args, after.At, after.RowID)
-	}
-	q := `
-	WITH page AS MATERIALIZED (
+// followUpPageSQL is one mailbox's next messages, newest first after an optional keyset; $1 org, $2 mailbox, $3 since, $4 limit.
+func followUpPageSQL(keyset string) string {
+	return `page AS MATERIALIZED (
 		SELECT ue.id, ue.internal_date, ue.thread_id
 		FROM unibox_emails ue
 		WHERE ue.email_id = $2
@@ -76,25 +94,18 @@ func (r *inboxTagRepository) FollowUpPage(ctx context.Context, orgID, mailboxID 
 		  AND ue.thread_id <> ''
 		ORDER BY ue.internal_date DESC, ue.id DESC
 		LIMIT $4
-	),
-	heads AS (
-		SELECT p.id, p.thread_id
-		FROM page p
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM unibox_emails o
-			JOIN email_accounts oa ON oa.id = o.email_id AND oa.organization_id = $1
-			WHERE o.thread_id = p.thread_id
-			  AND (o.internal_date, o.id) > (p.internal_date, p.id)
-		)
-	),
-	states AS (
-		SELECT h.id, agg.last_in, agg.last_out,
+	)`
+}
+
+// followUpStatesSQL resolves follow-up facts for the threads in a heads(id, thread_id) CTE; $1 is the org.
+const followUpStatesSQL = `states AS (
+		SELECT h.id, h.thread_id, agg.last_in, agg.last_out, agg.last_any,
 		       COALESCE(best.intent, '') AS intent, COALESCE(newest.kind, '') AS kind
 		FROM heads h
 		CROSS JOIN LATERAL (
 			SELECT MAX(o.internal_date) FILTER (WHERE o.folder = 'inbox') AS last_in,
-			       MAX(o.internal_date) FILTER (WHERE o.folder = 'sent')  AS last_out
+			       MAX(o.internal_date) FILTER (WHERE o.folder = 'sent')  AS last_out,
+			       MAX(o.internal_date) AS last_any
 			FROM unibox_emails o
 			JOIN email_accounts oa ON oa.id = o.email_id AND oa.organization_id = $1
 			WHERE o.thread_id = h.thread_id
@@ -128,7 +139,24 @@ func (r *inboxTagRepository) FollowUpPage(ctx context.Context, orgID, mailboxID 
 		 AND newest.status = 'complete'
 		 AND newest.review_reason <> 'kind'
 		WHERE agg.last_out IS NOT NULL
-	)
+	)`
+
+// FollowUpPage reads one bounded page of a mailbox and resolves facts only for threads whose newest workspace message is on it.
+func (r *inboxTagRepository) FollowUpPage(ctx context.Context, orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) (FollowUpPage, error) {
+	args, keyset := followUpPageArgs(orgID, mailboxID, since, after, limit)
+	q := `WITH ` + followUpPageSQL(keyset) + `,
+	heads AS (
+		SELECT p.id, p.thread_id
+		FROM page p
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM unibox_emails o
+			JOIN email_accounts oa ON oa.id = o.email_id AND oa.organization_id = $1
+			WHERE o.thread_id = p.thread_id
+			  AND (o.internal_date, o.id) > (p.internal_date, p.id)
+		)
+	),
+	` + followUpStatesSQL + `
 	SELECT p.id, p.internal_date, p.thread_id, s.id IS NOT NULL,
 	       s.last_in, s.last_out, COALESCE(s.intent, ''), COALESCE(s.kind, '')
 	FROM page p
@@ -156,47 +184,195 @@ func (r *inboxTagRepository) FollowUpPage(ctx context.Context, orgID, mailboxID 
 		out.Rows++
 		last := pos
 		out.Last = &last
-		if !due {
-			continue
+		if due {
+			out.States = append(out.States, followUpState(threadID, lastIn, lastOut, intent, kind, pos))
 		}
-		st := ThreadFollowUpState{ThreadID: threadID, BestIntent: intent, LastKind: kind, Position: pos}
-		if lastIn != nil {
-			st.LastInboundAt = *lastIn
-		}
-		if lastOut != nil {
-			st.LastOutboundAt = *lastOut
-		}
-		out.States = append(out.States, st)
 	}
 	return out, rows.Err()
 }
 
-func (r *inboxTagRepository) FollowUpCursor(ctx context.Context, orgID uuid.UUID) (*FollowUpPosition, error) {
-	var pos FollowUpPosition
+// FollowUpPagePositions reads only where a page ends, to step past a page whose facts cannot be read.
+func (r *inboxTagRepository) FollowUpPagePositions(ctx context.Context, orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) (FollowUpPage, error) {
+	args, keyset := followUpPageArgs(orgID, mailboxID, since, after, limit)
+	rows, err := r.db.Query(ctx, `WITH `+followUpPageSQL(keyset)+`
+		SELECT id, internal_date FROM page ORDER BY internal_date DESC, id DESC`, args...)
+	if err != nil {
+		return FollowUpPage{}, err
+	}
+	defer rows.Close()
+	var out FollowUpPage
+	for rows.Next() {
+		pos := FollowUpPosition{MailboxID: mailboxID}
+		if err := rows.Scan(&pos.RowID, &pos.At); err != nil {
+			return FollowUpPage{}, err
+		}
+		out.Rows++
+		out.Last = &pos
+	}
+	return out, rows.Err()
+}
+
+func followUpPageArgs(orgID, mailboxID uuid.UUID, since time.Time, after *FollowUpPosition, limit int) ([]any, string) {
+	args := []any{orgID, mailboxID, since, limit}
+	if after == nil {
+		return args, ""
+	}
+	return append(args, after.At, after.RowID), `AND (ue.internal_date, ue.id) < ($5, $6)`
+}
+
+func followUpState(threadID string, lastIn, lastOut *time.Time, intent, kind string, pos FollowUpPosition) ThreadFollowUpState {
+	st := ThreadFollowUpState{ThreadID: threadID, BestIntent: intent, LastKind: kind, Position: pos}
+	if lastIn != nil {
+		st.LastInboundAt = *lastIn
+	}
+	if lastOut != nil {
+		st.LastOutboundAt = *lastOut
+	}
+	return st
+}
+
+// FollowUpChanges reads the next messages stored and verdicts written in a workspace after a mark, up to until.
+func (r *inboxTagRepository) FollowUpChanges(ctx context.Context, orgID uuid.UUID, after FollowUpMark, until time.Time, limit int) ([]FollowUpChange, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT c.at, c.id, c.thread_id
+		FROM (
+			SELECT m.at, m.id, m.thread_id
+			FROM email_accounts ea
+			CROSS JOIN LATERAL (
+				SELECT ue.ingested_at AS at, ue.id, ue.thread_id
+				FROM unibox_emails ue
+				WHERE ue.email_id = ea.id
+				  AND (ue.ingested_at, ue.id) > ($2, $3) AND ue.ingested_at <= $4
+				  AND ue.thread_id <> ''
+				ORDER BY ue.ingested_at, ue.id
+				LIMIT $5
+			) m
+			WHERE ea.organization_id = $1
+			UNION ALL
+			(SELECT r.updated_at, r.id, r.thread_id
+			 FROM inbox_tag_results r
+			 WHERE r.organization_id = $1
+			   AND (r.updated_at, r.id) > ($2, $3) AND r.updated_at <= $4
+			   AND r.thread_id <> ''
+			 ORDER BY r.updated_at, r.id
+			 LIMIT $5)
+		) c
+		ORDER BY c.at, c.id
+		LIMIT $5`, orgID, after.At, after.RowID, until, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FollowUpChange
+	for rows.Next() {
+		var c FollowUpChange
+		if err := rows.Scan(&c.At, &c.RowID, &c.ThreadID); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// FollowUpThreadStates resolves follow-up facts for named threads with activity since a cutoff.
+func (r *inboxTagRepository) FollowUpThreadStates(ctx context.Context, orgID uuid.UUID, threadIDs []string, since time.Time) ([]ThreadFollowUpState, error) {
+	if len(threadIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx, `
+	WITH heads AS (
+		SELECT DISTINCT NULL::uuid AS id, t AS thread_id FROM unnest($2::text[]) AS t WHERE t <> ''
+	),
+	`+followUpStatesSQL+`
+	SELECT s.thread_id, s.last_in, s.last_out, s.intent, s.kind
+	FROM states s
+	WHERE s.last_any >= $3
+	ORDER BY s.thread_id`, orgID, threadIDs, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ThreadFollowUpState
+	for rows.Next() {
+		var (
+			threadID, intent, kind string
+			lastIn, lastOut        *time.Time
+		)
+		if err := rows.Scan(&threadID, &lastIn, &lastOut, &intent, &kind); err != nil {
+			return nil, err
+		}
+		out = append(out, followUpState(threadID, lastIn, lastOut, intent, kind, FollowUpPosition{}))
+	}
+	return out, rows.Err()
+}
+
+// ClaimFollowUpSweep takes the workspace's sweep lease and returns its state; nil while another walker holds it.
+func (r *inboxTagRepository) ClaimFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID, lease time.Duration) (*FollowUpSweepState, error) {
+	var (
+		st                    FollowUpSweepState
+		mailbox, row, freshID *uuid.UUID
+		at, freshAt           *time.Time
+	)
 	err := r.db.QueryRow(ctx, `
-		SELECT email_account_id, internal_date, message_row_id
-		FROM inbox_follow_up_sweeps WHERE organization_id = $1`, orgID).Scan(&pos.MailboxID, &pos.At, &pos.RowID)
+		INSERT INTO inbox_follow_up_sweeps (organization_id, lease_owner, leased_until, updated_at)
+		VALUES ($1, $2, NOW() + make_interval(secs => $3), NOW())
+		ON CONFLICT (organization_id) DO UPDATE SET
+			lease_owner = EXCLUDED.lease_owner,
+			leased_until = EXCLUDED.leased_until,
+			updated_at = NOW()
+		WHERE inbox_follow_up_sweeps.leased_until IS NULL
+		   OR inbox_follow_up_sweeps.leased_until <= NOW()
+		   OR inbox_follow_up_sweeps.lease_owner = EXCLUDED.lease_owner
+		RETURNING email_account_id, internal_date, message_row_id, fresh_at, fresh_row_id,
+		          page_failures, fresh_failures, NOW()`, orgID, owner, lease.Seconds(),
+	).Scan(&mailbox, &at, &row, &freshAt, &freshID, &st.PageFailures, &st.FreshFailures, &st.Now)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &pos, nil
+	if mailbox != nil && at != nil && row != nil {
+		st.Cursor = &FollowUpPosition{MailboxID: *mailbox, At: *at, RowID: *row}
+	}
+	if freshAt != nil {
+		st.Fresh = &FollowUpMark{At: *freshAt}
+		if freshID != nil {
+			st.Fresh.RowID = *freshID
+		}
+	}
+	return &st, nil
 }
 
-func (r *inboxTagRepository) SaveFollowUpCursor(ctx context.Context, orgID uuid.UUID, pos *FollowUpPosition) error {
-	if pos == nil {
-		_, err := r.db.Exec(ctx, `DELETE FROM inbox_follow_up_sweeps WHERE organization_id = $1`, orgID)
-		return err
+// SaveFollowUpSweep stores the state and renews the lease; false when the owner no longer holds it.
+func (r *inboxTagRepository) SaveFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID, lease time.Duration, st FollowUpSweepState) (bool, error) {
+	var mailbox, row, freshID *uuid.UUID
+	var at, freshAt *time.Time
+	if st.Cursor != nil {
+		mailbox, at, row = &st.Cursor.MailboxID, &st.Cursor.At, &st.Cursor.RowID
 	}
+	if st.Fresh != nil {
+		freshAt, freshID = &st.Fresh.At, &st.Fresh.RowID
+	}
+	tag, err := r.db.Exec(ctx, `
+		UPDATE inbox_follow_up_sweeps SET
+			email_account_id = $3, internal_date = $4, message_row_id = $5,
+			fresh_at = $6, fresh_row_id = $7,
+			page_failures = $8, fresh_failures = $9,
+			leased_until = NOW() + make_interval(secs => $10),
+			updated_at = NOW()
+		WHERE organization_id = $1 AND lease_owner = $2 AND leased_until > NOW()`,
+		orgID, owner, mailbox, at, row, freshAt, freshID, st.PageFailures, st.FreshFailures, lease.Seconds())
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// ReleaseFollowUpSweep gives the lease back so the next pass need not wait for it to lapse.
+func (r *inboxTagRepository) ReleaseFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO inbox_follow_up_sweeps (organization_id, email_account_id, internal_date, message_row_id, updated_at)
-		VALUES ($1, $2, $3, $4, NOW())
-		ON CONFLICT (organization_id) DO UPDATE SET
-			email_account_id = EXCLUDED.email_account_id,
-			internal_date = EXCLUDED.internal_date,
-			message_row_id = EXCLUDED.message_row_id,
-			updated_at = NOW()`, orgID, pos.MailboxID, pos.At, pos.RowID)
+		UPDATE inbox_follow_up_sweeps SET leased_until = NULL, updated_at = NOW()
+		WHERE organization_id = $1 AND lease_owner = $2`, orgID, owner)
 	return err
 }

@@ -138,8 +138,8 @@ const followUpSweepWindow = 90
 // followUpSweepBudget is how long one pass may page through a workspace before the next resumes it.
 const followUpSweepBudget = 2 * time.Minute
 
-// followUpSweepFresh is how recent a thread's activity is to be swept first in every pass.
-const followUpSweepFresh = 3 * followUpSweepInterval
+// followUpSweepFresh caps how far back a pass checks threads changed since the last pass; older changes wait for the cycle.
+const followUpSweepFresh = 24 * time.Hour
 
 func (s *JobsService) sweepFollowUps(ctx context.Context) {
 	if s.InboxTagger == nil || s.EmailRepository == nil {
@@ -164,7 +164,7 @@ func (s *JobsService) sweepFollowUps(ctx context.Context) {
 				}
 				log.Warn().Err(serr).Str("org_id", orgID.String()).Msg("follow-up sweep failed")
 			} else if p.Threads > 0 {
-				log.Debug().Str("org_id", orgID.String()).Int("threads", p.Threads).Int("pages", p.Pages).Bool("cycle_complete", p.Complete).Msg("follow-up sweep")
+				log.Debug().Str("org_id", orgID.String()).Int("threads", p.Threads).Int("pages", p.Pages).Int("skipped", p.Skipped).Bool("cycle_complete", p.Complete).Msg("follow-up sweep")
 				if s.StreamingPublisher != nil {
 					s.StreamingPublisher.PublishEmailUpdated(ctx, &pubsub.EmailInboxEvent{OrgID: orgID.String()})
 				}

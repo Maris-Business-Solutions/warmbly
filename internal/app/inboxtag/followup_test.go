@@ -143,6 +143,7 @@ type fakeCategories struct {
 	// synced counts follow-up syncs per thread; onSync runs after each.
 	synced map[string]int
 	onSync func()
+	fail   map[string]error
 }
 
 func (f *fakeCategories) EnsureCategory(_ context.Context, _ uuid.UUID, slug string) (uuid.UUID, error) {
@@ -165,6 +166,9 @@ func (f *fakeCategories) AddThreadLabels(_ context.Context, _ uuid.UUID, threadI
 	return nil
 }
 func (f *fakeCategories) SyncExclusiveLabels(ctx context.Context, orgID uuid.UUID, threadID string, family []string, want string) error {
+	if err := f.fail[threadID]; err != nil {
+		return err
+	}
 	if f.labels == nil {
 		f.labels = map[string]map[string]bool{}
 	}
@@ -384,31 +388,139 @@ func TestSweepResumesAfterTheLastEvaluatedThread(t *testing.T) {
 	}
 }
 
-// A reply mid-cycle is swept in the next pass, not when the cycle comes back round.
-func TestSweepTakesFreshThreadsFirstWhenResuming(t *testing.T) {
+// A reply stored since the last pass is checked in the next one whatever date it
+// carries, while the cycle is elsewhere.
+func TestSweepChecksChangedThreadsEveryPass(t *testing.T) {
 	now := time.Now()
 	repo := &fakeRepo{states: quietThreads(3000, 2999), base: now}
-	// They answered an hour ago in a thread we chased a week ago.
-	repo.states[60] = repository.ThreadFollowUpState{ThreadID: "t-60", LastOutboundAt: now.AddDate(0, 0, -7), LastInboundAt: now.Add(-time.Hour), BestIntent: IntentWantsInfo, LastKind: KindHumanReply}
-	cats := &fakeCategories{labels: map[string]map[string]bool{"t-60": {LabelFollowUp: true}}}
+	// They answered a day ago in a thread we chased a week ago; the sync stored it ten minutes ago.
+	repo.states[2500] = repository.ThreadFollowUpState{ThreadID: "t-2500", LastOutboundAt: now.AddDate(0, 0, -7), LastInboundAt: now.AddDate(0, 0, -1), BestIntent: IntentWantsInfo, LastKind: KindHumanReply}
+	repo.changes = []repository.FollowUpChange{
+		{At: now.Add(-2 * time.Hour), RowID: uuid.New(), ThreadID: "t-2998"},
+		{At: now.Add(-10 * time.Minute), RowID: uuid.New(), ThreadID: "t-2500"},
+	}
+	repo.fresh = &repository.FollowUpMark{At: now.Add(-time.Hour)}
 	pos := repo.position(1000)
 	repo.cursor = &pos
+	cats := &fakeCategories{labels: map[string]map[string]bool{"t-2500": {LabelFollowUp: true}}}
 	svc := NewService(&countingAsker{}, repo, cats, nil, true)
 
 	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{
-		Since: now.AddDate(0, 0, -90), Fresh: 3*time.Hour + 30*time.Second, Budget: time.Nanosecond, PageSize: 500,
+		Since: now.AddDate(0, 0, -90), Fresh: 24 * time.Hour, Budget: time.Nanosecond, PageSize: 500,
 	})
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	if cats.has("t-60", LabelFollowUp) {
+	if cats.has("t-2500", LabelFollowUp) {
 		t.Error("a thread they answered still wears Follow up while the cycle is elsewhere")
+	}
+	if cats.synced["t-2998"] != 0 {
+		t.Error("a change from before the last check was read again")
 	}
 	if cats.synced["t-1001"] != 1 {
 		t.Error("the cycle did not move on from its cursor in the same pass")
 	}
-	if p.Threads != 181+500 {
-		t.Errorf("swept %d threads, want the 181 fresh ones and one cycle page", p.Threads)
+	if p.Threads != 1+500 {
+		t.Errorf("swept %d threads, want the changed one and one cycle page", p.Threads)
+	}
+	if repo.fresh == nil || !repo.fresh.At.After(now.Add(-5*time.Minute)) {
+		t.Errorf("the changed-thread mark stayed at %+v", repo.fresh)
+	}
+}
+
+// A failing changed-thread check costs that check, not the cycle.
+func TestSweepCycleRunsWhenTheChangedThreadCheckFails(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(600, 10), failChanges: errors.New("statement timeout")}
+	cats := &fakeCategories{}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), Fresh: time.Hour, PageSize: 500})
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if !p.Complete || !cats.has("t-10", LabelFollowUp) {
+		t.Fatalf("the cycle did not run after the check failed: %+v", p)
+	}
+	if repo.freshFailures != 1 {
+		t.Errorf("fresh failures %d, want the one counted", repo.freshFailures)
+	}
+}
+
+// A page that fails every time is retried, then stepped past, so the cycle keeps moving.
+func TestSweepStepsPastAPageThatKeepsFailing(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(1200, 1100)}
+	poison := repo.position(499).RowID
+	repo.failPage = func(after *repository.FollowUpPosition) error {
+		if after != nil && after.RowID == poison {
+			return errors.New("statement timeout")
+		}
+		return nil
+	}
+	cats := &fakeCategories{}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500}
+
+	for pass := 1; pass < followUpFailureLimit; pass++ {
+		if _, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts); err == nil {
+			t.Fatalf("pass %d hid a failing page", pass)
+		}
+		if repo.cursor == nil || repo.cursor.RowID != poison || repo.pageFailures != pass {
+			t.Fatalf("pass %d left cursor %+v with %d failures", pass, repo.cursor, repo.pageFailures)
+		}
+	}
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts)
+	if err != nil || !p.Complete || p.Skipped != 1 {
+		t.Fatalf("pass %d: %+v %v, want the page skipped and the cycle finished", followUpFailureLimit, p, err)
+	}
+	if !cats.has("t-1100", LabelFollowUp) {
+		t.Error("the thread past the failing page was never labelled")
+	}
+	if cats.synced["t-700"] != 0 || repo.pageFailures != 0 {
+		t.Errorf("t-700 synced %d times and %d failures left, want the page skipped and the count reset", cats.synced["t-700"], repo.pageFailures)
+	}
+}
+
+// A label that cannot be written stops the cursor before that thread, and
+// after repeated failures the thread alone is stepped past.
+func TestSweepStopsAtAThreadWhoseLabelFails(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(1200, 1100)}
+	cats := &fakeCategories{fail: map[string]error{"t-300": errors.New("deadlock detected")}}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500}
+
+	for pass := 1; pass < followUpFailureLimit; pass++ {
+		if _, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts); err == nil {
+			t.Fatalf("pass %d hid a failed label", pass)
+		}
+		if repo.cursor == nil || repo.cursor.RowID != repo.position(299).RowID {
+			t.Fatalf("pass %d left the cursor at %+v, want the thread before the failure", pass, repo.cursor)
+		}
+	}
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts)
+	if err != nil || !p.Complete || p.Skipped != 1 {
+		t.Fatalf("pass %d: %+v %v, want the thread skipped and the cycle finished", followUpFailureLimit, p, err)
+	}
+	if cats.synced["t-299"] != 1 || cats.synced["t-301"] != 1 || !cats.has("t-1100", LabelFollowUp) {
+		t.Errorf("t-299 %d, t-301 %d syncs, t-1100 labelled %v", cats.synced["t-299"], cats.synced["t-301"], cats.has("t-1100", LabelFollowUp))
+	}
+}
+
+// A second walker finds the workspace leased and leaves its state alone.
+func TestSweepLeaseKeepsOneWalker(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(1200, 1100)}
+	pos := repo.position(600)
+	repo.cursor = &pos
+	holder := uuid.New()
+	repo.leaseOwner, repo.leasedUntil = holder, time.Now().Add(time.Minute)
+	cats := &fakeCategories{}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500})
+	if err != nil || !p.Busy || p.Threads != 0 || repo.pages != 0 {
+		t.Fatalf("second walker: %+v %v after %d pages, want it to stand aside", p, err, repo.pages)
+	}
+	if repo.cursor == nil || repo.cursor.RowID != pos.RowID || repo.leaseOwner != holder {
+		t.Fatalf("second walker moved the cursor to %+v or took the lease", repo.cursor)
 	}
 }
 

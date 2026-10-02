@@ -185,6 +185,7 @@ func runInboxTagFollowUps(ctx context.Context, args []string) error {
 	fs := newFlagSet("inbox-tag follow-ups")
 	org := fs.String("org", "", "organization id, or the owner's email address")
 	days := fs.Int("days", 90, "how far back to consider threads")
+	_ = fs.Int("limit", 0, "deprecated and ignored: the sweep now checks every thread")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

@@ -3,12 +3,14 @@ package inboxtag
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/warmbly/warmbly/internal/repository"
@@ -44,8 +46,8 @@ func newSweepFixture(t *testing.T) *sweepFixture {
 	}
 	t.Cleanup(pool.Close)
 	var version int64
-	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations LIMIT 1`).Scan(&version); err != nil || version < 244 {
-		t.Fatalf("WARMBLY_TEST_DB is at schema version %d (err %v); this test needs 244 or later", version, err)
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations LIMIT 1`).Scan(&version); err != nil || version < 247 {
+		t.Fatalf("WARMBLY_TEST_DB is at schema version %d (err %v); this test needs 247 or later", version, err)
 	}
 
 	f := &sweepFixture{t: t, pool: pool, owner: uuid.New(), org: uuid.New(), mailbox: [2]uuid.UUID{uuid.New(), uuid.New()}}
@@ -162,11 +164,14 @@ func (f *sweepFixture) labels(thread string) []string {
 // pass is one hourly pass from a freshly started service, as after a consumer restart.
 func (f *sweepFixture) pass() FollowUpProgress {
 	f.t.Helper()
+	return f.passWith(FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), Budget: time.Nanosecond, PageSize: 500})
+}
+
+func (f *sweepFixture) passWith(opts FollowUpSweep) FollowUpProgress {
+	f.t.Helper()
 	repo := repository.NewInboxTagRepository(f.pool)
 	svc := NewService(nil, repo, repository.NewTagCategoryStore(f.pool), nil, true)
-	p, err := svc.SweepFollowUps(context.Background(), f.org, FollowUpSweep{
-		Since: time.Now().AddDate(0, 0, -90), Budget: time.Nanosecond, PageSize: 500,
-	})
+	p, err := svc.SweepFollowUps(context.Background(), f.org, opts)
 	if err != nil {
 		f.t.Fatalf("sweep: %v", err)
 	}
@@ -175,11 +180,21 @@ func (f *sweepFixture) pass() FollowUpProgress {
 
 func (f *sweepFixture) cursor() *repository.FollowUpPosition {
 	f.t.Helper()
-	pos, err := repository.NewInboxTagRepository(f.pool).FollowUpCursor(context.Background(), f.org)
+	var mailbox, row *uuid.UUID
+	var at *time.Time
+	err := f.pool.QueryRow(context.Background(), `
+		SELECT email_account_id, internal_date, message_row_id FROM inbox_follow_up_sweeps WHERE organization_id = $1`,
+		f.org).Scan(&mailbox, &at, &row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		f.t.Fatalf("cursor: %v", err)
 	}
-	return pos
+	if mailbox == nil || at == nil || row == nil {
+		return nil
+	}
+	return &repository.FollowUpPosition{MailboxID: *mailbox, At: *at, RowID: *row}
 }
 
 // A conversation older than the newest 2,000 is reached within one cycle and
@@ -273,4 +288,103 @@ func walkedPast(a, b repository.FollowUpPosition) bool {
 		return a.At.Before(b.At)
 	}
 	return bytes.Compare(a.RowID[:], b.RowID[:]) < 0
+}
+
+// A reply the sync stored late, under a date older than any fixed window, and
+// a verdict written long after its message, are both checked in the next pass
+// while the cycle is still among the newest threads.
+func TestLiveFollowUpSweepChecksLateSyncedReplies(t *testing.T) {
+	f := newSweepFixture(t)
+	ctx := context.Background()
+	// Everything the fixture wrote was stored and judged two days ago.
+	f.exec(`UPDATE unibox_emails SET ingested_at = NOW() - interval '2 days'
+	        WHERE email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)`, f.org)
+	f.exec(`UPDATE inbox_tag_results SET updated_at = NOW() - interval '2 days' WHERE organization_id = $1`, f.org)
+	f.label("stale-chase", LabelFollowUp)
+	// Inbound four days ago, after our send, not judged yet: nothing is owed until it is.
+	f.message(1, "sent", "late-verdict", time.Now().AddDate(0, 0, -9), "", "")
+	f.message(1, "inbox", "late-verdict", time.Now().AddDate(0, 0, -4), "", "")
+	f.exec(`UPDATE unibox_emails SET ingested_at = NOW() - interval '2 days' WHERE thread_id = 'late-verdict'`)
+
+	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), Fresh: 24 * time.Hour, Budget: time.Nanosecond, PageSize: 500}
+	if p := f.passWith(opts); p.Complete {
+		t.Fatalf("first pass finished the cycle; the test needs it elsewhere: %+v", p)
+	}
+	if got := f.labels("late-verdict"); len(got) != 0 {
+		t.Fatalf("late-verdict wears %v before its reply was judged", got)
+	}
+	// As if that pass ran ten minutes ago.
+	f.exec(`UPDATE inbox_follow_up_sweeps SET fresh_at = fresh_at - interval '10 minutes' WHERE organization_id = $1`, f.org)
+
+	// They answered six hours ago; the sync stored it five minutes ago.
+	id := "<late-reply@sweep.test>"
+	f.exec(`INSERT INTO unibox_emails (id, user_id, email_id, folder, provider_folder, message_id, thread_id,
+	            from_addr, subject, body_text, internal_date, ingested_at)
+	        VALUES ($1, $2, $3, 'inbox', 'inbox', $4, 'stale-chase', ARRAY['x@sweep.test'], 'Re: Hello', 'body',
+	                NOW() - interval '6 hours', NOW() - interval '5 minutes')`, uuid.New(), f.owner, f.mailbox[0], id)
+	f.exec(`INSERT INTO inbox_tag_results (organization_id, email_account_id, message_id, thread_id, status, kind, intent, updated_at)
+	        VALUES ($1, $2, $3, 'stale-chase', 'complete', $4, $5, NOW() - interval '2 days')`,
+		f.org, f.mailbox[0], id, KindHumanReply, IntentWantsInfo)
+	// The four-day-old reply is judged five minutes ago.
+	f.exec(`INSERT INTO inbox_tag_results (organization_id, email_account_id, message_id, thread_id, status, kind, intent, updated_at)
+	        VALUES ($1, $2, '<late-verdict-inbox-1@sweep.test>', 'late-verdict', 'complete', $3, $4, NOW() - interval '5 minutes')`,
+		f.org, f.mailbox[1], KindHumanReply, IntentWantsInfo)
+
+	before := f.cursor()
+	f.passWith(opts)
+	if got := f.labels("stale-chase"); len(got) != 0 {
+		t.Errorf("stale-chase still wears %v after a reply stored since the last pass", got)
+	}
+	if got := f.labels("late-verdict"); len(got) != 1 || got[0] != LabelNeedsReply {
+		t.Errorf("late-verdict wears %v after its reply was judged, want Needs reply", got)
+	}
+	if after := f.cursor(); after == nil || before == nil || after.MailboxID != before.MailboxID {
+		t.Fatalf("the cycle left the first mailbox (%+v -> %+v); the threads may have been reached by it", before, after)
+	}
+	var freshAt time.Time
+	if err := f.pool.QueryRow(ctx, `SELECT fresh_at FROM inbox_follow_up_sweeps WHERE organization_id = $1`, f.org).Scan(&freshAt); err != nil {
+		t.Fatalf("fresh_at: %v", err)
+	}
+	if time.Since(freshAt) > 3*time.Minute {
+		t.Errorf("the changed-thread mark stayed at %v", freshAt)
+	}
+}
+
+// While one walker holds a workspace, another neither sweeps it nor moves its state.
+func TestLiveFollowUpSweepLeaseKeepsOneWalker(t *testing.T) {
+	f := newSweepFixture(t)
+	ctx := context.Background()
+	f.pass()
+	before := f.cursor()
+	if before == nil {
+		t.Fatal("first pass saved no cursor")
+	}
+
+	repo := repository.NewInboxTagRepository(f.pool)
+	holder := uuid.New()
+	st, err := repo.ClaimFollowUpSweep(ctx, f.org, holder, time.Minute)
+	if err != nil || st == nil {
+		t.Fatalf("claim: %+v %v", st, err)
+	}
+	if p := f.pass(); !p.Busy || p.Threads != 0 {
+		t.Fatalf("a second walker swept a leased workspace: %+v", p)
+	}
+	if again, err := repo.ClaimFollowUpSweep(ctx, f.org, uuid.New(), time.Minute); err != nil || again != nil {
+		t.Fatalf("a second claim succeeded: %+v %v", again, err)
+	}
+	if ok, err := repo.SaveFollowUpSweep(ctx, f.org, uuid.New(), time.Minute, repository.FollowUpSweepState{}); err != nil || ok {
+		t.Fatalf("a walker without the lease saved: %v %v", ok, err)
+	}
+	if got := f.cursor(); got == nil || !got.At.Equal(before.At) || got.RowID != before.RowID {
+		t.Fatalf("the cursor moved to %+v while another walker held the lease", got)
+	}
+	if ok, err := repo.SaveFollowUpSweep(ctx, f.org, holder, time.Minute, *st); err != nil || !ok {
+		t.Fatalf("the holder could not save: %v %v", ok, err)
+	}
+	if err := repo.ReleaseFollowUpSweep(ctx, f.org, holder); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if p := f.pass(); p.Busy || p.Threads == 0 {
+		t.Fatalf("the released workspace was not swept: %+v", p)
+	}
 }

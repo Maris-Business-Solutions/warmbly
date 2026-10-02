@@ -1,10 +1,12 @@
 package inboxtag
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -235,6 +237,15 @@ type fakeRepo struct {
 	cursor    *repository.FollowUpPosition
 	pages     int
 	base      time.Time
+	// The follow-up sweep's persisted state and lease.
+	fresh         *repository.FollowUpMark
+	pageFailures  int
+	freshFailures int
+	leaseOwner    uuid.UUID
+	leasedUntil   time.Time
+	changes       []repository.FollowUpChange
+	failPage      func(after *repository.FollowUpPosition) error
+	failChanges   error
 }
 
 func (f *fakeRepo) Claim(_ context.Context, _, _ uuid.UUID, id, _ string) (bool, error) {
@@ -307,6 +318,15 @@ func (f *fakeRepo) FollowUpMailboxes(context.Context, uuid.UUID) ([]uuid.UUID, e
 
 func (f *fakeRepo) FollowUpPage(_ context.Context, _, _ uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
 	f.pages++
+	if f.failPage != nil {
+		if err := f.failPage(after); err != nil {
+			return repository.FollowUpPage{}, err
+		}
+	}
+	return f.page(since, after, limit)
+}
+
+func (f *fakeRepo) page(since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
 	start := 0
 	if after != nil {
 		for start < len(f.states) && f.position(start).RowID != after.RowID {
@@ -325,12 +345,59 @@ func (f *fakeRepo) FollowUpPage(_ context.Context, _, _ uuid.UUID, since time.Ti
 	return page, nil
 }
 
-func (f *fakeRepo) FollowUpCursor(context.Context, uuid.UUID) (*repository.FollowUpPosition, error) {
-	return f.cursor, nil
+func (f *fakeRepo) FollowUpPagePositions(ctx context.Context, org, mailbox uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
+	page, _ := f.page(since, after, limit)
+	page.States = nil
+	return page, nil
 }
 
-func (f *fakeRepo) SaveFollowUpCursor(_ context.Context, _ uuid.UUID, pos *repository.FollowUpPosition) error {
-	f.cursor = pos
+func (f *fakeRepo) FollowUpChanges(_ context.Context, _ uuid.UUID, after repository.FollowUpMark, until time.Time, limit int) ([]repository.FollowUpChange, error) {
+	if f.failChanges != nil {
+		return nil, f.failChanges
+	}
+	var out []repository.FollowUpChange
+	for _, c := range f.changes {
+		later := c.At.After(after.At) || (c.At.Equal(after.At) && bytes.Compare(c.RowID[:], after.RowID[:]) > 0)
+		if later && !c.At.After(until) && len(out) < limit {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) FollowUpThreadStates(_ context.Context, _ uuid.UUID, threads []string, _ time.Time) ([]repository.ThreadFollowUpState, error) {
+	var out []repository.ThreadFollowUpState
+	for _, st := range f.states {
+		if slices.Contains(threads, st.ThreadID) {
+			out = append(out, st)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) ClaimFollowUpSweep(_ context.Context, _, owner uuid.UUID, lease time.Duration) (*repository.FollowUpSweepState, error) {
+	now := time.Now()
+	if f.leaseOwner != uuid.Nil && f.leaseOwner != owner && f.leasedUntil.After(now) {
+		return nil, nil
+	}
+	f.leaseOwner, f.leasedUntil = owner, now.Add(lease)
+	return &repository.FollowUpSweepState{Cursor: f.cursor, Fresh: f.fresh, PageFailures: f.pageFailures, FreshFailures: f.freshFailures, Now: now}, nil
+}
+
+func (f *fakeRepo) SaveFollowUpSweep(_ context.Context, _, owner uuid.UUID, lease time.Duration, st repository.FollowUpSweepState) (bool, error) {
+	now := time.Now()
+	if f.leaseOwner != owner || !f.leasedUntil.After(now) {
+		return false, nil
+	}
+	f.cursor, f.fresh, f.pageFailures, f.freshFailures = st.Cursor, st.Fresh, st.PageFailures, st.FreshFailures
+	f.leasedUntil = now.Add(lease)
+	return true, nil
+}
+
+func (f *fakeRepo) ReleaseFollowUpSweep(_ context.Context, _, owner uuid.UUID) error {
+	if f.leaseOwner == owner {
+		f.leasedUntil = time.Time{}
+	}
 	return nil
 }
 
