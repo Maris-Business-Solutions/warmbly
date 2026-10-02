@@ -239,11 +239,15 @@ func TestLiveThreadHandleIsDroppedWhenTheConversationSubjectIsGone(t *testing.T)
 
 	f.tick(t, svc)
 	f.confirmSend(t, handle.Pool, "<opener@test.local>", "gmail-thread-1")
-	// The step that opened the conversation is gone, so its subject cannot be
-	// read off anything.
+	// The opener was sent before sends recorded their subject, and its step's
+	// has since been blanked, so the subject cannot be read off anything.
 	if _, err := handle.Pool.Exec(context.Background(),
 		`UPDATE sequences SET subject = '' WHERE id = $1`, f.step); err != nil {
 		t.Fatalf("blank the opener's subject: %v", err)
+	}
+	if _, err := handle.Pool.Exec(context.Background(),
+		`UPDATE campaign_tasks SET subject = NULL WHERE campaign_id = $1`, f.campaign); err != nil {
+		t.Fatalf("forget the opener's recorded subject: %v", err)
 	}
 
 	f.tick(t, svc)
@@ -253,5 +257,100 @@ func TestLiveThreadHandleIsDroppedWhenTheConversationSubjectIsGone(t *testing.T)
 	}
 	if followUp.ThreadID != "" {
 		t.Errorf("follow-up thread = %q, want none: the subject cannot be matched", followUp.ThreadID)
+	}
+}
+
+// The subject a send recorded outlives an edit to the step that wrote it: the
+// recipient already has the old one, so the reply keeps it and the thread.
+func TestLiveThreadFollowUpKeepsTheSubjectTheOpenerWasSentWith(t *testing.T) {
+	handle := liveCampaignDB(t)
+	sender := &recordingSender{}
+	svc := liveCampaignService(t, handle, sender)
+	f := newCampaignSendFixture(t, handle.Pool)
+	f.addFollowUp(t, handle.Pool, "", true)
+
+	f.tick(t, svc)
+	f.confirmSend(t, handle.Pool, "<opener@test.local>", "gmail-thread-1")
+	if _, err := handle.Pool.Exec(context.Background(),
+		`UPDATE sequences SET subject = 'Edited later' WHERE id = $1`, f.step); err != nil {
+		t.Fatalf("edit the opener's subject: %v", err)
+	}
+
+	f.tick(t, svc)
+	followUp := sender.message(t, 1)
+	if followUp.Subject != "Hi" {
+		t.Errorf("follow-up subject = %q, want the one the contact was sent", followUp.Subject)
+	}
+	if followUp.ThreadID != "gmail-thread-1" {
+		t.Errorf("follow-up thread = %q, want the conversation the opener landed in", followUp.ThreadID)
+	}
+}
+
+// A contact sent the opener's Variant B is replied to under Variant B's
+// subject, not the step's own (issue #774). The Original's weight is 1 against
+// a million so the deterministic split puts the fixture's contact on B.
+func TestLiveThreadFollowUpRepliesUnderTheArmTheContactGot(t *testing.T) {
+	handle := liveCampaignDB(t)
+	sender := &recordingSender{}
+	svc := liveCampaignService(t, handle, sender)
+	f := newCampaignSendFixture(t, handle.Pool)
+	f.addFollowUp(t, handle.Pool, "", true)
+	if _, err := handle.Pool.Exec(context.Background(), `
+		INSERT INTO campaign_ab_variants (campaign_id, sequence_id, name, weight, subject, body_html, body_plain, is_control, is_active)
+		VALUES ($1, $2, 'Original', 1, '', '', '', true, true),
+		       ($1, $2, 'Variant B', 1000000, 'Variant B subject', '<p>B</p>', 'B', false, true)`,
+		f.campaign, f.step); err != nil {
+		t.Fatalf("variants: %v", err)
+	}
+
+	f.tick(t, svc)
+	if got := sender.message(t, 0).Subject; got != "Variant B subject" {
+		t.Fatalf("opener subject = %q, want Variant B's", got)
+	}
+	f.confirmSend(t, handle.Pool, "<opener@test.local>", "gmail-thread-1")
+
+	f.tick(t, svc)
+	followUp := sender.message(t, 1)
+	if followUp.Subject != "Variant B subject" {
+		t.Errorf("follow-up subject = %q, want the arm the contact was sent", followUp.Subject)
+	}
+	if followUp.InReplyTo != "<opener@test.local>" {
+		t.Errorf("follow-up in_reply_to = %q, want the opener's Message-ID", followUp.InReplyTo)
+	}
+	if followUp.ThreadID != "gmail-thread-1" {
+		t.Errorf("follow-up thread = %q, want the conversation the opener landed in", followUp.ThreadID)
+	}
+}
+
+// A follow-up repeats the opener's subject as it was rendered, so a merge field
+// that changed since (or a spintax group re-rolled) cannot break the match
+// Gmail threads on.
+func TestLiveThreadFollowUpRepeatsTheRenderedSubject(t *testing.T) {
+	handle := liveCampaignDB(t)
+	sender := &recordingSender{}
+	svc := liveCampaignService(t, handle, sender)
+	f := newCampaignSendFixture(t, handle.Pool)
+	f.addFollowUp(t, handle.Pool, "", true)
+	ctx := context.Background()
+	if _, err := handle.Pool.Exec(ctx, `UPDATE sequences SET subject = 'Hi {{.FirstName}}' WHERE id = $1`, f.step); err != nil {
+		t.Fatalf("templated subject: %v", err)
+	}
+
+	f.tick(t, svc)
+	if got := sender.message(t, 0).Subject; got != "Hi Live" {
+		t.Fatalf("opener subject = %q, want it rendered", got)
+	}
+	f.confirmSend(t, handle.Pool, "<opener@test.local>", "gmail-thread-1")
+	if _, err := handle.Pool.Exec(ctx, `UPDATE contacts SET first_name = 'Renamed' WHERE id = $1`, f.contact); err != nil {
+		t.Fatalf("rename contact: %v", err)
+	}
+
+	f.tick(t, svc)
+	followUp := sender.message(t, 1)
+	if followUp.Subject != "Hi Live" {
+		t.Errorf("follow-up subject = %q, want the opener's as it was sent", followUp.Subject)
+	}
+	if followUp.ThreadID != "gmail-thread-1" {
+		t.Errorf("follow-up thread = %q, want the conversation the opener landed in", followUp.ThreadID)
 	}
 }

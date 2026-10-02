@@ -115,10 +115,14 @@ type ThreadParent struct {
 	// only means something inside the mailbox that owns it, so a follow-up
 	// leaving from a different address must not carry it.
 	SenderID uuid.UUID
-	// Subject is the conversation's subject, unrendered: the template of the
-	// step that opened the thread, not the parent's own. A reply carries it,
-	// and Gmail refuses to file a message in a thread it does not match.
+	// Subject is the conversation's subject: the one the opening send carried
+	// (its A/B arm's when one replaced the step's), not the parent's own. A
+	// reply carries it, and Gmail refuses to file a message in a thread it
+	// does not match.
 	Subject string
+	// SubjectSent marks Subject as recorded off a send, already rendered for
+	// this contact; otherwise it is the opening step's template.
+	SubjectSent bool
 }
 
 // CampaignProgressRepository defines methods for campaign progress tracking
@@ -680,9 +684,12 @@ const threadParentScan = 50
 // Action and wait nodes never reach the tracking stamp that writes a
 // campaign_tasks row, and never carry a Message-ID, so they cannot be picked
 // as a parent.
+//
+// The conversation's subject is read off the sends themselves where they
+// recorded it, and walked from the steps only for sends from before they did.
 func (r *campaignProgressRepository) ThreadParentForLead(ctx context.Context, campaignID, contactID uuid.UUID) (*ThreadParent, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT t.message_id, t.thread_id, t.email_account_id,
+		SELECT t.message_id, t.thread_id, t.email_account_id, ct.subject,
 		       s.id IS NOT NULL, COALESCE(s.subject, ''), COALESCE(s.thread_reply, true)
 		FROM campaign_tasks ct
 		JOIN tasks t ON t.id = ct.task_id
@@ -700,17 +707,24 @@ func (r *campaignProgressRepository) ThreadParentForLead(ctx context.Context, ca
 
 	var parent *ThreadParent
 	var subject string
+	var recorded bool
 	for rows.Next() {
 		var (
 			messageID, threadID, stepSubject string
+			sentSubject                      *string
 			senderID                         uuid.UUID
 			stepKnown, threadReply           bool
 		)
-		if err := rows.Scan(&messageID, &threadID, &senderID, &stepKnown, &stepSubject, &threadReply); err != nil {
+		if err := rows.Scan(&messageID, &threadID, &senderID, &sentSubject, &stepKnown, &stepSubject, &threadReply); err != nil {
 			return nil, err
 		}
 		if parent == nil {
 			parent = &ThreadParent{MessageID: messageID, ThreadID: threadID, SenderID: senderID}
+		}
+		// A recorded subject is the conversation's as sent, whichever A/B arm it came from.
+		if sentSubject != nil && *sentSubject != "" {
+			subject, recorded = *sentSubject, true
+			break
 		}
 		// A step that has since been deleted (campaign_tasks.sequence_id is
 		// ON DELETE SET NULL) says nothing about whether it opened a thread or
@@ -737,7 +751,7 @@ func (r *campaignProgressRepository) ThreadParentForLead(ctx context.Context, ca
 	if parent == nil {
 		return nil, nil
 	}
-	parent.Subject = subject
+	parent.Subject, parent.SubjectSent = subject, recorded
 	return parent, nil
 }
 

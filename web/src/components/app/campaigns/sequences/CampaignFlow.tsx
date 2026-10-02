@@ -98,7 +98,7 @@ import buildError from "@/lib/helper/buildError";
 import EntryDelayPicker from "@/components/app/campaigns/schedule/EntryDelayPicker";
 import { entryDelayLabel } from "@/components/app/campaigns/schedule/entryDelay";
 import StepEmailArms from "./StepEmailArms";
-import { conversationSubjectFor } from "./threading";
+import { conversationOpenerFor, conversationSubjectFor } from "./threading";
 import CategoryPicker from "@/components/app/contacts/CategoryPicker";
 import { SegmentMultiPicker } from "@/components/app/segments/SegmentPickers";
 import type { ActionKV, AITagRef, SequenceAction, SequenceActionType } from "@/lib/api/models/app/campaigns/sequences/Action";
@@ -2223,6 +2223,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                                 sequence={editStep}
                                 index={editIndex}
                                 conversationSubject={conversationSubjectFor(sequences, editIndex)}
+                                conversationOpener={conversationOpenerFor(sequences, editIndex)}
                             />
                         )}
                     </div>
