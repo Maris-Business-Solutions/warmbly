@@ -87,7 +87,7 @@ func (s *EmailVerificationScheduler) Start(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case <-wake:
-					jobrun.Run(ctx, "email_verification", s.interval, run)
+					jobrun.Run(ctx, "email_verification", run)
 				}
 			}
 		}()
