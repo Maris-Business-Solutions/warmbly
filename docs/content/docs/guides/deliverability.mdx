@@ -74,6 +74,8 @@ Gmail, Yahoo, and Outlook all require SPF, DKIM, and DMARC, and failed alignment
 - **Failing**: SPF or DMARC missing.
 - **Unknown**: not checked yet, or the lookup could not complete. A DNS hiccup never looks like a misconfiguration.
 
+A record is only reported missing once the domain's own nameservers agree. When the instance's resolver does not return SPF or DMARC, the check asks the nameservers the domain delegates to directly, and their answer stands. That covers a resolver still caching a "no such record" from before you published it, one that drops `TXT` answers, and one that fails: none of them can mark a correctly configured domain as Failing. Lookups use the domain's fully qualified name, so a failure is never retried under the host's search domains and turned into a "not found".
+
 DKIM is reported separately as **Found** or **Not verified**, never as missing. A DKIM key lives at a selector its owner chose, and DNS has no way to list the selectors under a domain, so nothing answering proves nothing. The check does better than guessing blindly: it reads the domain's own SPF and MX records, which name the provider handling its mail, and probes the selectors that provider publishes, on top of a default set covering the common ones. Providers that mint a random per-account selector, Amazon SES among them, stay unverifiable by design.
 
 So a domain can be Passing with DKIM unverified, and that is the normal result on plenty of correctly signed domains. It never affects whether a mailbox may send. If yours shows Not verified, confirm DKIM signing is on in your provider's console; a message you send to yourself shows `dkim=pass` in its `Authentication-Results` header when it is working.
@@ -94,7 +96,7 @@ The gate covers cold campaigns and warmup only. Manual sends and replies from th
 
 ### Getting sending back
 
-Add the missing records at your registrar, then open the mailbox and press **Re-check** under Domain authentication. That records the new verdict immediately and sending resumes on the next scheduled send. Waiting for the background check works too, it is just slower: it reaches each domain about once a day.
+Add the missing records at your registrar, then open the mailbox and press **Check** (or **Re-check**) under Domain authentication. For anyone who can manage mailboxes, that records the new verdict immediately and sending resumes on the next scheduled send. A teammate without that permission sees the live result, and the banner tells them when the records already check out. Waiting for the background check works too, it is just slower: it reaches each domain about once a day.
 
 Re-check is also worth pressing after reconnecting a mailbox that was disconnected while Failing, since its stored state is refreshed from scratch when it comes back.
 

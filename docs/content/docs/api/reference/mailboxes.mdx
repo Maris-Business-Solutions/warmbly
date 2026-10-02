@@ -522,7 +522,9 @@ Auth: **Scope** `READ_EMAILS` · **Org permission** `view_campaigns`
 
 `dmarc_inherited` is `true` when the sending domain has no DMARC record of its own and is covered by its organizational domain's policy, which is how a dedicated sending subdomain normally works; `dmarc_domain` then names the domain the record was read from, and `dmarc_policy` reports its `sp=` value when it publishes one. SPF never inherits, so it must be published on the exact sending domain.
 
-`lookup_error` is `true` when DNS could not answer, and `reserved` is `true` for a special-use domain (`.test`, `.invalid`, `.localhost`, `.example`, `.local`) that cannot resolve by definition. Either one means the domain is unevaluatable, so it is recorded as `unknown` rather than `failing`.
+A record the instance's resolver does not return is confirmed with the domain's own authoritative nameservers before `spf_found` or `dmarc_found` reads `false`, so a stale cached miss or a resolver that drops `TXT` answers does not report a configured domain as missing.
+
+`lookup_error` is `true` when DNS could not answer, from the instance's resolver or the domain's nameservers, and `reserved` is `true` for a special-use domain (`.test`, `.invalid`, `.localhost`, `.example`, `.local`) that cannot resolve by definition. Either one means the domain is unevaluatable, so it is recorded as `unknown` rather than `failing`.
 
 ## Record a domain authentication check
 
