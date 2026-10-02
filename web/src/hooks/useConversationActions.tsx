@@ -25,6 +25,7 @@ import {
     unsnoozeThreads,
 } from "@/lib/api/client/app/unibox/snoozeThread";
 import { SNOOZE_MAX_MS } from "@/lib/unibox/snooze";
+import { useAppStore } from "@/stores";
 
 // Filing copy, per destination. "Deleted" is deliberately not said anywhere:
 // Delete moves the message to Trash, here and in the mailbox.
@@ -110,6 +111,11 @@ export function useConversationActions(): ConversationActions {
     const setSeen = React.useCallback(
         (threadIds: string[], seen: boolean) => {
             if (threadIds.length === 0) return;
+            // An open reader marks what it shows as read, so unread closes it.
+            const store = useAppStore.getState();
+            if (!seen && store.selectedThreadId && threadIds.includes(store.selectedThreadId)) {
+                store.setSelectedThreadId(null);
+            }
             markSeen.mutate({ threadIds, seen });
             if (threadIds.length > 1) {
                 toast.success(
