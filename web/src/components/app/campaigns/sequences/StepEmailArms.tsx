@@ -18,6 +18,7 @@ import EmailContentEditor from "./EmailContentEditor";
 import { htmlToPlain } from "./emailPreview";
 import SequenceView from "./SequenceView";
 import StepSplitAllocator, { type SplitArm } from "./StepSplitAllocator";
+import { openerArmSubjects, type ArmSubject } from "./threading";
 import {
     useCampaignABVariants,
     useCampaignABAnalysis,
@@ -42,14 +43,22 @@ export default function StepEmailArms({
     sequence,
     index,
     conversationSubject = null,
+    conversationOpener = null,
 }: {
     campaignId: string;
     sequence: Sequence;
     index: number;
     // The subject of the conversation this step replies on; see SequenceView.
     conversationSubject?: string | null;
+    // The step that opened that conversation, whose A/B variants can carry
+    // other subjects a contact is replied to under.
+    conversationOpener?: Sequence | null;
 }) {
     const { data: all } = useCampaignABVariants(campaignId);
+    const conversationArms = React.useMemo(
+        () => openerArmSubjects(conversationOpener, all ?? []),
+        [conversationOpener, all],
+    );
     const stepRows = (all ?? []).filter((v) => v.step_id === sequence.id);
     const controlRow = stepRows.find((v) => v.is_control) ?? null;
     const variants = stepRows.filter((v) => !v.is_control);
@@ -198,6 +207,7 @@ export default function StepEmailArms({
                     sequence={sequence}
                     index={index}
                     conversationSubject={conversationSubject}
+                    conversationArms={conversationArms}
                     headerExtra={
                         variants.length === 0 ? (
                             <button
@@ -227,6 +237,7 @@ export default function StepEmailArms({
                     onTogglePause={(active) => togglePause(selectedVariant.id, active)}
                     onDelete={() => deleteArm(selectedVariant.id)}
                     inheritedSubject={sequence.thread_reply ? conversationSubject || null : null}
+                    inheritedArms={conversationArms}
                 />
             )}
         </div>
@@ -242,6 +253,7 @@ function VariantEditor({
     onTogglePause,
     onDelete,
     inheritedSubject,
+    inheritedArms,
 }: {
     campaignId: string;
     variant: ABVariant;
@@ -254,6 +266,7 @@ function VariantEditor({
     // to the conversation, so no arm can carry one of its own and the send
     // path ignores the column. Null when the step writes its own subject.
     inheritedSubject?: string | null;
+    inheritedArms?: ArmSubject[];
 }) {
     const update = useUpdateABVariant(campaignId);
 
@@ -345,6 +358,7 @@ function VariantEditor({
                         ? {
                               subject: inheritedSubject,
                               note: "This step replies in the contact's thread, so every arm carries the conversation's subject and varies the body only.",
+                              alternates: inheritedArms,
                           }
                         : undefined
                 }
