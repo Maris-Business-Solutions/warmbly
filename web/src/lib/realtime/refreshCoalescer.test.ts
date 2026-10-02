@@ -37,6 +37,25 @@ describe("createRefreshCoalescer", () => {
         c.dispose();
     });
 
+    it("follows a flush forced by the cap with a trailing one for keys added just before it", () => {
+        const spy = vi.spyOn(client, "invalidateQueries");
+        const c = createRefreshCoalescer(client, { delayMs: 1000, maxWaitMs: 3000 });
+        c.add([["analytics"]]);
+        for (let i = 0; i < 30; i++) {
+            c.add([["unibox", "overview"]]);
+            vi.advanceTimersByTime(100);
+        }
+        // The cap fired at 3000, 100ms after the last add.
+        expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual([["analytics"], ["unibox", "overview"]]);
+        vi.advanceTimersByTime(999);
+        expect(spy).toHaveBeenCalledTimes(2);
+        vi.advanceTimersByTime(1);
+        expect(spy).toHaveBeenCalledTimes(3);
+        expect(spy.mock.calls[2][0]).toMatchObject({ queryKey: ["unibox", "overview"] });
+        vi.advanceTimersByTime(5000);
+        expect(spy).toHaveBeenCalledTimes(3);
+    });
+
     it("skips a key a broader pending key already covers", () => {
         const spy = vi.spyOn(client, "invalidateQueries");
         const c = createRefreshCoalescer(client, { delayMs: 10 });

@@ -13,8 +13,8 @@ import (
 const (
 	// overviewFreshFor stays below the dashboard's REFRESH_DELAY_MS so a post-event refresh never reads pre-event counts.
 	overviewFreshFor = time.Second
-	// overviewComputeTimeout bounds the shared computation, which no single caller's disconnect cancels.
-	overviewComputeTimeout = 60 * time.Second
+	// overviewComputeTimeout matches the interactive read bound; the flight is also cancelled once nobody waits.
+	overviewComputeTimeout = 30 * time.Second
 )
 
 // overviewScope is every input the overview reads and so the cache key; a new narrowing input belongs here.
@@ -25,6 +25,9 @@ type overviewScope struct {
 type overviewFlight struct {
 	started time.Time
 	done    chan struct{}
+	cancel  context.CancelFunc
+	// waiters counts callers still waiting; guarded by overviewCache.mu.
+	waiters int
 	val     *models.UniboxOverview
 	err     error
 }
@@ -64,31 +67,47 @@ func (c *overviewCache) get(ctx context.Context, scope overviewScope) (*models.U
 	}
 	f, ok := c.flights[scope]
 	if !ok || now.Sub(f.started) >= overviewFreshFor {
-		f = &overviewFlight{started: now, done: make(chan struct{})}
+		flightCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), overviewComputeTimeout)
+		f = &overviewFlight{started: now, done: make(chan struct{}), cancel: cancel}
 		c.flights[scope] = f
-		go c.run(context.WithoutCancel(ctx), scope, f)
+		go c.run(flightCtx, scope, f)
 	}
+	f.waiters++
 	c.mu.Unlock()
 
 	select {
 	case <-f.done:
 		return f.val, f.err
 	case <-ctx.Done():
+		c.leave(scope, f)
 		return nil, ctx.Err()
 	}
 }
 
-func (c *overviewCache) run(detached context.Context, scope overviewScope, f *overviewFlight) {
-	ctx, cancel := context.WithTimeout(detached, overviewComputeTimeout)
-	defer cancel()
+// leave drops a departing caller; the last one out cancels the flight and stops new callers joining it.
+func (c *overviewCache) leave(scope overviewScope, f *overviewFlight) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	f.waiters--
+	if f.waiters > 0 {
+		return
+	}
+	if c.flights[scope] == f {
+		delete(c.flights, scope)
+	}
+	f.cancel()
+}
+
+func (c *overviewCache) run(ctx context.Context, scope overviewScope, f *overviewFlight) {
+	defer f.cancel()
 	val, err := c.safeCompute(ctx, scope)
 
 	c.mu.Lock()
 	f.val, f.err = val, err
-	// A flight that was forgotten or superseded must not overwrite a newer answer.
+	// A flight that was forgotten, superseded or abandoned must not overwrite a newer answer.
 	if c.flights[scope] == f {
 		delete(c.flights, scope)
-		if err == nil {
+		if err == nil && ctx.Err() == nil {
 			c.entries[scope] = overviewEntry{started: f.started, val: val}
 		}
 	}

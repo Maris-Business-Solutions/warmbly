@@ -11,15 +11,15 @@ import (
 )
 
 const (
-	// slowAcquireAfter is the pool wait worth reporting: a free connection is handed out in microseconds.
+	// slowAcquireAfter is the acquire time worth reporting: a free connection is handed out in microseconds.
 	slowAcquireAfter = 500 * time.Millisecond
-	// slowAcquireLogEvery throttles the report so a saturated pool logs a summary, not a line per query.
+	// slowAcquireLogEvery throttles the report so a busy pool logs a summary, not a line per query.
 	slowAcquireLogEvery = 10 * time.Second
 )
 
 type acquireStartKey struct{}
 
-// acquireTracer logs slow connection waits separately from query time, with the pool's state.
+// acquireTracer logs slow connection acquires (pool wait plus any dial) separately from query time, with pool stats.
 type acquireTracer struct {
 	lastLog atomic.Int64
 	slow    atomic.Int64
@@ -62,5 +62,5 @@ func (t *acquireTracer) TraceAcquireEnd(ctx context.Context, pool *pgxpool.Pool,
 		Int32("total_conns", stat.TotalConns()).
 		Int32("max_conns", stat.MaxConns()).
 		Int64("canceled_acquires", stat.CanceledAcquireCount()).
-		Msg("db: waited for a pooled connection; the pool is saturated")
+		Msg("db: slow connection acquire (pool wait or new connection dial)")
 }

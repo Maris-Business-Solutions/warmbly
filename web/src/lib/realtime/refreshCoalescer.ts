@@ -24,7 +24,8 @@ export function createRefreshCoalescer(
     queryClient: QueryClient,
     { delayMs = REFRESH_DELAY_MS, maxWaitMs = REFRESH_MAX_WAIT_MS }: RefreshCoalescerOptions = {},
 ): RefreshCoalescer {
-    const pending = new Map<string, QueryKey>();
+    // Each pending key with the time it was last added.
+    const pending = new Map<string, { key: QueryKey; at: number }>();
     let timer: ReturnType<typeof setTimeout> | null = null;
     let firstAt = 0;
 
@@ -37,15 +38,19 @@ export function createRefreshCoalescer(
 
     const add = (keys: readonly QueryKey[]) => {
         if (keys.length === 0) return;
-        for (const key of keys) pending.set(hashKey(key), key);
+        const now = Date.now();
+        for (const key of keys) pending.set(hashKey(key), { key, at: now });
         schedule();
     };
 
     const flush = () => {
         timer = null;
-        const keys = [...pending.values()];
+        const now = Date.now();
+        const entries = [...pending.values()];
         pending.clear();
-        const busy: QueryKey[] = [];
+        const keys = entries.map((e) => e.key);
+        // A flush forced by the cap may beat the last event's writes, so recent keys get a trailing flush too.
+        const again: QueryKey[] = entries.filter((e) => now - e.at < delayMs).map((e) => e.key);
         for (const key of keys) {
             // A broader pending key already covers this one.
             if (keys.some((other) => other !== key && other.length < key.length && partialMatchKey(key, other))) {
@@ -53,14 +58,14 @@ export function createRefreshCoalescer(
             }
             // A running fetch finishes rather than restarts, and is re-checked next round since it may predate the event.
             for (const query of queryClient.getQueryCache().findAll({ queryKey: key, fetchStatus: "fetching" })) {
-                busy.push(query.queryKey);
+                again.push(query.queryKey);
             }
             void queryClient.invalidateQueries(
                 { queryKey: key, predicate: (query) => query.state.fetchStatus !== "fetching" },
                 { cancelRefetch: false },
             );
         }
-        if (busy.length > 0) add(busy);
+        if (again.length > 0) add(again);
     };
 
     return {

@@ -15,6 +15,7 @@ const INBOX_AGGREGATES: QueryKey[] = [
   ['unibox', 'unseen-count'],
   ['unibox', 'search'],
   ['unibox', 'incoming'],
+  ['unibox', 'scheduled'],
   ['analytics'],
 ]
 
@@ -158,20 +159,23 @@ export function useRealtimeEvents() {
       const eventOrg = getString('org_id')
       if (inboxEvent && eventOrg && currentOrg?.id && eventOrg !== currentOrg.id) return
 
-      // The named thread and message refresh now; an event naming neither refreshes every thread view later.
+      // The named thread and message refresh now; without a thread id the message may sit in any open thread, refreshed later.
       const refreshInbox = (aggregates: QueryKey[]) => {
         const own: QueryKey[] = []
         if (threadId) own.push(['unibox', 'thread', threadId], ['unibox', 'thread', 'labels', threadId])
+        // An unthreaded message is its own conversation, keyed by its id.
+        else if (emailId) own.push(['unibox', 'thread', emailId])
         if (emailId) own.push(['unibox', 'email', emailId])
+        const later = threadId ? aggregates : [...aggregates, ['unibox', 'thread']]
         const stamp = getString('timestamp')
         const deliveryKey = [event, stamp ?? '', eventOrg ?? '', emailId ?? '', threadId ?? ''].join('|')
-        if (own.length === 0) inboxRefresh.add([...aggregates, ['unibox', 'thread']])
+        if (own.length === 0) inboxRefresh.add(later)
         else if (!isDuplicateDelivery(deliveryKey)) {
           invalidate(own)
-          inboxRefresh.add(aggregates)
+          inboxRefresh.add(later)
         }
         // Without a publish stamp a repeat may be a second change, so its thread still refreshes.
-        else inboxRefresh.add(stamp ? aggregates : [...aggregates, ...own])
+        else inboxRefresh.add(stamp ? later : [...later, ...own])
       }
 
       if (includes('EMAIL_RECEIVED', 'NEW_EMAIL', 'INBOX_NEW')) {

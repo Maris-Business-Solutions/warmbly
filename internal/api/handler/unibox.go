@@ -623,6 +623,8 @@ func (h *Handler) ForgetUniboxOverviewOnWrite(c *gin.Context) {
 // rail and metric strip share this response.
 // GET /unibox/overview
 func (h *Handler) GetUniboxOverview(c *gin.Context) {
+	defer boundUniboxRead(c)()
+
 	if !h.gateUnibox(c) {
 		return
 	}

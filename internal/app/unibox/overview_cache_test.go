@@ -14,13 +14,14 @@ import (
 
 // gatedCompute counts computations and holds each one until release is closed.
 type gatedCompute struct {
-	calls   atomic.Int32
-	release chan struct{}
-	started chan overviewScope
+	calls     atomic.Int32
+	release   chan struct{}
+	started   chan overviewScope
+	cancelled chan struct{}
 }
 
 func newGatedCompute() *gatedCompute {
-	return &gatedCompute{release: make(chan struct{}), started: make(chan overviewScope, 64)}
+	return &gatedCompute{release: make(chan struct{}), started: make(chan overviewScope, 64), cancelled: make(chan struct{}, 64)}
 }
 
 func (g *gatedCompute) fn(ctx context.Context, scope overviewScope) (*models.UniboxOverview, error) {
@@ -29,10 +30,25 @@ func (g *gatedCompute) fn(ctx context.Context, scope overviewScope) (*models.Uni
 	select {
 	case <-g.release:
 	case <-ctx.Done():
+		g.cancelled <- struct{}{}
 		return nil, ctx.Err()
 	}
 	// Total carries the org so a caller can tell whose counts it got.
 	return &models.UniboxOverview{Total: int64(scope.OrgID.ID())}, nil
+}
+
+// waitForWaiters blocks until scope's flight has n callers waiting on it.
+func waitForWaiters(c *overviewCache, scope overviewScope, n int) {
+	for {
+		c.mu.Lock()
+		f := c.flights[scope]
+		got := f != nil && f.waiters == n
+		c.mu.Unlock()
+		if got {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestOverviewCacheSharesOneComputationPerScope(t *testing.T) {
@@ -111,6 +127,7 @@ func TestOverviewCacheCallerLeavesWithoutCancellingTheShare(t *testing.T) {
 		o, _ := c.get(context.Background(), scope)
 		waiter <- o
 	}()
+	waitForWaiters(c, scope, 2)
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("the departing caller got %v, want context.Canceled", err)
@@ -121,6 +138,44 @@ func TestOverviewCacheCallerLeavesWithoutCancellingTheShare(t *testing.T) {
 	}
 	if g.calls.Load() != 1 {
 		t.Fatalf("ran %d computations, want 1", g.calls.Load())
+	}
+}
+
+func TestOverviewCacheCancelsAFlightNobodyWaitsFor(t *testing.T) {
+	g := newGatedCompute()
+	c := newOverviewCache(g.fn)
+	scope := overviewScope{OrgID: uuid.New()}
+
+	ctxA, cancelA := context.WithCancel(context.Background())
+	ctxB, cancelB := context.WithCancel(context.Background())
+	errs := make(chan error, 2)
+	go func() { _, err := c.get(ctxA, scope); errs <- err }()
+	<-g.started
+	go func() { _, err := c.get(ctxB, scope); errs <- err }()
+	waitForWaiters(c, scope, 2)
+
+	cancelA()
+	<-errs
+	select {
+	case <-g.cancelled:
+		t.Fatal("the flight was cancelled while a caller still waited on it")
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	cancelB()
+	<-errs
+	select {
+	case <-g.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("the flight kept running after every caller left")
+	}
+
+	close(g.release)
+	if _, err := c.get(context.Background(), scope); err != nil {
+		t.Fatal(err)
+	}
+	if n := g.calls.Load(); n != 2 {
+		t.Fatalf("an abandoned flight's result was reused (calls=%d, want 2)", n)
 	}
 }
 

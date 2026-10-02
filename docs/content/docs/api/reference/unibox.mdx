@@ -7,7 +7,7 @@ The unified inbox (unibox) is the org-wide view of everything that lands in your
 
 The list, thread, overview, conversation-label, and snooze data is org-scoped, not per-user. Two members of the same organization see the same inbox, the same unread badge, the same threads, and the same conversation labels, whoever applied them. Snoozes are the one exception: they are attached to the calling user.
 
-The list, thread, message, unread-count and conversation-label reads are bounded at 30 seconds, including any wait for a database connection; a read that runs past it is abandoned and answers with the standard `500` error body.
+The list, thread, message, overview, unread-count and conversation-label reads are bounded at 30 seconds, including any wait for a database connection; a read that runs past it is abandoned and answers with the standard `500` error body.
 
 ## List incoming mail
 
