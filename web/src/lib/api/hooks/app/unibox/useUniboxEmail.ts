@@ -7,7 +7,7 @@ import getEmail from "@/lib/api/client/app/unibox/getEmail";
 export default function useUniboxEmail(id: string, enabled = true) {
     return useQuery({
         queryKey: ["unibox", "email", id],
-        queryFn: () => getEmail(id),
+        queryFn: ({ signal }) => getEmail(id, signal),
         enabled: !!id && enabled,
         staleTime: 5 * 60 * 1000,
     })

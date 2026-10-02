@@ -11,7 +11,7 @@ import getUnseenCount from "@/lib/api/client/app/unibox/getUnseenCount";
 export default function useUnseenCount({ enabled = true }: { enabled?: boolean } = {}) {
     return useQuery({
         queryKey: ["unibox", "unseen-count"],
-        queryFn: () => getUnseenCount(),
+        queryFn: ({ signal }) => getUnseenCount(signal),
         staleTime: 60_000,
         enabled,
     });

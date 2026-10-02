@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useSocket } from './context/socket'
@@ -7,6 +7,16 @@ import { useUserProfile } from './context/user'
 import { markSelfMutation } from '@/lib/realtime/selfActivity'
 import { announceCampaignDeleted } from '@/lib/realtime/campaignDeleted'
 import { MAILBOX_REMOVAL_KEYS } from '@/lib/api/hooks/app/emails/invalidateAfterMailboxRemoval'
+import { createDeliveryDeduper, createRefreshCoalescer } from '@/lib/realtime/refreshCoalescer'
+
+// What an inbox event moves besides its own thread; refreshed through the coalescer, never per event.
+const INBOX_AGGREGATES: QueryKey[] = [
+  ['unibox', 'overview'],
+  ['unibox', 'unseen-count'],
+  ['unibox', 'search'],
+  ['unibox', 'incoming'],
+  ['analytics'],
+]
 
 // Bridges realtime socket events into both the zustand store and react-query
 // cache so list pages, detail panes, counters, and workflow states stay live.
@@ -54,6 +64,11 @@ export function useRealtimeEvents() {
     if (placementTimer.current) clearTimeout(placementTimer.current)
     if (accountsTimer.current) clearTimeout(accountsTimer.current)
   }, [])
+
+  // One aggregate refresh per quiet interval; per-thread work once per delivery, not per channel.
+  const [inboxRefresh] = useState(() => createRefreshCoalescer(queryClient))
+  const [isDuplicateDelivery] = useState(() => createDeliveryDeduper())
+  useEffect(() => () => inboxRefresh.dispose(), [inboxRefresh])
 
   const handleRealtimeEvent = useCallback(
     (payload: Record<string, unknown>) => {
@@ -121,11 +136,8 @@ export function useRealtimeEvents() {
       // Refresh the unibox (badge/overview) + the drafts list, and the specific
       // thread if present.
       if (includes('AI_DRAFT')) {
-        invalidate([
-          ['unibox'],
-          ['unibox', 'overview'],
-          ['unibox', 'agent-drafts'],
-        ])
+        invalidate([['unibox', 'agent-drafts']])
+        inboxRefresh.add([['unibox', 'overview'], ['unibox', 'search']])
         if (threadId) invalidate([['unibox', 'thread', threadId]])
         return
       }
@@ -146,24 +158,32 @@ export function useRealtimeEvents() {
       const eventOrg = getString('org_id')
       if (inboxEvent && eventOrg && currentOrg?.id && eventOrg !== currentOrg.id) return
 
+      // The named thread and message refresh now; an event naming neither refreshes every thread view later.
+      const refreshInbox = (aggregates: QueryKey[]) => {
+        const own: QueryKey[] = []
+        if (threadId) own.push(['unibox', 'thread', threadId], ['unibox', 'thread', 'labels', threadId])
+        if (emailId) own.push(['unibox', 'email', emailId])
+        const stamp = getString('timestamp')
+        const deliveryKey = [event, stamp ?? '', eventOrg ?? '', emailId ?? '', threadId ?? ''].join('|')
+        if (own.length === 0) inboxRefresh.add([...aggregates, ['unibox', 'thread']])
+        else if (!isDuplicateDelivery(deliveryKey)) {
+          invalidate(own)
+          inboxRefresh.add(aggregates)
+        }
+        // Without a publish stamp a repeat may be a second change, so its thread still refreshes.
+        else inboxRefresh.add(stamp ? aggregates : [...aggregates, ...own])
+      }
+
       if (includes('EMAIL_RECEIVED', 'NEW_EMAIL', 'INBOX_NEW')) {
         addUniboxEmail(payload as any)
-        invalidate([
-          ['unibox'],
-          ['analytics'],
-          ['emails', 'list'],
-        ])
-        if (threadId) invalidate([['unibox', 'thread', threadId]])
-        if (emailId) invalidate([['unibox', 'email', emailId]])
+        refreshInbox([...INBOX_AGGREGATES, ['emails', 'list']])
         return
       }
 
       // A message read or removed takes its reply notification with it
       // (server side), so the bell refreshes along with the inbox.
       if (includes('EMAIL_UPDATED', 'EMAIL_DELETED', 'INBOX_UPDATE')) {
-        invalidate([['unibox'], ['analytics'], ['inbox-tagging'], ['notifications', 'feed']])
-        if (threadId) invalidate([['unibox', 'thread', threadId]])
-        if (emailId) invalidate([['unibox', 'email', emailId]])
+        refreshInbox([...INBOX_AGGREGATES, ['inbox-tagging'], ['notifications', 'feed']])
         return
       }
 
@@ -497,7 +517,6 @@ export function useRealtimeEvents() {
             ['organizations', 'exports'],
             ['organizations', 'imports'],
           ],
-          unibox: [['unibox']],
           crm_note: [['crm'], ['contacts']],
           crm_pipeline: [['crm', 'pipelines'], ['crm', 'deals']],
           crm_stage: [['crm', 'pipelines'], ['crm', 'deals']],
@@ -517,6 +536,8 @@ export function useRealtimeEvents() {
         }
         const keys = spine[entityType]
         if (keys) invalidate(keys)
+        // Unibox writes come in bursts (reading, filing), so they ride the coalescer.
+        if (entityType === 'unibox') inboxRefresh.add([['unibox']])
         // A deletion also takes the entity's inbox mail, unread badge and
         // advice with it, which no update ever does.
         if (getString('action') === 'delete') {
@@ -558,7 +579,9 @@ export function useRealtimeEvents() {
     [
       addUniboxEmail,
       currentOrg?.id,
+      inboxRefresh,
       invalidate,
+      isDuplicateDelivery,
       myId,
       queryClient,
       refreshPlacement,

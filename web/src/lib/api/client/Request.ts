@@ -6,7 +6,7 @@ import { AuthError, noToken, sessionExpired } from "@/lib/errors/auth";
 import refreshTokenFn from "./auth/refreshToken";
 import setToken from "@/lib/helper/setToken";
 import reviveDates from "@/lib/helper/reviveDates";
-import type { AppError } from "./normalizeError";
+import { isRequestCancelled, type AppError } from "./normalizeError";
 import { announceSessionEnded, endSession } from "@/lib/auth";
 import type Token from "@/lib/api/models/auth/Token";
 
@@ -15,6 +15,8 @@ interface AuthRequestConfig extends AxiosRequestConfig {
     // Set on the re-authentication call itself, so a wrong password there
     // reaches the caller instead of reopening the prompt that made it.
     skipReauthPrompt?: boolean
+    // Aborts the HTTP request; pass TanStack Query's queryFn signal here.
+    signal?: AbortSignal
 }
 
 // promptForReauth opens the global "confirm it is you" dialog and resolves when
@@ -144,6 +146,8 @@ export default async function Request<T>(config: AuthRequestConfig): Promise<T> 
         const res = await Client.request(config)
         return reviveDates(res.data)
     } catch (error) {
+        // Cancelled on purpose: no retry, no reauth prompt, no session change.
+        if (isRequestCancelled(error)) throw error;
         const appErr = error as AppError;
 
         // Only an authorized 401 means the session is gone: refresh, retry once,

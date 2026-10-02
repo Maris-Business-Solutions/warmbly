@@ -110,6 +110,10 @@ func New(ctx context.Context, endpoint string) (*DB, error) {
 	}
 	dbConfig.ConnConfig.RuntimeParams["idle_in_transaction_session_timeout"] = idleInTxnTimeoutMs
 	dbConfig.ConnConfig.RuntimeParams["statement_timeout"] = statementTimeoutMs
+	// statement_timeout does not cover the wait for a connection; this reports that wait.
+	if dbConfig.ConnConfig.Tracer == nil {
+		dbConfig.ConnConfig.Tracer = &acquireTracer{}
+	}
 
 	conn, err := pgxpool.NewWithConfig(ctx, dbConfig)
 	if err != nil {

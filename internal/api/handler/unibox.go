@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,16 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 )
+
+// uniboxReadTimeout bounds an interactive unibox read, connection wait and body load included.
+const uniboxReadTimeout = 30 * time.Second
+
+// boundUniboxRead puts the interactive read deadline on the request context; defer the returned cancel.
+func boundUniboxRead(c *gin.Context) context.CancelFunc {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), uniboxReadTimeout)
+	c.Request = c.Request.WithContext(ctx)
+	return cancel
+}
 
 // gateUnibox enforces feature access for any unibox endpoint that
 // needs an org context. Returns true when the caller is allowed.
@@ -33,6 +44,8 @@ func (h *Handler) gateUnibox(c *gin.Context) bool {
 }
 
 func (h *Handler) GetUniboxIncoming(c *gin.Context) {
+	defer boundUniboxRead(c)()
+
 	orgID := middleware.GetOrganizationID(c)
 	if orgID == nil {
 		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
@@ -208,6 +221,8 @@ func (h *Handler) GetUniboxIncoming(c *gin.Context) {
 }
 
 func (h *Handler) GetUniboxEmail(c *gin.Context) {
+	defer boundUniboxRead(c)()
+
 	// Org-scoped: the inbox list is org-wide, so opening a message must be too.
 	// A non-owner member who sees a message in the org-scoped list would
 	// otherwise get "email not found" because the row is keyed to the mailbox
@@ -247,6 +262,8 @@ func (h *Handler) GetUniboxEmail(c *gin.Context) {
 }
 
 func (h *Handler) GetUniboxThread(c *gin.Context) {
+	defer boundUniboxRead(c)()
+
 	// Org-scoped: the inbox list is org-wide, so the thread view must be too.
 	// Otherwise a non-owner member sees the conversation in the list but an
 	// empty thread when they open it — the messages are keyed to the mailbox
@@ -310,6 +327,8 @@ func (h *Handler) GetUniboxThread(c *gin.Context) {
 // GetUniboxThreadLabels returns the conversation labels on a thread.
 // GET /unibox/thread/labels?thread_id=<id>
 func (h *Handler) GetUniboxThreadLabels(c *gin.Context) {
+	defer boundUniboxRead(c)()
+
 	if !h.gateUnibox(c) {
 		return
 	}
@@ -440,6 +459,8 @@ func (h *Handler) UniboxMoveFolder(c *gin.Context) {
 // GetUnseenCount gets the count of unseen emails
 // GET /unibox/count
 func (h *Handler) GetUnseenCount(c *gin.Context) {
+	defer boundUniboxRead(c)()
+
 	orgID := middleware.GetOrganizationID(c)
 	if orgID == nil {
 		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
@@ -580,6 +601,21 @@ func (h *Handler) UniboxReply(c *gin.Context) {
 	h.auditOrg(c, models.AuditActionSend, models.AuditEntityUnibox, &accountID, nil, audit)
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// ForgetUniboxOverviewOnWrite drops the organization's shared unibox overview after any successful write.
+func (h *Handler) ForgetUniboxOverviewOnWrite(c *gin.Context) {
+	c.Next()
+	switch c.Request.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return
+	}
+	if h.UniboxService == nil || c.Writer.Status() >= http.StatusBadRequest {
+		return
+	}
+	if orgID := middleware.GetOrganizationID(c); orgID != nil {
+		h.UniboxService.ForgetOverview(*orgID)
+	}
 }
 
 // GetUniboxOverview rolls up unread/today/week/snoozed/awaiting plus

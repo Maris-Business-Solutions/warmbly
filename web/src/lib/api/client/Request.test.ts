@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CanceledError } from "axios";
 import Client from "./Client";
 import Request from "./Request";
 import getToken from "@/lib/helper/getToken";
@@ -76,6 +77,20 @@ describe("Request", () => {
         expect(result.created_at).toEqual(new Date("2026-09-17T12:34:56.000Z"));
         expect(result.nested[0]?.updated_at).toEqual(new Date("2026-09-18T01:02:03.000Z"));
         expect(result.label).toBe("2026-09-17");
+    });
+
+    it("hands the caller's signal to axios and rethrows a cancellation untouched", async () => {
+        const controller = new AbortController();
+        const cancelled = new CanceledError();
+        vi.mocked(Client.request).mockRejectedValue(cancelled);
+
+        await expect(
+            Request({ method: "GET", url: "/unibox/thread", authorization: true, signal: controller.signal }),
+        ).rejects.toBe(cancelled);
+
+        expect(Client.request).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(Client.request).mock.calls[0][0].signal).toBe(controller.signal);
+        expect(endedSessions).toBe(0);
     });
 
     // A tab whose token went away in another tab keeps every page it rendered

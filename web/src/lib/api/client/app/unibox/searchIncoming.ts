@@ -41,6 +41,7 @@ function isoDay(d: Date): string {
 
 export default async function searchIncoming(
   p: UniboxSearchParams = {},
+  signal?: AbortSignal,
 ): Promise<UniboxListResponse> {
   const usp = new URLSearchParams();
   // The free-text param is still named `subject` for compatibility, but the
@@ -76,5 +77,6 @@ export default async function searchIncoming(
     method: "GET",
     url: `/unibox${qs ? `?${qs}` : ""}`,
     authorization: true,
+    signal,
   });
 }
