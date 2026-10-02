@@ -541,7 +541,7 @@ Alongside them, `api_url` is this API's own public base (for a copyable example 
 - `POST /getaway` (websocket bootstrap)
 - `GET /realtime/info`
 - `GET /me/danger-zone`, `POST /me/danger-zone/delete`, `DELETE /me/danger-zone/delete`
-- `GET /me/views/:view`, `PUT /me/views/:view`, `DELETE /me/views/:view` (the signed-in member's own column layout and sort for a dashboard list in the current workspace; `view` is `contacts` or `campaign_leads`. Personal to the session, so no API scope reaches it)
+- `GET /me/views/:view`, `PUT /me/views/:view`, `DELETE /me/views/:view` (the signed-in member's own column layout and sort for a dashboard list in the current workspace; `view` is `contacts` or `campaign_leads`, or `unibox_rail` for the unibox scope rail, which saves a `layout` of `favorites`, `hidden`, `order` and `section_order` instead of columns. Personal to the session, so no API scope reaches it)
 - `GET /invitations`, `POST /invitations/accept`
 - All of `/organization/*` (create, switch, members, invitations, transfer ownership, avatar, danger zone)
 - `GET /website-tracking/settings`, `PATCH /website-tracking/settings`, `POST /website-tracking/settings/rotate-key` (the [website tracking](/guides/website-tracking/) snippet's consent mode, location precision, allowed hosts and retention; JWT permission `MANAGE_SETTINGS`. The rotate is bodyless and safe to repeat, each call issues a new key)

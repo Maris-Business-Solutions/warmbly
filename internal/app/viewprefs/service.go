@@ -1,11 +1,14 @@
 // Package viewprefs keeps each member's own layout of the dashboard's lists:
-// which columns show, in what order, and the sort. A layout is personal and
+// which columns show, in what order, and the sort, plus the unibox scope
+// rail's arrangement. A layout is personal and
 // per workspace, so two members of one workspace can look at the same contacts
 // through different columns.
 package viewprefs
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/google/uuid"
@@ -88,6 +91,9 @@ func (s *service) Reset(ctx context.Context, userID, orgID uuid.UUID, view strin
 // field. Custom-field ids are normalized in place so the same field saved with
 // different spacing is one column.
 func validate(view string, upd *models.ViewPreferencesUpdate) *errx.Error {
+	if xerr := validateLayout(view, upd); xerr != nil {
+		return xerr
+	}
 	if upd.Columns != nil {
 		cols := *upd.Columns
 		if len(cols) > models.ViewPreferencesMaxColumns {
@@ -117,12 +123,47 @@ func validate(view string, upd *models.ViewPreferencesUpdate) *errx.Error {
 			upd.Sort = &models.ViewSort{}
 			return nil
 		}
+		if models.ViewHasLayout(view) {
+			return errx.NewWithIdentifier(errx.BadRequest, "invalid_sort", "this view has no sort")
+		}
 		norm, ok := normalizeID(by, models.ContactBuiltinSorts)
 		if !ok {
 			return errx.NewWithIdentifier(errx.BadRequest, "invalid_sort", "invalid sort: "+by)
 		}
 		upd.Sort.By = norm
 	}
+	return nil
+}
+
+// validateLayout accepts a layout only on a view that has one, decoded into
+// its type and stored normalized; null is the default layout.
+func validateLayout(view string, upd *models.ViewPreferencesUpdate) *errx.Error {
+	if upd.Layout == nil {
+		return nil
+	}
+	invalid := func(msg string) *errx.Error {
+		return errx.NewWithIdentifier(errx.BadRequest, "invalid_layout", msg)
+	}
+	if !models.ViewHasLayout(view) {
+		return invalid("this view has no layout")
+	}
+	var layout models.UniboxRailLayout
+	if string(upd.Layout) != "null" {
+		dec := json.NewDecoder(bytes.NewReader(upd.Layout))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&layout); err != nil {
+			return invalid("invalid layout")
+		}
+	}
+	norm, ok := layout.Normalize()
+	if !ok {
+		return invalid("invalid layout: a key is empty or too long, a name is too long, or a list is too large")
+	}
+	raw, err := json.Marshal(norm)
+	if err != nil {
+		return invalid("invalid layout")
+	}
+	upd.Layout = raw
 	return nil
 }
 
