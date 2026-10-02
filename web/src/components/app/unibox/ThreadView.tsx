@@ -237,13 +237,17 @@ export function ThreadView({ threadId, emailId, onClose }: ThreadViewProps) {
   // is seen the id list is empty and this no-ops, so it self-terminates.
   const markSeen = useMarkSeen();
   const markSeenMutate = markSeen.mutate;
+  // The reader outlives a close by a render (the URL follows the store in an
+  // effect), and reading back the patch Mark as unread just wrote undoes it.
+  const selected = useAppStore((s) => s.selectedThreadId === threadId);
   React.useEffect(() => {
+    if (!selected) return;
     const unseenIds = (q.data?.data ?? [])
       .filter((m) => !m.seen)
       .map((m) => m.id);
     if (unseenIds.length === 0) return;
     markSeenMutate({ ids: unseenIds, threadIds: [threadId] });
-  }, [threadId, q.data, markSeenMutate]);
+  }, [selected, threadId, q.data, markSeenMutate]);
 
   // Header actions. Each one closes the thread: the effect above would
   // otherwise re-mark an "unread" thread as seen on the next refetch, and a
