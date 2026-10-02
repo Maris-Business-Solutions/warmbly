@@ -3,6 +3,7 @@ package smtp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"time"
@@ -22,6 +23,10 @@ const (
 // alongside it. A reachable 465 connects well inside it, so a healthy network
 // never sees the second dial; a blocked one costs this much, not a dial timeout.
 const fallbackHeadStart = time.Second
+
+// ErrSMTPSEgressBlocked marks a silent 465 on a worker whose own network is
+// known to drop outbound 465, so the mailbox's server is not the one blamed.
+var ErrSMTPSEgressBlocked = errors.New("this worker's network blocks outbound port 465")
 
 // dialOutcome is what one dial of the race came back with.
 type dialOutcome struct {
@@ -53,7 +58,8 @@ var dialTCP = func(ctx context.Context, local *net.TCPAddr, addr string) (net.Co
 // a name that does not resolve is an answer: one that arrives before 587 is
 // dialled is returned at once; one that arrives later leaves 587 to finish,
 // and a 587 that connects is used. When nothing connects the error is 465's
-// own.
+// own, marked ErrSMTPSEgressBlocked when this worker has learned that its own
+// network drops 465.
 func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port int, security string) (Dialed, error) {
 	resolved := models.ResolveSMTPSecurity(security, port)
 	if resolved != models.MailSecurityTLS || port != PortSMTPS {
@@ -71,7 +77,13 @@ func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port i
 	inFlight := 1
 	go dial(PortSMTPS)
 
-	headStart := time.NewTimer(fallbackHeadStart)
+	// A worker that knows its 465 is blocked gives it no head start.
+	blocked := smtpsEgress.Blocked()
+	headStartFor := fallbackHeadStart
+	if blocked {
+		headStartFor = 0
+	}
+	headStart := time.NewTimer(headStartFor)
 	defer headStart.Stop()
 	fallbackStarted := false
 	startFallback := func() {
@@ -91,6 +103,11 @@ func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port i
 		case r := <-results:
 			inFlight--
 			if r.err == nil && r.conn != nil {
+				if r.port == PortSMTPS {
+					smtpsEgress.markOpen()
+				} else if primaryErr == nil || dialTimedOut(primaryErr) {
+					smtpsEgress.markSilent(host)
+				}
 				go closeLosers(results, inFlight)
 				return Dialed{Conn: r.conn, Port: r.port, Security: securityForPort(r.port), FellBack: r.port != port}, nil
 			}
@@ -108,14 +125,21 @@ func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port i
 			}
 		}
 	}
+	if blocked && dialTimedOut(primaryErr) {
+		return Dialed{}, fmt.Errorf("%w: %w", ErrSMTPSEgressBlocked, primaryErr)
+	}
 	return Dialed{}, primaryErr
 }
 
 // closeLosers drains the dials still in flight after a winner was taken, so
-// a socket that connects late is closed rather than leaked.
+// a socket that connects late is closed rather than leaked. A late 465 still
+// proves the port is open from here.
 func closeLosers(results <-chan dialOutcome, n int) {
 	for ; n > 0; n-- {
 		if r := <-results; r.conn != nil {
+			if r.port == PortSMTPS {
+				smtpsEgress.markOpen()
+			}
 			r.conn.Close()
 		}
 	}

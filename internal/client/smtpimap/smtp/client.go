@@ -339,6 +339,9 @@ func (c *Client) sendRaw(ctx context.Context, from string, to []string, data []b
 	// The socket may be 587 with STARTTLS when the mailbox's 465 never
 	// answered; the mode to speak is the one the dial reports.
 	dialed, err := DialSubmission(ctx, c.BindIP, host, port, security)
+	if errors.Is(err, ErrSMTPSEgressBlocked) {
+		return errx.ErrMailSMTPSEgressBlocked(addr)
+	}
 	if err != nil || dialed.Conn == nil {
 		if err == nil {
 			err = errors.New("dial returned no connection")

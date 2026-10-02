@@ -31,7 +31,7 @@ The landing page. Instance-wide counters and their trends, acquisition by channe
 
 | Page | What it answers |
 |---|---|
-| **Workers** | Every worker, its heartbeat, region and the mailboxes placed on it. Detail pages carry stats, the assigned mailbox list, and reassignment |
+| **Workers** | Every worker, its heartbeat, region and the mailboxes placed on it, with a **Has node error** filter for any standing problem a node reports, such as its network blocking outbound port `465`. Detail pages carry stats, the assigned mailbox list, and reassignment |
 | **Fleet** | Capacity per worker with utilization, the control loops' decision log (what the placement and rotation loops did and why), and isolated-egress reservations, with reserve and release |
 | **Mailboxes** | Every connected mailbox across every workspace, with its state and the worker it sits on |
 | **Sync** | The platform copy of each mailbox's backfill progress and fair-use throttle, with clear-throttle and restart-backfill. The budgets it enforces are the four `sync.*` values under [Configuration > Settings](/development/configuration/#settings-stored-in-the-database); the worker-side engine is the sync governor described under [anti-abuse layers](/development/architecture/#anti-abuse-layers) |

@@ -50,6 +50,9 @@ func VerifySMTP(ctx context.Context, host string, port int, user, pass, security
 	// The dial leaves from WORKER_BIND_IP like the sends it vouches for, and
 	// comes back holding 587 when the mailbox's 465 never answered.
 	dialed, err := wsmtp.DialSubmission(ctx, netbind.FromEnv(), host, port, security)
+	if errors.Is(err, wsmtp.ErrSMTPSEgressBlocked) {
+		return probeFailText(models.MailProbeUnreachable, "the worker's network blocks outbound port 465 and the server did not answer on 587, so the server itself was never reached")
+	}
 	// A bad host is ordinary user input, not an exceptional case: dial failed
 	// means conn is nil, and closing it would panic this goroutine and take
 	// the whole worker down with it.

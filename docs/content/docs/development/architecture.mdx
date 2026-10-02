@@ -89,7 +89,7 @@ The fleet is pull-based. A node joins by running one command with the instance j
 
 The heartbeat reply carries exactly one instruction: `desired_version`. The node writes it to a file and a systemd timer pulls and restarts, so the process being replaced is never the process doing the replacing. An empty `desired_version` means "no opinion", never "downgrade to nothing".
 
-The machine needs no inbound port, no SSH key and no cloud account. There is no restart, logs, reboot or uninstall action in the dashboard, because nothing reaches into a machine. The operator surface is `warmblyctl fleet` (join-token, list, show, remove, pin, version, channel) and the admin panel's Fleet section.
+The machine needs no inbound port, no SSH key and no cloud account. A worker does need outbound access to mail servers on `465`, `587` and `993` (and `143` where a mailbox uses STARTTLS IMAP). Many cloud providers block outbound `25` and `465` on new servers until asked; a worker that learns its `465` is blocked reports it on every heartbeat, and it shows on the worker's page in the admin panel (the **Has node error** filter finds it). There is no restart, logs, reboot or uninstall action in the dashboard, because nothing reaches into a machine. The operator surface is `warmblyctl fleet` (join-token, list, show, remove, pin, version, channel) and the admin panel's Fleet section.
 
 ### Why per-VPS instead of a Kubernetes DaemonSet
 
