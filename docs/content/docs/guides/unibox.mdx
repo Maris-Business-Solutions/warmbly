@@ -151,6 +151,8 @@ Labels mark conversations and contacts. Mailbox tags mark the mailboxes themselv
 
 A conversation is unread when any message inside is unseen, marked by a blue dot in the margin, bolder text, and a blue timestamp. Opening it marks its messages seen and updates the counts, and so does **Mark as read** on the row or on a selection, without opening anything.
 
+**Mark as unread** works like it does in Gmail: only the newest message you received in the conversation turns unread, so the conversation is unread again wherever that message sits. Your own sent replies are never marked unread, so the conversation does not light up in Sent, and Gmail does not label your sent copy unread either. Marking it unread from the open conversation closes it, because the reader marks whatever it shows as read.
+
 Read state travels both ways. A message arriving already read is stored that way, and reading a conversation here marks it read in the mailbox itself, so Gmail, Outlook and any IMAP mailbox stop showing it bold too. **Mark as unread** does the same in reverse, and **Mark all as read** on a folder carries the whole sweep across. Only a real change travels: opening a conversation you have already read costs nothing at the provider.
 
 The relay runs on the worker that holds the mailbox, just after Warmbly's own copy is updated, so the dashboard never waits on it. If the mailbox is between workers at that moment, or the provider refuses, Warmbly keeps your read state and the mailbox keeps its own; nothing retries, because the next sync reports whatever the provider actually thinks.
@@ -177,7 +179,7 @@ Archiving from a row files the whole conversation, not the message the row is sh
 
 ### Working on several at once
 
-Each row has a tick box in its left gutter, in place of the unread dot. Hover a row to see it, or press **Select** in the list header, which shows every box at once and adds an **All** box that takes everything currently loaded. `x` ticks the row you are on from the keyboard, and holding `Shift` while ticking takes the whole run between that row and the last one you ticked.
+Each row has a tick box in its left gutter, in place of the unread dot. Hover a row to see it, or press **Select** in the list header, which shows every box at once and adds an **All** box that takes everything currently loaded. The **×** next to **All** leaves select mode and drops anything ticked, which is the way out on a phone; `Escape` does the same on a keyboard. `x` ticks the row you are on from the keyboard, and holding `Shift` while ticking takes the whole run between that row and the last one you ticked.
 
 With anything ticked, a bar appears along the bottom of the screen with the count and the actions that apply to all of them: **Mark read**, **Mark unread**, **Snooze**, **Archive** (or **Move to inbox**) and **Delete**. Each one is a single request, so filing a screenful is as quick as filing one. **Clear** drops the selection, and so does `Escape`; changing view drops it too, since the rows it applied to are no longer the rows on screen.
 
@@ -285,7 +287,7 @@ Scheduled and smart-queued sends skip the undo window, since they already wait. 
 
 ## Realtime
 
-Nothing needs refreshing. New mail appears in the list, updates the open thread, and raises the unread count on its own. The count on **Unibox** in the navigation (and in the browser tab) is the number of unread conversations in **Inbox**, the view it opens, so it never points at mail that view does not list: sent mail, drafts, archived, snoozed and automated conversations are left out. Read-state changes, replies, scheduled sends, snoozes, and label changes all refresh the affected views, keeping rail counts, the list, and the open thread consistent.
+Nothing needs refreshing. New mail appears in the list, updates the open thread, and raises the unread count on its own. The open conversation updates as soon as its mail changes; rail counts, lists and analytics catch up within a couple of seconds, so a burst of incoming mail refreshes them once instead of once per message. The count on **Unibox** in the navigation (and in the browser tab) is the number of unread conversations in **Inbox**, the view it opens, so it never points at mail that view does not list: sent mail, drafts, archived, snoozed and automated conversations are left out. Read-state changes, replies, scheduled sends, snoozes, and label changes all refresh the affected views, keeping rail counts, the list, and the open thread consistent.
 
 <Callout type="info" title="Keeping inboxes healthy">
 Replying promptly supports sender reputation, which warmup and good deliverability practice protect. See [Deliverability](/guides/deliverability/).

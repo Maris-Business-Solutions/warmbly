@@ -4,7 +4,7 @@ import getOverview from "@/lib/api/client/app/unibox/getOverview";
 export default function useUniboxOverview() {
     return useQuery({
         queryKey: ["unibox", "overview"],
-        queryFn: getOverview,
+        queryFn: ({ signal }) => getOverview(signal),
         staleTime: 15_000,
         // Keep the last-known counts around long enough that returning to
         // the inbox shows them instantly instead of rolling every stat up

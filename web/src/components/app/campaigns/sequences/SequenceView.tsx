@@ -10,6 +10,7 @@ import toast from "react-hot-toast";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
 import EmailContentEditor from "./EmailContentEditor";
 import StepAttachments from "./StepAttachments";
+import type { ArmSubject } from "./threading";
 import { Label, TextInput } from "@/components/ui/field";
 import { SettingRow, Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import useUpdateSequence from "@/lib/api/hooks/app/campaigns/sequences/useUpdateSequence";
@@ -38,6 +39,7 @@ export default function SequenceView({
     sequence,
     index,
     conversationSubject = null,
+    conversationArms,
     embedded = false,
     headerExtra,
 }: {
@@ -49,6 +51,8 @@ export default function SequenceView({
     // replies in the thread, because that is what the recipient reads. `null`
     // means there is no earlier email to reply to, so the switch is hidden.
     conversationSubject?: string | null;
+    // The other subjects the opener's A/B variants carry; see openerArmSubjects.
+    conversationArms?: ArmSubject[];
     // When embedded inside the tabbed arms editor, drop the outer card chrome
     // and the "Step N" eyebrow (the tab already provides that context).
     embedded?: boolean;
@@ -175,6 +179,7 @@ export default function SequenceView({
                             ? {
                                   subject: conversationSubject ?? "",
                                   note: "A reply carries the conversation's subject. Turn off Reply in thread to write your own.",
+                                  alternates: conversationArms,
                               }
                             : undefined
                     }

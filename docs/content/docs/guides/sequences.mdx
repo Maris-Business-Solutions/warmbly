@@ -166,7 +166,8 @@ A follow-up is the next email step, sent as a **reply on the conversation the co
 
 Each email step has a **Reply in thread** switch, on by default. Turn it off for a step that should deliberately start a fresh conversation.
 
-- A step that replies in the thread has no subject of its own: a reply carries the conversation's subject, which is the one the step that opened the thread used. The composer shows that subject instead of a subject box.
+- A step that replies in the thread has no subject of its own: a reply carries the conversation's subject, which is the one the email that opened the thread was sent with. The composer shows that subject instead of a subject box.
+- The conversation follows what each contact actually received. When the step that opened the thread is A/B tested, a contact who got Variant B is replied to under Variant B's subject and a contact who got the Original under the Original's, on every follow-up. The composer lists each version's subject. A follow-up repeats the subject the opening email was actually sent with, word for word, so editing the opening step or the contact later does not change the subject of a conversation it already started.
 - A step with **Reply in thread** off writes its own subject and opens a new conversation. Every threading step after it then replies on *that* conversation.
 - The switch does nothing on a contact's first email. There is nothing to reply to, so it opens the thread.
 - A/B variants on a threading step vary the body only, for the same reason.
@@ -182,7 +183,7 @@ Open a step's editor and click **A/B test this step**.
 - The step's own subject and body are the **Original** control arm; adding a variant makes it one weighted arm among several.
 - Up to 5 variants (B through F) on top of the Original.
 - The **traffic-split bar** shows one segment per arm. Drag a divider or type an exact percent; shares always total 100%, and **Even split** balances every active arm.
-- Select an arm to edit its name, subject, and body. Leave a variant's subject or body blank to reuse the step's own. On a step that replies in the thread, a variant's subject is ignored: the conversation owns it.
+- Select an arm to edit its name, subject, and body. Leave a variant's subject or body blank to reuse the step's own. On a step that replies in the thread, a variant's subject is ignored: the conversation owns it. On a step that opens a conversation, the variant's subject becomes the conversation's for every contact it is sent to, so the follow-ups threading on it reply under that subject.
 - A first variant starts at 50/50. Marking one **inactive** drops it from the split without deleting it; deleting the last one returns the step to a single send.
 
 Once variants have sent, each card shows Sent, Open rate, Reply rate, and Bounce rate. When Warmbly finds a **winner**, a banner names it with the rule and confidence used, and the winning card gets a trophy.

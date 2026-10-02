@@ -5,6 +5,7 @@ interface ListScheduledOpts {
     // When set, the server returns only queued sends targeting this
     // thread. Used by ThreadView to render scheduled replies inline.
     threadId?: string;
+    signal?: AbortSignal;
 }
 
 export default async function listScheduled(
@@ -17,5 +18,6 @@ export default async function listScheduled(
         method: "GET",
         url: qs ? `/unibox/scheduled?${qs}` : "/unibox/scheduled",
         authorization: true,
+        signal: opts.signal,
     });
 }

@@ -11,7 +11,7 @@ const DRAFTS_KEY = ["unibox", "compose", "drafts"] as const;
 export default function useComposeDrafts(enabled = true) {
     return useQuery({
         queryKey: DRAFTS_KEY,
-        queryFn: listComposeDrafts,
+        queryFn: ({ signal }) => listComposeDrafts(signal),
         staleTime: 15_000,
         enabled,
     });

@@ -22,10 +22,14 @@ import (
 
 // Store persists job runs. Implemented by repository.JobRunRepository.
 type Store interface {
-	// Register creates or refreshes the job's row at boot.
-	Register(ctx context.Context, name, service string, interval time.Duration, nextRunAt time.Time) error
+	// Register creates or refreshes the job's row at boot and returns when it
+	// is due: a stored due time clamped to [earliest, nextRunAt], else nextRunAt.
+	Register(ctx context.Context, name, service string, interval time.Duration, nextRunAt, earliest time.Time) (time.Time, error)
+	// Claim advances the stored due time from due to next. False with the
+	// stored due time when another instance already took the slot.
+	Claim(ctx context.Context, name string, due, next time.Time) (bool, time.Time, error)
 	MarkStarted(ctx context.Context, name string, at time.Time) error
-	MarkFinished(ctx context.Context, name string, startedAt, finishedAt time.Time, runErr error, nextRunAt time.Time) error
+	MarkFinished(ctx context.Context, name string, startedAt, finishedAt time.Time, runErr error) error
 	// RequestRun asks the owning loop to run at its next poll. False when no
 	// job by that name has ever registered.
 	RequestRun(ctx context.Context, name string) (bool, error)
@@ -85,57 +89,60 @@ func current() (Store, string) {
 // Loop runs fn every interval until ctx ends, records each run, and also runs
 // fn when the panel requests it. runOnBoot runs fn once before the first tick,
 // which is what most retention and reconcile loops want.
+//
+// The due time is persisted, so a restart resumes the schedule instead of
+// starting a fresh interval, and an overdue job runs right after its offset.
 func Loop(ctx context.Context, name string, interval time.Duration, runOnBoot bool, fn func(ctx context.Context) error) {
 	if interval <= 0 {
 		interval = time.Minute
 	}
 	offset := phaseOffset(name, interval)
 
+	// The offset counts toward the first run whether or not it is at boot,
+	// so every job sharing an interval stays in its own slot.
+	earliest := time.Now().Add(offset).Truncate(time.Microsecond)
+	due := earliest.Add(interval)
+	if runOnBoot {
+		due = earliest
+	}
+
 	st, svc := current()
 	if st != nil {
-		// The offset is served before the ticker starts, so it counts toward
-		// the first run whether or not that run happens at boot. Leaving it
-		// out of the non-boot case recorded a next run the loop was already
-		// past, and the panel showed it overdue for the length of the offset.
-		next := time.Now().Add(offset + interval)
-		if runOnBoot {
-			next = time.Now().Add(offset)
-		}
-		if err := st.Register(ctx, name, svc, interval, next); err != nil {
+		stored, err := st.Register(ctx, name, svc, interval, due, earliest)
+		if err != nil {
 			log.Warn().Err(err).Str("job", name).Msg("jobrun: register failed")
+		} else if !stored.IsZero() {
+			due = stored
 		}
 	}
 
-	run := func() {
-		Run(ctx, name, interval, fn)
-	}
-
-	// Hold the job off its phase before anything else, so the ticker started
-	// below inherits the offset and the spread survives every later tick.
-	if offset > 0 {
-		timer := time.NewTimer(offset)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-timer.C:
-		}
-	}
-
-	if runOnBoot {
-		run()
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	timer := time.NewTimer(time.Until(due))
+	defer timer.Stop()
 	poll := time.NewTicker(requestPoll)
 	defer poll.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			run()
+		case <-timer.C:
+			next := nextDue(due, interval, time.Now())
+			claimed := true
+			if st != nil {
+				won, stored, err := st.Claim(ctx, name, due, next)
+				switch {
+				case ctx.Err() != nil:
+					return
+				case err != nil:
+					log.Warn().Err(err).Str("job", name).Msg("jobrun: claim failed")
+				case !won:
+					claimed, next = false, stored
+				}
+			}
+			due = next
+			if claimed {
+				Run(ctx, name, fn)
+			}
+			timer.Reset(time.Until(due))
 		case <-poll.C:
 			if st == nil {
 				continue
@@ -146,14 +153,25 @@ func Loop(ctx context.Context, name string, interval time.Duration, runOnBoot bo
 				continue
 			}
 			if requested {
-				run()
+				Run(ctx, name, fn)
 			}
 		}
 	}
 }
 
-// Run executes fn once and records it. For loops that keep their own ticker.
-func Run(ctx context.Context, name string, interval time.Duration, fn func(ctx context.Context) error) {
+// nextDue is the first slot after at on due's cadence; slots missed while a
+// run overran are dropped, as a ticker drops ticks.
+func nextDue(due time.Time, interval time.Duration, at time.Time) time.Time {
+	next := due.Add(interval)
+	if !next.After(at) {
+		next = due.Add((at.Sub(due)/interval + 1) * interval)
+	}
+	return next.Truncate(time.Microsecond)
+}
+
+// Run executes fn once and records it without moving the schedule. For runs
+// outside the loop's own cadence, such as a wake.
+func Run(ctx context.Context, name string, fn func(ctx context.Context) error) {
 	st, _ := current()
 	started := time.Now()
 	if st != nil {
@@ -167,8 +185,7 @@ func Run(ctx context.Context, name string, interval time.Duration, fn func(ctx c
 		log.Warn().Err(runErr).Str("job", name).Msg("scheduled job failed")
 	}
 	if st != nil {
-		finished := time.Now()
-		if err := st.MarkFinished(ctx, name, started, finished, runErr, finished.Add(interval)); err != nil {
+		if err := st.MarkFinished(ctx, name, started, time.Now(), runErr); err != nil {
 			log.Warn().Err(err).Str("job", name).Msg("jobrun: mark finished failed")
 		}
 	}

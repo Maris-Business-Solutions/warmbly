@@ -182,6 +182,9 @@ type TaskRepository interface {
 
 	// Update campaign task with contact/sequence IDs (for tracking)
 	UpdateCampaignTaskTracking(ctx context.Context, taskID, contactID, sequenceID uuid.UUID) error
+	// UpdateCampaignTaskSubject records the subject a campaign send carries,
+	// which is what a follow-up threads on. Blank records nothing.
+	UpdateCampaignTaskSubject(ctx context.Context, taskID uuid.UUID, subject string) error
 
 	// ListScheduledInOrg returns every pending email task scheduled
 	// from the organization's mailboxes, ordered by next-to-fire. Used
@@ -1156,15 +1159,22 @@ func (r *taskRepository) UpdateTaskReplyTo(ctx context.Context, taskID uuid.UUID
 
 // UpdateCampaignTaskTracking updates the campaign task with contact_id and sequence_id
 // This is called when the task is processed and we know which contact/sequence to send to
-// These IDs are needed for tracking pixel/click events to record progress
+// These IDs are needed for tracking pixel/click events to record progress.
+// A retry may send a different pair, so the recorded subject is cleared with it.
 func (r *taskRepository) UpdateCampaignTaskTracking(ctx context.Context, taskID, contactID, sequenceID uuid.UUID) error {
 	query := `
 		UPDATE campaign_tasks
-		SET contact_id = $2, sequence_id = $3
+		SET contact_id = $2, sequence_id = $3, subject = NULL
 		WHERE task_id = $1
 	`
 
 	_, err := r.db.Exec(ctx, query, taskID, contactID, sequenceID)
+	return err
+}
+
+// UpdateCampaignTaskSubject records the rendered subject a campaign send carries.
+func (r *taskRepository) UpdateCampaignTaskSubject(ctx context.Context, taskID uuid.UUID, subject string) error {
+	_, err := r.db.Exec(ctx, `UPDATE campaign_tasks SET subject = CASE WHEN btrim($2) = '' THEN NULL ELSE $2 END WHERE task_id = $1`, taskID, subject)
 	return err
 }
 

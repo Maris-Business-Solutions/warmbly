@@ -484,7 +484,7 @@ func Run(
 		// CombinedAuthMiddleware sets the same context keys for both; the usage
 		// middleware records one log row per API-key request (JWT skipped).
 		protected := base.Group("")
-		protected.Use(m.CombinedAuthMiddleware(), m.APIKeyUsageMiddleware(), m.IdempotencyMiddleware())
+		protected.Use(m.CombinedAuthMiddleware(), m.APIKeyUsageMiddleware(), m.IdempotencyMiddleware(), h.ForgetUniboxOverviewOnWrite)
 		{
 			emails := protected.Group("/emails")
 			emails.Use(m.RateLimitMiddleware(models.RateLimitWrite))

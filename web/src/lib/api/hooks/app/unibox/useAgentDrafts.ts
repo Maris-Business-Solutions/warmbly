@@ -7,7 +7,7 @@ import { listAgentDrafts } from "@/lib/api/client/app/unibox/agentDrafts";
 export default function useAgentDrafts() {
     return useQuery({
         queryKey: ["unibox", "agent-drafts"],
-        queryFn: listAgentDrafts,
+        queryFn: ({ signal }) => listAgentDrafts(signal),
         staleTime: 15_000,
         refetchOnWindowFocus: true,
     })
