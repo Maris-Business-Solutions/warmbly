@@ -38,6 +38,7 @@ import { useMediaQuery, LG_QUERY } from "@/hooks/useMediaQuery";
 import useUniboxOverview from "@/lib/api/hooks/app/unibox/useUniboxOverview";
 import { cn } from "@/lib/utils";
 import type { UniboxSearchParams } from "@/lib/api/models/app/unibox/UniboxSearch";
+import { useUniboxRailSync } from "@/hooks/useUniboxRailSync";
 
 function startOfToday(): Date {
   const d = new Date();
@@ -52,6 +53,8 @@ function startOfWeek(): Date {
 }
 
 export default function UniboxPage() {
+  // The rail and its phone sheet both read the store this keeps in step with the account.
+  useUniboxRailSync();
   const access = useFeatureAccess();
   const canAccess = usePermission("ACCESS_UNIBOX");
   const overview = useUniboxOverview();

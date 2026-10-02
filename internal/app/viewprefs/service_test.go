@@ -1,6 +1,7 @@
 package viewprefs
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -71,4 +72,56 @@ func manyColumns(n int) *[]string {
 		out[i] = "custom:f" + strings.Repeat("x", i%5) + string(rune('a'+i%26)) + strings.Repeat("y", i/26)
 	}
 	return &out
+}
+
+func TestValidateUniboxRailLayout(t *testing.T) {
+	upd := models.ViewPreferencesUpdate{Layout: []byte(`{
+		"favorites": [{"key": "folder:inbox", "name": "  Inbox   work "}, {"key": "folder:inbox"}],
+		"hidden": ["view:today", "view:today"],
+		"order": {"mail": ["folder:sent", "folder:inbox"]},
+		"section_order": ["favorites", "mail"]
+	}`)}
+	if xerr := validate(models.ViewUniboxRail, &upd); xerr != nil {
+		t.Fatalf("valid layout rejected: %v", xerr)
+	}
+	var got models.UniboxRailLayout
+	if err := json.Unmarshal(upd.Layout, &got); err != nil {
+		t.Fatalf("stored layout does not decode: %v", err)
+	}
+	if len(got.Favorites) != 1 || got.Favorites[0].Name != "Inbox work" {
+		t.Fatalf("favorites not normalized: %+v", got.Favorites)
+	}
+	if len(got.Hidden) != 1 {
+		t.Fatalf("hidden not deduplicated: %v", got.Hidden)
+	}
+
+	null := models.ViewPreferencesUpdate{Layout: []byte(`null`)}
+	if xerr := validate(models.ViewUniboxRail, &null); xerr != nil || string(null.Layout) == "null" {
+		t.Fatalf("null is the default layout: %v %s", xerr, null.Layout)
+	}
+
+	for name, tc := range map[string]struct {
+		view string
+		upd  models.ViewPreferencesUpdate
+		code string
+	}{
+		"layout on a column view": {models.ViewContacts, models.ViewPreferencesUpdate{Layout: []byte(`{}`)}, "invalid_layout"},
+		"unknown field":           {models.ViewUniboxRail, models.ViewPreferencesUpdate{Layout: []byte(`{"widths": 3}`)}, "invalid_layout"},
+		"not an object":           {models.ViewUniboxRail, models.ViewPreferencesUpdate{Layout: []byte(`[]`)}, "invalid_layout"},
+		"empty key":               {models.ViewUniboxRail, models.ViewPreferencesUpdate{Layout: []byte(`{"hidden": [""]}`)}, "invalid_layout"},
+		"long key":                {models.ViewUniboxRail, models.ViewPreferencesUpdate{Layout: []byte(`{"hidden": ["` + strings.Repeat("a", models.UniboxRailKeyMaxLength+1) + `"]}`)}, "invalid_layout"},
+		"control in key":          {models.ViewUniboxRail, models.ViewPreferencesUpdate{Layout: []byte(`{"hidden": ["a\u0007b"]}`)}, "invalid_layout"},
+		"long name":               {models.ViewUniboxRail, models.ViewPreferencesUpdate{Layout: []byte(`{"favorites": [{"key": "k", "name": "` + strings.Repeat("n", models.UniboxRailFavoriteNameMax+1) + `"}]}`)}, "invalid_layout"},
+		"columns on the rail":     {models.ViewUniboxRail, models.ViewPreferencesUpdate{Columns: cols("name")}, "invalid_column"},
+		"sort on the rail":        {models.ViewUniboxRail, models.ViewPreferencesUpdate{Sort: &models.ViewSort{By: "created_at"}}, "invalid_sort"},
+	} {
+		xerr := validate(tc.view, &tc.upd)
+		if xerr == nil {
+			t.Errorf("%s: accepted", name)
+			continue
+		}
+		if xerr.Identifier != tc.code {
+			t.Errorf("%s: code %q, want %q", name, xerr.Identifier, tc.code)
+		}
+	}
 }

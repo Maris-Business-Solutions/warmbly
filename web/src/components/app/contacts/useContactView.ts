@@ -11,10 +11,10 @@ import {
     useViewPreferences,
     type ViewScope,
 } from "@/lib/api/hooks/app/views/useViewPreferences";
-import type { ViewName, ViewSort } from "@/lib/api/models/app/views/ViewPreferences";
+import type { ColumnViewName, ViewSort } from "@/lib/api/models/app/views/ViewPreferences";
 import { resolveColumns } from "./columns";
 
-export function useContactView(view: ViewName) {
+export function useContactView(view: ColumnViewName) {
     const org = useCurrentOrg();
     const user = useUser();
     const scope = React.useMemo<ViewScope>(

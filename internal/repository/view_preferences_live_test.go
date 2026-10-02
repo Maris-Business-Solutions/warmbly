@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -99,4 +101,63 @@ func TestLiveViewPreferencesPartialWrites(t *testing.T) {
 	if gone, err := repo.Get(ctx, user, org, models.ViewContacts); err != nil || gone != nil {
 		t.Fatalf("delete left a row: %v %+v", err, gone)
 	}
+}
+
+// The rail's layout is a third part of the same row: writing it keeps the
+// rest, and a later write without it keeps the layout.
+func TestLiveViewPreferencesUniboxRailLayout(t *testing.T) {
+	handle, pool := liveContactDB(t)
+	ctx := context.Background()
+	user, org := uuid.New(), uuid.New()
+	tag := org.String()[:8]
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("fixture %q: %v", sql[:min(60, len(sql))], err)
+		}
+	}
+	exec(`INSERT INTO users (id, first_name, last_name, email, password_hash) VALUES ($1, 'Rail', 'Live', $2, 'x')`, user, "i779-"+tag+"@test.local")
+	exec(`INSERT INTO organizations (id, name, slug, owner_user_id) VALUES ($1, 'Issue 779 rail', $2, $3)`, org, "i779-"+tag, user)
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = pool.Exec(c, `DELETE FROM organizations WHERE id = $1`, org)
+		_, _ = pool.Exec(c, `DELETE FROM users WHERE id = $1`, user)
+	})
+	repo := NewViewPreferencesRepository(handle.Pool)
+
+	layout := []byte(`{"favorites":[{"key":"folder:inbox","name":"Inbox work"}],"hidden":["view:today"],"order":{"mail":["folder:sent","folder:inbox"]},"section_order":["favorites","mail"]}`)
+	got, err := repo.Upsert(ctx, user, org, models.ViewUniboxRail, models.ViewPreferencesUpdate{Layout: layout})
+	if err != nil {
+		t.Fatalf("layout insert: %v", err)
+	}
+	if !jsonEqual(t, got.Layout, layout) {
+		t.Fatalf("saved layout %s, want %s", got.Layout, layout)
+	}
+
+	// An update that does not name the layout keeps it.
+	if _, err := repo.Upsert(ctx, user, org, models.ViewUniboxRail, models.ViewPreferencesUpdate{}); err != nil {
+		t.Fatalf("empty update: %v", err)
+	}
+	read, err := repo.Get(ctx, user, org, models.ViewUniboxRail)
+	if err != nil || read == nil || !jsonEqual(t, read.Layout, layout) {
+		t.Fatalf("read back %v %+v", err, read)
+	}
+
+	// The column views never report a layout of their own.
+	cols, err := repo.Upsert(ctx, user, org, models.ViewContacts, models.ViewPreferencesUpdate{Columns: &[]string{"company"}})
+	if err != nil || cols.Layout != nil {
+		t.Fatalf("contacts carries a layout: %v %s", err, cols.Layout)
+	}
+}
+
+func jsonEqual(t *testing.T, a, b []byte) bool {
+	t.Helper()
+	var x, y any
+	if err := json.Unmarshal(a, &x); err != nil {
+		t.Fatalf("decode %s: %v", a, err)
+	}
+	if err := json.Unmarshal(b, &y); err != nil {
+		t.Fatalf("decode %s: %v", b, err)
+	}
+	return reflect.DeepEqual(x, y)
 }

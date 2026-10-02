@@ -91,7 +91,8 @@ Fields are named by their JSON key, with nested fields as a dotted path (`inner.
 |--------|---------|
 | `invalid_lead_status` | `POST /contacts/search` or `POST /contacts/export` was given a `lead_status` that is not one of the documented values |
 | `invalid_sort_by` | `POST /contacts/search`, `POST /contacts/export` or a bulk action's `all` selection was given a `sort_by` of the form `custom:<key>` whose key could never be a custom-field name (letters, numbers, underscores, spaces or dashes) |
-| `invalid_column`, `duplicate_column`, `too_many_columns`, `invalid_sort` | `PUT /me/views/:view` was given a column id that view cannot render, the same column twice, more than 64 columns, or a sort that names neither a sortable contact column nor a well-formed `custom:<key>` |
+| `invalid_column`, `duplicate_column`, `too_many_columns`, `invalid_sort` | `PUT /me/views/:view` was given a column id that view cannot render, the same column twice, more than 64 columns, or a sort that names neither a sortable contact column nor a well-formed `custom:<key>` (`unibox_rail` has no columns or sort at all) |
+| `invalid_layout` | `PUT /me/views/:view` was given a `layout` on a view that has none, or a `unibox_rail` layout with an unknown field, an empty or over-long key (200 bytes), more than 500 keys in a list or 32 sections, or a favorite name over 40 characters |
 | `invalid_mail_host` | `POST /contacts/search`, `POST /contacts/export` or a bulk action's `all` selection was given a `mail_hosts` entry that is not a documented provider value |
 | `invalid_engagement` | `POST /contacts/search` or `POST /contacts/export` was given an `engagement` that is not one of the documented values |
 | `lead_filter_requires_campaign` | `lead_status` or `engagement` was set without exactly one `campaign_ids` entry; both filters describe a contact inside one campaign |
@@ -454,7 +455,7 @@ Returned when the requested resource doesn't exist.
 
 | `code` | Meaning |
 |--------|---------|
-| `unknown_view` | `/me/views/:view` was given a view name other than `contacts` or `campaign_leads` |
+| `unknown_view` | `/me/views/:view` was given a view name other than `contacts`, `campaign_leads` or `unibox_rail` |
 | `lead_cc_contact_not_found` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named a contact that is not in the workspace |
 
 ### 409 Conflict

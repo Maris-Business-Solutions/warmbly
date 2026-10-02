@@ -54,6 +54,7 @@ export const useAppStore = create<AppStore>()(
             uniboxRailOrder: sanitizeUniboxRailOrder(p.uniboxRailOrder),
             uniboxRailSectionOrder: sanitizeUniboxRailHidden(p.uniboxRailSectionOrder),
             uniboxRailFavorites: sanitizeUniboxRailFavorites(p.uniboxRailFavorites),
+            uniboxRailOwner: typeof p.uniboxRailOwner === 'string' ? p.uniboxRailOwner : null,
           }
         },
         partialize: (state) => ({
@@ -70,12 +71,14 @@ export const useAppStore = create<AppStore>()(
           uniboxListWidth: state.uniboxListWidth,
           uniboxRailWidth: state.uniboxRailWidth,
           uniboxContactRailOpen: state.uniboxContactRailOpen,
-          // Unibox scope rail (folds, hidden rows, row and section order, favorites)
+          // Unibox scope rail (folds, hidden rows, row and section order, favorites).
+          // All but the folds are a cache of the member's saved rail (useUniboxRailSync).
           uniboxRailFolded: state.uniboxRailFolded,
           uniboxRailHidden: state.uniboxRailHidden,
           uniboxRailOrder: state.uniboxRailOrder,
           uniboxRailSectionOrder: state.uniboxRailSectionOrder,
           uniboxRailFavorites: state.uniboxRailFavorites,
+          uniboxRailOwner: state.uniboxRailOwner,
           // Persist current organization selection
           currentOrganization: state.currentOrganization,
         }),

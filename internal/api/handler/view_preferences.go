@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -42,11 +43,13 @@ func (h *Handler) GetViewPreferences(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"preferences": prefs})
 }
 
-// A field left out keeps its saved value; "columns": [] is the default layout
-// and "sort": {"by": ""} the default sort.
+// A field left out keeps its saved value; "columns": [] is the default layout,
+// "sort": {"by": ""} the default sort, and "layout": null the default layout
+// of a view that has one.
 type updateViewPreferencesRequest struct {
 	Columns *[]string        `json:"columns"`
 	Sort    *models.ViewSort `json:"sort"`
+	Layout  json.RawMessage  `json:"layout"`
 }
 
 // UpdateViewPreferences writes the caller's saved layout for one list: the
@@ -62,7 +65,7 @@ func (h *Handler) UpdateViewPreferences(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	upd := models.ViewPreferencesUpdate{Columns: req.Columns, Sort: req.Sort}
+	upd := models.ViewPreferencesUpdate{Columns: req.Columns, Sort: req.Sort, Layout: req.Layout}
 	saved, xerr := h.ViewPreferencesService.Put(c.Request.Context(), uid, orgID, c.Param("view"), upd)
 	if xerr != nil {
 		errx.Handle(c, xerr)
