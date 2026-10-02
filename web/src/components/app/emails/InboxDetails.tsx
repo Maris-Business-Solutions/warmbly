@@ -110,6 +110,7 @@ import { Loading } from "@/components/loader";
 import { NumberInput, TextInput } from "@/components/ui/field";
 import { clampWarmupRetentionDays } from "@/lib/warmupRetention";
 import { useConfirm } from "@/hooks/context/confirm";
+import { usePermission } from "@/hooks/usePermission";
 import { usePresenceResource } from "@/hooks/PresenceProvider";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import { cn } from "@/lib/utils";
@@ -1084,7 +1085,9 @@ function AuthRecordRow({ label, state, detail }: { label: string; state: AuthRec
 // The banner above the records, shown only when the stored state is "failing".
 // The gate is invisible otherwise, and an owner whose campaigns have stopped
 // needs to be told that here rather than inferring it from a paused campaign.
-function AuthGateNotice({ mailbox }: { mailbox: Inbox }) {
+// livePassing is a read-only check that passed: the records are fixed but the
+// stored verdict is not, so the banner says who can clear it.
+function AuthGateNotice({ mailbox, livePassing }: { mailbox: Inbox; livePassing: boolean }) {
     if (mailbox.auth_state !== "failing") return null;
 
     const since = mailbox.auth_failing_since ? new Date(mailbox.auth_failing_since) : null;
@@ -1094,8 +1097,10 @@ function AuthGateNotice({ mailbox }: { mailbox: Inbox }) {
             <div className="min-w-0 text-[11.5px] text-rose-900/90 leading-relaxed">
                 <span className="font-medium">This domain is failing authentication.</span>{" "}
                 Cold sending and warmup from this mailbox stop while it stays that way
-                {since ? `, failing since ${since.toLocaleDateString()}` : ""}. Add the missing DNS
-                records at your registrar, then re-check below to clear it straight away.
+                {since ? `, failing since ${since.toLocaleDateString()}` : ""}.{" "}
+                {livePassing
+                    ? "The records check out now; someone who can manage mailboxes can re-check to clear it."
+                    : "Add the missing DNS records at your registrar, then re-check below to clear it straight away."}
             </div>
         </div>
     );
@@ -1104,24 +1109,41 @@ function AuthGateNotice({ mailbox }: { mailbox: Inbox }) {
 function AuthCheckPanel({ mailbox }: { mailbox: Inbox }) {
     const emailId = mailbox.id;
     const [open, setOpen] = useState(false);
-    const check = useAuthCheck(emailId, open);
-    // Re-checking RECORDS the verdict, which is what lifts the send gate, so
-    // the button is a write and not a query refetch.
+    // A check by someone who can manage mailboxes RECORDS its verdict, which is
+    // what lifts the send gate. Showing a live result without recording it
+    // left a passing check under a "failing" banner that never cleared.
+    const canRecord = usePermission("MANAGE_EMAILS");
+    const check = useAuthCheck(emailId, open && !canRecord);
     const refresh = useRefreshAuthCheck(emailId);
     const data = refresh.data ?? check.data;
+    const error = canRecord ? refresh.error : check.error;
     const busy = check.isFetching || refresh.isPending;
+
+    const run = () => {
+        setOpen(true);
+        if (!canRecord) {
+            if (open) void check.refetch();
+            return;
+        }
+        refresh.mutate();
+    };
 
     // The verdict follows what the check can actually prove. SPF and DMARC are
     // discoverable, so a miss there is a real miss; DKIM is not, so a domain
     // with both of those in place is aligned as far as anyone can tell, and
-    // saying "needs attention" over an unverifiable DKIM is a false alarm.
+    // saying "needs attention" over an unverifiable DKIM is a false alarm. A
+    // lookup DNS did not answer proves nothing either way.
+    const unanswered = !!data?.lookup_error;
     const verdict = !data
         ? null
-        : data.all_aligned
-          ? { ok: true, tone: "text-emerald-700", title: "Authentication aligned" }
-          : data.spf_found && data.dmarc_found
-            ? { ok: true, tone: "text-emerald-700", title: "SPF and DMARC aligned, DKIM unverified" }
-            : { ok: false, tone: "text-amber-700", title: "Authentication needs attention" };
+        : unanswered
+          ? { ok: false, tone: "text-slate-600", title: "DNS did not answer" }
+          : data.all_aligned
+            ? { ok: true, tone: "text-emerald-700", title: "Authentication aligned" }
+            : data.spf_found && data.dmarc_found
+              ? { ok: true, tone: "text-emerald-700", title: "SPF and DMARC aligned, DKIM unverified" }
+              : { ok: false, tone: "text-amber-700", title: "Authentication needs attention" };
+    const discoverable = (found: boolean): AuthRecordState => (found ? "found" : unanswered ? "unverified" : "missing");
 
     return (
         <div className="px-5 py-4">
@@ -1131,14 +1153,7 @@ function AuthCheckPanel({ mailbox }: { mailbox: Inbox }) {
                     <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">Live SPF, DKIM &amp; DMARC check on the sending domain.</p>
                 </div>
                 <button
-                    onClick={() => {
-                        setOpen(true);
-                        if (open) {
-                            refresh.mutate(undefined, {
-                                onError: (e) => toast.error(buildError(e as unknown as AppError)),
-                            });
-                        }
-                    }}
+                    onClick={run}
                     disabled={busy}
                     className="h-8 px-3 rounded-md border border-slate-200 hover:border-slate-300 text-[12px] font-medium text-slate-700 hover:text-slate-900 inline-flex items-center gap-1.5 transition-colors disabled:opacity-60 shrink-0"
                 >
@@ -1147,15 +1162,16 @@ function AuthCheckPanel({ mailbox }: { mailbox: Inbox }) {
                 </button>
             </div>
 
-            <AuthGateNotice mailbox={mailbox} />
+            <AuthGateNotice mailbox={mailbox} livePassing={!canRecord && !!data && !unanswered && data.spf_found && data.dmarc_found} />
 
             {open && (
-                <div className="mt-3">
-                    {check.isError ? (
+                <div className="mt-3 space-y-2">
+                    {error && (
                         <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11.5px] text-rose-700 leading-relaxed">
-                            {buildError(check.error as unknown as AppError)}
+                            {buildError(error as unknown as AppError)}
                         </div>
-                    ) : check.isFetching && !data ? (
+                    )}
+                    {busy && !data ? (
                         <div className="rounded-md border border-slate-200 bg-slate-50/70 px-3 py-3 flex items-center gap-2 text-[12px] text-slate-500">
                             <Loading className="!w-3.5 h-3.5" /> Looking up DNS records…
                         </div>
@@ -1166,12 +1182,17 @@ function AuthCheckPanel({ mailbox }: { mailbox: Inbox }) {
                                 <div className="min-w-0">
                                     <div className="text-[12px] font-medium">{verdict.title}</div>
                                     {data.summary && <div className="mt-0.5 text-[11px] text-slate-500 leading-relaxed">{data.summary}</div>}
+                                    {unanswered && (
+                                        <div className="mt-0.5 text-[11px] text-slate-500 leading-relaxed">
+                                            Nothing is held against the domain for this. Try again in a minute.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="px-3">
                                 <AuthRecordRow
                                     label="SPF"
-                                    state={data.spf_found ? "found" : "missing"}
+                                    state={discoverable(data.spf_found)}
                                     detail={data.spf_record ? <span className="font-mono break-all">{data.spf_record}</span> : undefined}
                                 />
                                 <AuthRecordRow
@@ -1187,7 +1208,7 @@ function AuthCheckPanel({ mailbox }: { mailbox: Inbox }) {
                                 />
                                 <AuthRecordRow
                                     label="DMARC"
-                                    state={data.dmarc_found ? "found" : "missing"}
+                                    state={discoverable(data.dmarc_found)}
                                     detail={
                                         data.dmarc_found && data.dmarc_policy ? (
                                             <span className="font-mono break-all">

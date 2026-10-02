@@ -11,10 +11,12 @@ import (
 	"context"
 	"errors"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -170,10 +172,36 @@ type lookupFunc func(name string) (txts []string, transientErr bool)
 type mxLookupFunc func(name string) (hosts []string, transientErr bool)
 
 // lookups is the resolver the check runs against, injected so the record logic
-// is unit-testable without DNS.
+// is unit-testable without DNS. confirm, when set, asks the zone's own
+// nameservers about a record the host's resolver did not return.
 type lookups struct {
-	txt lookupFunc
-	mx  mxLookupFunc
+	txt     lookupFunc
+	mx      mxLookupFunc
+	confirm lookupFunc
+}
+
+// record looks up an authoritative TXT name and confirms a miss with the zone's
+// own nameservers. Their definitive answer wins in both directions: it is the
+// one source that cannot be a stale cache. When they cannot be reached the host
+// resolver's answer stands. fromZone reports that only the nameservers had it.
+func (l lookups) record(name string, want func(string) bool) (txts []string, transient, fromZone bool) {
+	txts, transient = l.txt(name)
+	if l.confirm == nil || slices.ContainsFunc(txts, want) {
+		return txts, transient, false
+	}
+	zoneTxts, zoneTransient := l.confirm(name)
+	if zoneTransient {
+		return txts, transient, false
+	}
+	return zoneTxts, false, slices.ContainsFunc(zoneTxts, want)
+}
+
+func isSPF(txt string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(txt)), "v=spf1")
+}
+
+func isDMARC(txt string) bool {
+	return strings.Contains(strings.ToLower(txt), "v=dmarc1")
 }
 
 // Check validates SPF, DKIM and DMARC for the domain. dkimSelectors may be nil
@@ -184,7 +212,7 @@ func Check(ctx context.Context, domain string, dkimSelectors []string) Result {
 	txt := func(name string) ([]string, bool) {
 		c, cancel := context.WithTimeout(ctx, lookupTimeout)
 		defer cancel()
-		txts, err := resolver.LookupTXT(c, name)
+		txts, err := resolver.LookupTXT(c, rooted(name))
 		if err != nil {
 			var dnsErr *net.DNSError
 			if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
@@ -197,7 +225,7 @@ func Check(ctx context.Context, domain string, dkimSelectors []string) Result {
 	mx := func(name string) ([]string, bool) {
 		c, cancel := context.WithTimeout(ctx, lookupTimeout)
 		defer cancel()
-		recs, err := resolver.LookupMX(c, name)
+		recs, err := resolver.LookupMX(c, rooted(name))
 		if err != nil {
 			return nil, true
 		}
@@ -207,7 +235,7 @@ func Check(ctx context.Context, domain string, dkimSelectors []string) Result {
 		}
 		return hosts, false
 	}
-	return checkWith(domain, dkimSelectors, lookups{txt: txt, mx: mx})
+	return checkWith(domain, dkimSelectors, lookups{txt: txt, mx: mx, confirm: newAuthoritative(ctx, resolver).txt})
 }
 
 // checkWith is Check with the resolver injected, so the record logic (including
@@ -232,19 +260,32 @@ func checkWith(domain string, dkimSelectors []string, l lookups) Result {
 		return res
 	}
 
+	// DNS carries an internationalized name in its ASCII form; the Unicode
+	// one is not a valid DNS name and would read as "not found".
+	name := domain
+	if ascii, err := idna.Lookup.ToASCII(domain); err == nil && ascii != "" {
+		name = ascii
+	}
+
 	// SPF: a TXT record on the root domain beginning v=spf1. SPF does NOT
 	// inherit from a parent domain, so this must be published on the exact
 	// sending domain and there is no fallback to try.
-	spfTxts, spfErr := l.txt(domain)
+	spfTxts, spfErr, spfFromZone := l.record(name, isSPF)
 	for _, t := range spfTxts {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(t)), "v=spf1") {
+		if isSPF(t) {
 			res.SPFFound = true
 			res.SPFRecord = strings.TrimSpace(t)
 			break
 		}
 	}
 
-	dmarcErr := lookupDMARC(&res, domain, l.txt)
+	var dmarcFromZone bool
+	dmarcErr := lookupDMARC(&res, name, func(n string) ([]string, bool) {
+		txts, transient, fromZone := l.record(n, isDMARC)
+		dmarcFromZone = dmarcFromZone || fromZone
+		return txts, transient
+	})
+	res.DMARCDomain = displayDomain(res.DMARCDomain)
 
 	// Only the SPF and DMARC lookups gate the persisted verdict; DKIM is advisory
 	// so its lookups don't influence LookupError.
@@ -254,7 +295,7 @@ func checkWith(domain string, dkimSelectors []string, l lookups) Result {
 	if len(dkimSelectors) == 0 {
 		var mxHosts []string
 		if l.mx != nil {
-			mxHosts, _ = l.mx(domain)
+			mxHosts, _ = l.mx(name)
 		}
 		dkimSelectors = dedupe(append(selectorHints(res.SPFRecord, mxHosts), defaultSelectors...))
 	} else {
@@ -263,7 +304,18 @@ func checkWith(domain string, dkimSelectors []string, l lookups) Result {
 	if len(dkimSelectors) > maxSelectorProbes {
 		dkimSelectors = dkimSelectors[:maxSelectorProbes]
 	}
-	res.DKIMSelectors = probeSelectors(domain, dkimSelectors, l.txt)
+	// A host resolver that missed SPF or DMARC is not trusted to find a DKIM
+	// key either, so the probes go to the zone's nameservers too.
+	probe := l.txt
+	if spfFromZone || dmarcFromZone {
+		probe = func(n string) ([]string, bool) {
+			if txts, transient := l.txt(n); slices.ContainsFunc(txts, dkimKey) {
+				return txts, transient
+			}
+			return l.confirm(n)
+		}
+	}
+	res.DKIMSelectors = probeSelectors(name, dkimSelectors, probe)
 	if len(res.DKIMSelectors) > 0 {
 		res.DKIMFound = true
 		res.DKIMStatus = DKIMStatusFound
@@ -388,7 +440,7 @@ func lookupDMARC(res *Result, domain string, lookup lookupFunc) bool {
 		return true
 	}
 	for _, t := range txts {
-		if strings.Contains(strings.ToLower(t), "v=dmarc1") {
+		if isDMARC(t) {
 			res.DMARCFound = true
 			res.DMARCDomain = domain
 			res.DMARCPolicy = dmarcTag(t, "p")
@@ -405,7 +457,7 @@ func lookupDMARC(res *Result, domain string, lookup lookupFunc) bool {
 		return true
 	}
 	for _, t := range orgTxts {
-		if strings.Contains(strings.ToLower(t), "v=dmarc1") {
+		if isDMARC(t) {
 			res.DMARCFound = true
 			res.DMARCInherited = true
 			res.DMARCDomain = org
@@ -420,6 +472,14 @@ func lookupDMARC(res *Result, domain string, lookup lookupFunc) bool {
 		}
 	}
 	return false
+}
+
+// displayDomain renders a looked-up name in the Unicode form its owner typed.
+func displayDomain(name string) string {
+	if u, err := idna.Lookup.ToUnicode(name); err == nil {
+		return u
+	}
+	return name
 }
 
 // reservedSuffixes are the special-use top-level domains that are guaranteed
