@@ -244,8 +244,13 @@ type fakeRepo struct {
 	leaseOwner    uuid.UUID
 	leasedUntil   time.Time
 	changes       []repository.FollowUpChange
-	failPage      func(after *repository.FollowUpPosition) error
+	failPage      func(mailbox uuid.UUID, after *repository.FollowUpPosition) error
 	failChanges   error
+	failPositions error
+	second        []repository.ThreadFollowUpState
+	// pageFailingSince and freshFailingSince are when the current run of failures began.
+	pageFailingSince  *time.Time
+	freshFailingSince *time.Time
 }
 
 func (f *fakeRepo) Claim(_ context.Context, _, _ uuid.UUID, id, _ string) (bool, error) {
@@ -296,57 +301,74 @@ func (f *fakeRepo) Reopen(_ context.Context, _ uuid.UUID, id, _ string) ([]strin
 	return []string{"cold-inbound", "needs-review"}, nil
 }
 
-// fakeMailbox holds every fake thread; states are in walk order, one message each.
-var fakeMailbox = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+// fakeMailbox holds the fake threads in states, fakeMailbox2 those in second; each in walk order, one message each.
+var (
+	fakeMailbox  = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	fakeMailbox2 = uuid.MustParse("00000000-0000-0000-0000-000000000002")
+)
 
 // position puts thread i one minute older than thread i-1, counting back from base.
 func (f *fakeRepo) position(i int) repository.FollowUpPosition {
+	return f.positionIn(fakeMailbox, i)
+}
+
+func (f *fakeRepo) positionIn(mailbox uuid.UUID, i int) repository.FollowUpPosition {
 	base := f.base
 	if base.IsZero() {
 		base = time.Now()
 	}
 	return repository.FollowUpPosition{
-		MailboxID: fakeMailbox,
+		MailboxID: mailbox,
 		At:        base.Add(-time.Duration(i) * time.Minute),
-		RowID:     uuid.NewSHA1(uuid.Nil, []byte(strconv.Itoa(i))),
+		RowID:     uuid.NewSHA1(mailbox, []byte(strconv.Itoa(i))),
 	}
 }
 
 func (f *fakeRepo) FollowUpMailboxes(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	if len(f.second) > 0 {
+		return []uuid.UUID{fakeMailbox, fakeMailbox2}, nil
+	}
 	return []uuid.UUID{fakeMailbox}, nil
 }
 
-func (f *fakeRepo) FollowUpPage(_ context.Context, _, _ uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
+func (f *fakeRepo) FollowUpPage(_ context.Context, _, mailbox uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
 	f.pages++
 	if f.failPage != nil {
-		if err := f.failPage(after); err != nil {
+		if err := f.failPage(mailbox, after); err != nil {
 			return repository.FollowUpPage{}, err
 		}
 	}
-	return f.page(since, after, limit)
+	return f.page(mailbox, since, after, limit), nil
 }
 
-func (f *fakeRepo) page(since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
+func (f *fakeRepo) page(mailbox uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) repository.FollowUpPage {
+	states := f.states
+	if mailbox == fakeMailbox2 {
+		states = f.second
+	}
 	start := 0
 	if after != nil {
-		for start < len(f.states) && f.position(start).RowID != after.RowID {
+		for start < len(states) && f.positionIn(mailbox, start).RowID != after.RowID {
 			start++
 		}
 		start++
 	}
 	var page repository.FollowUpPage
-	for i := start; i < len(f.states) && i < start+limit && !f.position(i).At.Before(since); i++ {
-		st := f.states[i]
-		st.Position = f.position(i)
+	for i := start; i < len(states) && i < start+limit && !f.positionIn(mailbox, i).At.Before(since); i++ {
+		st := states[i]
+		st.Position = f.positionIn(mailbox, i)
 		page.States = append(page.States, st)
 		page.Rows++
 		page.Last = &st.Position
 	}
-	return page, nil
+	return page
 }
 
-func (f *fakeRepo) FollowUpPagePositions(ctx context.Context, org, mailbox uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
-	page, _ := f.page(since, after, limit)
+func (f *fakeRepo) FollowUpPagePositions(_ context.Context, _, mailbox uuid.UUID, since time.Time, after *repository.FollowUpPosition, limit int) (repository.FollowUpPage, error) {
+	if f.failPositions != nil {
+		return repository.FollowUpPage{}, f.failPositions
+	}
+	page := f.page(mailbox, since, after, limit)
 	page.States = nil
 	return page, nil
 }
@@ -367,7 +389,7 @@ func (f *fakeRepo) FollowUpChanges(_ context.Context, _ uuid.UUID, after reposit
 
 func (f *fakeRepo) FollowUpThreadStates(_ context.Context, _ uuid.UUID, threads []string, _ time.Time) ([]repository.ThreadFollowUpState, error) {
 	var out []repository.ThreadFollowUpState
-	for _, st := range f.states {
+	for _, st := range append(append([]repository.ThreadFollowUpState{}, f.states...), f.second...) {
 		if slices.Contains(threads, st.ThreadID) {
 			out = append(out, st)
 		}
@@ -381,15 +403,19 @@ func (f *fakeRepo) ClaimFollowUpSweep(_ context.Context, _, owner uuid.UUID, lea
 		return nil, nil
 	}
 	f.leaseOwner, f.leasedUntil = owner, now.Add(lease)
-	return &repository.FollowUpSweepState{Cursor: f.cursor, Fresh: f.fresh, PageFailures: f.pageFailures, FreshFailures: f.freshFailures, Now: now}, nil
+	return &repository.FollowUpSweepState{
+		Cursor: f.cursor, Fresh: f.fresh, PageFailures: f.pageFailures, FreshFailures: f.freshFailures,
+		PageFailingSince: f.pageFailingSince, FreshFailingSince: f.freshFailingSince, Now: now,
+	}, nil
 }
 
 func (f *fakeRepo) SaveFollowUpSweep(_ context.Context, _, owner uuid.UUID, lease time.Duration, st repository.FollowUpSweepState) (bool, error) {
 	now := time.Now()
-	if f.leaseOwner != owner || !f.leasedUntil.After(now) {
+	if f.leaseOwner != owner {
 		return false, nil
 	}
 	f.cursor, f.fresh, f.pageFailures, f.freshFailures = st.Cursor, st.Fresh, st.PageFailures, st.FreshFailures
+	f.pageFailingSince, f.freshFailingSince = st.PageFailingSince, st.FreshFailingSince
 	f.leasedUntil = now.Add(lease)
 	return true, nil
 }

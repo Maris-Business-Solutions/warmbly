@@ -1,13 +1,17 @@
 package inboxtag
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -446,11 +450,29 @@ func TestSweepCycleRunsWhenTheChangedThreadCheckFails(t *testing.T) {
 	}
 }
 
-// A page that fails every time is retried, then stepped past, so the cycle keeps moving.
+// failAgain runs n passes that must each fail without stepping past anything.
+func failAgain(t *testing.T, svc *Service, opts FollowUpSweep, n int, check func(pass int)) {
+	t.Helper()
+	for pass := 1; pass <= n; pass++ {
+		if p, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts); err == nil || p.Skipped != 0 {
+			t.Fatalf("pass %d: %+v %v, want the failure reported and nothing skipped", pass, p, err)
+		}
+		check(pass)
+	}
+}
+
+// backdate makes the current run of failures look an hour and a half old.
+func backdate(since **time.Time) {
+	old := time.Now().Add(-90 * time.Minute)
+	*since = &old
+}
+
+// A page that fails is retried, and stepped past only once it has failed
+// repeatedly over at least an hour, so the cycle keeps moving.
 func TestSweepStepsPastAPageThatKeepsFailing(t *testing.T) {
 	repo := &fakeRepo{states: quietThreads(1200, 1100)}
 	poison := repo.position(499).RowID
-	repo.failPage = func(after *repository.FollowUpPosition) error {
+	repo.failPage = func(_ uuid.UUID, after *repository.FollowUpPosition) error {
 		if after != nil && after.RowID == poison {
 			return errors.New("statement timeout")
 		}
@@ -460,48 +482,151 @@ func TestSweepStepsPastAPageThatKeepsFailing(t *testing.T) {
 	svc := NewService(&countingAsker{}, repo, cats, nil, true)
 	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500}
 
-	for pass := 1; pass < followUpFailureLimit; pass++ {
-		if _, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts); err == nil {
-			t.Fatalf("pass %d hid a failing page", pass)
+	// Back to back, as several consumers would run them during a short outage.
+	failAgain(t, svc, opts, followUpFailureLimit+1, func(pass int) {
+		if repo.cursor == nil || repo.cursor.RowID != poison || repo.pageFailures != pass || repo.pageFailingSince == nil {
+			t.Fatalf("pass %d left cursor %+v with %d failures since %v", pass, repo.cursor, repo.pageFailures, repo.pageFailingSince)
 		}
-		if repo.cursor == nil || repo.cursor.RowID != poison || repo.pageFailures != pass {
-			t.Fatalf("pass %d left cursor %+v with %d failures", pass, repo.cursor, repo.pageFailures)
-		}
-	}
+	})
+	backdate(&repo.pageFailingSince)
 	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts)
 	if err != nil || !p.Complete || p.Skipped != 1 {
-		t.Fatalf("pass %d: %+v %v, want the page skipped and the cycle finished", followUpFailureLimit, p, err)
+		t.Fatalf("after an hour of failures: %+v %v, want the page skipped and the cycle finished", p, err)
 	}
 	if !cats.has("t-1100", LabelFollowUp) {
 		t.Error("the thread past the failing page was never labelled")
 	}
-	if cats.synced["t-700"] != 0 || repo.pageFailures != 0 {
+	if cats.synced["t-700"] != 0 || repo.pageFailures != 0 || repo.pageFailingSince != nil {
 		t.Errorf("t-700 synced %d times and %d failures left, want the page skipped and the count reset", cats.synced["t-700"], repo.pageFailures)
 	}
 }
 
 // A label that cannot be written stops the cursor before that thread, and
-// after repeated failures the thread alone is stepped past.
+// after an hour of failures the thread alone is stepped past.
 func TestSweepStopsAtAThreadWhoseLabelFails(t *testing.T) {
 	repo := &fakeRepo{states: quietThreads(1200, 1100)}
 	cats := &fakeCategories{fail: map[string]error{"t-300": errors.New("deadlock detected")}}
 	svc := NewService(&countingAsker{}, repo, cats, nil, true)
 	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500}
 
-	for pass := 1; pass < followUpFailureLimit; pass++ {
-		if _, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts); err == nil {
-			t.Fatalf("pass %d hid a failed label", pass)
+	failAgain(t, svc, opts, followUpFailureLimit, func(pass int) {
+		if repo.cursor == nil || repo.cursor.RowID != repo.position(299).RowID || repo.pageFailures != pass {
+			t.Fatalf("pass %d left the cursor at %+v with %d failures, want the thread before the failure", pass, repo.cursor, repo.pageFailures)
 		}
-		if repo.cursor == nil || repo.cursor.RowID != repo.position(299).RowID {
-			t.Fatalf("pass %d left the cursor at %+v, want the thread before the failure", pass, repo.cursor)
-		}
-	}
+	})
+	backdate(&repo.pageFailingSince)
 	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts)
 	if err != nil || !p.Complete || p.Skipped != 1 {
-		t.Fatalf("pass %d: %+v %v, want the thread skipped and the cycle finished", followUpFailureLimit, p, err)
+		t.Fatalf("after an hour of failures: %+v %v, want the thread skipped and the cycle finished", p, err)
 	}
 	if cats.synced["t-299"] != 1 || cats.synced["t-301"] != 1 || !cats.has("t-1100", LabelFollowUp) {
 		t.Errorf("t-299 %d, t-301 %d syncs, t-1100 labelled %v", cats.synced["t-299"], cats.synced["t-301"], cats.has("t-1100", LabelFollowUp))
+	}
+}
+
+// When even the positions of a failing page cannot be read, the rest of that
+// mailbox is left to the next cycle and the walk moves to the next mailbox.
+func TestSweepStepsPastAMailboxItCannotRead(t *testing.T) {
+	repo := &fakeRepo{
+		states:        quietThreads(600, 10),
+		second:        []repository.ThreadFollowUpState{{ThreadID: "m2-stale", LastOutboundAt: time.Now().AddDate(0, 0, -8)}},
+		failPositions: errors.New("statement timeout"),
+	}
+	repo.failPage = func(mailbox uuid.UUID, after *repository.FollowUpPosition) error {
+		if mailbox == fakeMailbox && after != nil {
+			return errors.New("statement timeout")
+		}
+		return nil
+	}
+	cats := &fakeCategories{}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+	opts := FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500}
+
+	failAgain(t, svc, opts, followUpFailureLimit, func(int) {})
+	backdate(&repo.pageFailingSince)
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), opts)
+	if err != nil || !p.Complete || p.Skipped != 1 {
+		t.Fatalf("after an hour of failures: %+v %v, want the mailbox skipped and the cycle finished", p, err)
+	}
+	if !cats.has("m2-stale", LabelFollowUp) {
+		t.Error("the next mailbox was never reached")
+	}
+}
+
+// A failed read of changed threads never moves the mark, however long it has been failing.
+func TestSweepNeverMovesTheMarkPastAFailedRead(t *testing.T) {
+	mark := repository.FollowUpMark{At: time.Now().Add(-time.Hour), RowID: uuid.New()}
+	repo := &fakeRepo{states: quietThreads(10, 5), fresh: &mark, freshFailures: 5, failChanges: errors.New("connection reset")}
+	backdate(&repo.freshFailingSince)
+	svc := NewService(&countingAsker{}, repo, &fakeCategories{}, nil, true)
+
+	for pass := 1; pass <= 2; pass++ {
+		p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), Fresh: 24 * time.Hour, PageSize: 500})
+		if err != nil || !p.Complete || p.Skipped != 0 {
+			t.Fatalf("pass %d: %+v %v, want the cycle run and nothing skipped", pass, p, err)
+		}
+		if repo.fresh == nil || *repo.fresh != mark {
+			t.Fatalf("pass %d moved the mark to %+v past changes it never read", pass, repo.fresh)
+		}
+	}
+	if repo.freshFailures != 7 {
+		t.Errorf("fresh failures %d, want each failed read counted", repo.freshFailures)
+	}
+}
+
+// A pass that recovers where it last failed does not carry the old count forward.
+func TestSweepClearsFailuresOnceItMovesOn(t *testing.T) {
+	repo := &fakeRepo{states: quietThreads(1200, 1100), pageFailures: 2}
+	backdate(&repo.pageFailingSince)
+	cats := &fakeCategories{}
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	cats.onSync = func() {
+		if calls++; calls == 10 {
+			cancel()
+		}
+	}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+	if _, err := svc.SweepFollowUps(ctx, uuid.New(), FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted sweep returned %v", err)
+	}
+	if repo.cursor == nil || repo.cursor.RowID != repo.position(9).RowID {
+		t.Fatalf("cursor %+v, want the tenth thread", repo.cursor)
+	}
+	if repo.pageFailures != 0 || repo.pageFailingSince != nil {
+		t.Errorf("saved %d failures since %v after moving on", repo.pageFailures, repo.pageFailingSince)
+	}
+}
+
+// A pass whose lease another walker takes over stops, says so, and reports Busy.
+func TestSweepStopsWhenItsLeaseIsTakenOver(t *testing.T) {
+	var buf bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = prev })
+
+	repo := &fakeRepo{states: quietThreads(1200, 1100)}
+	cats := &fakeCategories{}
+	calls := 0
+	cats.onSync = func() {
+		switch calls++; calls {
+		case 10:
+			// A slow pass outlives its lease; nobody has taken over, so it may still save.
+			repo.leasedUntil = time.Now().Add(-time.Minute)
+		case 700:
+			repo.leaseOwner = uuid.New()
+		}
+	}
+	svc := NewService(&countingAsker{}, repo, cats, nil, true)
+	p, err := svc.SweepFollowUps(context.Background(), uuid.New(), FollowUpSweep{Since: time.Now().AddDate(0, 0, -90), PageSize: 500})
+	if err != nil || !p.Busy {
+		t.Fatalf("taken-over pass: %+v %v, want Busy and no error", p, err)
+	}
+	if repo.cursor == nil || repo.cursor.RowID != repo.position(499).RowID {
+		t.Errorf("cursor %+v, want the first page saved after the lease lapsed", repo.cursor)
+	}
+	if !strings.Contains(buf.String(), "taken over") {
+		t.Errorf("a lost lease was not logged: %q", buf.String())
 	}
 }
 

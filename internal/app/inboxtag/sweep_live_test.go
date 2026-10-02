@@ -46,8 +46,8 @@ func newSweepFixture(t *testing.T) *sweepFixture {
 	}
 	t.Cleanup(pool.Close)
 	var version int64
-	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations LIMIT 1`).Scan(&version); err != nil || version < 247 {
-		t.Fatalf("WARMBLY_TEST_DB is at schema version %d (err %v); this test needs 247 or later", version, err)
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations LIMIT 1`).Scan(&version); err != nil || version < 249 {
+		t.Fatalf("WARMBLY_TEST_DB is at schema version %d (err %v); this test needs 249 or later", version, err)
 	}
 
 	f := &sweepFixture{t: t, pool: pool, owner: uuid.New(), org: uuid.New(), mailbox: [2]uuid.UUID{uuid.New(), uuid.New()}}
@@ -386,5 +386,34 @@ func TestLiveFollowUpSweepLeaseKeepsOneWalker(t *testing.T) {
 	}
 	if p := f.pass(); p.Busy || p.Threads == 0 {
 		t.Fatalf("the released workspace was not swept: %+v", p)
+	}
+}
+
+// A walker that outlives its lease keeps saving until another walker takes the workspace over.
+func TestLiveFollowUpSweepLeaseOverrun(t *testing.T) {
+	f := newSweepFixture(t)
+	ctx := context.Background()
+	repo := repository.NewInboxTagRepository(f.pool)
+
+	slow := uuid.New()
+	st, err := repo.ClaimFollowUpSweep(ctx, f.org, slow, time.Millisecond)
+	if err != nil || st == nil {
+		t.Fatalf("claim: %+v %v", st, err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if ok, err := repo.SaveFollowUpSweep(ctx, f.org, slow, time.Millisecond, *st); err != nil || !ok {
+		t.Fatalf("the holder could not save after its lease lapsed: %v %v", ok, err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	next := uuid.New()
+	taken, err := repo.ClaimFollowUpSweep(ctx, f.org, next, time.Minute)
+	if err != nil || taken == nil {
+		t.Fatalf("a lapsed lease could not be taken over: %+v %v", taken, err)
+	}
+	if ok, err := repo.SaveFollowUpSweep(ctx, f.org, slow, time.Minute, *st); err != nil || ok {
+		t.Fatalf("the old holder saved after a takeover: %v %v", ok, err)
+	}
+	if ok, err := repo.SaveFollowUpSweep(ctx, f.org, next, time.Minute, *taken); err != nil || !ok {
+		t.Fatalf("the new holder could not save: %v %v", ok, err)
 	}
 }

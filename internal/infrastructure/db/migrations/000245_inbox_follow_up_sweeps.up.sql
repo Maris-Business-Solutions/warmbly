@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS public.inbox_follow_up_sweeps (
     fresh_row_id     uuid,
     page_failures    integer NOT NULL DEFAULT 0,
     fresh_failures   integer NOT NULL DEFAULT 0,
+    -- When the current run of failures began; a place is stepped past only after failing for a while.
+    page_failing_since  timestamptz,
+    fresh_failing_since timestamptz,
     lease_owner      uuid,
     leased_until     timestamptz,
     updated_at       timestamptz NOT NULL DEFAULT NOW()

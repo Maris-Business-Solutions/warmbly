@@ -15,8 +15,9 @@ import (
 const (
 	// DefaultFollowUpPageSize is how many messages one page of the sweep reads.
 	DefaultFollowUpPageSize = 500
-	// followUpFailureLimit is how many consecutive failures at one place the sweep takes before stepping past it.
+	// followUpFailureLimit and followUpFailureSpan are how many failures, over how long, before a place is stepped past.
 	followUpFailureLimit = 3
+	followUpFailureSpan  = time.Hour
 	// followUpSettle keeps the changed-thread check behind writes that may still be committing.
 	followUpSettle = time.Minute
 	// followUpLeaseMargin is how long a walker's lease outlives its budget.
@@ -27,6 +28,9 @@ const (
 
 // maxRowID orders after every row id, so a mark at (t, maxRowID) covers everything at t.
 var maxRowID = uuid.UUID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+
+// mailboxDone is a cursor time before any sweep window, marking a mailbox finished for the cycle.
+var mailboxDone = time.Unix(0, 0).UTC()
 
 // errLeaseLost stops a walker whose lease another walker has taken over.
 var errLeaseLost = errors.New("follow-up sweep: lease lost")
@@ -110,9 +114,12 @@ func (s *Service) SweepFollowUps(ctx context.Context, orgID uuid.UUID, opts Foll
 	defer w.release(ctx)
 
 	err = w.run(ctx, mailboxes)
-	if errors.Is(err, errLeaseLost) {
+	if w.lost {
+		log.Warn().Str("org_id", orgID.String()).Msg("inbox tagging: follow-up sweep taken over by another walker; this pass stopped")
 		p.Busy = true
-		return p, nil
+	}
+	if errors.Is(err, errLeaseLost) {
+		err = nil
 	}
 	return p, err
 }
@@ -130,8 +137,11 @@ type followUpWalk struct {
 	owner uuid.UUID
 	lease time.Duration
 	state *repository.FollowUpSweepState
-	// progressed is set once the walk moves past where its last failure was counted.
-	progressed bool
+	// progressed and freshProgressed are set once the cycle or the changed-thread check moves past where a failure was counted.
+	progressed      bool
+	freshProgressed bool
+	// lost is a pass whose lease another walker took over.
+	lost bool
 }
 
 func (w *followUpWalk) run(ctx context.Context, mailboxes []uuid.UUID) error {
@@ -148,7 +158,7 @@ func (w *followUpWalk) run(ctx context.Context, mailboxes []uuid.UUID) error {
 		return err
 	}
 	w.state.Cursor = nil
-	w.state.PageFailures = 0
+	w.state.PageFailures, w.state.PageFailingSince = 0, nil
 	if err := w.save(ctx); err != nil {
 		return err
 	}
@@ -167,30 +177,27 @@ func (w *followUpWalk) fresh(ctx context.Context) error {
 	if !mark.At.Before(until) {
 		return nil
 	}
-	progressed := false
 	for first := true; ; first = false {
 		if !first && w.spent() {
 			return nil
 		}
 		changes, err := w.s.repo.FollowUpChanges(ctx, w.orgID, mark, until, w.opts.PageSize)
-		if err == nil {
-			err = w.evaluateChanged(ctx, changes)
-		}
 		if err != nil {
+			// An unread page is never stepped past; the Fresh floor bounds how far the mark can fall behind.
+			if ctx.Err() == nil {
+				noteFailure(&st.FreshFailures, &st.FreshFailingSince, &w.freshProgressed)
+			}
+			return w.persist(ctx, err)
+		}
+		if err := w.evaluateChanged(ctx, changes); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if progressed {
-				st.FreshFailures = 0
+			if !failure(&st.FreshFailures, &st.FreshFailingSince, &w.freshProgressed) {
+				return w.persist(ctx, err)
 			}
-			if st.FreshFailures++; st.FreshFailures < followUpFailureLimit {
-				return errors.Join(err, w.saveDetached(ctx))
-			}
-			log.Warn().Err(err).Str("org_id", w.orgID.String()).Msg("inbox tagging: changed threads failed repeatedly; left to the cycle")
+			log.Warn().Err(err).Str("org_id", w.orgID.String()).Msg("inbox tagging: changed threads failed repeatedly; page left to the cycle")
 			w.p.Skipped++
-			if changes == nil {
-				changes = []repository.FollowUpChange{}
-			}
 		}
 		if len(changes) < w.opts.PageSize {
 			mark = repository.FollowUpMark{At: until, RowID: maxRowID}
@@ -199,8 +206,8 @@ func (w *followUpWalk) fresh(ctx context.Context) error {
 			mark = repository.FollowUpMark{At: last.At, RowID: last.RowID}
 		}
 		st.Fresh = &mark
-		st.FreshFailures = 0
-		progressed = true
+		st.FreshFailures, st.FreshFailingSince = 0, nil
+		w.freshProgressed = true
 		if err := w.save(ctx); err != nil {
 			return err
 		}
@@ -251,6 +258,9 @@ func (w *followUpWalk) walk(ctx context.Context, mailboxes []uuid.UUID, from *re
 			if !first && w.spent() {
 				return false, nil
 			}
+			if after != nil && after.At.Before(w.opts.Since) {
+				break
+			}
 			page, err := w.s.repo.FollowUpPage(ctx, w.orgID, mailbox, w.opts.Since, after, w.opts.PageSize)
 			if err != nil {
 				if page, err = w.pageFailed(ctx, mailbox, after, err); err != nil {
@@ -285,7 +295,7 @@ func (w *followUpWalk) walk(ctx context.Context, mailboxes []uuid.UUID, from *re
 				after = page.Last
 				if w.state != nil {
 					w.state.Cursor = after
-					w.state.PageFailures = 0
+					w.state.PageFailures, w.state.PageFailingSince = 0, nil
 					w.progressed = true
 					if err := w.save(ctx); err != nil {
 						return false, err
@@ -305,24 +315,37 @@ func (w *followUpWalk) spent() bool {
 	return w.opts.Budget > 0 && time.Since(w.started) >= w.opts.Budget
 }
 
-// failed counts a failure at the walk's current place and reports whether it is time to step past it.
+// failed counts a failure at the cycle's current place and reports whether it is time to step past it.
 func (w *followUpWalk) failed() bool {
 	if w.state == nil {
 		return false
 	}
-	if w.progressed {
-		w.state.PageFailures = 0
-		w.progressed = false
-	}
-	w.state.PageFailures++
-	if w.state.PageFailures < followUpFailureLimit {
+	return failure(&w.state.PageFailures, &w.state.PageFailingSince, &w.progressed)
+}
+
+// failure counts one failure at a place and reports whether it has failed often enough, for long enough, to step past.
+func failure(count *int, since **time.Time, progressed *bool) bool {
+	noteFailure(count, since, progressed)
+	if *count < followUpFailureLimit || time.Since(**since) < followUpFailureSpan {
 		return false
 	}
-	w.state.PageFailures = 0
+	*count, *since = 0, nil
 	return true
 }
 
-// pageFailed steps past a page that keeps failing by reading only where it ends.
+// noteFailure counts one failure at a place, starting a new run when the walk has moved on since the last.
+func noteFailure(count *int, since **time.Time, progressed *bool) {
+	if *progressed {
+		*count, *since, *progressed = 0, nil, false
+	}
+	if *since == nil {
+		now := time.Now()
+		*since = &now
+	}
+	*count++
+}
+
+// pageFailed steps past a page that keeps failing by reading only where it ends, or past its mailbox when even that fails.
 func (w *followUpWalk) pageFailed(ctx context.Context, mailbox uuid.UUID, after *repository.FollowUpPosition, cause error) (repository.FollowUpPage, error) {
 	if ctx.Err() != nil {
 		return repository.FollowUpPage{}, cause
@@ -332,7 +355,12 @@ func (w *followUpWalk) pageFailed(ctx context.Context, mailbox uuid.UUID, after 
 	}
 	page, err := w.s.repo.FollowUpPagePositions(ctx, w.orgID, mailbox, w.opts.Since, after, w.opts.PageSize)
 	if err != nil {
-		return repository.FollowUpPage{}, err
+		if ctx.Err() != nil {
+			return repository.FollowUpPage{}, err
+		}
+		log.Warn().Err(cause).Str("org_id", w.orgID.String()).Str("mailbox_id", mailbox.String()).Msg("inbox tagging: follow-up mailbox failed repeatedly; rest of it skipped this cycle")
+		w.p.Skipped++
+		return repository.FollowUpPage{Last: &repository.FollowUpPosition{MailboxID: mailbox, At: mailboxDone}}, nil
 	}
 	log.Warn().Err(cause).Str("org_id", w.orgID.String()).Str("mailbox_id", mailbox.String()).Msg("inbox tagging: follow-up page failed repeatedly; skipped this cycle")
 	w.p.Skipped++
@@ -347,7 +375,18 @@ func (w *followUpWalk) stopAt(ctx context.Context, last *repository.FollowUpPosi
 	if last != nil {
 		w.state.Cursor = last
 	}
-	return errors.Join(cause, w.saveDetached(ctx))
+	if w.progressed {
+		w.state.PageFailures, w.state.PageFailingSince = 0, nil
+	}
+	return w.persist(ctx, cause)
+}
+
+// persist saves the state on the way out of a failed pass, keeping the cause as the error.
+func (w *followUpWalk) persist(ctx context.Context, cause error) error {
+	if err := w.saveDetached(ctx); err != nil && !errors.Is(err, errLeaseLost) {
+		return errors.Join(cause, err)
+	}
+	return cause
 }
 
 func (w *followUpWalk) save(ctx context.Context) error {
@@ -359,6 +398,7 @@ func (w *followUpWalk) save(ctx context.Context) error {
 		return err
 	}
 	if !ok {
+		w.lost = true
 		return errLeaseLost
 	}
 	return nil

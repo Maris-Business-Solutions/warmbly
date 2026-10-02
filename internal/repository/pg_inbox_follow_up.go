@@ -62,6 +62,9 @@ type FollowUpSweepState struct {
 	Fresh         *FollowUpMark
 	PageFailures  int
 	FreshFailures int
+	// PageFailingSince and FreshFailingSince are when the current run of failures began.
+	PageFailingSince  *time.Time
+	FreshFailingSince *time.Time
 	// Now is the database clock at the claim.
 	Now time.Time
 }
@@ -324,8 +327,9 @@ func (r *inboxTagRepository) ClaimFollowUpSweep(ctx context.Context, orgID, owne
 		   OR inbox_follow_up_sweeps.leased_until <= NOW()
 		   OR inbox_follow_up_sweeps.lease_owner = EXCLUDED.lease_owner
 		RETURNING email_account_id, internal_date, message_row_id, fresh_at, fresh_row_id,
-		          page_failures, fresh_failures, NOW()`, orgID, owner, lease.Seconds(),
-	).Scan(&mailbox, &at, &row, &freshAt, &freshID, &st.PageFailures, &st.FreshFailures, &st.Now)
+		          page_failures, fresh_failures, page_failing_since, fresh_failing_since, NOW()`, orgID, owner, lease.Seconds(),
+	).Scan(&mailbox, &at, &row, &freshAt, &freshID, &st.PageFailures, &st.FreshFailures,
+		&st.PageFailingSince, &st.FreshFailingSince, &st.Now)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -344,7 +348,7 @@ func (r *inboxTagRepository) ClaimFollowUpSweep(ctx context.Context, orgID, owne
 	return &st, nil
 }
 
-// SaveFollowUpSweep stores the state and renews the lease; false when the owner no longer holds it.
+// SaveFollowUpSweep stores the state and renews the lease; false once another walker has taken it over.
 func (r *inboxTagRepository) SaveFollowUpSweep(ctx context.Context, orgID, owner uuid.UUID, lease time.Duration, st FollowUpSweepState) (bool, error) {
 	var mailbox, row, freshID *uuid.UUID
 	var at, freshAt *time.Time
@@ -359,10 +363,12 @@ func (r *inboxTagRepository) SaveFollowUpSweep(ctx context.Context, orgID, owner
 			email_account_id = $3, internal_date = $4, message_row_id = $5,
 			fresh_at = $6, fresh_row_id = $7,
 			page_failures = $8, fresh_failures = $9,
-			leased_until = NOW() + make_interval(secs => $10),
+			page_failing_since = $10, fresh_failing_since = $11,
+			leased_until = NOW() + make_interval(secs => $12),
 			updated_at = NOW()
-		WHERE organization_id = $1 AND lease_owner = $2 AND leased_until > NOW()`,
-		orgID, owner, mailbox, at, row, freshAt, freshID, st.PageFailures, st.FreshFailures, lease.Seconds())
+		WHERE organization_id = $1 AND lease_owner = $2`,
+		orgID, owner, mailbox, at, row, freshAt, freshID, st.PageFailures, st.FreshFailures,
+		st.PageFailingSince, st.FreshFailingSince, lease.Seconds())
 	if err != nil {
 		return false, err
 	}
