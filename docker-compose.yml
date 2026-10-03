@@ -217,6 +217,12 @@ x-selfhost-env: &selfhost-env
   SEARCH_API_URL: ${SEARCH_API_URL:-}
   SEARCH_API_KEY: ${SEARCH_API_KEY:-}
 
+  # Slack app. The OAuth pair lets workspaces connect for notifications; the
+  # signing secret turns on the assistant, the inbox and buttons.
+  SLACK_OAUTH_CLIENT_ID: ${SLACK_OAUTH_CLIENT_ID:-}
+  SLACK_OAUTH_CLIENT_SECRET: ${SLACK_OAUTH_CLIENT_SECRET:-}
+  SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+
   # Mobile push. Partial config disables push with a warning, never a crash.
   APNS_KEY: ${APNS_KEY:-}
   APNS_KEY_ID: ${APNS_KEY_ID:-}

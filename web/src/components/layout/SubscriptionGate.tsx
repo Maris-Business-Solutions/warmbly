@@ -1,5 +1,6 @@
 // A hosted workspace without a subscription can manage mailboxes, its
-// Warmbly Cloud links and settings; every other page shows the full-screen
+// Warmbly Cloud links and settings, and link a Slack account (whose workspace
+// need not be the selected one); every other page shows the full-screen
 // plan chooser until a plan is active.
 
 import React from "react";
@@ -7,7 +8,7 @@ import { useLocation } from "react-router-dom";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import SubscriptionLockedScreen from "./SubscriptionLockedScreen";
 
-const OPEN_PREFIXES = ["/app/emails", "/app/settings", "/app/select-org"];
+const OPEN_PREFIXES = ["/app/emails", "/app/settings", "/app/select-org", "/app/slack"];
 
 const FEATURE_BY_PREFIX: [string, string][] = [
     ["/app/unibox", "The unified inbox"],

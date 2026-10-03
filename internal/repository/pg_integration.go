@@ -57,6 +57,9 @@ type IntegrationRepository interface {
 	GetConnectionByID(ctx context.Context, orgID, id uuid.UUID) (*models.IntegrationConnection, error)
 	GetConnectionSecrets(ctx context.Context, id uuid.UUID) (*ConnectionSecrets, error)
 	GetConnectionByInboundSecret(ctx context.Context, provider models.IntegrationProvider, secret string) (*models.IntegrationConnection, error)
+	// ListConnectionsByExternalAccount finds a provider's connections across
+	// orgs by the external account id (a Slack team id), oldest first.
+	ListConnectionsByExternalAccount(ctx context.Context, provider models.IntegrationProvider, externalID string) ([]models.IntegrationConnection, error)
 	DeleteConnection(ctx context.Context, orgID, id uuid.UUID) error
 	MarkConnectionSynced(ctx context.Context, id uuid.UUID, status models.IntegrationStatus, displayFields json.RawMessage, errMsg string) error
 	UpdateConnectionTokens(ctx context.Context, id uuid.UUID, accessEnc, refreshEnc string, expiresAt *time.Time, scopes []string) error
@@ -311,6 +314,28 @@ func (r *integrationRepository) GetConnectionByInboundSecret(ctx context.Context
 		return nil, err
 	}
 	return &c, nil
+}
+
+func (r *integrationRepository) ListConnectionsByExternalAccount(ctx context.Context, provider models.IntegrationProvider, externalID string) ([]models.IntegrationConnection, error) {
+	out := []models.IntegrationConnection{}
+	if externalID == "" {
+		return out, nil
+	}
+	rows, err := r.db.Query(ctx, `SELECT `+connectionPublicCols+`
+		FROM integration_connections WHERE provider = $1 AND external_account_id = $2
+		ORDER BY created_at ASC, id ASC`, string(provider), externalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c models.IntegrationConnection
+		if err := scanConnectionInto(rows, &c); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func (r *integrationRepository) DeleteConnection(ctx context.Context, orgID, id uuid.UUID) error {

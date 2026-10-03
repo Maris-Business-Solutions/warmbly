@@ -55,6 +55,8 @@ const labelMap: Record<string, string> = {
     workers: "Workers",
     credentials: "Credentials",
     audit: "Audit",
+    slack: "Slack",
+    link: "Link account",
     leads: "Leads",
     preferences: "Preferences",
     schedule: "Schedule",

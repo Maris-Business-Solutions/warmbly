@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/warmbly/warmbly/internal/app/cloudlink"
 	emailverifyapp "github.com/warmbly/warmbly/internal/app/emailverify"
+	"github.com/warmbly/warmbly/internal/app/slackapp"
 	"log"
 	"os"
 	"os/signal"
@@ -362,7 +363,8 @@ func main() {
 	} else {
 		log.Printf("Warning: notification email disabled, EMAIL_NAME/EMAIL_ADDRESS not set: %v", ecErr)
 	}
-	notificationService.WireDelivery(notifEmail, integrationServiceC, repository.NewUserRepostory(primaryDB, kmsClient), orgRepoConsumer)
+	slackRepoC := repository.NewSlackRepository(primaryDB)
+	notificationService.WireDelivery(notifEmail, slackapp.NewNotifier(integrationServiceC, slackRepoC), repository.NewUserRepostory(primaryDB, kmsClient), orgRepoConsumer)
 
 	// Operator alerts. The dead-worker detector runs in this process, and a
 	// stranded fleet is the operator's problem, not a tenant's. Reads the same
@@ -492,6 +494,12 @@ func main() {
 		Evidence:                    verificationEvidence,
 	}
 
+	// Inbox arrivals are mirrored into the workspace's Slack inbox channel here.
+	jobsService.SlackInbox = slackapp.NewInboxPoster(slackapp.InboxDeps{
+		Integrations: integrationServiceC, Repo: slackRepoC, Redis: redisCache.Client,
+		Threads: uniboxRepo, Tasks: taskRepo, Campaigns: campaignRepo,
+		Users: repository.NewUserRepostory(primaryDB, kmsClient),
+	})
 	jobsService.InitEvents()
 
 	// Graceful shutdown

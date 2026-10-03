@@ -193,6 +193,22 @@ export default function AgentPanel() {
         el.style.height = Math.min(el.scrollHeight, 128) + "px";
     }, []);
 
+    // ?agent_session=<id> (the "Open in Warmbly" link from Slack) opens that
+    // conversation, then leaves the URL as it was without the parameter.
+    React.useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const sid = params.get("agent_session");
+        if (sid === null) return;
+        if (canAI && /^[0-9a-f-]{36}$/i.test(sid)) {
+            useAppStore.getState().agentOpenSession(sid, "Conversation");
+            setMinimized(false);
+            setOpen(true);
+        }
+        params.delete("agent_session");
+        const rest = params.toString();
+        navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "", hash: location.hash }, { replace: true });
+    }, [location.search, location.pathname, location.hash, canAI, navigate, setOpen, setMinimized]);
+
     // Opening (or restoring from the dock) with no tabs starts a fresh
     // conversation; focus lands in the composer once the slide-in starts.
     React.useEffect(() => {

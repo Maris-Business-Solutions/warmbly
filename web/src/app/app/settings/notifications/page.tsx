@@ -6,7 +6,10 @@ import {
 import {
     EMAIL_WINDOW_MAX_MINUTES,
     EMAIL_WINDOW_MIN_MINUTES,
+    NOTIFICATION_CATEGORY_GROUPS,
+    NOTIFICATION_CATEGORY_KEYS as CATEGORY_KEYS,
     normalizeNotificationPreferences,
+    type NotificationCategoryDef,
     type NotificationCategoryKey,
     type NotificationPreferences,
 } from "@/lib/api/models/app/notifications/Notification";
@@ -17,33 +20,14 @@ import SaveStatus from "../_components/SaveStatus";
 import { useAutosave } from "@/hooks/useAutosave";
 import { useRegisterUnsaved } from "@/hooks/context/unsaved";
 
-const INBOUND: { key: NotificationCategoryKey; label: string; hint: string }[] = [
-    { key: "inbound_reply", label: "Reply received", hint: "A recipient replied to a cold email." },
-    { key: "inbound_out_of_office", label: "Out-of-office detected", hint: "An auto-responder hit one of your sends." },
-];
-
-const HEALTH: { key: NotificationCategoryKey; label: string; hint: string }[] = [
-    { key: "health_bounce", label: "Bounce detected", hint: "A campaign starts bouncing — notifies the campaign owner." },
-    { key: "health_complaint", label: "Spam complaint", hint: "Any complaint event on one of your campaigns." },
-    { key: "health_worker_downtime", label: "Worker downtime", hint: "A sender worker stops responding." },
-    { key: "inbox_action_required", label: "Mail that needs action", hint: "A mailbox received automated mail that needs someone to act, like a failed payment, a suspended account or a suspicious sign-in. Goes to members who manage mailboxes and use the inbox." },
-    { key: "health_domain_auth", label: "Domain authentication failing", hint: "A sending domain lost its SPF or DMARC record. Cold sending and warmup stop from it if it is not fixed." },
-    { key: "campaign_paused", label: "Campaign auto-paused", hint: "A guardrail stopped a campaign because its bounce, complaint, or reply rate left the band." },
-    { key: "placement_alert", label: "Placement monitor alert", hint: "A campaign's scheduled placement test found less of its mail in the inbox than its alert threshold." },
-    { key: "placement_finished", label: "Placement test finished", hint: "A placement test you started has a verdict for every copy." },
-];
-
-const SECURITY: { key: NotificationCategoryKey; label: string; hint: string }[] = [
-    { key: "security_new_signin", label: "New sign-in", hint: "Your account was accessed from a device you haven't used before." },
-];
-
-const BILLING: { key: NotificationCategoryKey; label: string; hint: string }[] = [
-    { key: "billing_alert", label: "Trial and billing alerts", hint: "Your trial is about to expire or your workspace was paused. Goes to members who manage billing." },
-];
-
-const TEAM: { key: NotificationCategoryKey; label: string; hint: string }[] = [
-    { key: "team_activity", label: "Teammate joined your workspace", hint: "A new member accepted an invite. Goes to members who manage the team." },
-];
+// Section copy per category group; the groups themselves live with the model.
+const GROUP_DESCRIPTIONS: Record<string, string> = {
+    inbound: "Get notified about replies on a campaign you're running. Off by default to keep high-volume sends quiet.",
+    health: "Deliverability + infrastructure alerts. Recommended on.",
+    security: "Account access alerts.",
+    billing: "Trial and billing alerts.",
+    team: "Activity from your teammates.",
+};
 
 // Window presets in minutes; "custom" reveals a minutes input. There is no
 // per-event option on purpose — 30 minutes is the floor.
@@ -106,21 +90,6 @@ export default function NotificationsSettingsPage() {
     const setEnabled = (key: NotificationCategoryKey, on: boolean) =>
         setDraft((d) => (d ? { ...d, [key]: { ...d[key], enabled: on } } : d));
 
-    const CATEGORY_KEYS: NotificationCategoryKey[] = [
-        "inbound_reply",
-        "inbound_out_of_office",
-        "health_bounce",
-        "health_complaint",
-        "health_worker_downtime",
-        "health_domain_auth",
-        "inbox_action_required",
-        "campaign_paused",
-        "placement_alert",
-        "placement_finished",
-        "security_new_signin",
-        "billing_alert",
-        "team_activity",
-    ];
     // Channels present globally: "on" when every category carries the channel.
     const channelOn = (ch: "email" | "slack" | "push") =>
         !!draft && CATEGORY_KEYS.every((k) => draft[k].channels[ch]);
@@ -134,7 +103,7 @@ export default function NotificationsSettingsPage() {
             return next;
         });
 
-    const rows = (items: { key: NotificationCategoryKey; label: string; hint: string }[]) =>
+    const rows = (items: NotificationCategoryDef[]) =>
         items.map((c) => (
             <Row key={c.key} label={c.label} description={c.hint}>
                 <Toggle on={!!draft && draft[c.key].enabled} onChange={(v) => setEnabled(c.key, v)} />
@@ -151,24 +120,11 @@ export default function NotificationsSettingsPage() {
                 <div className="px-5 py-10 text-[12.5px] text-slate-400">Loading…</div>
             ) : (
                 <>
-                    <Section
-                        eyebrow="Inbound activity"
-                        description="Get notified about replies on a campaign you're running. Off by default to keep high-volume sends quiet."
-                    >
-                        {rows(INBOUND)}
-                    </Section>
-                    <Section eyebrow="Health" description="Deliverability + infrastructure alerts. Recommended on.">
-                        {rows(HEALTH)}
-                    </Section>
-                    <Section eyebrow="Security" description="Account access alerts.">
-                        {rows(SECURITY)}
-                    </Section>
-                    <Section eyebrow="Billing" description="Trial and billing alerts.">
-                        {rows(BILLING)}
-                    </Section>
-                    <Section eyebrow="Team" description="Activity from your teammates.">
-                        {rows(TEAM)}
-                    </Section>
+                    {NOTIFICATION_CATEGORY_GROUPS.map((g) => (
+                        <Section key={g.id} eyebrow={g.label} description={GROUP_DESCRIPTIONS[g.id]}>
+                            {rows(g.categories)}
+                        </Section>
+                    ))}
                     <Section eyebrow="Channels" description="Where enabled notifications are delivered. Applies across every category above.">
                         <Row label="In-app" description="The bell in the dashboard chrome (controlled per category above).">
                             <span className="text-[11px] font-medium text-emerald-600">On</span>
@@ -182,7 +138,10 @@ export default function NotificationsSettingsPage() {
                         <Row label="Email" description="Delivery to your account email.">
                             <Toggle on={channelOn("email")} onChange={(v) => setChannel("email", v)} />
                         </Row>
-                        <Row label="Slack" description="Posts to your connected Slack, on the channel set up for Slack in the Integrations tab. Connect Slack and configure a channel there first.">
+                        <Row
+                            label="Slack"
+                            description="Posts to the channel your workspace routes each category to in the Slack integration, and to your Slack DMs when you link your Slack account and turn on DM notifications there."
+                        >
                             <Toggle on={channelOn("slack")} onChange={(v) => setChannel("slack", v)} />
                         </Row>
                     </Section>

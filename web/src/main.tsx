@@ -46,6 +46,8 @@ import IntegrationsPage from './app/app/integrations/page';
 import AutomationsPage from './app/app/automations/page';
 import AutomationBuilderPage from './app/app/automations/[id]/page';
 import AuditPage from './app/app/audit/page';
+import SlackLinkPage from './app/app/slack/link/page';
+import AppDefault from './app/app/page';
 import SettingsLayout from './app/app/settings/layout';
 import ProfileSettingsPage from './app/app/settings/profile/page';
 import NotificationsSettingsPage from './app/app/settings/notifications/page';
@@ -253,8 +255,9 @@ const router = createBrowserRouter([
         element: <RootAppLayout />,
         children: [
           {
+            // Keeps the query string, so /app?agent_session=… still opens the assistant.
             index: true,
-            element: <Navigate to="/app/emails" replace />,
+            element: <AppDefault />,
           },
           {
             path: "emails",
@@ -391,6 +394,16 @@ const router = createBrowserRouter([
           {
             path: "audit",
             element: <AuditPage />,
+          },
+          {
+            // Where the Warmbly app in Slack sends a member to link their account.
+            path: "slack/link",
+            element: <SlackLinkPage />,
+          },
+          {
+            // The breadcrumb above the link page points here.
+            path: "slack",
+            element: <Navigate to="/app/integrations" replace />,
           },
           {
             path: "settings",
