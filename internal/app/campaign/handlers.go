@@ -1365,18 +1365,25 @@ func (s *campaignService) SendPlan(ctx context.Context, orgID uuid.UUID, campaig
 	// Keyed on the campaign's own version, so an edit or a start/stop is
 	// answered fresh while two viewers of an unchanged campaign share a read.
 	key := campaign.ID.String() + "|" + campaign.Status + "|" + campaign.UpdatedAt.UTC().Format(time.RFC3339Nano)
-	if s.planCache != nil {
-		if plan, ok := s.planCache.get(key); ok {
-			return plan, nil
-		}
+	// walkCtx is the shared walk's own context: the cache runs it on a bounded,
+	// caller-independent context so one viewer disconnecting mid-walk never
+	// fails the plan for the others. The non-cached path keeps the request ctx.
+	walk := func(walkCtx context.Context) (*models.CampaignSendPlan, error) {
+		return planner.PlanCampaignDay(walkCtx, campaign.ID, s.orgDailyLimit(walkCtx, orgID))
 	}
-	plan, err := planner.PlanCampaignDay(ctx, campaign.ID, s.orgDailyLimit(ctx, orgID))
+	var (
+		plan *models.CampaignSendPlan
+		err  error
+	)
+	if s.planCache != nil {
+		// Coalesce concurrent cold-cache viewers of this version onto one walk.
+		plan, err = s.planCache.getOrCompute(ctx, key, walk)
+	} else {
+		plan, err = walk(ctx)
+	}
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
-	}
-	if s.planCache != nil {
-		s.planCache.put(key, plan)
 	}
 	return plan, nil
 }
