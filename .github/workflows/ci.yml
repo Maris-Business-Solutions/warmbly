@@ -34,6 +34,7 @@ jobs:
       admin: ${{ steps.filter.outputs.admin }}
       site: ${{ steps.filter.outputs.site }}
       forms: ${{ steps.filter.outputs.forms }}
+      qa: ${{ steps.filter.outputs.qa }}
       make: ${{ steps.filter.outputs.make }}
       ios: ${{ steps.filter.outputs.ios }}
       installer: ${{ steps.filter.outputs.installer }}
@@ -80,6 +81,8 @@ jobs:
               - 'web/src/components/app/forms/designCore.ts'
               - 'web/src/components/app/forms/form-theme.css'
               - 'scripts/check-forms-mirror.sh'
+            qa:
+              - 'qa/**'
             make:
               - 'integrations/make/**'
             ios:
@@ -185,6 +188,29 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  # The proof harness records against a live local stack, so CI only checks that it compiles and its flows load.
+  qa-ci:
+    name: QA harness CI
+    needs: changes
+    if: needs.changes.outputs.qa == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qa
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          working-directory: qa
+          node-version: "24"
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Flows load
+        run: pnpm exec playwright test --list
 
   admin-ci:
     name: Admin CI
@@ -490,7 +516,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [changes, migrations-ci, go-ci, web-ci, admin-ci, site-ci, forms-ci, installer-ci, cli-installer-ci, make-ci, rust-ci, elixir-ci, ios-ci, frontend-images]
+    needs: [changes, migrations-ci, go-ci, web-ci, qa-ci, admin-ci, site-ci, forms-ci, installer-ci, cli-installer-ci, make-ci, rust-ci, elixir-ci, ios-ci, frontend-images]
     if: always()
     steps:
       - name: Check CI status
