@@ -1399,6 +1399,12 @@ func main() {
 		if aware, ok := campaignService.(campaign.ProgressAware); ok {
 			aware.WireProgress(campaignProgressRepository)
 		}
+		// The send-plan read endpoint serves a background-computed snapshot
+		// rather than walking the planner on the request, so a huge campaign's
+		// plan read stays fast and bounded.
+		if aware, ok := campaignService.(campaign.SnapshotAware); ok {
+			aware.WireSnapshots(repository.NewCampaignSendPlanSnapshotRepository(primaryDB))
+		}
 		// The wizard's audience-versus-pool estimate counts segment members.
 		if aware, ok := campaignService.(campaign.SegmentAware); ok {
 			aware.WireSegments(segmentService)
@@ -1858,6 +1864,14 @@ func main() {
 		// crash between send and enqueue). Campaigns have no other bootstrap once
 		// started, so without this a stranded campaign stops sending forever.
 		go tasksService.StartCampaignReconciler(ctx, 5*time.Minute)
+
+		// Send-plan snapshotter: walk every active campaign's send plan on an
+		// interval and store it, so GET /campaigns/:id/send-plan serves a stored
+		// snapshot instead of running the planner (lead supply, per-mailbox
+		// history) on the request. A no-op without the snapshot store or planner.
+		if campaignService != nil {
+			go campaignService.StartSendPlanSnapshotter(ctx, time.Minute)
+		}
 
 		// Segment-linked campaigns: enrol contacts that drifted into a linked
 		// segment (date windows, engagement counters, nested segments) that

@@ -106,7 +106,9 @@ Each of those lines carries a breakdown per mailbox: the cap this campaign gives
 
 ### Today's sending plan
 
-The campaign overview opens with a one-line **Today's sending plan**: how many emails the campaign sends today, worked out on the spot through the same gates a real send goes through, and the one limit that decides it. **Why** opens the working: a list of every limit that took the number below what your settings add up to, the leads, and each mailbox's day. Nothing here is stored; the card re-reads itself once a minute while the page is open and on every change to the campaign or its mailboxes.
+The campaign overview opens with a one-line **Today's sending plan**: how many emails the campaign sends today, worked out through the same gates a real send goes through, and the one limit that decides it. **Why** opens the working: a list of every limit that took the number below what your settings add up to, the leads, and each mailbox's day. The card re-reads itself once a minute while the page is open.
+
+For an active campaign the plan is worked out in the background and refreshed about once a minute, so opening it is quick no matter how many leads the campaign has. The card shows when the figures were last worked out. Right after you edit, start or stop a campaign, or just after midnight UTC, it shows the last good figures while a fresh plan is worked out, then updates on its own within moments. A campaign you have only just created is worked out the moment you open it.
 
 The number is the sends already out plus what is still expected, and the list under it adds up: the mailbox caps added together, minus each limit, minus what has been sent, is what is still to go. A limit only appears when it removed something. In the order the scheduler applies them:
 

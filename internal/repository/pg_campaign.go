@@ -78,6 +78,10 @@ type CampaignRepository interface {
 	CountActiveForOrganization(ctx context.Context, orgID uuid.UUID) (int, error)
 	// ListIDsByStatus lists the org's campaigns parked at one status.
 	ListIDsByStatus(ctx context.Context, orgID uuid.UUID, status string) ([]uuid.UUID, error)
+	// ListActiveCampaignIDs pages the ids of every active campaign on the
+	// instance, keyset-ordered by id from afterID (uuid.Nil for the first page),
+	// for the background send-plan snapshotter.
+	ListActiveCampaignIDs(ctx context.Context, afterID uuid.UUID, limit int) ([]uuid.UUID, error)
 	AccountHasActiveCampaign(ctx context.Context, accountID uuid.UUID) (bool, error)
 	// CountActiveCampaignsForAccount returns how many active campaigns send
 	// from the given mailbox (matched through the campaign's email tags OR an
@@ -1754,6 +1758,33 @@ func (r *campaignRepository) ListCampaignScheduleCandidates(ctx context.Context,
 	}
 	defer rows.Close()
 
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// ListActiveCampaignIDs pages active campaign ids keyset-ordered by id, so the
+// snapshotter walks the whole fleet one bounded batch at a time regardless of
+// how many campaigns are active.
+func (r *campaignRepository) ListActiveCampaignIDs(ctx context.Context, afterID uuid.UUID, limit int) ([]uuid.UUID, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	rows, err := r.DB.Query(ctx, `
+		SELECT id FROM campaigns
+		WHERE status = 'active' AND id > $1
+		ORDER BY id
+		LIMIT $2`, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	var ids []uuid.UUID
 	for rows.Next() {
 		var id uuid.UUID

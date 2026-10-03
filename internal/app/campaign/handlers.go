@@ -1353,37 +1353,102 @@ func (s *campaignService) orgDailyLimit(ctx context.Context, orgID uuid.UUID) in
 	return limit
 }
 
+// sendPlanStageTimings is the read path's elapsed time split into the stages a
+// timeout can hide in: lookup (campaign load, snapshot read, connection/pool
+// acquisition) and the expensive planner walk.
+type sendPlanStageTimings struct {
+	lookup  time.Duration
+	planner time.Duration
+	total   time.Duration
+}
+
+// safeDetail renders the stage timings as a one-line diagnostic carrying no
+// secret, credential, or underlying error text, safe to log against a request id.
+func (t sendPlanStageTimings) safeDetail(timeout bool) string {
+	return fmt.Sprintf("send plan failed (timeout=%t): lookup=%dms planner=%dms total=%dms",
+		timeout, t.lookup.Milliseconds(), t.planner.Milliseconds(), t.total.Milliseconds())
+}
+
+// SendPlan returns today's send plan for a campaign, serving the background
+// snapshot when one exists and computing a bounded cold fallback otherwise.
 func (s *campaignService) SendPlan(ctx context.Context, orgID uuid.UUID, campaignID string) (*models.CampaignSendPlan, *errx.Error) {
+	start := time.Now()
 	campaign, xerr := s.Get(ctx, orgID.String(), campaignID)
 	if xerr != nil {
 		return nil, xerr
 	}
-	planner, ok := s.planner()
-	if !ok {
+	if _, ok := s.planner(); !ok {
 		return nil, errx.New(errx.Internal, "send planning is not available")
 	}
 	// Keyed on the campaign's own version, so an edit or a start/stop is
 	// answered fresh while two viewers of an unchanged campaign share a read.
-	key := campaign.ID.String() + "|" + campaign.Status + "|" + campaign.UpdatedAt.UTC().Format(time.RFC3339Nano)
-	// walkCtx is the shared walk's own context: the cache runs it on a bounded,
-	// caller-independent context so one viewer disconnecting mid-walk never
-	// fails the plan for the others. The non-cached path keeps the request ctx.
+	key := planVersionKey(campaign)
+
+	// Fast path: serve the background snapshot. The planner walk (lead supply,
+	// per-mailbox history) is what makes a huge campaign slow, and it runs in
+	// the snapshotter loop, not here, so a read is a single row fetch whatever
+	// the campaign's size. A snapshot the campaign has outrun (an edit, or a new
+	// budget day) is still served, marked stale, while a fresh walk runs in the
+	// background: a read is always fast and never recomputes a 70k-lead plan
+	// inline.
+	if s.planSnapshotRepo != nil {
+		if snap, err := s.planSnapshotRepo.Get(ctx, orgID, campaign.ID); err == nil && snap != nil && snap.Plan != nil {
+			plan := snap.Plan
+			// Also stale when the snapshot has aged past the freshness window:
+			// the version key alone never changes on intra-day drift, so a
+			// stalled snapshotter would otherwise serve old figures as fresh.
+			now := time.Now()
+			plan.Stale = snap.VersionKey != key || snap.Day != planBudgetDay(now) ||
+				now.Sub(snap.ComputedAt) > sendPlanSnapshotMaxAge
+			if plan.Stale {
+				s.refreshPlanAsync(campaign, orgID, key)
+			}
+			return plan, nil
+		} else if err != nil {
+			// A snapshot read that failed is logged and falls through to a
+			// bounded compute rather than failing the request.
+			log.Warn().Err(err).Str("campaign_id", campaign.ID.String()).Msg("send plan: snapshot read failed; computing inline")
+		}
+	}
+
+	// Cold: no snapshot yet (a brand-new campaign, or the snapshotter has not
+	// reached it). Compute once, shared across concurrent viewers, and persist
+	// so the next read is a snapshot hit. A never-snapshotted campaign's lead
+	// supply is the small case; the bounded single-flight is the backstop.
 	walk := func(walkCtx context.Context) (*models.CampaignSendPlan, error) {
-		return planner.PlanCampaignDay(walkCtx, campaign.ID, s.orgDailyLimit(walkCtx, orgID))
+		return s.computeAndStore(walkCtx, campaign, orgID, key)
 	}
 	var (
 		plan *models.CampaignSendPlan
 		err  error
 	)
+	// Pre-walk work (campaign load, snapshot read, connection acquisition) is the
+	// lookup stage; the planner walk below is the expensive stage a read times out in.
+	timings := sendPlanStageTimings{lookup: time.Since(start)}
+	walkStart := time.Now()
 	if s.planCache != nil {
-		// Coalesce concurrent cold-cache viewers of this version onto one walk.
 		plan, err = s.planCache.getOrCompute(ctx, key, walk)
 	} else {
 		plan, err = walk(ctx)
 	}
+	timings.planner = time.Since(walkStart)
+	timings.total = time.Since(start)
 	if err != nil {
+		// Retain safe timing diagnostics for a planner failure or deadline: the
+		// caller still gets the generic sentence and request id, the stage timings
+		// are logged server-side against that id (errx.Internal blanks the detail
+		// in the response but logs it), never the underlying error text.
+		timeout := errors.Is(err, context.DeadlineExceeded)
+		log.Warn().
+			Err(err).
+			Str("campaign_id", campaign.ID.String()).
+			Dur("lookup", timings.lookup).
+			Dur("planner", timings.planner).
+			Dur("total", timings.total).
+			Bool("timeout", timeout).
+			Msg("send plan: compute failed; retaining timing diagnostics")
 		errs.CaptureException(err)
-		return nil, errx.InternalError()
+		return nil, errx.New(errx.Internal, timings.safeDetail(timeout))
 	}
 	return plan, nil
 }

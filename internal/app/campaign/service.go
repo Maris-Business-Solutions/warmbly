@@ -35,6 +35,11 @@ type CampaignService interface {
 	// WorkspaceCapacity is what the workspace's active mailboxes can send
 	// today between them, under the same clamps. Read-only.
 	WorkspaceCapacity(ctx context.Context, orgID uuid.UUID) (*models.WorkspaceSendCapacity, *errx.Error)
+	// StartSendPlanSnapshotter runs the background loop that re-walks every
+	// active campaign's send plan on an interval and stores it, so SendPlan
+	// serves a stored snapshot instead of computing on the request. A no-op
+	// without the snapshot store or a planner.
+	StartSendPlanSnapshotter(ctx context.Context, interval time.Duration)
 	Update(ctx context.Context, orgID, id string, data *models.UpdateCampaign) (*models.Campaign, *errx.Error)
 	// Delete removes an organization's campaign outright. A running campaign
 	// is stopped as part of it: its pending tasks are cancelled in the same
@@ -132,6 +137,11 @@ type campaignService struct {
 	// seconds each; see readCache.
 	planCache     *readCache[*models.CampaignSendPlan]
 	capacityCache *readCache[*models.WorkspaceSendCapacity]
+	// planSnapshotRepo stores the background-computed send plan per campaign so
+	// the read endpoint serves a stored snapshot instead of walking the planner
+	// on the request. Optional/nil-safe: without it SendPlan computes inline
+	// through the single-flight cache, as it did before.
+	planSnapshotRepo repository.CampaignSendPlanSnapshotRepository
 }
 
 // SegmentCounter is the slice of the segment service Estimate needs.
@@ -173,6 +183,16 @@ type ProgressAware interface {
 
 func (s *campaignService) WireProgress(r repository.CampaignProgressRepository) {
 	s.campaignProgressRepo = r
+}
+
+// SnapshotAware lets main hand the campaign service the send-plan snapshot
+// store that the background snapshotter writes and SendPlan reads.
+type SnapshotAware interface {
+	WireSnapshots(r repository.CampaignSendPlanSnapshotRepository)
+}
+
+func (s *campaignService) WireSnapshots(r repository.CampaignSendPlanSnapshotRepository) {
+	s.planSnapshotRepo = r
 }
 
 func (s *campaignService) WireAttachments(repo repository.AttachmentRepository, store storage.Store) {
