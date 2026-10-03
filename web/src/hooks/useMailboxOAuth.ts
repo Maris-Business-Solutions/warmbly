@@ -90,6 +90,8 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     const viaCloud = pool.connected;
 
     const [busy, setBusy] = React.useState<MailboxOAuthProvider | null>(null);
+    // Microsoft only: forwarded to an administrator when the organization requires approval.
+    const [adminConsentUrl, setAdminConsentUrl] = React.useState<string | null>(null);
     const pendingState = React.useRef<{ provider: MailboxOAuthProvider; state: string } | null>(null);
     // A consent running on Warmbly Cloud's app; redeemed by session, not code.
     const pendingCloud = React.useRef<{ provider: MailboxOAuthProvider; session: string } | null>(null);
@@ -211,7 +213,8 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
                 return;
             }
             try {
-                const { url, state } = await onboardOAuthStart(provider, opts.loginHint);
+                const { url, state, admin_consent_url } = await onboardOAuthStart(provider, opts.loginHint);
+                if (provider === "outlook" && admin_consent_url) setAdminConsentUrl(admin_consent_url);
                 pendingState.current = { provider, state };
                 const popup = openCentered(url, `connect-${provider}`);
                 if (!popup) {
@@ -245,9 +248,10 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     // Forget any popup still out, e.g. when the dialog that opened it closes.
     const reset = React.useCallback(() => {
         setBusy(null);
+        setAdminConsentUrl(null);
         pendingState.current = null;
         pendingCloud.current = null;
     }, []);
 
-    return { busy, start, reset, viaCloud, selfHosted: pool.selfHosted };
+    return { busy, start, reset, viaCloud, selfHosted: pool.selfHosted, adminConsentUrl };
 }

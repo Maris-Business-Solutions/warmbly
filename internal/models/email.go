@@ -636,6 +636,8 @@ type EmailOnboardingState struct {
 type EmailOnboardingStartResponse struct {
 	URL   string `json:"url"`
 	State string `json:"state"`
+	// AdminConsentURL (Microsoft only) lets an administrator approve sign-in for their whole organization.
+	AdminConsentURL string `json:"admin_consent_url,omitempty"`
 }
 
 type EmailsResult struct {

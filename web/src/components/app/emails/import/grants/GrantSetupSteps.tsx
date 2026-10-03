@@ -420,7 +420,8 @@ export function MicrosoftConsentStep({
                 <Instruction n={2}>
                     <p>
                         Microsoft shows its consent screen for the whole organization. Review the permissions and click{" "}
-                        <span className="font-medium text-slate-900">Accept</span>, once.
+                        <span className="font-medium text-slate-900">Accept</span>, once. The window then confirms who approved it, usually
+                        without asking again, and closes.
                     </p>
                 </Instruction>
             </ol>

@@ -86,6 +86,7 @@ import { useMailboxSourceBusy } from "@/lib/api/hooks/app/emails/mailboxSourceBu
 import { useVendorCatalog } from "@/lib/api/hooks/app/emails/useMailboxVendors";
 import { DitherMeter, type DitherTone } from "@/components/ui/dither";
 import { SkeletonCards } from "@/components/app/emails/import/Discovering";
+import { CopyValue } from "@/components/app/emails/import/parts";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type View =
@@ -345,6 +346,7 @@ export default function AddEmailModal() {
                                                 provider="outlook"
                                                 busy={oauthBusy === "outlook"}
                                                 viaCloud={viaCloud}
+                                                adminApprovalUrl={oauth.adminConsentUrl}
                                                 onConnect={() => startOAuth("outlook")}
                                             />
                                         )
@@ -879,11 +881,14 @@ function OAuthPanel({
     viaCloud,
     onConnect,
     onUseAppPassword,
+    adminApprovalUrl,
 }: {
     provider: OAuthProvider;
     busy: boolean;
     viaCloud: boolean;
     onConnect: () => void;
+    /** Microsoft only, after a first try: the approval page to forward to an administrator. */
+    adminApprovalUrl?: string | null;
     /** Gmail only: the same mailbox over IMAP and SMTP, for whoever prefers it. */
     onUseAppPassword?: () => void;
 }) {
@@ -948,6 +953,22 @@ function OAuthPanel({
                 )}
                 {busy ? "Waiting for authorization…" : `Continue with ${label}`}
             </motion.button>
+
+            {adminApprovalUrl && !viaCloud && (
+                <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    className="rounded-md border border-slate-200 bg-white px-3 py-2.5 space-y-2"
+                >
+                    <div className="text-[12px] font-medium text-slate-900">Microsoft says &ldquo;Need admin approval&rdquo;?</div>
+                    <p className="text-[11.5px] text-slate-500 leading-relaxed">
+                        Your organization lets only an administrator approve new apps. Send them this link. Once they approve, every
+                        mailbox in the organization can sign in here without them.
+                    </p>
+                    <CopyValue label="Approval link for your administrator" value={adminApprovalUrl} display="login.microsoftonline.com/organizations/v2.0/adminconsent" />
+                </motion.div>
+            )}
 
             {onUseAppPassword && (
                 <p className="text-[11.5px] text-slate-500 text-center">
