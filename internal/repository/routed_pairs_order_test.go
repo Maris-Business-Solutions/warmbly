@@ -20,16 +20,18 @@ func TestRoutedPairsOrderPlaceholderMatchesArgs(t *testing.T) {
 		orderField string
 		wantArgs   int
 	}{
-		{"default ordering binds nothing extra", "created_at", "", 2},
-		{"email ordering binds nothing extra", "email", "", 2},
-		{"custom field with no key falls back", "custom_field", "", 2},
-		{"custom field binds the key", "custom_field", "Company Mobile", 3},
+		{"default ordering binds nothing extra", "created_at", "", 1},
+		{"email ordering binds nothing extra", "email", "", 1},
+		{"custom field with no key falls back", "custom_field", "", 1},
+		{"custom field binds the key", "custom_field", "Company Mobile", 2},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Mirrors the construction in FindRoutedPairs.
-			args := []any{"campaign", 3}
+			// Mirrors phase one's order construction in FindRoutedPairs: the
+			// candidate enumeration binds only the campaign ($1) up front, so a
+			// custom-field key lands at $2.
+			args := []any{"campaign"}
 			var contactOrder string
 			switch tc.orderBy {
 			case "email":

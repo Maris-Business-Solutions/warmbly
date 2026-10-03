@@ -194,6 +194,15 @@ const (
 	// rather than walk a million-row list.
 	CampaignPlacementCandidates = 200
 
+	// CampaignRoutedCandidateChunk is how many ordered candidate leads one
+	// FindRoutedPairs pass hydrates and routes at a time. The ordered candidate
+	// ids are enumerated cheaply up front; the expensive per-lead history and
+	// classification joins then run one chunk at a time, so a pass that fills
+	// its batch early stops instead of paying for the campaign's whole audience.
+	// Kept comfortably above CampaignPlacementCandidates so the common case
+	// (plenty sendable) finishes in a single chunk.
+	CampaignRoutedCandidateChunk = 1000
+
 	// WarmupReputationLedgerDays is how long the standing of a removed mailbox
 	// is held against its address, counted from the later of its removal and
 	// the end of its block. Long enough that removing and re-adding a mailbox
