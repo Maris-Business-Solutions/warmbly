@@ -151,6 +151,9 @@ type fakeProviders struct {
 	signinEmail, signinHD, consentTenant string
 	// consentRoles are the directory role template ids in the consent's ID token; nil means a Global Administrator.
 	consentRoles []any
+	// rolesInGraph moves the roles from the ID token to the Graph access token, issued for graphTenant (empty: the consent tenant).
+	rolesInGraph bool
+	graphTenant  string
 }
 
 func fakeIDToken(claims map[string]any) string {
@@ -199,8 +202,16 @@ func newProviders(t *testing.T) *fakeProviders {
 			"id_token": fakeIDToken(map[string]any{"email": f.signinEmail, "email_verified": true, "hd": f.signinHD})})
 	})
 	mux.HandleFunc("/ms/organizations/oauth2/v2.0/token", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"access_token": "x", "token_type": "Bearer", "expires_in": 3600,
-			"id_token": fakeIDToken(map[string]any{"tid": f.consentTenant, "wids": f.roles()})})
+		id, access := map[string]any{"tid": f.consentTenant, "wids": f.roles()}, "x"
+		if f.rolesInGraph {
+			tid := f.graphTenant
+			if tid == "" {
+				tid = f.consentTenant
+			}
+			access = fakeIDToken(map[string]any{"tid": tid, "wids": f.roles()})
+			delete(id, "wids")
+		}
+		writeJSON(w, map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": 3600, "id_token": fakeIDToken(id)})
 	})
 	mux.HandleFunc("/ms/contoso.com/v2.0/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"issuer": "https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111/v2.0"})
@@ -405,8 +416,11 @@ func microsoftGrant(t *testing.T, s *Service, p *fakeProviders, org uuid.UUID) *
 	t.Helper()
 	user := uuid.New()
 	u, state, xerr := s.StartMicrosoft(context.Background(), org, user)
-	if xerr != nil || stateOf(u) != state || !strings.Contains(u, "/organizations/oauth2/v2.0/authorize?") || !strings.Contains(u, "prompt=admin_consent") {
+	if xerr != nil || stateOf(u) != state || !strings.Contains(u, "/organizations/v2.0/adminconsent?") || !strings.Contains(u, "scope=https%3A%2F%2Fgraph.microsoft.com%2F.default") || strings.Contains(u, "prompt=") {
 		t.Fatalf("start = %s, %v", u, xerr)
+	}
+	if in := s.MicrosoftSigninURL(state); stateOf(in) != state || !strings.Contains(in, "/organizations/oauth2/v2.0/authorize?") || strings.Contains(in, "prompt=") {
+		t.Fatalf("sign-in after consent = %s", in)
 	}
 	p.consentTenant = "11111111-1111-1111-1111-111111111111"
 	g, xerr := s.FinishMicrosoft(context.Background(), org, user, state, "code")
@@ -550,5 +564,31 @@ func TestMicrosoftGrantNeedsAnAdministratorsSignin(t *testing.T) {
 	_, state, _ := s.StartMicrosoft(context.Background(), org, user)
 	if _, xerr := s.FinishMicrosoft(context.Background(), org, user, state, "code"); xerr != nil {
 		t.Fatalf("a Privileged Role Administrator was refused: %v", xerr)
+	}
+}
+
+func TestMicrosoftAdminRoleReadFromTheGraphToken(t *testing.T) {
+	s, p, grants, _, _ := newTestService(t)
+	org, user := uuid.New(), uuid.New()
+	p.consentTenant, p.rolesInGraph = "11111111-1111-1111-1111-111111111111", true
+	p.graphTenant = "22222222-2222-2222-2222-222222222222"
+	_, state, _ := s.StartMicrosoft(context.Background(), org, user)
+	if _, xerr := s.FinishMicrosoft(context.Background(), org, user, state, "code"); xerr == nil || xerr.Identifier != ErrIDProof {
+		t.Fatalf("roles from another tenant's token were accepted: %v", xerr)
+	}
+	if len(grants.grants) != 0 {
+		t.Fatal("a refused consent left a grant behind")
+	}
+	p.graphTenant = ""
+	_, state, _ = s.StartMicrosoft(context.Background(), org, user)
+	if _, xerr := s.FinishMicrosoft(context.Background(), org, user, state, "code"); xerr != nil {
+		t.Fatalf("an administrator whose ID token lists no roles was refused: %v", xerr)
+	}
+}
+
+func TestMicrosoftSigninURLOnlyForItsOwnState(t *testing.T) {
+	s, _, _, _, _ := newTestService(t)
+	if u := s.MicrosoftSigninURL("gac_x"); u != "" {
+		t.Fatalf("a Google state got a Microsoft sign-in: %s", u)
 	}
 }

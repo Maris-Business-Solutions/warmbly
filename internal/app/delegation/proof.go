@@ -25,7 +25,7 @@ import (
 // nothing about which workspace asked.
 const (
 	googleStatePrefix    = GoogleStatePrefix
-	microsoftStatePrefix = "mac_"
+	microsoftStatePrefix = MicrosoftStatePrefix
 	stateTTL             = 15 * time.Minute
 )
 
@@ -68,6 +68,11 @@ func (s *Service) takeState(ctx context.Context, prefix, state string, orgID, us
 // signature is not checked a second time.
 func idTokenClaims(tok *oauth2.Token) (map[string]any, bool) {
 	raw, _ := tok.Extra("id_token").(string)
+	return jwtClaims(raw)
+}
+
+// jwtClaims reads a token the provider handed us directly over TLS; it verifies no signature.
+func jwtClaims(raw string) (map[string]any, bool) {
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {
 		return nil, false
@@ -93,6 +98,9 @@ func claimString(c map[string]any, k string) string {
 // GoogleStatePrefix marks the state of an administrator's Google sign-in, so
 // the sign-in callback can hand it to the dashboard instead of logging in.
 const GoogleStatePrefix = "gac_"
+
+// MicrosoftStatePrefix marks a Microsoft 365 admin consent, which the callback chains into a sign-in.
+const MicrosoftStatePrefix = "mac_"
 
 // GoogleStart is how a workspace proves it controls a Workspace domain.
 type GoogleStart struct {
@@ -231,10 +239,12 @@ func (s *Service) googleRequireAdmin(ctx context.Context, admin string) *errx.Er
 
 // ---- Microsoft ----------------------------------------------------------
 
-func (s *Service) microsoftConsentConfig() *oauth2.Config {
+// microsoftSigninConfig is the sign-in that follows the consent; its tokens
+// name the tenant and the administrator's directory roles.
+func (s *Service) microsoftSigninConfig() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID: s.msClientID, ClientSecret: s.msSecret, RedirectURL: s.msRedirect,
-		Scopes: []string{"openid", "https://graph.microsoft.com/.default"},
+		Scopes: []string{"openid", "https://graph.microsoft.com/User.Read"},
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  s.msLoginBase + "/organizations/oauth2/v2.0/authorize",
 			TokenURL: s.msLoginBase + "/organizations/oauth2/v2.0/token",
@@ -242,7 +252,17 @@ func (s *Service) microsoftConsentConfig() *oauth2.Config {
 	}
 }
 
-// StartMicrosoft is the admin consent sign-in a Global Administrator completes.
+// MicrosoftSigninURL is where the callback sends an administrator once
+// Microsoft reports the consent; the sign-in carries the same state.
+func (s *Service) MicrosoftSigninURL(state string) string {
+	if !s.microsoftEnabled() || !strings.HasPrefix(state, microsoftStatePrefix) {
+		return ""
+	}
+	return s.microsoftSigninConfig().AuthCodeURL(state)
+}
+
+// StartMicrosoft opens Microsoft's admin consent page, the only v2.0 route
+// that grants application permissions; the callback chains the sign-in.
 func (s *Service) StartMicrosoft(ctx context.Context, orgID, userID uuid.UUID) (string, string, *errx.Error) {
 	if !s.microsoftEnabled() {
 		return "", "", notConfigured("Microsoft 365")
@@ -257,8 +277,12 @@ func (s *Service) StartMicrosoft(ctx context.Context, orgID, userID uuid.UUID) (
 	if err := s.states.Put(ctx, "mailbox_grant_state:"+state, ConsentState{OrgID: orgID, UserID: userID}, stateTTL); err != nil {
 		return "", "", errx.InternalError()
 	}
-	u := s.microsoftConsentConfig().AuthCodeURL(state, oauth2.SetAuthURLParam("prompt", "admin_consent"))
-	return u, state, nil
+	q := url.Values{}
+	q.Set("client_id", s.msClientID)
+	q.Set("scope", "https://graph.microsoft.com/.default")
+	q.Set("redirect_uri", s.msRedirect)
+	q.Set("state", state)
+	return s.msLoginBase + "/organizations/v2.0/adminconsent?" + q.Encode(), state, nil
 }
 
 // FinishMicrosoft records the tenant the administrator consented for. The
@@ -274,7 +298,7 @@ func (s *Service) FinishMicrosoft(ctx context.Context, orgID, userID uuid.UUID, 
 	if strings.TrimSpace(code) == "" {
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDMicrosoftConsent, "Microsoft did not complete the consent. Start again as a Global Administrator.")
 	}
-	tok, err := s.microsoftConsentConfig().Exchange(context.WithValue(ctx, oauth2.HTTPClient, s.http), code)
+	tok, err := s.microsoftSigninConfig().Exchange(context.WithValue(ctx, oauth2.HTTPClient, s.http), code)
 	if err != nil {
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDMicrosoftConsent, "Microsoft did not accept the consent. Start again as a Global Administrator.")
 	}
@@ -285,7 +309,10 @@ func (s *Service) FinishMicrosoft(ctx context.Context, orgID, userID uuid.UUID, 
 	}
 	// The consent alone proves nothing once another workspace has consented for
 	// the tenant; the person signing in must hold a role that can grant it.
-	if !microsoftConsentAdmin(claims) {
+	// The ID token lists roles only when the app emits them; Graph's token does by default.
+	access, _ := jwtClaims(tok.AccessToken)
+	graphAdmin := strings.EqualFold(claimString(access, "tid"), tenant) && microsoftConsentAdmin(access)
+	if !microsoftConsentAdmin(claims) && !graphAdmin {
 		return nil, errx.NewWithIdentifier(errx.Forbidden, ErrIDProof,
 			"Sign in as a Global Administrator or Privileged Role Administrator of the organization to connect it.")
 	}

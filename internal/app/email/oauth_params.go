@@ -2,6 +2,7 @@ package email
 
 import (
 	"net/mail"
+	"net/url"
 	"strings"
 
 	"github.com/warmbly/warmbly/internal/models"
@@ -48,4 +49,24 @@ func loginHintOrEmpty(hint string) string {
 		return ""
 	}
 	return hint
+}
+
+// OutlookAdminApprovalState marks the return from an administrator approving
+// single-mailbox Microsoft sign-in for their whole organization.
+const OutlookAdminApprovalState = "oac_approval"
+
+// outlookAdminApprovalURL is Microsoft's admin consent page for exactly the
+// delegated scopes single-mailbox sign-in requests, for a member whose
+// organization lets only an administrator approve an app.
+func outlookAdminApprovalURL(cfg *oauth2.Config) string {
+	base, _, ok := strings.Cut(cfg.Endpoint.AuthURL, "/common/oauth2/v2.0/authorize")
+	if !ok {
+		return ""
+	}
+	q := url.Values{}
+	q.Set("client_id", cfg.ClientID)
+	q.Set("scope", strings.Join(cfg.Scopes, " "))
+	q.Set("redirect_uri", cfg.RedirectURL)
+	q.Set("state", OutlookAdminApprovalState)
+	return base + "/organizations/v2.0/adminconsent?" + q.Encode()
 }

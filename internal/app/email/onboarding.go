@@ -61,8 +61,11 @@ func (s *emailService) OAuthStart(ctx context.Context, userID string, orgID *uui
 	}
 
 	opts := append(authCodeOptions(provider, loginHintOrEmpty(loginHint)), oauth2.S256ChallengeOption(verifier))
-	url := cfg.AuthCodeURL(state, opts...)
-	return &models.EmailOnboardingStartResponse{URL: url, State: state}, nil
+	resp := &models.EmailOnboardingStartResponse{URL: cfg.AuthCodeURL(state, opts...), State: state}
+	if provider == models.InboxProviderOutlook {
+		resp.AdminConsentURL = outlookAdminApprovalURL(cfg)
+	}
+	return resp, nil
 }
 
 // guardInboxLimit refuses a connect that would take the workspace past its

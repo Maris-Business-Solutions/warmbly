@@ -161,7 +161,7 @@ A Microsoft 365 organization is connected through admin consent to the Outlook a
 </Step>
 
 <Step>
-**Publisher verification is optional.** Verifying the app's publisher with a Microsoft partner account adds a verified badge to the consent screen, which some administrators look for. Admin consent works without it.
+**Verify the publisher if you can.** Admin consent works without it. It adds a verified badge to the consent screen, which some administrators look for, and it is what lets ordinary users of most organizations approve **Sign in one mailbox** themselves: Microsoft sends every user of a new, unverified multitenant app that asks for mail permissions to an administrator. See [publisher verification](https://learn.microsoft.com/entra/identity-platform/publisher-verification-overview).
 </Step>
 
 </Steps>
@@ -172,7 +172,7 @@ Application permissions reach every mailbox in a consenting organization. We rec
 
 ### What the customer does
 
-A **Global Administrator** of the organization chooses **Add account > Microsoft > Whole organization**, signs in, and chooses **Accept** on Microsoft's consent screen once. The organization recorded is the one the administrator signed in to, as Microsoft reports it, never a value from the request, and the grant is recorded only when that sign-in holds the Global Administrator or Privileged Role Administrator role in it. Then a member picks the mailboxes to connect.
+A **Global Administrator** of the organization chooses **Add account > Microsoft > Whole organization** and chooses **Accept** on Microsoft's admin consent page once. The window then signs the administrator in, usually without asking again, so Warmbly learns who approved it. The organization recorded is the one that sign-in belongs to, as Microsoft reports it, never a value from the request, and the grant is recorded only when that sign-in holds the Global Administrator or Privileged Role Administrator role in it. The role is read from the sign-in's Microsoft Graph token, which lists directory roles by default, or from its ID token when the app registration emits them there. Then a member picks the mailboxes to connect.
 
 ### When Microsoft refuses
 

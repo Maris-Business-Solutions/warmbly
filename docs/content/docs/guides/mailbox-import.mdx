@@ -99,7 +99,7 @@ A Google row whose password is not a 16-letter app password is flagged in the pr
 
 Exchange Online no longer accepts passwords over IMAP, so Microsoft 365 and Outlook.com rows connect with Microsoft sign-in. The import parks them as **needs sign-in** and the rest of the file carries on. Each has a **Sign in** button that opens Microsoft's sign-in with the address already filled in. When that address connects, from the row or by any other route, the row closes and the import's settings are applied to the mailbox.
 
-A Microsoft 365 admin can grant consent once for the whole organization, after which each sign-in is one click. To skip the sign-ins altogether, [connect the whole organization](#connect-a-whole-microsoft-365-organization) instead: rows on its domains then connect with no sign-in at all. Microsoft has also announced that SMTP AUTH with basic authentication becomes disabled by default for existing tenants at the end of December 2026, which is another reason these mailboxes use sign-in rather than a password.
+A Microsoft 365 admin can grant consent once for the whole organization, after which each sign-in is one click. When Microsoft answers a sign-in with **Need admin approval**, the **Sign in one mailbox** panel shows the approval link to send that admin. To skip the sign-ins altogether, [connect the whole organization](#connect-a-whole-microsoft-365-organization) instead: rows on its domains then connect with no sign-in at all. Microsoft has also announced that SMTP AUTH with basic authentication becomes disabled by default for existing tenants at the end of December 2026, which is another reason these mailboxes use sign-in rather than a password.
 
 ### Proton Mail
 
@@ -179,7 +179,7 @@ Connecting mailboxes through a grant and deleting a grant both reach a whole dom
 
 A Global Administrator can approve Warmbly once for the whole Microsoft 365 organization. Mailboxes then connect through Microsoft Graph with application permissions: no sign-in per mailbox. It is the recommended way to connect Microsoft 365 mailboxes.
 
-Choose **Add account**, then **Microsoft**, then **Whole organization**, and have a Global Administrator (or Privileged Role Administrator) sign in on the Microsoft consent screen that opens and choose **Accept**. Warmbly records the organization only when the person who signed in holds one of those roles. That is the only step on the Microsoft side, and it happens once. On a self-hosted instance the option needs the operator's Microsoft app set up first; see [whole-domain mailbox connects](/development/whole-domain-connect/#microsoft-365). The consent gives the instance's Microsoft app these application permissions in the organization:
+Choose **Add account**, then **Microsoft**, then **Whole organization**, and have a Global Administrator (or Privileged Role Administrator) choose **Accept** on the Microsoft consent page that opens. The window then confirms who approved it with a sign-in, usually without asking again, and closes. Warmbly records the organization only when the person who signed in holds one of those roles. That is the only step on the Microsoft side, and it happens once. On a self-hosted instance the option needs the operator's Microsoft app set up first; see [whole-domain mailbox connects](/development/whole-domain-connect/#microsoft-365). The consent gives the instance's Microsoft app these application permissions in the organization:
 
 | Permission | What it is for |
 | --- | --- |
