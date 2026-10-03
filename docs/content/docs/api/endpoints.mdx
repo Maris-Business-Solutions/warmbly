@@ -99,6 +99,8 @@ The `cc` calls under the same path set the contacts copied on every email to one
 
 `GET /campaigns/:id/forms` reports the forms this campaign links to and what its recipients did with them: personalized links handed out, who opened one, who started filling it in and who submitted. See the [forms guide](/guides/forms/).
 
+`GET /campaigns/:id/send-plan` returns today's sending plan: what the campaign is expected to send, and every limit that decided the number. For an active campaign the plan is computed in the background and served from a stored snapshot, so the read stays fast on a campaign of any size. `computed_at` is when that snapshot was walked, and `stale` is `true` when the campaign has since been edited, started, stopped, or has crossed into a new budget day and a refreshed plan is already being computed: the figures are the last good ones and a current plan follows within moments. A campaign that has no snapshot yet (a brand-new one) is computed on the request instead. See the [send plan guide](/guides/campaigns/#todays-sending-plan).
+
 `/email-images` is the workspace's image library for email bodies. `POST` takes a multipart `file` field (PNG, JPG, GIF or WebP, up to 5 MB) and returns the row with the public `url` you put in an `<img src>`; those bytes count against the same storage quota as campaign attachments. `GET` is keyset-paginated newest first (`?limit=` 1 to 100, `?cursor=` the opaque `pagination.next_cursor`). `DELETE` removes the object before the row and refuses with a `503` if storage will not take the delete, so a failed call changes nothing and can be retried; once it succeeds, an image in mail already sent stops loading.
 
 ### Contacts

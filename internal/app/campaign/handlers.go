@@ -1358,25 +1358,47 @@ func (s *campaignService) SendPlan(ctx context.Context, orgID uuid.UUID, campaig
 	if xerr != nil {
 		return nil, xerr
 	}
-	planner, ok := s.planner()
-	if !ok {
+	if _, ok := s.planner(); !ok {
 		return nil, errx.New(errx.Internal, "send planning is not available")
 	}
 	// Keyed on the campaign's own version, so an edit or a start/stop is
 	// answered fresh while two viewers of an unchanged campaign share a read.
-	key := campaign.ID.String() + "|" + campaign.Status + "|" + campaign.UpdatedAt.UTC().Format(time.RFC3339Nano)
-	// walkCtx is the shared walk's own context: the cache runs it on a bounded,
-	// caller-independent context so one viewer disconnecting mid-walk never
-	// fails the plan for the others. The non-cached path keeps the request ctx.
+	key := planVersionKey(campaign)
+
+	// Fast path: serve the background snapshot. The planner walk (lead supply,
+	// per-mailbox history) is what makes a huge campaign slow, and it runs in
+	// the snapshotter loop, not here, so a read is a single row fetch whatever
+	// the campaign's size. A snapshot the campaign has outrun (an edit, or a new
+	// budget day) is still served, marked stale, while a fresh walk runs in the
+	// background: a read is always fast and never recomputes a 70k-lead plan
+	// inline.
+	if s.planSnapshotRepo != nil {
+		if snap, err := s.planSnapshotRepo.Get(ctx, orgID, campaign.ID); err == nil && snap != nil && snap.Plan != nil {
+			plan := snap.Plan
+			plan.Stale = snap.VersionKey != key || snap.Day != planBudgetDay(time.Now())
+			if plan.Stale {
+				s.refreshPlanAsync(campaign, orgID, key)
+			}
+			return plan, nil
+		} else if err != nil {
+			// A snapshot read that failed is logged and falls through to a
+			// bounded compute rather than failing the request.
+			log.Warn().Err(err).Str("campaign_id", campaign.ID.String()).Msg("send plan: snapshot read failed; computing inline")
+		}
+	}
+
+	// Cold: no snapshot yet (a brand-new campaign, or the snapshotter has not
+	// reached it). Compute once, shared across concurrent viewers, and persist
+	// so the next read is a snapshot hit. A never-snapshotted campaign's lead
+	// supply is the small case; the bounded single-flight is the backstop.
 	walk := func(walkCtx context.Context) (*models.CampaignSendPlan, error) {
-		return planner.PlanCampaignDay(walkCtx, campaign.ID, s.orgDailyLimit(walkCtx, orgID))
+		return s.computeAndStore(walkCtx, campaign, orgID, key)
 	}
 	var (
 		plan *models.CampaignSendPlan
 		err  error
 	)
 	if s.planCache != nil {
-		// Coalesce concurrent cold-cache viewers of this version onto one walk.
 		plan, err = s.planCache.getOrCompute(ctx, key, walk)
 	} else {
 		plan, err = walk(ctx)

@@ -19,9 +19,18 @@ type CampaignSendPlan struct {
 	// Day is the budget day the plan counts: every daily counter resets at
 	// midnight UTC, whatever the campaign's timezone, so this is the UTC
 	// date. The window's times are in the campaign's own timezone.
-	Day        string    `json:"day"`
-	Timezone   string    `json:"timezone"`
+	Day      string `json:"day"`
+	Timezone string `json:"timezone"`
+	// ComputedAt is when this plan was computed. A plan served from the
+	// background snapshot carries the moment the snapshotter last walked the
+	// campaign, so a client can tell how fresh the figures are.
 	ComputedAt time.Time `json:"computed_at"`
+	// Stale is true when the plan was served from a snapshot the campaign has
+	// since outrun: it was edited, started or stopped, or a new budget day
+	// began, and a fresh walk is already running in the background. The figures
+	// are the last good ones and a refreshed plan follows within moments. A
+	// plan computed on the read is never stale.
+	Stale bool `json:"stale"`
 
 	// ConfiguredCeiling is the sum of the attached mailboxes' own daily caps:
 	// the number the settings suggest before anything else is applied. A

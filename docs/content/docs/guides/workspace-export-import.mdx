@@ -103,6 +103,7 @@ Some things belong to an instance rather than to a workspace, so they are not ap
 | Sends still in flight | A campaign step handed to a worker on the source has no worker on the destination to report back, so it arrives queued and is sent there instead of waiting forever. Steps already sent keep their history |
 | An invalid workspace name | An archive's workspace name is applied only when it passes the same [naming rules](/api/error-codes/#name-refusals) as a rename. Otherwise the destination keeps its own |
 | Personal list layouts | Which columns each member shows on the contacts list and how they sort it, and how they arrange the unibox scope rail (Favorites, row order, hidden rows), belongs to the person, not the workspace. Everyone starts from the default view on the new instance and sets it up again |
+| Send plan snapshots | A campaign's precomputed "today's sending plan" is worked out from the campaign, its leads, its mailboxes and the instance's own limits, which all travel. The destination works it out again in the background, so a plan for today is current where the campaign now lives rather than a copy of what the source instance expected |
 
 An import runs as one transaction. If anything fails, nothing lands and the workspace is untouched.
 
