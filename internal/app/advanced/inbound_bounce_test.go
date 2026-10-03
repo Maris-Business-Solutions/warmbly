@@ -2,6 +2,7 @@ package advanced
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,28 +14,50 @@ import (
 type bounceTaskRepo struct {
 	repository.TaskRepository
 	task          *repository.Task
+	taskErr       error
+	campaignTask  *repository.CampaignTask
+	campaignErr   error
 	campaignTasks int
 }
 
 func (r *bounceTaskRepo) GetTaskByMessageID(context.Context, string) (*repository.Task, error) {
-	return r.task, nil
+	return r.task, r.taskErr
 }
 
 func (r *bounceTaskRepo) GetCampaignTask(context.Context, uuid.UUID) (*repository.CampaignTask, error) {
 	r.campaignTasks++
-	return nil, nil
+	return r.campaignTask, r.campaignErr
 }
 
 // bounceEmailRepo fails the lookup that comes AFTER the warmup gate, so a test
-// can tell "refused as warmup" from "got further and then stopped".
+// can tell "refused as warmup" from "got further and then stopped". With no
+// account or error configured it reports the mailbox as gone (NotFound), the
+// genuine-no-match shape; set account/err to drive the other branches.
 type bounceEmailRepo struct {
 	repository.EmailRepository
-	reads int
+	reads   int
+	account *models.Email
+	err     *errx.Error
 }
 
 func (r *bounceEmailRepo) GetByID(context.Context, uuid.UUID) (*models.Email, *errx.Error) {
 	r.reads++
-	return nil, errx.ErrNotFound
+	if r.account == nil && r.err == nil {
+		return nil, errx.ErrNotFound
+	}
+	return r.account, r.err
+}
+
+// bounceContactRepo drives the contact lookup so a test can separate a technical
+// read failure from a pruned contact.
+type bounceContactRepo struct {
+	repository.ContactRepository
+	contact *models.Contact
+	err     *errx.Error
+}
+
+func (r *bounceContactRepo) GetByID(context.Context, uuid.UUID) (*models.Contact, *errx.Error) {
+	return r.contact, r.err
 }
 
 // A warmup send's NDR resolves to a task exactly like a campaign send's, because
@@ -103,6 +126,139 @@ type copyBounceCampaigns struct {
 
 func (r copyBounceCampaigns) GetByID(_ context.Context, id uuid.UUID) (*models.Campaign, error) {
 	return &models.Campaign{ID: id, CC: r.cc, BCC: r.bcc}, nil
+}
+
+func campaignSendTask(mailbox uuid.UUID) *repository.Task {
+	return &repository.Task{
+		ID:             uuid.New(),
+		TaskType:       "campaign",
+		EmailAccountID: mailbox,
+		MessageID:      "<camp-1@sender.test>",
+	}
+}
+
+// A technical failure resolving the original Message-ID (connection reset,
+// statement timeout) is not evidence the id is unknown. It must surface as an
+// error so the event is redelivered, not be swallowed as a no-match.
+func TestRecordInboundBounceRetriesOnTaskLookupFailure(t *testing.T) {
+	tasks := &bounceTaskRepo{taskErr: errors.New("connection reset")}
+	emails := &bounceEmailRepo{}
+	s := &service{taskRepo: tasks, emailRepo: emails}
+
+	if err := s.RecordInboundBounce(context.Background(), uuid.New(), "camp-1@sender.test", "lead@prospect.test", "550"); err == nil {
+		t.Fatal("a technical task lookup failure must surface an error for retry")
+	}
+	if emails.reads != 0 {
+		t.Fatal("a failed task lookup should not reach the mailbox lookup")
+	}
+}
+
+// A genuine no-match (no task carries the id: a non-Warmbly or pruned send) is a
+// decision, not a failure: it acks with nil so the bus does not loop on it.
+func TestRecordInboundBounceAcksGenuineNoMatch(t *testing.T) {
+	tasks := &bounceTaskRepo{task: nil} // (nil, nil): no matching row
+	emails := &bounceEmailRepo{}
+	s := &service{taskRepo: tasks, emailRepo: emails}
+
+	if err := s.RecordInboundBounce(context.Background(), uuid.New(), "nope@sender.test", "lead@prospect.test", "550"); err != nil {
+		t.Fatalf("a genuine no-match should ack with nil, got %v", err)
+	}
+	if emails.reads != 0 {
+		t.Fatal("a no-match should not reach the mailbox lookup")
+	}
+}
+
+// A technical read of the sending mailbox retries; a mailbox that is genuinely
+// gone (NotFound) acks with nil.
+func TestRecordInboundBounceClassifiesMailboxLookup(t *testing.T) {
+	mailbox := uuid.New()
+
+	techEmails := &bounceEmailRepo{err: errx.InternalError()}
+	s := &service{taskRepo: &bounceTaskRepo{task: campaignSendTask(mailbox)}, emailRepo: techEmails}
+	if err := s.RecordInboundBounce(context.Background(), mailbox, "camp-1@sender.test", "lead@prospect.test", "550"); err == nil {
+		t.Fatal("a technical mailbox read failure must surface an error for retry")
+	}
+
+	goneEmails := &bounceEmailRepo{err: errx.ErrNotFound}
+	s = &service{taskRepo: &bounceTaskRepo{task: campaignSendTask(mailbox)}, emailRepo: goneEmails}
+	if err := s.RecordInboundBounce(context.Background(), mailbox, "camp-1@sender.test", "lead@prospect.test", "550"); err != nil {
+		t.Fatalf("a mailbox that no longer exists should ack with nil, got %v", err)
+	}
+}
+
+// A technical failure resolving the campaign send is returned for retry rather
+// than ingesting the bounce half-attributed.
+func TestRecordInboundBounceRetriesOnCampaignTaskFailure(t *testing.T) {
+	mailbox, org := uuid.New(), uuid.New()
+	emails := &bounceEmailRepo{account: &models.Email{ID: mailbox, OrganizationID: &org}}
+	tasks := &bounceTaskRepo{task: campaignSendTask(mailbox), campaignErr: errors.New("statement timeout")}
+	s := &service{taskRepo: tasks, emailRepo: emails}
+
+	if err := s.RecordInboundBounce(context.Background(), mailbox, "lead@prospect.test", "lead@prospect.test", "550"); err == nil {
+		t.Fatal("a technical campaign-task lookup failure must surface an error for retry")
+	}
+}
+
+// A technical failure reading the contact is returned for retry.
+func TestRecordInboundBounceRetriesOnContactFailure(t *testing.T) {
+	mailbox, org, contactID, campaignID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	task := campaignSendTask(mailbox)
+	emails := &bounceEmailRepo{account: &models.Email{ID: mailbox, OrganizationID: &org}}
+	tasks := &bounceTaskRepo{task: task, campaignTask: &repository.CampaignTask{TaskID: task.ID, CampaignID: &campaignID, ContactID: &contactID}}
+	contacts := &bounceContactRepo{err: errx.InternalError()}
+	s := &service{taskRepo: tasks, emailRepo: emails, contactRepo: contacts}
+
+	if err := s.RecordInboundBounce(context.Background(), mailbox, "camp-1@sender.test", "", "550"); err == nil {
+		t.Fatal("a technical contact read failure must surface an error for retry")
+	}
+}
+
+// Complaint ingestion classifies the same way: a technical task lookup failure
+// retries, a genuine no-match acks.
+func TestRecordInboundComplaintRetriesOnTaskLookupFailure(t *testing.T) {
+	tasks := &bounceTaskRepo{taskErr: errors.New("connection reset")}
+	emails := &bounceEmailRepo{}
+	s := &service{taskRepo: tasks, emailRepo: emails}
+
+	if err := s.RecordInboundComplaint(context.Background(), uuid.New(), "camp-1@sender.test", "lead@prospect.test", "fbl"); err == nil {
+		t.Fatal("a technical task lookup failure must surface an error for retry")
+	}
+	if emails.reads != 0 {
+		t.Fatal("a failed task lookup should not reach the mailbox lookup")
+	}
+}
+
+func TestRecordInboundComplaintAcksGenuineNoMatch(t *testing.T) {
+	tasks := &bounceTaskRepo{task: nil}
+	emails := &bounceEmailRepo{}
+	s := &service{taskRepo: tasks, emailRepo: emails}
+
+	if err := s.RecordInboundComplaint(context.Background(), uuid.New(), "nope@sender.test", "lead@prospect.test", "fbl"); err != nil {
+		t.Fatalf("a genuine no-match should ack with nil, got %v", err)
+	}
+}
+
+// A technical contact read retries; a contact genuinely pruned (NotFound) acks
+// with nil and attributes nothing, preserving the resolved-send-only rule.
+func TestRecordInboundComplaintClassifiesContactLookup(t *testing.T) {
+	mailbox, org, contactID, campaignID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	task := campaignSendTask(mailbox)
+	mkTasks := func() *bounceTaskRepo {
+		return &bounceTaskRepo{task: task, campaignTask: &repository.CampaignTask{TaskID: task.ID, CampaignID: &campaignID, ContactID: &contactID}}
+	}
+	mkEmails := func() *bounceEmailRepo {
+		return &bounceEmailRepo{account: &models.Email{ID: mailbox, OrganizationID: &org}}
+	}
+
+	s := &service{taskRepo: mkTasks(), emailRepo: mkEmails(), contactRepo: &bounceContactRepo{err: errx.InternalError()}}
+	if err := s.RecordInboundComplaint(context.Background(), mailbox, "camp-1@sender.test", "", "fbl"); err == nil {
+		t.Fatal("a technical contact read failure must surface an error for retry")
+	}
+
+	s = &service{taskRepo: mkTasks(), emailRepo: mkEmails(), contactRepo: &bounceContactRepo{err: errx.ErrNotFound}}
+	if err := s.RecordInboundComplaint(context.Background(), mailbox, "camp-1@sender.test", "", "fbl"); err != nil {
+		t.Fatalf("a pruned contact should ack with nil, got %v", err)
+	}
 }
 
 // A DSN naming someone copied on the send bounces that copy, not the lead; an
