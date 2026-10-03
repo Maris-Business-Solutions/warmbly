@@ -138,6 +138,19 @@ describe("useAnchoredMenu touch lifecycle", () => {
     hold();
   });
 
+  it("ignores Android's native menu once the finger has moved", () => {
+    render(<Row />);
+    act(() => {
+      pointer("pointerdown");
+      pointer("pointermove", { clientX: 140 });
+      vi.advanceTimersByTime(400);
+      fireEvent.contextMenu(screen.getByTestId("row"), { clientX: 140, clientY: 160 });
+      pointer("pointerup", { clientX: 140 });
+    });
+    expect(screen.getByText("closed")).toBeTruthy();
+    hold();
+  });
+
   it("expires native-menu suppression after release", () => {
     render(<Row />);
     hold();

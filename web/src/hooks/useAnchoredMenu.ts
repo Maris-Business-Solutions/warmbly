@@ -8,7 +8,7 @@ export function useAnchoredMenu() {
   const [open, setOpen] = React.useState(false);
   const [point, setPoint] = React.useState<AnchorPoint | null>(null);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const press = React.useRef<{ id: number; point: AnchorPoint; fired: boolean } | null>(null);
+  const press = React.useRef<{ id: number; point: AnchorPoint; fired: boolean; moved: boolean } | null>(null);
   const suppress = React.useRef({ click: false, until: 0 });
   const cancelTimer = React.useCallback(() => {
     if (timer.current !== null) clearTimeout(timer.current);
@@ -34,7 +34,7 @@ export function useAnchoredMenu() {
       cancelTimer();
       press.current = null;
       if (e.pointerType !== "touch") return;
-      const p = { id: e.pointerId, point: { x: e.clientX, y: e.clientY }, fired: false };
+      const p = { id: e.pointerId, point: { x: e.clientX, y: e.clientY }, fired: false, moved: false };
       press.current = p;
       timer.current = setTimeout(() => {
         timer.current = null;
@@ -47,6 +47,7 @@ export function useAnchoredMenu() {
       const p = press.current;
       if (p && p.id === e.pointerId && Math.hypot(e.clientX - p.point.x, e.clientY - p.point.y) > 10) {
         cancelTimer();
+        p.moved = true;
       }
     },
     onPointerUp: endPress,
@@ -69,8 +70,8 @@ export function useAnchoredMenu() {
     e.preventDefault();
     e.stopPropagation();
     if (!e.currentTarget.contains(e.target as Node)) return;
-    // Android may send its native contextmenu during the hold or after release.
-    if (press.current?.fired || Date.now() < suppress.current.until) return;
+    // Android may send its native contextmenu during the hold or after release; a moved press is a scroll.
+    if (press.current?.fired || press.current?.moved || Date.now() < suppress.current.until) return;
     cancelTimer();
     if (press.current) {
       press.current.fired = true;
