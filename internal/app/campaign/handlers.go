@@ -1353,7 +1353,26 @@ func (s *campaignService) orgDailyLimit(ctx context.Context, orgID uuid.UUID) in
 	return limit
 }
 
+// sendPlanStageTimings is the read path's elapsed time split into the stages a
+// timeout can hide in: lookup (campaign load, snapshot read, connection/pool
+// acquisition) and the expensive planner walk.
+type sendPlanStageTimings struct {
+	lookup  time.Duration
+	planner time.Duration
+	total   time.Duration
+}
+
+// safeDetail renders the stage timings as a one-line diagnostic carrying no
+// secret, credential, or underlying error text, safe to log against a request id.
+func (t sendPlanStageTimings) safeDetail(timeout bool) string {
+	return fmt.Sprintf("send plan failed (timeout=%t): lookup=%dms planner=%dms total=%dms",
+		timeout, t.lookup.Milliseconds(), t.planner.Milliseconds(), t.total.Milliseconds())
+}
+
+// SendPlan returns today's send plan for a campaign, serving the background
+// snapshot when one exists and computing a bounded cold fallback otherwise.
 func (s *campaignService) SendPlan(ctx context.Context, orgID uuid.UUID, campaignID string) (*models.CampaignSendPlan, *errx.Error) {
+	start := time.Now()
 	campaign, xerr := s.Get(ctx, orgID.String(), campaignID)
 	if xerr != nil {
 		return nil, xerr
@@ -1403,14 +1422,33 @@ func (s *campaignService) SendPlan(ctx context.Context, orgID uuid.UUID, campaig
 		plan *models.CampaignSendPlan
 		err  error
 	)
+	// Pre-walk work (campaign load, snapshot read, connection acquisition) is the
+	// lookup stage; the planner walk below is the expensive stage a read times out in.
+	timings := sendPlanStageTimings{lookup: time.Since(start)}
+	walkStart := time.Now()
 	if s.planCache != nil {
 		plan, err = s.planCache.getOrCompute(ctx, key, walk)
 	} else {
 		plan, err = walk(ctx)
 	}
+	timings.planner = time.Since(walkStart)
+	timings.total = time.Since(start)
 	if err != nil {
+		// Retain safe timing diagnostics for a planner failure or deadline: the
+		// caller still gets the generic sentence and request id, the stage timings
+		// are logged server-side against that id (errx.Internal blanks the detail
+		// in the response but logs it), never the underlying error text.
+		timeout := errors.Is(err, context.DeadlineExceeded)
+		log.Warn().
+			Err(err).
+			Str("campaign_id", campaign.ID.String()).
+			Dur("lookup", timings.lookup).
+			Dur("planner", timings.planner).
+			Dur("total", timings.total).
+			Bool("timeout", timeout).
+			Msg("send plan: compute failed; retaining timing diagnostics")
 		errs.CaptureException(err)
-		return nil, errx.InternalError()
+		return nil, errx.New(errx.Internal, timings.safeDetail(timeout))
 	}
 	return plan, nil
 }
