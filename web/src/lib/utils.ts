@@ -15,3 +15,10 @@ export function hexToRgba(hex: string, alpha: number): string {
   if (full.length !== 6 || Number.isNaN(n)) return `rgba(100,116,139,${alpha})`
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`
 }
+
+// Text in a user-chosen colour. Picked colours are tuned for white, so the dark
+// theme lifts them toward white to stay legible; light-dark() follows the
+// element's color-scheme, so a light island keeps the colour as chosen.
+export function labelInk(color: string): string {
+  return `light-dark(${color}, color-mix(in oklab, ${color} 55%, white))`
+}

@@ -338,7 +338,7 @@ function RevealStep({ apiKey, onClose }: { apiKey: APIKeyWithSecret; onClose: ()
                     Copy the secret now. We hash it on the server and can never show it again.
                 </p>
 
-                <div className="rounded-md border border-slate-200 bg-slate-950 overflow-hidden">
+                <div className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-950 overflow-hidden">
                     <div className="px-3 py-2 flex items-center gap-2 border-b border-slate-800/60">
                         <KeyIcon className="w-3 h-3 text-slate-400" />
                         <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">

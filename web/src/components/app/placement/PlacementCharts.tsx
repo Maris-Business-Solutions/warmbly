@@ -229,7 +229,7 @@ export function RateTrend({ days, height = 120, windowDays = 7 }: { days: DayVie
                     {segments.map((d, i) => (
                         <path key={i} d={d} fill="none" stroke="currentColor" strokeWidth={1.6} vectorEffect="non-scaling-stroke" strokeLinejoin="round" className={tone.text} />
                     ))}
-                    {hover != null && <line x1={x(hover)} x2={x(hover)} y1={0} y2={100} stroke="#cbd5e1" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
+                    {hover != null && <line x1={x(hover)} x2={x(hover)} y1={0} y2={100} style={{ stroke: "light-dark(#cbd5e1, #35373c)" }} strokeWidth={1} vectorEffect="non-scaling-stroke" />}
                 </svg>
                 {hover != null && values[hover] != null && (
                     <span
@@ -285,7 +285,7 @@ export function RateSpark({ values, width = 96, height = 22 }: { values: (number
     const tone = BAND[bandForRate(last)].text;
     return (
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className={cn("block shrink-0", tone)}>
-            <line x1={0} x2={width} y1={py(90)} y2={py(90)} stroke="#e2e8f0" strokeDasharray="2 2" />
+            <line x1={0} x2={width} y1={py(90)} y2={py(90)} style={{ stroke: "light-dark(#e2e8f0, #2e2f34)" }} strokeDasharray="2 2" />
             <path d={d} fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinejoin="round" strokeLinecap="round" />
             <circle cx={px(lastIndex)} cy={py(last)} r={1.8} fill="currentColor" />
         </svg>

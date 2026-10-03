@@ -101,7 +101,7 @@ export default function PasskeyEnrollPrompt() {
                         type="button"
                         onClick={handleCreate}
                         disabled={busy}
-                        className="h-9 px-4 rounded-md text-[13px] font-semibold text-white bg-gradient-to-b from-sky-500 to-sky-600 hover:from-sky-500 hover:to-sky-700 shadow-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none"
+                        className="theme-solid h-9 px-4 rounded-md text-[13px] font-semibold text-white bg-gradient-to-b from-sky-500 to-sky-600 hover:from-sky-500 hover:to-sky-700 shadow-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none"
                     >
                         {busy && <Loading className="!w-4 h-4 text-white" />}
                         Set up passkey

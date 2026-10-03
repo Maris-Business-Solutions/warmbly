@@ -1370,7 +1370,7 @@ function RailRowItem({
       transition={transition}
       whileDrag={{
         scale: 1.02,
-        backgroundColor: "rgb(255,255,255)",
+        backgroundColor: "var(--color-white)",
         boxShadow: "0 8px 20px -6px rgba(15,23,42,0.18), 0 2px 6px rgba(15,23,42,0.08)",
       }}
       className="relative rounded-md"

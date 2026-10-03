@@ -27,7 +27,7 @@ import type Contact from "@/lib/api/models/app/contacts/Contact";
 import type MiniCampaign from "@/lib/api/models/app/campaigns/MiniCampaign";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
-import { cn, hexToRgba } from "@/lib/utils";
+import { cn, hexToRgba, labelInk } from "@/lib/utils";
 import type ContactSelection from "@/lib/api/models/app/contacts/ContactSelection";
 import * as rowSelection from "./selection";
 import type { RowSelection } from "./selection";
@@ -343,7 +343,7 @@ export default function AddFromContactsDialog({ open, onClose, campaign: campaig
                                                                 className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[10.5px] font-medium truncate"
                                                                 style={{
                                                                     backgroundColor: hexToRgba(cat.color, 0.12),
-                                                                    color: cat.color,
+                                                                    color: labelInk(cat.color),
                                                                 }}
                                                             >
                                                                 <span className="size-1.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />

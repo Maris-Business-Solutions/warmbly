@@ -425,7 +425,7 @@ function Hero({
                   transition: { duration: 0.4, ease: EASE, delay },
               };
     return (
-        <div className="relative overflow-hidden px-5 pt-9 pb-8 md:px-10 md:pt-12 md:pb-10 text-center text-white">
+        <div className="theme-solid relative overflow-hidden px-5 pt-9 pb-8 md:px-10 md:pt-12 md:pb-10 text-center text-white">
             <div className="absolute inset-0" aria-hidden="true">
                 <div className="sky-base" />
                 <div className="sky-breathe" />

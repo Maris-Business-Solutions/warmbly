@@ -1,13 +1,8 @@
-// Thin wrapper: pulls in the theme provider and renders the new shell.
-// All the actual layout lives in AppShell — sidebar + header + content.
+// Thin wrapper around the shell. All the actual layout lives in AppShell:
+// sidebar + header + content. The theme is applied app-wide in RootLayout.
 
 import { AppShell } from "./AppShell";
-import { ThemeProvider } from "./ThemeProvider";
 
 export function AppLayout() {
-    return (
-        <ThemeProvider>
-            <AppShell />
-        </ThemeProvider>
-    );
+    return <AppShell />;
 }

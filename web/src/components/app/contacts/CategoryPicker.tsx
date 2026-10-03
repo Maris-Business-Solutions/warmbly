@@ -27,6 +27,7 @@ import useCreateCategory from "@/lib/api/hooks/app/categories/useCreateCategory"
 import type Category from "@/lib/api/models/app/Category";
 import { TagMeaningTooltip } from "@/components/ui/tag-meaning-tooltip";
 import { errorMessage } from "@/lib/errors/message";
+import { labelInk } from "@/lib/utils";
 
 interface Props {
     // Selected ids — kept as ids so the consumer can store them in the
@@ -232,7 +233,7 @@ export function CategoryChip({
                 className={`inline-flex items-center gap-1 min-w-0 ${compact ? "h-4 pl-1 pr-1 text-[10px]" : "h-5 pl-1.5 pr-1 text-[11px]"} rounded font-medium`}
                 style={{
                     backgroundColor: hexToRgba(category.color, 0.12),
-                    color: category.color,
+                    color: labelInk(category.color),
                     border: `1px solid ${hexToRgba(category.color, 0.25)}`,
                 }}
             >

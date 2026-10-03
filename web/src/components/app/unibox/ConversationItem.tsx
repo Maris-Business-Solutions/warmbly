@@ -44,7 +44,7 @@ import {
     PopoverMenuSeparator,
     PopoverMenuTrigger,
 } from "@/components/ui/popover-menu";
-import { cn } from "@/lib/utils";
+import { cn, labelInk } from "@/lib/utils";
 import { nameFromAddr } from "@/lib/helper/emailAddress";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -604,8 +604,8 @@ function LabelChip({ title, color }: { title: string; color: string }) {
     <span
       className="inline-flex items-center gap-1 h-4 px-1.5 rounded-sm text-[10px] font-medium overflow-hidden max-w-[110px]"
       style={{
-        color: color || "#475569",
-        backgroundColor: color ? `${color}14` : "rgb(241 245 249)",
+        color: labelInk(color || "#475569"),
+        backgroundColor: color ? `${color}14` : "var(--color-slate-100)",
       }}
       title={title}
     >

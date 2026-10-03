@@ -1,4 +1,5 @@
 import RippleProvider from "@/hooks/RippleProvider";
+import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Outlet } from "react-router-dom";
 
@@ -8,8 +9,10 @@ export default function RootLayout() {
   useDocumentTitle();
 
   return (
-    <RippleProvider>
-      <Outlet />
-    </RippleProvider>
+    <ThemeProvider>
+      <RippleProvider>
+        <Outlet />
+      </RippleProvider>
+    </ThemeProvider>
   );
 }

@@ -17,6 +17,8 @@
 import React from "react";
 import { ImageOffIcon, MoreHorizontalIcon } from "lucide-react";
 import { hasRemoteContent, plainToDisplayHtml } from "@/lib/email/body";
+import { useAppStore } from "@/stores";
+import { cn } from "@/lib/utils";
 
 interface EmailBodyProps {
     html?: string | null;
@@ -111,24 +113,38 @@ const DOCUMENT_CSS = `
   pre { white-space: pre-wrap; }
 `;
 
+// The dark theme reads unstyled mail in the app's own colours. Anything that
+// sets a colour or background of its own was designed on white, so it keeps
+// its light document and sits on a white sheet instead.
+const DARK_DOCUMENT_CSS = `
+  :root { color-scheme: dark; }
+  body { color: #d0d6e0; }
+  a { color: #7dd3fc; }
+  blockquote { border-left-color: #2e2f34; color: #8a8f98; }
+`;
+
+const DESIGNED = /<style[\s>]|<[^>]*\s(?:bgcolor|color|text)\s*=|\b(?:background|color)\s*:/i;
+
+const isDesignedEmail = (body: string) => DESIGNED.test(body);
+
 // A body that is already a whole document (a campaign written in HTML mode, a
 // designed newsletter) must not be nested inside another one: the doctype and
 // the <head> would land in the body, and the frame would preview something the
 // recipient will never see. Its own <head> gets our shell instead.
 const DOCUMENT_ROOT = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html[\s>])/i;
 
-function shell(csp: string | null): string {
+function shell(csp: string | null, dark: boolean): string {
     // The policy must precede everything else in the head to govern it.
     const policy = csp ? `<meta http-equiv="Content-Security-Policy" content="${csp}">` : "";
     return (
         policy +
         `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
-        `<base target="_blank"><style>${DOCUMENT_CSS}</style>`
+        `<base target="_blank"><style>${DOCUMENT_CSS}${dark ? DARK_DOCUMENT_CSS : ""}</style>`
     );
 }
 
-function buildDocument(body: string, csp: string | null): string {
-    const SHELL = shell(csp);
+function buildDocument(body: string, csp: string | null, dark: boolean): string {
+    const SHELL = shell(csp, dark);
     if (DOCUMENT_ROOT.test(body)) {
         // Our shell goes FIRST in the parsed document's real head, so the
         // message's own stylesheet comes after it and wins on everything but
@@ -165,9 +181,12 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
     const hasQuote = quotes.hasQuote;
     const remote = React.useMemo(() => blockRemote && hasRemoteContent(body), [blockRemote, body]);
     const csp = blockRemote ? (remoteLoaded ? CSP_LOADED : CSP_BLOCKED) : null;
+    const darkTheme = useAppStore((s) => s.resolvedTheme === "dark");
+    const designed = React.useMemo(() => isDesignedEmail(body), [body]);
+    const darkDocument = darkTheme && !designed;
     const srcDoc = React.useMemo(
-        () => (body ? buildDocument(showQuoted ? quotes.expanded : quotes.collapsed, csp) : ""),
-        [body, quotes, showQuoted, csp],
+        () => (body ? buildDocument(showQuoted ? quotes.expanded : quotes.collapsed, csp, darkDocument) : ""),
+        [body, quotes, showQuoted, csp, darkDocument],
     );
 
     // Late-loading remote images change the document height after onLoad, so
@@ -231,7 +250,10 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
                 // (plus escape-to-normal-context) is what lets a link actually open.
                 sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                 referrerPolicy="no-referrer"
-                className="w-full border-0 block"
+                className={cn(
+                    "w-full border-0 block",
+                    darkTheme && designed && "theme-light box-content w-[calc(100%-1.5rem)] rounded-md bg-white p-3",
+                )}
                 style={{ height: height ? `${height}px` : "80px" }}
             />
             {hasQuote && (
