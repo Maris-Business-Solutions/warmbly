@@ -165,15 +165,19 @@ func (r *uniboxRepository) ListUnprocessedCampaignReplies(ctx context.Context, s
 		  AND u.folder NOT IN ('sent', 'drafts')
 		  AND u.provider_folder NOT IN ('sent', 'drafts')
 		  AND (
+		    -- Both forms of each header against the raw column, so idx_tasks_message_id serves it.
 		    EXISTS (
 		      SELECT 1 FROM tasks t
-		      WHERE t.task_type = 'campaign'
-		        AND btrim(t.message_id, '<>') = ANY(ARRAY(SELECT btrim(x, '<>') FROM unnest(u.in_reply_to) AS x))
+		      WHERE t.message_id <> '' AND t.task_type = 'campaign'
+		        AND t.message_id = ANY(ARRAY(
+		          SELECT v FROM unnest(u.in_reply_to) AS x,
+		            LATERAL (VALUES ('<' || btrim(x, '<>') || '>'), (btrim(x, '<>'))) AS f(v)))
 		    )
+		    -- The mailbox's workspace first, so idx_contacts_org_email serves the address match.
 		    OR EXISTS (
-		      SELECT 1 FROM email_accounts ea
-		      JOIN contacts co ON co.organization_id = ea.organization_id
-		      WHERE ea.id = u.email_id AND lower(co.email) = `+bareFrom+`
+		      SELECT 1 FROM contacts co
+		      WHERE co.organization_id = (SELECT ea.organization_id FROM email_accounts ea WHERE ea.id = u.email_id)
+		        AND lower(co.email) = `+bareFrom+`
 		    )
 		  )
 		ORDER BY u.id LIMIT $3`, afterID, since, limit)
