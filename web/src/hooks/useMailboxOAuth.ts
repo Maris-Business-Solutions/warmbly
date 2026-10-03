@@ -214,7 +214,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
             }
             try {
                 const { url, state, admin_consent_url } = await onboardOAuthStart(provider, opts.loginHint);
-                if (provider === "outlook" && admin_consent_url) setAdminConsentUrl(admin_consent_url);
+                if (provider === "outlook") setAdminConsentUrl(admin_consent_url ?? null);
                 pendingState.current = { provider, state };
                 const popup = openCentered(url, `connect-${provider}`);
                 if (!popup) {
