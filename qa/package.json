@@ -1,0 +1,27 @@
+{
+  "name": "warmbly-qa",
+  "private": true,
+  "description": "Recorded proof for pull requests: scripted Playwright flows, 1080p H.264 walkthroughs and stills, published with gh",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "bootstrap": "sh scripts/bootstrap.sh",
+    "check": "node scripts/doctor.ts",
+    "stack": "bash scripts/stack.sh",
+    "proof": "playwright test",
+    "proof:fresh": "bash scripts/stack.sh reset-data && playwright test",
+    "aria": "node scripts/aria.ts",
+    "share": "node scripts/publish.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^26.6.4",
+    "@types/pngjs": "^6.0.5",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "typescript": "~5.9.3"
+  }
+}
