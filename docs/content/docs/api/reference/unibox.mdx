@@ -264,7 +264,7 @@ Returns the resulting label set in a `data` array.
 
 Marks messages as read or unread, org-wide: an explicit batch of up to 500 message ids, up to 500 conversations, or a whole canonical folder at once. `email_ids` and `thread_ids` can be sent together; `folder` cannot be combined with either and returns `400`. Auth: **Scope** `WRITE_UNIBOX` · **Org permission** `access_unibox`.
 
-Marking a conversation read reads every message in it. Marking one unread works like Gmail: only its newest received message turns unread (one outside spam and trash when there is one), so the conversation shows as unread without your own replies doing the same. A sent or draft copy is never marked unread, whichever field names it.
+Marking a conversation read reads every message in it. Marking one unread marks only its newest received message unread (one outside spam and trash when there is one). If it has no received message, its newest sent copy turns unread instead; otherwise sent copies stay read. Drafts are never marked unread. Explicit `email_ids` and `folder` sweeps never mark sent or draft copies unread.
 
 The change is also carried out to the mailbox itself, so a message marked read here stops showing as unread in Gmail, Outlook or an IMAP mailbox. Opening a message with `GET /unibox/:id` marks it read the same way, relay included. Only messages whose state actually changed are relayed, and the relay is best-effort: it happens after the response, on the worker holding the mailbox, and a mailbox that is unplaced at that moment keeps its own read state until something changes it again. [Filing a conversation](/guides/unibox/#filing-in-the-mailbox-too) is relayed the same way.
 

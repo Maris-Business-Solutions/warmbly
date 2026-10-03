@@ -12,8 +12,7 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
-// Mark as unread follows Gmail: the newest message received in the
-// conversation turns unread, and a sent copy never does.
+// Mark as unread prefers received mail, falling back to sent mail only when none was received.
 //
 //	WARMBLY_TEST_DB=postgres://warmbly:warmbly@localhost:15432/warmbly_dev?sslmode=disable \
 //	  go test ./internal/repository/ -run LiveUniboxMarkUnread -v
@@ -105,7 +104,7 @@ func TestLiveUniboxMarkUnreadByThreadPrefersMailOutsideTrash(t *testing.T) {
 	}
 }
 
-func TestLiveUniboxMarkUnreadNeverReachesASentCopy(t *testing.T) {
+func TestLiveUniboxMarkUnreadSentFallbackKeepsBulkAndFolderExclusions(t *testing.T) {
 	handle := liveUniboxFolderDB(t)
 	f := newUniboxFolderFixture(t, handle.Pool)
 	repo := NewUniboxRepository(handle)
@@ -116,8 +115,18 @@ func TestLiveUniboxMarkUnreadNeverReachesASentCopy(t *testing.T) {
 	draft := f.threadMessage(t, repo, "thread-"+uuid.NewString(), models.FolderDrafts, time.Hour)
 	inbox := f.threadMessage(t, repo, "thread-"+uuid.NewString(), models.FolderInbox, time.Hour)
 
-	if changed, err := repo.MarkSeenByThreads(ctx, f.org, []string{sentOnly}, false); err != nil || len(changed) != 0 {
-		t.Fatalf("by thread: changed = %v, err = %v; want nothing", changed, err)
+	if changed, err := repo.MarkSeenByThreads(ctx, f.org, []string{sentOnly}, false); err != nil || !slices.Equal(changed, []uuid.UUID{sent}) {
+		t.Fatalf("by thread: changed = %v, err = %v; want only %v", changed, err, sent)
+	}
+	if got := unreadIDs(t, handle.Pool, sent, draft, inbox); !slices.Equal(got, []uuid.UUID{sent}) {
+		t.Fatalf("unread = %v, want only %v", got, sent)
+	}
+	// Reset the fallback so the bulk and folder exclusions are checked from read.
+	if _, err := repo.MarkSeenByThreads(ctx, f.org, []string{sentOnly}, true); err != nil {
+		t.Fatalf("MarkSeenByThreads: %v", err)
+	}
+	if got := unreadIDs(t, handle.Pool, sent, draft); len(got) != 0 {
+		t.Fatalf("unread after reset = %v, want none", got)
 	}
 	changed, err := repo.MarkSeenBulk(ctx, f.org, []uuid.UUID{sent, draft, inbox}, false)
 	if err != nil {
@@ -131,5 +140,48 @@ func TestLiveUniboxMarkUnreadNeverReachesASentCopy(t *testing.T) {
 	}
 	if got := unreadIDs(t, handle.Pool, sent, draft); len(got) != 0 {
 		t.Fatalf("unread = %v, want no sent or draft copy", got)
+	}
+}
+
+func TestLiveUniboxMarkUnreadByThreadPrefersArchiveOverNewerSent(t *testing.T) {
+	handle := liveUniboxFolderDB(t)
+	f := newUniboxFolderFixture(t, handle.Pool)
+	repo := NewUniboxRepository(handle)
+
+	thread := "thread-" + uuid.NewString()
+	received := f.threadMessage(t, repo, thread, models.FolderArchive, time.Hour)
+	sent := f.threadMessage(t, repo, thread, models.FolderSent, time.Minute)
+
+	changed, err := repo.MarkSeenByThreads(context.Background(), f.org, []string{thread}, false)
+	if err != nil {
+		t.Fatalf("MarkSeenByThreads: %v", err)
+	}
+	if !slices.Equal(changed, []uuid.UUID{received}) {
+		t.Fatalf("changed = %v, want only the received copy %v", changed, received)
+	}
+	if got := unreadIDs(t, handle.Pool, received, sent); !slices.Equal(got, []uuid.UUID{received}) {
+		t.Fatalf("unread = %v, want only %v", got, received)
+	}
+}
+
+func TestLiveUniboxMarkUnreadByThreadTouchesNewestSentAndNeverDraft(t *testing.T) {
+	handle := liveUniboxFolderDB(t)
+	f := newUniboxFolderFixture(t, handle.Pool)
+	repo := NewUniboxRepository(handle)
+
+	thread := "thread-" + uuid.NewString()
+	older := f.threadMessage(t, repo, thread, models.FolderSent, 2*time.Hour)
+	newest := f.threadMessage(t, repo, thread, models.FolderSent, time.Hour)
+	draft := f.threadMessage(t, repo, thread, models.FolderDrafts, time.Minute)
+
+	changed, err := repo.MarkSeenByThreads(context.Background(), f.org, []string{thread}, false)
+	if err != nil {
+		t.Fatalf("MarkSeenByThreads: %v", err)
+	}
+	if !slices.Equal(changed, []uuid.UUID{newest}) {
+		t.Fatalf("changed = %v, want only the newest sent copy %v", changed, newest)
+	}
+	if got := unreadIDs(t, handle.Pool, older, newest, draft); !slices.Equal(got, []uuid.UUID{newest}) {
+		t.Fatalf("unread = %v, want only %v", got, newest)
 	}
 }
