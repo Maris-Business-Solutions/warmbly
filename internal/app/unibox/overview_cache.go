@@ -65,8 +65,12 @@ func (c *overviewCache) get(ctx context.Context, scope overviewScope) (*models.U
 		c.mu.Unlock()
 		return e.val, nil
 	}
+	// Freshness bounds a completed entry, not an active flight: a caller joins an in-flight
+	// computation regardless of its age rather than starting a second overlapping one. A new
+	// flight begins only when none exists, so forget (which drops the flight) admits exactly
+	// one replacement per explicit invalidation.
 	f, ok := c.flights[scope]
-	if !ok || now.Sub(f.started) >= overviewFreshFor {
+	if !ok {
 		flightCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), overviewComputeTimeout)
 		f = &overviewFlight{started: now, done: make(chan struct{}), cancel: cancel}
 		c.flights[scope] = f
