@@ -12,6 +12,7 @@ import {
   KeyIcon,
   SettingsIcon,
   CreditCardIcon,
+  CheckIcon,
 } from 'lucide-react'
 import {
   CommandDialog,
@@ -23,6 +24,7 @@ import {
   CommandSeparator,
 } from '@/components/ui/command'
 import { useAppStore } from '@/stores'
+import { THEME_OPTIONS } from '@/components/app/theme/themeOptions'
 
 interface CommandItem {
   icon: React.ComponentType<{ className?: string }>
@@ -36,6 +38,8 @@ export function CommandPalette() {
   const open = useAppStore((state) => state.commandPaletteOpen)
   const setOpen = useAppStore((state) => state.setCommandPaletteOpen)
   const setShortcutsModalOpen = useAppStore((state) => state.setShortcutsModalOpen)
+  const theme = useAppStore((state) => state.theme)
+  const setTheme = useAppStore((state) => state.setTheme)
 
   const runCommand = (command: () => void) => {
     setOpen(false)
@@ -95,6 +99,22 @@ export function CommandPalette() {
             <span>Keyboard shortcuts</span>
             <span className="ml-auto text-xs text-muted-foreground">?</span>
           </CommandItem>
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="Theme">
+          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+            <CommandItem
+              key={value}
+              value={`theme ${label} ${value === 'dark' ? 'dark mode night' : value === 'light' ? 'light mode day' : 'system auto device'}`}
+              onSelect={() => runCommand(() => setTheme(value))}
+            >
+              <Icon className="mr-2 size-4" />
+              <span>{value === 'system' ? 'Match system theme' : `${label} theme`}</span>
+              {theme === value && <CheckIcon className="ml-auto size-3.5 text-muted-foreground" />}
+            </CommandItem>
+          ))}
         </CommandGroup>
       </CommandList>
     </CommandDialog>

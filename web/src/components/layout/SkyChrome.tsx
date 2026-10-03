@@ -23,13 +23,15 @@ export function SkyChrome() {
             {/* Base tint — clean neutral, a half-step darker than white.
                 Avoid blue-leaning here; the only colour cue is the soft
                 clouds above. */}
-            <div className="absolute inset-0 bg-[#f5f6f8]" />
+            <div className="absolute inset-0 bg-[#f5f6f8] dark:bg-[var(--wb-chrome)]" />
+            <div className="wb-chrome-light absolute inset-0 hidden dark:block" />
 
-            {/* Faint cloud blobs. Positioned to suggest a softly clouded
+            {/* Faint cloud blobs, light theme only: white haze on the dark
+                chrome reads as fog, not sky. Positioned to suggest a softly clouded
                 sky in the upper half. Generous blur radius + low alpha
                 makes them ambient rather than figurative. */}
             <div
-                className="absolute"
+                className="absolute dark:hidden"
                 style={{
                     top: "-80px",
                     left: "-60px",
@@ -42,7 +44,7 @@ export function SkyChrome() {
                 }}
             />
             <div
-                className="absolute"
+                className="absolute dark:hidden"
                 style={{
                     top: "10%",
                     right: "8%",
@@ -55,7 +57,7 @@ export function SkyChrome() {
                 }}
             />
             <div
-                className="absolute"
+                className="absolute dark:hidden"
                 style={{
                     top: "32%",
                     left: "26%",

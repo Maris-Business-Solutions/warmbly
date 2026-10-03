@@ -38,7 +38,7 @@ export function SectionShell({
         <div>
             <div className="px-4 pt-5 pb-4 md:px-8 md:pt-7 md:pb-5 flex flex-wrap md:flex-nowrap items-start gap-4 border-b border-slate-200/70">
                 <div className="min-w-0 flex-1 basis-48 md:basis-0">
-                    <h2 className="text-[16px] font-semibold text-slate-900 tracking-tight">
+                    <h2 className="wb-title text-[16px] font-semibold text-slate-900 tracking-tight">
                         {title}
                     </h2>
                     {description && (

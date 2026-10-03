@@ -31,6 +31,7 @@ import { sourceLabel } from "./ActivityTab";
 import { ContactSegmentsSection } from "./ContactSegmentsSection";
 import VerificationCard from "./VerificationCard";
 import OriginBadge from "@/components/app/engagement/OriginBadge";
+import { labelInk } from "@/lib/utils";
 
 export default function OverviewTab({
     contact,
@@ -221,7 +222,7 @@ export default function OverviewTab({
                                             className="inline-flex h-4 items-center px-1.5 rounded text-[10.5px] font-medium"
                                             style={{
                                                 backgroundColor: `${c.color}1a`,
-                                                color: c.color,
+                                                color: labelInk(c.color),
                                             }}
                                         >
                                             {c.title}

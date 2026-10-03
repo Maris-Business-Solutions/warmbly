@@ -95,6 +95,7 @@ import buildError from "@/lib/helper/buildError";
 import TaskTypePicker from "@/components/app/crm/TaskTypePicker";
 import { taskTypeColor } from "@/components/app/crm/taskTypes";
 import { Checkbox } from "@/components/ui/checkbox";
+import { labelInk } from "@/lib/utils";
 
 const PRIORITIES: { id: CRMTaskPriority; label: string; dot: string; text: string }[] = [
     { id: "urgent", label: "Urgent", dot: "bg-red-500", text: "text-red-700" },
@@ -1447,7 +1448,7 @@ function TypeFacet({
                                 />
                             }
                         >
-                            <span style={{ color: t.color || "#94a3b8" }}>
+                            <span style={{ color: labelInk(t.color || "#94a3b8") }}>
                                 {t.name}
                             </span>
                         </PopoverMenuItem>

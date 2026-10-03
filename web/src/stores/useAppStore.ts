@@ -55,11 +55,13 @@ export const useAppStore = create<AppStore>()(
             uniboxRailSectionOrder: sanitizeUniboxRailHidden(p.uniboxRailSectionOrder),
             uniboxRailFavorites: sanitizeUniboxRailFavorites(p.uniboxRailFavorites),
             uniboxRailOwner: typeof p.uniboxRailOwner === 'string' ? p.uniboxRailOwner : null,
+            // The theme lives under its own key, which index.html reads before first paint.
+            theme: current.theme,
+            resolvedTheme: current.resolvedTheme,
           }
         },
         partialize: (state) => ({
           // Only persist UI preferences
-          theme: state.theme,
           navCollapsed: state.navCollapsed,
           navCollapsedSections: state.navCollapsedSections,
           // Assistant panel layout (edge + width + floating window geometry)

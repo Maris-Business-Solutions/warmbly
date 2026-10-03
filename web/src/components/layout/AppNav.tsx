@@ -360,7 +360,7 @@ function NavRow({ item, collapsed = false }: { item: NavItem; collapsed?: boolea
                 className={cn(
                     rowClass(collapsed),
                     active
-                        ? cn("bg-slate-200/70 text-slate-900", !collapsed && "font-medium")
+                        ? cn("wb-nav-active bg-slate-200/70 text-slate-900", !collapsed && "font-medium")
                         : locked
                             ? "text-slate-400 hover:text-slate-700 hover:bg-slate-200/40"
                             : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/40",

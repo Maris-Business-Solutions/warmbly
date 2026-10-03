@@ -18,6 +18,7 @@ import {
     PopoverMenuContent,
     PopoverMenuTrigger,
 } from "@/components/ui/popover-menu";
+import { labelInk } from "@/lib/utils";
 
 export default function TagSelector({
     onAdd,
@@ -74,7 +75,7 @@ export default function TagSelector({
                                     className="inline-flex items-center gap-1 h-5 pl-1.5 pr-1 rounded text-[11px] font-medium"
                                     style={{
                                         backgroundColor: hexToRgba(t.color, 0.12),
-                                        color: t.color,
+                                        color: labelInk(t.color),
                                         border: `1px solid ${hexToRgba(t.color, 0.25)}`,
                                     }}
                                 >

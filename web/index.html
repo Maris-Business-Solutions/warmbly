@@ -10,17 +10,37 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Warmbly</title>
     <meta name="apple-mobile-web-app-title" content="Warmbly" />
     <!-- Runtime config: the production image overwrites this with values from
          container env so one build serves any deployment. Empty in dev. Loads
          before the app module so window.__WARMBLY_ENV__ is set first. -->
     <script src="/config.js"></script>
+    <!-- Theme before first paint, so a dark dashboard never flashes white.
+         Same key and rules as src/lib/theme.ts. -->
+    <script>
+      (function () {
+        var dark = false;
+        try {
+          var t = localStorage.getItem("theme");
+          dark = t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        } catch (e) {}
+        var root = document.documentElement;
+        root.classList.toggle("dark", dark);
+        root.style.colorScheme = dark ? "dark" : "light";
+        var meta = document.createElement("meta");
+        meta.name = "theme-color";
+        meta.content = dark ? "#070708" : "#f5f6f8";
+        document.head.appendChild(meta);
+      })();
+    </script>
     <style>
       /* Prevent a flash of unstyled content: paint the app background
          immediately and keep #root hidden until the stylesheet has applied
          (main.tsx adds .app-ready on the first frame after render). */
       html { background-color: #ffffff; }
+      html.dark { background-color: #070708; }
       #root { opacity: 0; }
       #root.app-ready { opacity: 1; transition: opacity 120ms ease-out; }
     </style>

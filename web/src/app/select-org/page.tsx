@@ -135,7 +135,7 @@ function SelectOrgPageInner() {
     const noWorkspaces = !loading && orgList.length === 0 && inviteList.length === 0;
 
     return (
-        <div className="min-h-dvh bg-[#f5f6f8] flex items-center justify-center px-4 py-12">
+        <div className="min-h-dvh bg-[#f5f6f8] dark:bg-[var(--wb-chrome)] flex items-center justify-center px-4 py-12">
             <div className="w-full max-w-[480px] rounded-lg bg-white border border-slate-200 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.08)] overflow-hidden">
                 <div className="h-12 px-4 border-b border-slate-200 flex items-center gap-2.5">
                     <Logo className="w-4 text-slate-900 shrink-0" />
