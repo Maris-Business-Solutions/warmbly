@@ -1375,7 +1375,12 @@ func (s *campaignService) SendPlan(ctx context.Context, orgID uuid.UUID, campaig
 	if s.planSnapshotRepo != nil {
 		if snap, err := s.planSnapshotRepo.Get(ctx, orgID, campaign.ID); err == nil && snap != nil && snap.Plan != nil {
 			plan := snap.Plan
-			plan.Stale = snap.VersionKey != key || snap.Day != planBudgetDay(time.Now())
+			// Also stale when the snapshot has aged past the freshness window:
+			// the version key alone never changes on intra-day drift, so a
+			// stalled snapshotter would otherwise serve old figures as fresh.
+			now := time.Now()
+			plan.Stale = snap.VersionKey != key || snap.Day != planBudgetDay(now) ||
+				now.Sub(snap.ComputedAt) > sendPlanSnapshotMaxAge
 			if plan.Stale {
 				s.refreshPlanAsync(campaign, orgID, key)
 			}

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
+	"github.com/warmbly/warmbly/internal/jobrun"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
 )
@@ -21,6 +22,10 @@ const (
 	// A send plan is "today's" figures: a minute is far finer than the day it
 	// describes, and it keeps a snapshot's ComputedAt within a minute of now.
 	sendPlanSnapshotInterval = time.Minute
+	// sendPlanSnapshotMaxAge bounds a snapshot's age before it is treated as
+	// stale, so a snapshotter that stalled or fell behind no longer serves an
+	// aged snapshot as fresh. Read path and snapshotter share this one window.
+	sendPlanSnapshotMaxAge = 3 * sendPlanSnapshotInterval
 	// sendPlanSnapshotBatch is how many active campaigns one keyset page covers.
 	sendPlanSnapshotBatch = 200
 	// sendPlanSnapshotPerCompute bounds one campaign's walk so a wedged planner
@@ -93,8 +98,10 @@ func (s *campaignService) refreshPlanAsync(campaign *models.Campaign, orgID uuid
 
 // StartSendPlanSnapshotter re-walks every active campaign's send plan on an
 // interval and stores it, so the read endpoint serves a stored snapshot instead
-// of computing on the request. Seeds once on boot so snapshots exist promptly
-// after a restart. A no-op without the snapshot store or a planner.
+// of computing on the request. It runs through jobrun.Loop, whose per-pass
+// claim means exactly one backend replica walks the fleet each tick rather than
+// every replica repeating the work; runOnBoot seeds snapshots promptly after a
+// restart. A no-op without the snapshot store or a planner.
 func (s *campaignService) StartSendPlanSnapshotter(ctx context.Context, interval time.Duration) {
 	if s.planSnapshotRepo == nil || s.campaignRepository == nil {
 		return
@@ -105,23 +112,18 @@ func (s *campaignService) StartSendPlanSnapshotter(ctx context.Context, interval
 	if interval <= 0 {
 		interval = sendPlanSnapshotInterval
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	s.snapshotActiveCampaignsOnce(ctx)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.snapshotActiveCampaignsOnce(ctx)
-		}
-	}
+	jobrun.Loop(ctx, "send_plan_snapshot", interval, true, func(ctx context.Context) error {
+		s.snapshotActiveCampaignsOnce(ctx)
+		return nil
+	})
 }
 
+// snapshotActiveCampaignsOnce walks every active campaign once, skipping those
+// whose stored snapshot is already current, and logs the pass's work.
 func (s *campaignService) snapshotActiveCampaignsOnce(ctx context.Context) {
+	start := time.Now()
 	after := uuid.Nil
-	computed := 0
+	computed, skipped := 0, 0
 	for {
 		ids, err := s.campaignRepository.ListActiveCampaignIDs(ctx, after, sendPlanSnapshotBatch)
 		if err != nil {
@@ -137,8 +139,11 @@ func (s *campaignService) snapshotActiveCampaignsOnce(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			if s.snapshotCampaign(ctx, id) {
+			switch s.snapshotCampaign(ctx, id) {
+			case "computed":
 				computed++
+			case "skipped":
+				skipped++
 			}
 			select {
 			case <-ctx.Done():
@@ -152,24 +157,40 @@ func (s *campaignService) snapshotActiveCampaignsOnce(ctx context.Context) {
 		}
 	}
 	if computed > 0 {
-		log.Debug().Int("campaigns", computed).Msg("send plan snapshot: refreshed active campaigns")
+		log.Debug().
+			Int("computed", computed).
+			Int("skipped", skipped).
+			Dur("elapsed", time.Since(start)).
+			Msg("send plan snapshot: refreshed active campaigns")
 	}
 }
 
 // snapshotCampaign walks and stores one campaign's plan, bounded by its own
-// timeout. Returns whether a snapshot was written.
-func (s *campaignService) snapshotCampaign(ctx context.Context, id uuid.UUID) bool {
+// timeout. A snapshot already current (same version, same budget day, young
+// enough) is left alone so the expensive planner walk is not repeated. Returns
+// "computed", "skipped", or "" when nothing applied.
+func (s *campaignService) snapshotCampaign(ctx context.Context, id uuid.UUID) string {
 	campaign, err := s.campaignRepository.GetByID(ctx, id)
 	if err != nil || campaign == nil || campaign.Status != "active" || campaign.OrganizationID == nil {
-		return false
+		return ""
+	}
+	orgID := *campaign.OrganizationID
+	key := planVersionKey(campaign)
+	// Skip the walk when the stored snapshot already matches this version and
+	// budget day and is within the freshness window; only stale, mismatched or
+	// missing snapshots are recomputed.
+	if snap, err := s.planSnapshotRepo.Get(ctx, orgID, campaign.ID); err == nil && snap != nil &&
+		snap.VersionKey == key && snap.Day == planBudgetDay(time.Now()) &&
+		time.Since(snap.ComputedAt) <= sendPlanSnapshotMaxAge {
+		return "skipped"
 	}
 	cctx, cancel := context.WithTimeout(ctx, sendPlanSnapshotPerCompute)
 	defer cancel()
-	if _, err := s.computeAndStore(cctx, campaign, *campaign.OrganizationID, planVersionKey(campaign)); err != nil {
+	if _, err := s.computeAndStore(cctx, campaign, orgID, key); err != nil {
 		if ctx.Err() == nil {
 			log.Warn().Err(err).Str("campaign_id", id.String()).Msg("send plan snapshot: compute failed")
 		}
-		return false
+		return ""
 	}
-	return true
+	return "computed"
 }
