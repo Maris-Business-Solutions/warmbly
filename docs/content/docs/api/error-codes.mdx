@@ -457,6 +457,9 @@ Returned when the requested resource doesn't exist.
 |--------|---------|
 | `unknown_view` | `/me/views/:view` was given a view name other than `contacts`, `campaign_leads` or `unibox_rail` |
 | `lead_cc_contact_not_found` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named a contact that is not in the workspace |
+| `slack_not_connected` | A [Slack](/guides/slack/) route was called for a workspace that has not connected Slack, or whose connection was removed. Connect it under **Integrations > Slack** |
+| `slack_link_invalid` | The Slack link code is unknown, expired or already used. Ask the bot for a new link button (`/warmbly link`) |
+| `slack_not_linked` | `PATCH /integrations/slack/link` from a member who has not linked a Slack account in this workspace |
 
 ### 409 Conflict
 
@@ -601,6 +604,25 @@ A `503` whose `code` is `ai_not_configured` is not transient and retrying will n
 **How to fix:**
 - Set `AI_PROVIDER` and `AI_API_KEY` in the `.env` at your install root, then restart. See the [configuration reference](/development/configuration/)
 - Hide the AI affordance in your client rather than retrying: nothing about the request will make it succeed
+
+#### `slack_not_configured`
+
+A `503` whose `code` is `slack_not_configured` is not transient and retrying will not help. The instance is not set up for [Slack](/guides/slack/), which only happens on a self-hosted install. The three Slack request URLs (`/api/v1/integrations/slack/events`, `/interactivity` and `/commands`) answer it whenever `SLACK_SIGNING_SECRET` is unset.
+
+```json
+{
+  "error": "Service Unavailable",
+  "message": "Slack is not set up on this Warmbly instance.",
+  "code": "slack_not_configured",
+  "request_id": "4bbbd1b2-8f86-47dd-8a7f-9476501ad20e"
+}
+```
+
+**How to fix:**
+- Create the instance's Slack app and set `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET` and `SLACK_SIGNING_SECRET` on the backend and the consumer, then restart. See [Slack app](/development/slack-app/)
+- In a client, read `app_configured` and `interactive_configured` from `GET /integrations/slack/status` and hide the Slack affordances rather than retrying
+
+Those request URLs answer `401` `unauthorized` to a request whose Slack signature does not verify. Linking a Slack account to a workspace you are not a member of is `403` `forbidden`.
 
 #### `mailbox_allowance_reached`
 

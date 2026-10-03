@@ -54,6 +54,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/sendingdomain"
 	"github.com/warmbly/warmbly/internal/app/sequence"
 	"github.com/warmbly/warmbly/internal/app/skills"
+	"github.com/warmbly/warmbly/internal/app/slackapp"
 	"github.com/warmbly/warmbly/internal/app/socket"
 	"github.com/warmbly/warmbly/internal/app/stripe"
 	"github.com/warmbly/warmbly/internal/app/subscription"
@@ -276,6 +277,10 @@ type Handler struct {
 	// SNDS, Cloudflare, GoDaddy, Namecheap, Google Sheets).
 	IntegrationService integration.Service
 	ContactRepo        repository.ContactRepository
+
+	// SlackService is the Slack app (request URLs and the dashboard's Slack
+	// panel). Nil answers slack_not_configured.
+	SlackService *slackapp.Service
 
 	// OAuth 2.1 authorization server (third-party app registration + the
 	// authorization-code-with-PKCE flow + bearer-token validation).

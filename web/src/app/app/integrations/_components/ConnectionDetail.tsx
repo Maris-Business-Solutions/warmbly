@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { Drawer, SectionLabel } from "./ConnectDrawer";
 import FieldMapEditor from "./FieldMapEditor";
 import InboundUrlDialog from "./InboundUrlDialog";
+import { SlackStatusBanner, SlackTabBar, SlackTabContent, type SlackTab } from "./SlackPanel";
 import StatusPill, { HealthDot } from "./StatusPill";
 
 // Providers whose deliveries we can test (notify + generic webhook). Automation
@@ -76,6 +77,7 @@ export default function ConnectionDetail({
 
     const [busy, setBusy] = React.useState(false);
     const confirm = useConfirm();
+    const [slackTab, setSlackTab] = React.useState<SlackTab>("overview");
 
     const conn = detail.data?.connection ?? connection;
     const runs = detail.data?.runs ?? [];
@@ -102,6 +104,7 @@ export default function ConnectionDetail({
     const crmObject = capability?.objects?.[0];
     const isOAuth = conn.auth_method === "oauth";
     const needsReauth = conn.status === "reauth_required";
+    const isSlack = conn.provider === "slack";
 
     async function handleReauth() {
         setBusy(true);
@@ -144,123 +147,131 @@ export default function ConnectionDetail({
                 />
             }
         >
+            {isSlack && <SlackTabBar tab={slackTab} onTab={setSlackTab} />}
             <div className="flex-1 overflow-auto">
-                {/* Status header */}
-                <div className="px-5 py-4 border-b border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                        <StatusPill status={conn.status} />
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                            <HealthDot health={conn.health} />
-                            {conn.health}
-                        </div>
-                    </div>
-                    {conn.external_account_name && <Row label="Account" value={conn.external_account_name} />}
-                    <Row label="Auth" value={conn.auth_method.replace("_", " ")} mono />
-                    <Row
-                        label="Last sync"
-                        value={conn.last_synced_at ? new Date(conn.last_synced_at).toLocaleString() : "never"}
-                    />
-                    {conn.last_error && (
-                        <div className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 flex items-start gap-2">
-                            <AlertTriangleIcon className="w-3.5 h-3.5 text-rose-500 mt-0.5 shrink-0" />
-                            <p className="text-[11px] text-rose-700 leading-relaxed break-words">{conn.last_error}</p>
-                        </div>
-                    )}
-                    {needsReauth && (
-                        <button
-                            type="button"
-                            onClick={handleReauth}
-                            disabled={busy}
-                            className="w-full h-8 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors"
-                        >
-                            {busy ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <RefreshCwIcon className="w-3.5 h-3.5" />}
-                            Reconnect to fix
-                        </button>
-                    )}
-                </div>
-
-                {/* Granted access */}
-                {conn.granted_scopes && conn.granted_scopes.length > 0 && (
-                    <div className="px-5 py-4 border-b border-slate-200 space-y-2">
-                        <SectionLabel>Granted access</SectionLabel>
-                        <div className="flex flex-wrap gap-1">
-                            {conn.granted_scopes.map((s) => (
-                                <span
-                                    key={s}
-                                    className="px-1.5 h-5 inline-flex items-center rounded bg-slate-100 text-[10px] font-mono text-slate-600"
-                                >
-                                    {s}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Field mapping — control exactly what each CRM record gets */}
-                {crmObject && (
-                    <div className="px-5 py-4 border-b border-slate-200 space-y-2.5">
-                        <SectionLabel>Field mapping</SectionLabel>
-                        <FieldMappingsBlock connectionId={conn.id} object={crmObject} />
-                    </div>
-                )}
-
-                {/* Booking link — for scheduling providers (Calendly / Cal.com) */}
-                {capability?.supports_booking_link && (
-                    <div className="px-5 py-4 border-b border-slate-200 space-y-2">
-                        <SectionLabel>Booking link</SectionLabel>
-                        <BookingLinkBlock connection={conn} onSaved={() => detail.refetch()} />
-                    </div>
-                )}
-
-                {/* Inbound URL: rotation + signature for Calendly / Cal.com deliveries */}
-                {(conn.provider === "calendly" || conn.provider === "cal_com") && (
+                {isSlack && <SlackStatusBanner onReconnect={handleReauth} reconnecting={busy} />}
+                {isSlack && slackTab !== "overview" ? (
+                    <SlackTabContent tab={slackTab} />
+                ) : (
+                    <>
+                    {/* Status header */}
                     <div className="px-5 py-4 border-b border-slate-200 space-y-3">
-                        <SectionLabel>Inbound URL</SectionLabel>
-                        <InboundRotateBlock connection={conn} />
-                        <InboundSigningBlock connection={conn} />
-                    </div>
-                )}
-
-                {/* Webhook delivery — test wiring + (automation tools) signature */}
-                {isWebhookTool && (
-                    <div className="px-5 py-4 border-b border-slate-200 space-y-3">
-                        <SectionLabel>Webhook delivery</SectionLabel>
-                        <WebhookToolsBlock
-                            connectionId={conn.id}
-                            provider={conn.provider}
-                            hasAutomations={hasAutomations}
+                        <div className="flex items-center justify-between gap-2">
+                            <StatusPill status={conn.status} />
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                <HealthDot health={conn.health} />
+                                {conn.health}
+                            </div>
+                        </div>
+                        {conn.external_account_name && <Row label="Account" value={conn.external_account_name} />}
+                        <Row label="Auth" value={conn.auth_method.replace("_", " ")} mono />
+                        <Row
+                            label="Last sync"
+                            value={conn.last_synced_at ? new Date(conn.last_synced_at).toLocaleString() : "never"}
                         />
+                        {conn.last_error && (
+                            <div className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 flex items-start gap-2">
+                                <AlertTriangleIcon className="w-3.5 h-3.5 text-rose-500 mt-0.5 shrink-0" />
+                                <p className="text-[11px] text-rose-700 leading-relaxed break-words">{conn.last_error}</p>
+                            </div>
+                        )}
+                        {needsReauth && (
+                            <button
+                                type="button"
+                                onClick={handleReauth}
+                                disabled={busy}
+                                className="w-full h-8 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                                {busy ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <RefreshCwIcon className="w-3.5 h-3.5" />}
+                                Reconnect to fix
+                            </button>
+                        )}
                     </div>
-                )}
 
-                {/* Activity */}
-                <div className="px-5 py-4 space-y-2">
-                    <SectionLabel>Recent activity</SectionLabel>
-                    {runs.length === 0 ? (
-                        <p className="text-[11.5px] text-slate-400">Nothing yet.</p>
-                    ) : (
-                        <div className="space-y-1">
-                            {runs.map((r) => (
-                                <div key={r.id} className="flex items-center gap-2 text-[11px]">
-                                    {r.status === "success" ? (
-                                        <CheckCircle2Icon className="w-3 h-3 text-emerald-500 shrink-0" />
-                                    ) : r.status === "error" ? (
-                                        <AlertTriangleIcon className="w-3 h-3 text-rose-500 shrink-0" />
-                                    ) : (
-                                        <Loader2Icon className="w-3 h-3 text-slate-400 animate-spin shrink-0" />
-                                    )}
-                                    <span className="text-slate-600 truncate flex-1">
-                                        {r.kind}
-                                        {r.detail ? ` · ${r.detail}` : ""}
+                    {/* Granted access */}
+                    {conn.granted_scopes && conn.granted_scopes.length > 0 && (
+                        <div className="px-5 py-4 border-b border-slate-200 space-y-2">
+                            <SectionLabel>Granted access</SectionLabel>
+                            <div className="flex flex-wrap gap-1">
+                                {conn.granted_scopes.map((s) => (
+                                    <span
+                                        key={s}
+                                        className="px-1.5 h-5 inline-flex items-center rounded bg-slate-100 text-[10px] font-mono text-slate-600"
+                                    >
+                                        {s}
                                     </span>
-                                    <span className="text-slate-400 tabular-nums shrink-0">
-                                        {new Date(r.started_at).toLocaleTimeString()}
-                                    </span>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     )}
-                </div>
+
+                    {/* Field mapping — control exactly what each CRM record gets */}
+                    {crmObject && (
+                        <div className="px-5 py-4 border-b border-slate-200 space-y-2.5">
+                            <SectionLabel>Field mapping</SectionLabel>
+                            <FieldMappingsBlock connectionId={conn.id} object={crmObject} />
+                        </div>
+                    )}
+
+                    {/* Booking link — for scheduling providers (Calendly / Cal.com) */}
+                    {capability?.supports_booking_link && (
+                        <div className="px-5 py-4 border-b border-slate-200 space-y-2">
+                            <SectionLabel>Booking link</SectionLabel>
+                            <BookingLinkBlock connection={conn} onSaved={() => detail.refetch()} />
+                        </div>
+                    )}
+
+                    {/* Inbound URL: rotation + signature for Calendly / Cal.com deliveries */}
+                    {(conn.provider === "calendly" || conn.provider === "cal_com") && (
+                        <div className="px-5 py-4 border-b border-slate-200 space-y-3">
+                            <SectionLabel>Inbound URL</SectionLabel>
+                            <InboundRotateBlock connection={conn} />
+                            <InboundSigningBlock connection={conn} />
+                        </div>
+                    )}
+
+                    {/* Webhook delivery — test wiring + (automation tools) signature */}
+                    {isWebhookTool && (
+                        <div className="px-5 py-4 border-b border-slate-200 space-y-3">
+                            <SectionLabel>Webhook delivery</SectionLabel>
+                            <WebhookToolsBlock
+                                connectionId={conn.id}
+                                provider={conn.provider}
+                                hasAutomations={hasAutomations}
+                            />
+                        </div>
+                    )}
+
+                    {/* Activity */}
+                    <div className="px-5 py-4 space-y-2">
+                        <SectionLabel>Recent activity</SectionLabel>
+                        {runs.length === 0 ? (
+                            <p className="text-[11.5px] text-slate-400">Nothing yet.</p>
+                        ) : (
+                            <div className="space-y-1">
+                                {runs.map((r) => (
+                                    <div key={r.id} className="flex items-center gap-2 text-[11px]">
+                                        {r.status === "success" ? (
+                                            <CheckCircle2Icon className="w-3 h-3 text-emerald-500 shrink-0" />
+                                        ) : r.status === "error" ? (
+                                            <AlertTriangleIcon className="w-3 h-3 text-rose-500 shrink-0" />
+                                        ) : (
+                                            <Loader2Icon className="w-3 h-3 text-slate-400 animate-spin shrink-0" />
+                                        )}
+                                        <span className="text-slate-600 truncate flex-1">
+                                            {r.kind}
+                                            {r.detail ? ` · ${r.detail}` : ""}
+                                        </span>
+                                        <span className="text-slate-400 tabular-nums shrink-0">
+                                            {new Date(r.started_at).toLocaleTimeString()}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    </>
+                )}
             </div>
 
             <div className="mt-auto border-t border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">

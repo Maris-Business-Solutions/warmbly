@@ -105,7 +105,7 @@ Every emailed link (password reset, invitation, the first-run claim link) is bui
 | `APP_URL` | The dashboard origin. The source of every emailed link | guessed from `CORS_ALLOW_ORIGINS`, then `PUBLIC_HOST` | no (read per request) |
 | `FRONTEND_BASE_URL` | Alternative name for the same value, read when `APP_URL` is unset | unset | no |
 | `API_PUBLIC_URL` | The backend's public base. Frontends, blob URLs and the OIDC redirect derive from it | derived from `PUBLIC_HOST` under compose | yes |
-| `BACKEND_PUBLIC_URL` | The backend base used in generated worker configuration | falls back to `API_PUBLIC_URL` | yes |
+| `BACKEND_PUBLIC_URL` | The backend's public URL as third parties call it: generated worker configuration, the integration OAuth redirect and the [Slack app](/development/slack-app/) request URLs. Only needed when that differs from `API_PUBLIC_URL` | falls back to `API_PUBLIC_URL` | yes |
 | `APP_ORIGIN` | The exact origin the mailbox OAuth callback page posts the authorization code back to. Only needed when the dashboard is served somewhere other than `APP_URL` | derived from `APP_URL` | yes |
 | `API_HOST` | The listen address | `0.0.0.0:8080` | yes |
 | `PUBLIC_HOST` | Compose only. A hostname or LAN IP that every other URL derives from | `localhost` | yes |
@@ -507,7 +507,11 @@ Application permissions reach every mailbox in a consenting organization. We rec
 | Variable | What it does | Default |
 |---|---|---|
 | `<PROVIDER>_OAUTH_CLIENT_ID`, `<PROVIDER>_OAUTH_CLIENT_SECRET` | OAuth clients for the CRM and messaging integrations | unset |
-| `INTEGRATIONS_OAUTH_REDIRECT_URL` | Shared redirect URI for those flows | derived from `API_PUBLIC_URL` |
+| `INTEGRATIONS_OAUTH_REDIRECT_URL` | Shared redirect URI for those flows | `BACKEND_PUBLIC_URL` (else `API_PUBLIC_URL`) plus `/integrations/oauth/callback` |
+| `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET` | The instance's own [Slack app](/development/slack-app/). Unset, the dashboard reports Slack as not set up and no workspace can connect it | unset |
+| `SLACK_SIGNING_SECRET` | Verifies every request Slack sends to the events, interactivity and slash command URLs. Without it Slack still posts notifications and inbox conversations, but the assistant, buttons and `/warmbly` are off, and those URLs answer `503` `slack_not_configured` | unset |
+
+The three Slack values come from the Slack app's **Basic Information** page. Set them on the backend and the consumer and restart both; the shipped `docker-compose.yml` passes all three to both. The request URLs are built on `BACKEND_PUBLIC_URL` when it is set, otherwise on `API_PUBLIC_URL`. See [Slack app](/development/slack-app/) for creating the app from its manifest.
 
 ## AI and search
 

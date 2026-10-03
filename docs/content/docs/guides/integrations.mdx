@@ -16,11 +16,13 @@ The Integrations page is a searchable directory with your existing connections a
 | Pipedrive | CRM | one-click OAuth | Upsert a person on reply or on demand |
 | Close | CRM | API key | Upsert a lead on reply or on demand |
 | Zapier, Make, n8n | Automation | Warmbly API key | Fan events to that tool's webhook URL |
-| Slack | Notifications | one-click OAuth | Ping a channel on reply, bounce, or deliverability dips |
+| Slack | Notifications and assistant | one-click OAuth | Route notifications to channels or DMs, work inbox replies in a channel, and ask the AI assistant from Slack. See [Slack](/guides/slack/) |
 | Discord | Notifications | webhook URL | Ping a server channel on reply, bounce, or warmup health |
 | Calendly, Cal.com | Meetings | minted inbound URL | Track booked, rescheduled, and canceled calls |
 | MillionVerifier | Verification | API key | Check every contact's address through your pay-as-you-go credits instead of the built-in probe |
 | CleanMyList | Verification | API key | Verify contacts using your CleanMyList plan allowance and credits |
+
+Slack does more than post: it brings the [AI assistant](/guides/ai-assistant/) into Slack, mirrors [Unibox](/guides/unibox/) replies into a channel where the team can reply, label and draft, and each member links their own Slack account. Its setup and settings have their own guide, [Slack](/guides/slack/).
 
 Only one Verification connection is active at a time; see [one verifier at a time](/guides/integrations/#one-verifier-at-a-time).
 
@@ -101,6 +103,7 @@ You can filter when an action runs, commonly firing only on a `positive` reply o
 
 <Cards>
   <Card title="Automations" href="/guides/automations/" />
+  <Card title="Slack" href="/guides/slack/" />
   <Card title="Personalization & expressions" href="/guides/expressions/" />
   <Card title="Deliverability" href="/guides/deliverability/" />
 </Cards>

@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/models"
 )
 
@@ -45,21 +46,19 @@ type oauthProvider struct {
 	scopes   []string
 	usePKCE  bool
 	identify identifyFunc
+	// scopeSep overrides the space x/oauth2 joins scopes with (Slack wants commas).
+	scopeSep string
 }
 
 // NewOAuthManager builds the provider registry from environment variables. For
 // each provider it reads <PREFIX>_OAUTH_CLIENT_ID / <PREFIX>_OAUTH_CLIENT_SECRET
 // (e.g. HUBSPOT_OAUTH_CLIENT_ID). The shared redirect/callback URL comes from
-// INTEGRATIONS_OAUTH_REDIRECT_URL, else BACKEND_PUBLIC_URL + the callback path,
-// else a localhost default for dev.
+// INTEGRATIONS_OAUTH_REDIRECT_URL, else the backend's public URL
+// (config.BackendPublicURL) + the callback path.
 func NewOAuthManager() *OAuthManager {
 	redirect := strings.TrimSpace(os.Getenv("INTEGRATIONS_OAUTH_REDIRECT_URL"))
 	if redirect == "" {
-		base := strings.TrimRight(strings.TrimSpace(os.Getenv("BACKEND_PUBLIC_URL")), "/")
-		if base == "" {
-			base = "http://localhost:8080"
-		}
-		redirect = base + "/integrations/oauth/callback"
+		redirect = config.BackendPublicURL() + "/integrations/oauth/callback"
 	}
 
 	m := &OAuthManager{
@@ -92,7 +91,8 @@ func NewOAuthManager() *OAuthManager {
 	register(models.IntegrationSlack, "SLACK", oauth2.Endpoint{
 		AuthURL:  "https://slack.com/oauth/v2/authorize",
 		TokenURL: "https://slack.com/api/oauth.v2.access",
-	}, []string{"chat:write", "channels:read", "groups:read"}, false, identifySlack)
+	}, SlackBotScopes, false, identifySlack)
+	m.providers[models.IntegrationSlack].scopeSep = ","
 
 	register(models.IntegrationGoogleSheets, "GOOGLE_SHEETS", oauth2.Endpoint{
 		AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
@@ -127,6 +127,9 @@ func (m *OAuthManager) Configured(p models.IntegrationProvider) bool {
 	return ok && op.config != nil
 }
 
+// RedirectURL is the shared OAuth callback every provider redirects to.
+func (m *OAuthManager) RedirectURL() string { return m.redirectURL }
+
 // Scopes returns the requested scopes for a provider (empty if none/unknown).
 func (m *OAuthManager) Scopes(p models.IntegrationProvider) []string {
 	if op, ok := m.providers[p]; ok {
@@ -143,6 +146,9 @@ func (m *OAuthManager) AuthCodeURL(p models.IntegrationProvider, state string) (
 		return "", "", fmt.Errorf("oauth not configured for provider %s", p)
 	}
 	opts := []oauth2.AuthCodeOption{oauth2.AccessTypeOffline, oauth2.ApprovalForce}
+	if op.scopeSep != "" && len(op.scopes) > 0 {
+		opts = append(opts, oauth2.SetAuthURLParam("scope", strings.Join(op.scopes, op.scopeSep)))
+	}
 	if op.usePKCE {
 		verifier = randomURLToken(32)
 		sum := sha256.Sum256([]byte(verifier))

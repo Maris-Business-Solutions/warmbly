@@ -20,6 +20,7 @@ import (
 	awsconf "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/google/uuid"
 	"github.com/meszmate/apple-go"
+	"github.com/redis/go-redis/v9"
 	"github.com/warmbly/warmbly/internal/api"
 	"github.com/warmbly/warmbly/internal/api/handler"
 	"github.com/warmbly/warmbly/internal/api/middleware"
@@ -95,6 +96,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/sequence"
 	"github.com/warmbly/warmbly/internal/app/settings"
 	"github.com/warmbly/warmbly/internal/app/skills"
+	"github.com/warmbly/warmbly/internal/app/slackapp"
 	"github.com/warmbly/warmbly/internal/app/socialauth"
 	"github.com/warmbly/warmbly/internal/app/socket"
 	"github.com/warmbly/warmbly/internal/app/stripe"
@@ -218,6 +220,7 @@ func main() {
 	var aiSearch generation.SearchClient
 	var aiToolRegistry *aitools.Registry
 	var aiAgentService aiagent.Service
+	var slackService *slackapp.Service
 	var researchService research.Service
 	var skillsService skills.Service
 	var mcpService mcp.Service
@@ -1602,7 +1605,6 @@ func main() {
 		notificationService = notification.NewService(repository.NewNotificationRepository(primaryDB.Pool), streamingPublisher)
 		// Saved list layouts: each member's columns and sort per dashboard list.
 		viewPreferencesService = viewprefs.NewService(repository.NewViewPreferencesRepository(primaryDB.Pool))
-		notificationService.WireDelivery(emailNotificationService, integrationServiceForHandler, userRepostory, organizationRepoForHandler)
 		// Mobile push (APNs): device registration always works; delivery only
 		// activates when the APNS_* env is configured. The Redis client backs
 		// the shared immediate-then-digest push window. The sender stays a nil
@@ -1633,6 +1635,26 @@ func main() {
 			inboxAgentService.WireDraftGate(inboxtag.NewDraftGate(inboxTagRepository))
 		}
 		advancedService.WireInboxAgent(inboxAgentService)
+		// Slack app: the assistant, the inbox mirror's actions and notifications.
+		// Built here because it needs the agent, the tool registry and the drafts.
+		var slackRedis *redis.Client
+		if authCache != nil {
+			slackRedis = authCache.Client
+		}
+		slackService = slackapp.New(slackapp.Deps{
+			Integrations: integrationServiceForHandler, Repo: repository.NewSlackRepository(primaryDB),
+			Orgs: organizationService, Agent: aiAgentService, Registry: aiToolRegistry,
+			Audit: auditService, Redis: slackRedis,
+			Threads: uniboxRepository, Labels: repository.NewTagCategoryStore(primaryDB.Pool),
+			Drafts: aiDraftRepo, Users: userRepostory, Tasks: taskRepository, Campaigns: campaignRepostory,
+			Cipher: cipherService,
+		})
+		notificationService.WireDelivery(emailNotificationService, slackService, userRepostory, organizationRepoForHandler)
+		if aware, ok := emailSendService.(emailsend.ReplyObserverAware); ok {
+			aware.WireReplyObserver(slackService)
+		}
+		organizationService.WireMemberRemoval(slackService.OnMemberRemoved)
+		slackService.StartMaintenance(ctx)
 		// The classified intent lands on the contact's progress for the
 		// reply_intent branch condition.
 		advancedService.WireInboxTags(inboxTagRepository)
@@ -2267,6 +2289,7 @@ func main() {
 		AISearch:         aiSearch,
 		AITools:          aiToolRegistry,
 		AIAgentService:   aiAgentService,
+		SlackService:     slackService,
 		ResearchService:  researchService,
 		SkillsService:    skillsService,
 		MCPService:       mcpService,

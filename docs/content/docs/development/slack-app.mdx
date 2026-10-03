@@ -1,0 +1,157 @@
+---
+title: Slack app
+description: "Create the Slack app a self-hosted instance needs for Warmbly for Slack: the manifest, request URLs, scopes, events and environment variables."
+---
+
+[Warmbly for Slack](/guides/slack/) (the assistant in Slack, the inbox channel, and channel and DM notifications) runs through a Slack app. Warmbly Cloud uses Warmbly's own. A self-hosted instance needs one of its own, because Slack sends every event, button press and slash command for an app to the single set of request URLs in that app's configuration. One Slack app cannot serve two instances.
+
+Until the app's credentials are set, the dashboard's Slack panel reports Slack as not set up, and the Slack request URLs answer `503` with [`slack_not_configured`](/api/error-codes/#slack_not_configured).
+
+## What it needs from your network
+
+| Feature | Needs |
+|---|---|
+| Connecting Slack, posting notifications and inbox replies | Outbound HTTPS to `slack.com` only |
+| The assistant, the inbox buttons, the `/warmbly` command, the Home tab | Slack reaching the backend's request URLs over public HTTPS, with a certificate Slack trusts |
+
+An instance only reachable on a private network can still post to Slack. Everything interactive needs the backend's public address.
+
+## Create the app
+
+<Steps>
+
+<Step>
+
+### Fill in the manifest
+
+Take `deploy/slack/manifest.json` from the repository (or from the release you run) and replace every `https://YOUR-BACKEND-HOST` with your backend's public URL, for example `https://api.example.com`. That fills in the four URLs listed under [request URLs](#request-urls).
+
+</Step>
+
+<Step>
+
+### Create the app from it
+
+At [api.slack.com/apps](https://api.slack.com/apps) choose **Create New App > From a manifest**, pick the Slack workspace to create it in, paste the manifest, review, and create.
+
+</Step>
+
+<Step>
+
+### Copy the credentials
+
+In the new app's **Basic Information**, under **App Credentials**, copy the **Client ID**, **Client Secret** and **Signing Secret** into the `.env` at your install root:
+
+```bash
+SLACK_OAUTH_CLIENT_ID=1234567890.1234567890
+SLACK_OAUTH_CLIENT_SECRET=...
+SLACK_SIGNING_SECRET=...
+```
+
+All three belong on the backend and the consumer. The shipped `docker-compose.yml` passes them to both, and `.env.example` lists them. The host in the manifest must be your `API_PUBLIC_URL`, which an install already has. Restart both services.
+
+</Step>
+
+<Step>
+
+### Verify the events URL
+
+Slack checks the events URL by sending it a challenge, and the backend only answers a challenge it can verify with the signing secret. If Slack marked the URL as unverified when you created the app, open **Event Subscriptions** and select **Retry** now that the secret is set.
+
+</Step>
+
+<Step>
+
+### Connect a workspace
+
+In the dashboard, open **Integrations > Slack** and select **Connect**. See [connect Slack](/guides/slack/#connect-slack).
+
+</Step>
+
+</Steps>
+
+## Request URLs
+
+Every URL is on the backend's public URL, `API_PUBLIC_URL` (or `BACKEND_PUBLIC_URL` when that is set), which has to match the host in the manifest.
+
+| Slack setting | URL |
+|---|---|
+| **Event Subscriptions** request URL | `https://<backend>/api/v1/integrations/slack/events` |
+| **Interactivity & Shortcuts** request URL | `https://<backend>/api/v1/integrations/slack/interactivity` |
+| **Slash Commands**, `/warmbly` | `https://<backend>/api/v1/integrations/slack/commands` |
+| **OAuth & Permissions** redirect URL | `https://<backend>/integrations/oauth/callback`, or `INTEGRATIONS_OAUTH_REDIRECT_URL` when set |
+
+Each request Slack sends is checked against the signing secret: the signature must match and its timestamp must be within five minutes, and the body is capped at 1 MiB. A request that fails is answered `401` and nothing in it is parsed. Each one is answered within Slack's three-second limit, and the work it starts runs afterwards.
+
+If the backend's public URL changes, update these URLs in the Slack app (or create the app again from the manifest with the new host and replace the credentials), and update `API_PUBLIC_URL`.
+
+## Scopes
+
+The manifest asks for these bot scopes and nothing else. There are no user scopes: the app never acts as a Slack user.
+
+| Scope | Why |
+|---|---|
+| `app_mentions:read` | Receive `@Warmbly` mentions in channels |
+| `assistant:write` | Run the assistant pane: its status line and suggested prompts |
+| `channels:history` | Read replies in threads the assistant answers in public channels, and a thread's earlier messages when the bot is mentioned inside it |
+| `channels:read` | List public channels for the channel pickers, and tell whether a channel is shared with another organization |
+| `chat:write` | Post notifications, inbox conversations, answers and approval cards |
+| `chat:write.public` | Post notifications to a public channel the bot has not joined |
+| `commands` | The `/warmbly` slash command |
+| `groups:history` | The same as `channels:history`, for private channels the bot was invited to |
+| `groups:read` | List the private channels the bot is in for the channel pickers |
+| `im:history` | Read messages sent to the bot in DMs |
+| `im:read` | Recognise the DM conversations it is part of |
+| `im:write` | Open a DM to send link buttons, link confirmations, personal notifications and answers to `/warmbly` |
+| `mpim:history` | Read a group DM thread's earlier messages when the bot is mentioned in one |
+
+An install made before the app asked for a scope keeps working with what it has. The dashboard lists the missing scopes and offers **Reconnect**, and the features that need them stay off until then.
+
+## Events and features
+
+The app subscribes to these bot events:
+
+| Event | Used for |
+|---|---|
+| `app_mention` | A question in a channel, including in an inbox conversation's thread |
+| `message.im` | A question or follow-up in a DM |
+| `message.channels`, `message.groups` | Follow-ups in a thread the assistant is answering. Every other channel message, including team discussion in inbox threads, is ignored |
+| `assistant_thread_started`, `assistant_thread_context_changed` | The assistant pane opening, and the channel you are viewing changing while it is open |
+| `app_home_opened` | Drawing the Home tab |
+| `app_uninstalled`, `tokens_revoked` | Stopping use of a Slack workspace's connection when the app is removed or its token revoked |
+
+It also turns on the **Home** and **Messages** tabs, the assistant view with its suggested prompts, the `/warmbly` command (usage hint `[question] | link | unlink | help`) and the message shortcut **Ask Warmbly about this** (callback `ask_warmbly_about_message`).
+
+## Environment variables
+
+| Variable | Where it comes from | What it does |
+|---|---|---|
+| `SLACK_OAUTH_CLIENT_ID` | **Basic Information > App Credentials > Client ID** | With the secret, lets a workspace connect Slack |
+| `SLACK_OAUTH_CLIENT_SECRET` | **Client Secret** | The other half of the OAuth client |
+| `SLACK_SIGNING_SECRET` | **Signing Secret** | Verifies every request Slack sends. Without it notifications and inbox conversations still post, but the assistant, buttons and the slash command are off, and the dashboard reports Slack as only partly configured |
+
+The request URLs and the OAuth redirect are built on `API_PUBLIC_URL`, which every install already sets. `BACKEND_PUBLIC_URL` overrides it when the URL third parties call differs from the one the dashboard uses.
+
+All three need a restart and belong on the backend and the consumer. Treat the client secret and the signing secret like any other credential: to rotate one, regenerate it in **Basic Information**, update `.env`, and restart. See also the [configuration reference](/development/configuration/#integrations).
+
+## One workspace or many
+
+**Your own Slack workspace.** An app installs into the Slack workspace it was created in without any further step. This is the usual self-hosted setup: your team, your Slack.
+
+**Other Slack workspaces.** If the instance serves several companies, each with their own Slack, the app has to be distributed. In the app's settings open **Manage Distribution**, complete the checklist, and select **Activate Public Distribution**. Any Slack workspace can then install it through **Integrations > Slack**. This does not list the app in the Slack Marketplace, and you do not need to submit it there.
+
+<Callout type="warn" title="Slack limits history reads for distributed apps outside the Marketplace">
+Slack heavily rate limits `conversations.history` and `conversations.replies` for commercially distributed apps that are not in the Slack Marketplace and were created after May 2025: at the time of writing, one request a minute returning at most 15 messages. Apps installed only in the workspace that created them (internal apps) are not affected. See Slack's [announcement](https://docs.slack.dev/changelog/2025/05/29/rate-limit-changes-for-non-marketplace-apps).
+
+Warmbly only makes those calls to read a thread's earlier messages when someone mentions the bot inside a thread or uses **Ask Warmbly about this**. When Slack limits them, the assistant answers from the message it was given, without the thread around it. Nothing else is affected.
+</Callout>
+
+## The assistant pane
+
+Slack's assistant pane, the side panel opened from Slack's AI apps entry, appears only when the Slack workspace allows AI apps. That is a Slack workspace setting, and not every Slack plan offers it. Where it is off, the pane is missing and everything else works: DMs, mentions, `/warmbly`, the message shortcut and the inbox channel.
+
+## See also
+
+- [Slack](/guides/slack/) for what members see and do
+- [Configuration reference](/development/configuration/)
+- [Operator notifications](/development/operator-notifications/), a separate Slack incoming webhook for alerts to you

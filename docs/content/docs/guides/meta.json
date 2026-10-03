@@ -39,6 +39,7 @@
     "---Integrations---",
     "webhooks",
     "integrations",
+    "slack",
     "zapier",
     "make",
     "n8n",

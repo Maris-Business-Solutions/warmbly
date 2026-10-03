@@ -166,9 +166,16 @@ type Service interface {
 	// Dispatch; struct payloads are ignored.
 	DispatchAny(ctx context.Context, orgID uuid.UUID, eventType models.WebhookEventType, data any)
 
-	// NotifySlack posts a plain message to the org's connected Slack on its
-	// configured default channel. No-op (nil) when no Slack is connected.
-	NotifySlack(ctx context.Context, orgID uuid.UUID, title, body string) error
+	// Slack app access for internal/app/slackapp. The bot token never leaves
+	// this package except through SlackBotToken.
+	SlackConnection(ctx context.Context, orgID uuid.UUID) (*models.IntegrationConnection, error)
+	SlackConnectionsForTeam(ctx context.Context, teamID string) ([]models.IntegrationConnection, error)
+	SlackBotToken(ctx context.Context, orgID, connID uuid.UUID) (string, error)
+	SlackDefaultChannel(ctx context.Context, orgID uuid.UUID, conn *models.IntegrationConnection) string
+	UpdateSlackSettings(ctx context.Context, orgID, connID uuid.UUID, settings models.SlackSettings) (*models.IntegrationConnection, error)
+	MarkSlackTeamRevoked(ctx context.Context, teamID string, status models.IntegrationStatus, detail string) ([]uuid.UUID, error)
+	SlackOAuthConfigured() bool
+	SlackOAuthRedirectURL() string
 
 	// VerificationProviderFor and ReportVerificationProviderError implement
 	// emailverify.ProviderSource: the org's paid verification backend, if any.
@@ -1542,34 +1549,4 @@ func (s *service) slackChannelFor(ctx context.Context, orgID uuid.UUID, c models
 		}
 	}
 	return ""
-}
-
-// NotifySlack posts a one-off message to the org's connected Slack workspace,
-// on the default channel chosen at connect time. Used by the notification
-// system's Slack delivery channel (distinct from event-subscription actions).
-// Best-effort: returns nil when no healthy Slack connection exists.
-func (s *service) NotifySlack(ctx context.Context, orgID uuid.UUID, title, body string) error {
-	conns, err := s.repo.ListConnections(ctx, orgID)
-	if err != nil {
-		return err
-	}
-	for _, c := range conns {
-		if c.Provider != models.IntegrationSlack || c.Status != models.IntegrationStatusConnected {
-			continue
-		}
-		channel := s.slackChannelFor(ctx, orgID, c)
-		if channel == "" {
-			continue
-		}
-		sec, serr := s.repo.GetConnectionSecrets(ctx, c.ID)
-		if serr != nil {
-			continue
-		}
-		token, terr := s.accessTokenFor(ctx, sec)
-		if terr != nil {
-			continue
-		}
-		return slackPostMessage(ctx, token, channel, eventMessage{Title: title, Detail: body})
-	}
-	return nil
 }

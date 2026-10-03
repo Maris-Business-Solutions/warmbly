@@ -71,6 +71,24 @@ type emailSendService struct {
 	// trackedLinkRepo stores the click tickets a tracked direct send mints.
 	// Optional: without it the pixel still goes on and links ship untouched.
 	trackedLinkRepo repository.TrackedLinkRepository
+	// replyObserver hears about queued replies in an inbox thread. Optional.
+	replyObserver ReplyObserver
+}
+
+// ReplyObserver is told about a reply queued into an existing inbox thread,
+// after the send task is stored. It must not block.
+type ReplyObserver interface {
+	ReplyQueued(ctx context.Context, orgID, userID uuid.UUID, threadID, bodyPlain string, scheduledAt time.Time)
+}
+
+// ReplyObserverAware is the optional capability the caller uses to attach one.
+type ReplyObserverAware interface {
+	WireReplyObserver(o ReplyObserver)
+}
+
+// WireReplyObserver attaches the reply observer (the Slack inbox mirror).
+func (s *emailSendService) WireReplyObserver(o ReplyObserver) {
+	s.replyObserver = o
 }
 
 // WireTrackedLinks attaches the click-ticket store. Off the constructor for the
@@ -317,6 +335,10 @@ func (s *emailSendService) SendEmail(ctx context.Context, userID, orgID, account
 		if err := s.taskRepo.UpdateTaskScheduledAt(ctx, taskID, scheduledAt, cloudTaskName); err != nil {
 			// Non-fatal, task is already created
 		}
+	}
+
+	if s.replyObserver != nil && req.ThreadID != "" && req.Forward == nil {
+		s.replyObserver.ReplyQueued(ctx, orgID, userID, req.ThreadID, bodyPlain, scheduledAt)
 	}
 
 	return &SendEmailResponse{

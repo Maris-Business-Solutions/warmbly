@@ -16,6 +16,7 @@ export function useFinishIntegrationOAuth() {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["integrations", "connections"] });
             qc.invalidateQueries({ queryKey: ["integrations", "catalog"] });
+            qc.invalidateQueries({ queryKey: ["integrations", "slack"] });
         },
     });
 }

@@ -1,0 +1,101 @@
+{
+  "display_information": {
+    "background_color": "#0c4a6e",
+    "description": "Ask Warmbly about your outreach, work inbox replies and get notified, all from Slack.",
+    "name": "Warmbly"
+  },
+  "features": {
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "assistant_view": {
+      "assistant_description": "Ask about your campaigns, replies, contacts and mailboxes. Warmbly answers as you, with your workspace permissions.",
+      "suggested_prompts": [
+        {
+          "message": "Summarize the replies my campaigns got today and flag anything that needs an answer.",
+          "title": "Summarize today's replies"
+        },
+        {
+          "message": "How are my active campaigns performing this week?",
+          "title": "How are my campaigns doing?"
+        },
+        {
+          "message": "Are any of my mailboxes unhealthy or throttled right now?",
+          "title": "Check mailbox health"
+        },
+        {
+          "message": "Find the contact I emailed most recently and show their status.",
+          "title": "Find a contact"
+        }
+      ]
+    },
+    "bot_user": {
+      "always_online": true,
+      "display_name": "Warmbly"
+    },
+    "shortcuts": [
+      {
+        "callback_id": "ask_warmbly_about_message",
+        "description": "Start a Warmbly assistant thread about this message",
+        "name": "Ask Warmbly about this",
+        "type": "message"
+      }
+    ],
+    "slash_commands": [
+      {
+        "command": "/warmbly",
+        "description": "Ask Warmbly a question or link your account",
+        "should_escape": false,
+        "url": "https://YOUR-BACKEND-HOST/api/v1/integrations/slack/commands",
+        "usage_hint": "[question] | link | unlink | help"
+      }
+    ]
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://YOUR-BACKEND-HOST/integrations/oauth/callback"
+    ],
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "assistant:write",
+        "channels:history",
+        "channels:read",
+        "chat:write",
+        "chat:write.public",
+        "commands",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "im:read",
+        "im:write",
+        "mpim:history"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention",
+        "message.im",
+        "message.channels",
+        "message.groups",
+        "assistant_thread_started",
+        "assistant_thread_context_changed",
+        "app_home_opened",
+        "app_uninstalled",
+        "tokens_revoked"
+      ],
+      "request_url": "https://YOUR-BACKEND-HOST/api/v1/integrations/slack/events"
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://YOUR-BACKEND-HOST/api/v1/integrations/slack/interactivity"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
