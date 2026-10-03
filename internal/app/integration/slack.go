@@ -114,7 +114,9 @@ func (s *service) UpdateSlackSettings(ctx context.Context, orgID, connID uuid.UU
 	}
 	cc := map[string]any{}
 	if len(conn.ConfigCapabilities) > 0 {
-		_ = json.Unmarshal(conn.ConfigCapabilities, &cc)
+		if err := json.Unmarshal(conn.ConfigCapabilities, &cc); err != nil {
+			return nil, err
+		}
 	}
 	setOrDelete := func(key string, v any, empty bool) {
 		if empty {

@@ -47,6 +47,7 @@ type interaction struct {
 		ActionTS string `json:"action_ts"`
 	} `json:"actions"`
 	View struct {
+		ID              string `json:"id"`
 		CallbackID      string `json:"callback_id"`
 		PrivateMetadata string `json:"private_metadata"`
 		State           struct {

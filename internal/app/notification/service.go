@@ -8,6 +8,7 @@ package notification
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -276,14 +277,18 @@ func (s *service) notifyOne(ctx context.Context, userID uuid.UUID, orgID *uuid.U
 		org, postOrg := *orgID, !suppressSlack
 		slackFired = postOrg
 		notice := slackNotice(category, title, body, link, meta, uniboxEmailID)
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		go func(parent context.Context) {
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 8*time.Second)
 			defer cancel()
 			if postOrg {
-				_ = s.slack.NotifyOrg(ctx, org, notice)
+				if err := s.slack.NotifyOrg(ctx, org, notice); err != nil {
+					log.Printf("notification: slack channel post failed (org=%s category=%s): %v", org, category, err)
+				}
 			}
-			_ = s.slack.NotifyMember(ctx, org, userID, notice)
-		}()
+			if err := s.slack.NotifyMember(ctx, org, userID, notice); err != nil {
+				log.Printf("notification: slack dm failed (org=%s category=%s): %v", org, category, err)
+			}
+		}(ctx)
 	}
 
 	// Push: immediate on a quiet window, digest-batched inside one (detached).

@@ -16,7 +16,7 @@ import (
 
 const (
 	replyBodyMax     = 3000
-	replySendTimeout = 2 * time.Second
+	replySendTimeout = time.Minute
 	labelInterested  = "Interested"
 	labelNotInterest = "Not interested"
 )
@@ -161,14 +161,24 @@ func (s *Service) submitReply(ctx context.Context, p *interaction) any {
 	if err != nil || mapping == nil {
 		return viewErrors("body", "This conversation belongs to another Warmbly workspace.")
 	}
-	args, _ := json.Marshal(map[string]string{"thread_id": meta.ThreadID, "body": body})
-	sctx, cancel := context.WithTimeout(withSlackSend(ctx), replySendTimeout)
-	defer cancel()
-	if _, err := s.registry.Call(sctx, invocation(a.member, a.link), "send_reply", args); err != nil {
-		return viewErrors("body", sendErrorText(err))
+	// The modal closes now and the send runs once in the background: Slack
+	// allows three seconds here, and a send that outlives an open form invites
+	// a second submit.
+	if !s.guard.first(ctx, "slack:reply:"+p.View.ID, time.Hour) {
+		return viewClear()
 	}
+	args, _ := json.Marshal(map[string]string{"thread_id": meta.ThreadID, "body": body})
+	inv, token := invocation(a.member, a.link), a.token
 	userID, slackUser := a.link.UserID, a.userID
-	s.spawn("slack_reply_receipt", shortTaskTime, func(ctx context.Context) {
+	s.spawn("slack_reply_send", replySendTimeout, func(ctx context.Context) {
+		if _, err := s.registry.Call(withSlackSend(ctx), inv, "send_reply", args); err != nil {
+			m := plainMessage("Your reply was not sent. " + sendErrorText(err))
+			m.Channel, m.ThreadTS, m.User = mapping.ChannelID, mapping.ThreadTS, slackUser
+			if perr := s.client.PostEphemeral(ctx, token, m); perr != nil {
+				log.Warn().Err(perr).Msg("slack: reply failure notice failed")
+			}
+			return
+		}
 		s.guard.del(ctx, draftKey(orgID, meta.ThreadID))
 		s.inbox.postSent(ctx, orgID, userID, meta.ThreadID, body, time.Now(), slackUser)
 	})
@@ -182,7 +192,7 @@ func sendErrorText(err error) string {
 	case errors.Is(err, aitools.ErrInvalidArgs):
 		return "This conversation has no message to reply to."
 	case errors.Is(err, context.DeadlineExceeded):
-		return "Sending is taking longer than expected. Check the conversation in Warmbly before trying again."
+		return "Sending took too long. Check the conversation in Warmbly before trying again."
 	}
 	return truncateRunes(err.Error(), 300)
 }

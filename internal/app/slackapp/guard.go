@@ -85,21 +85,21 @@ func (g *guard) first(ctx context.Context, key string, ttl time.Duration) bool {
 	return g.memSet(key, ttl)
 }
 
-// lock takes key for ttl and returns its release, or false when held.
+// lock takes key for ttl and returns its release, or false when held. With
+// Redis configured an error refuses the lock: a per-process fallback would let
+// two replicas run the same thread.
 func (g *guard) lock(ctx context.Context, key string, ttl time.Duration) (func(), bool) {
 	if g.rdb != nil {
 		token := randomHex(16)
 		ok, err := g.rdb.SetNX(ctx, key, token, ttl).Result()
-		if err == nil {
-			if !ok {
-				return nil, false
-			}
-			return func() {
-				rctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				defer cancel()
-				_ = releaseScript.Run(rctx, g.rdb, []string{key}, token).Err()
-			}, true
+		if err != nil || !ok {
+			return nil, false
 		}
+		return func() {
+			rctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = releaseScript.Run(rctx, g.rdb, []string{key}, token).Err()
+		}, true
 	}
 	if !g.memSet(key, ttl) {
 		return nil, false

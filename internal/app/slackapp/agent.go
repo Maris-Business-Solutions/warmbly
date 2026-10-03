@@ -339,6 +339,8 @@ type renderer struct {
 	dirty  bool
 	appr   *pendingApprovalInfo
 	drafts map[string]string
+	// pending is draft_reply's input until its result says it was saved.
+	pending map[string]string
 
 	stop chan struct{}
 	wg   sync.WaitGroup
@@ -398,6 +400,9 @@ func (r *renderer) emit(ev aiagent.StreamEvent) {
 			r.captureDraft(ev.Args)
 		}
 	case "tool_result":
+		if ev.Tool == "draft_reply" {
+			r.settleDraft(ev.Result)
+		}
 		for i := len(r.steps) - 1; i >= 0; i-- {
 			if r.steps[i].name == ev.Tool && !r.steps[i].done {
 				r.steps[i].done = true
@@ -423,10 +428,22 @@ func (r *renderer) captureDraft(args json.RawMessage) {
 	if json.Unmarshal(args, &in) != nil || strings.TrimSpace(in.ThreadID) == "" || strings.TrimSpace(in.Body) == "" {
 		return
 	}
+	r.pending = map[string]string{in.ThreadID: in.Body}
+}
+
+// settleDraft keeps the pending draft only when the tool reported success.
+func (r *renderer) settleDraft(result string) {
+	p := r.pending
+	r.pending = nil
+	if len(p) == 0 || strings.HasPrefix(strings.TrimSpace(result), "error") {
+		return
+	}
 	if r.drafts == nil {
 		r.drafts = map[string]string{}
 	}
-	r.drafts[in.ThreadID] = in.Body
+	for k, v := range p {
+		r.drafts[k] = v
+	}
 }
 
 func (r *renderer) pendingApproval() *pendingApprovalInfo {

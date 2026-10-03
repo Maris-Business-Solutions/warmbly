@@ -392,7 +392,7 @@ func (s *service) Resume(ctx context.Context, inv aitools.Invocation, sessionID 
 	if decision == "deny" {
 		toolResult = `{"status":"denied","note":"The user declined to run this action."}`
 	} else {
-		emit(StreamEvent{Type: evTool, Tool: pending.ToolName, Risk: pending.Risk, ArgsSummary: pending.ArgsSummary, ToolCallID: pending.ToolCallID})
+		emit(StreamEvent{Type: evTool, Tool: pending.ToolName, Risk: pending.Risk, ArgsSummary: pending.ArgsSummary, ToolCallID: pending.ToolCallID, Args: pending.Args})
 		// Resolve the pending tool from the invocation's full tool set (static
 		// registry tools PLUS dynamic per-org tools like connected MCP servers),
 		// which registry.Call does not cover.
