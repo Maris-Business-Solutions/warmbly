@@ -100,6 +100,7 @@ const PARAM_ROUTES: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/app\/campaigns\/[^/]+\/steps$/, "Campaign steps"],
   [/^\/app\/campaigns\/[^/]+$/, "Campaign"],
   [/^\/app\/automations\/[^/]+$/, "Automation"],
+  [/^\/app\/integrations\/apps\/[^/]+$/, "Integrations"],
   [/^\/app\/placement\/batches\/[^/]+$/, "Placement batch"],
   [/^\/app\/placement\/[^/]+$/, "Placement test"],
   [/^\/app\/forms\/[^/]+$/, "Form"],

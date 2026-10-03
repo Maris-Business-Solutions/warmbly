@@ -381,6 +381,11 @@ Registering and managing the OAuth apps your workspace owns. The flow itself (au
 | POST | `/oauth/applications/:id/webhook-secret/rotate` | `API_KEYS` |
 | GET | `/oauth/applications/:id/webhook-endpoints` | `API_KEYS` |
 | GET | `/oauth/applications/:id/webhook-deliveries` | `API_KEYS` |
+| GET | `/oauth/applications/:id/listing` | `API_KEYS` |
+| PUT | `/oauth/applications/:id/listing` | `API_KEYS` |
+| DELETE | `/oauth/applications/:id/listing` | `API_KEYS` |
+
+The `listing` routes publish an app to the [community directory](/api/oauth/#publish-to-the-community-directory). `PUT` replaces the whole listing and `DELETE` succeeds when there is nothing to remove, so both are safe to retry. Browsing the directory is `GET /integrations/community` and `GET /integrations/community/:slug`, under `/integrations/*` below.
 
 ### Operations
 

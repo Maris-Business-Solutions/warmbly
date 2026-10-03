@@ -1141,3 +1141,50 @@ export type UpdateDiscountCodeRequest = Partial<
     starts_at?: string | null;
     expires_at?: string | null;
 };
+
+// Community app directory review queue (/admin/app-listings).
+export type AppListingVerification = "unverified" | "verified" | "rejected";
+
+export interface AdminAppListing {
+    application_id: string;
+    organization_id: string;
+    slug: string;
+    tagline: string;
+    description: string;
+    category: string;
+    install_url: string;
+    support_url: string;
+    privacy_url: string;
+    verification: AppListingVerification;
+    review_note?: string;
+    reviewed_at?: string | null;
+    submitted_at: string;
+    created_at: string;
+    updated_at: string;
+    name: string;
+    logo_url: string;
+    website_url: string;
+    scopes: number;
+    permissions: { name: string; value: number; description: string; category: string }[];
+    app_status: string;
+    organization_name: string;
+    installs: number;
+    reviewed_by?: string | null;
+    reviewed_by_email?: string;
+}
+
+export interface AdminAppListingsResult {
+    data: AdminAppListing[];
+    pagination: {
+        total?: number | null;
+        next_cursor?: string | null;
+        has_more: boolean;
+    };
+}
+
+export interface AdminAppListingSearch {
+    q?: string;
+    verification?: AppListingVerification | "";
+    limit?: number;
+    cursor?: string;
+}

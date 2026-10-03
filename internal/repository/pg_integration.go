@@ -53,6 +53,9 @@ type IntegrationRepository interface {
 	// Connections
 	UpsertConnection(ctx context.Context, w *ConnectionWrite) error
 	ListConnections(ctx context.Context, orgID uuid.UUID) ([]models.IntegrationConnection, error)
+	// WorkspacesByProvider counts the workspaces with a live connection to each
+	// provider: an instance-wide aggregate for popularity, carrying no org data.
+	WorkspacesByProvider(ctx context.Context) (map[models.IntegrationProvider]int, error)
 	GetConnection(ctx context.Context, orgID uuid.UUID, provider models.IntegrationProvider, label string) (*models.IntegrationConnection, error)
 	GetConnectionByID(ctx context.Context, orgID, id uuid.UUID) (*models.IntegrationConnection, error)
 	GetConnectionSecrets(ctx context.Context, id uuid.UUID) (*ConnectionSecrets, error)
@@ -236,6 +239,28 @@ func normalizeScopes(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+func (r *integrationRepository) WorkspacesByProvider(ctx context.Context) (map[models.IntegrationProvider]int, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT provider, count(DISTINCT organization_id)::int
+		FROM integration_connections
+		WHERE status <> 'disconnected'
+		GROUP BY provider`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[models.IntegrationProvider]int{}
+	for rows.Next() {
+		var p string
+		var n int
+		if err := rows.Scan(&p, &n); err != nil {
+			return nil, err
+		}
+		out[models.IntegrationProvider(p)] = n
+	}
+	return out, rows.Err()
 }
 
 func (r *integrationRepository) ListConnections(ctx context.Context, orgID uuid.UUID) ([]models.IntegrationConnection, error) {

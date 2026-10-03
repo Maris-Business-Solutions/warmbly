@@ -11,6 +11,7 @@ import { NavLink } from "react-router-dom";
 import {
     Activity,
     ArrowLeftRight,
+    Blocks,
     Building2,
     CalendarClock,
     FileText,
@@ -85,6 +86,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { to: "/users", label: "Users", icon: Users, perm: AdminPerm.ViewUsers },
             { to: "/organizations", label: "Organizations", icon: Building2, perm: AdminPerm.ViewOrganizations },
             { to: "/limit-requests", label: "Limit requests", icon: Gauge, perm: AdminPerm.ViewOrganizations },
+            { to: "/app-listings", label: "App directory", icon: Blocks, perm: AdminPerm.ViewOrganizations },
             { to: "/discounts", label: "Promo codes", icon: TicketPercent, perm: AdminPerm.ViewOrganizations },
             { to: "/outreach", label: "Outreach", icon: Send, perm: AdminPerm.ViewOrganizations },
             { to: "/admins", label: "Admins", icon: UserCog, perm: AdminPerm.GrantAdminAccess },

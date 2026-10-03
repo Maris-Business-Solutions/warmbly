@@ -32,10 +32,17 @@ type AppWebhookSyncer interface {
 	DeleteAppEndpointsExcept(ctx context.Context, appID uuid.UUID, keepOrgIDs []uuid.UUID) error
 }
 
+// ListingGuard returns a verified directory listing to review. Satisfied by
+// repository.AppDirectoryRepository.
+type ListingGuard interface {
+	Unverify(ctx context.Context, orgID, appID uuid.UUID) error
+}
+
 // Service is the OAuth authorization server.
 type Service struct {
 	repo        repository.OAuthRepository
 	webhookSync AppWebhookSyncer
+	listings    ListingGuard
 	// cache backs the per-IP rate limit on the open Dynamic Client Registration
 	// endpoint. Optional: nil disables the limit (fails open).
 	cache *cache.Cache
@@ -49,6 +56,12 @@ func NewService(repo repository.OAuthRepository, c *cache.Cache) *Service {
 // an app, or changing its webhook config, reconciles the per-org endpoints.
 func (s *Service) WireWebhookSync(w AppWebhookSyncer) {
 	s.webhookSync = w
+}
+
+// WireListingGuard makes a change to an app's public face (name, logo,
+// website, scopes) send its verified directory listing back for review.
+func (s *Service) WireListingGuard(g ListingGuard) {
+	s.listings = g
 }
 
 // --- credential helpers (mirror the api_key hash-at-rest scheme) ---
@@ -164,6 +177,8 @@ func (s *Service) UpdateApplication(ctx context.Context, orgID, id uuid.UUID, w 
 	if scopes == 0 {
 		return nil, fmt.Errorf("select at least one scope")
 	}
+	faceChanged := app.Name != name || app.LogoURL != strings.TrimSpace(w.LogoURL) ||
+		app.WebsiteURL != strings.TrimSpace(w.WebsiteURL) || app.Scopes != scopes
 	app.Name = name
 	app.Description = strings.TrimSpace(w.Description)
 	app.LogoURL = strings.TrimSpace(w.LogoURL)
@@ -176,6 +191,11 @@ func (s *Service) UpdateApplication(ctx context.Context, orgID, id uuid.UUID, w 
 	}
 	if err := s.repo.UpdateApplication(ctx, app); err != nil {
 		return nil, err
+	}
+	if faceChanged && s.listings != nil {
+		if err := s.listings.Unverify(ctx, orgID, id); err != nil {
+			return nil, fmt.Errorf("the app was saved but its directory listing could not be sent for review")
+		}
 	}
 	// Re-materialize the app's per-org endpoints from the new config (URL/events).
 	s.ReconcileAppEndpoints(ctx, id)

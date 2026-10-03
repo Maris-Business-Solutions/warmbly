@@ -904,6 +904,7 @@ var ExcludedTables = map[string]string{
 	"realtime_events":              "The websocket outbox. Every row is already delivered or expired.",
 	"integration_oauth_states":     "In-flight OAuth handshakes, valid for minutes and bound to the source instance's redirect URL.",
 	"oauth_authorization_codes":    "Single-use authorization codes, valid for seconds.",
+	"app_directory_listings":       "A publication on the source instance's community directory, judged by its operator. Publish again on the destination, where its own operator reviews it.",
 	"scheduled_deletions":          "Instance lifecycle state. Importing a pending deletion would schedule the destination workspace for destruction.",
 	"dedicated_worker_assignments": "Worker topology, which is a property of the instance rather than the workspace.",
 	"warmup_spam_moves":            "Per-message attribution evidence for warmup mail this instance synced, kept only to decide recent tampering; the destination judges its own.",

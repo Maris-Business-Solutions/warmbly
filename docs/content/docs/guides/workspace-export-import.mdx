@@ -134,6 +134,8 @@ A few things belong to the instance rather than the workspace and are left out o
 
 [Contact imports](/guides/contacts-crm/#importing) do not travel, finished or running, for the same reason: an import is work the source instance is doing. The contacts it created are ordinary contacts and move with the Contacts group, and the saved column mappings come with them. Let a running import finish before exporting, or the rows it has not reached are not in the archive.
 
+A [community directory](/guides/integrations/#community-apps) listing does not travel. The OAuth app itself moves with the archive, but its listing is a publication on the source instance that its operators reviewed. Publish it again on the destination, where it starts unverified and goes through that instance's review.
+
 [Slack](/guides/slack/) account links, the record of which Slack thread belongs to which assistant conversation, and which Slack thread mirrors which inbox conversation in the [inbox channel](/guides/slack/#inbox-in-slack) do not travel. They name the Slack install on the source instance, so members link again after Slack is reconnected on the destination, and inbox conversations start new Slack threads there. The assistant conversations themselves move with the Assistant group.
 
 Reply and forward drafts kept in your browser are also excluded. Finish or copy them before moving to another instance. See [reply drafts](/guides/unibox/#reply-drafts).

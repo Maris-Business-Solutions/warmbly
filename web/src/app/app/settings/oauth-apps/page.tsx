@@ -56,6 +56,7 @@ import type {
     WebhookEventDescriptor,
 } from "@/lib/api/models/app/webhooks/Webhook";
 import { SectionShell } from "../_components/SectionShell";
+import AppListingPanel from "./AppListingPanel";
 
 function formatRelative(date: Date | string | undefined): string {
     if (!date) return "never";
@@ -788,6 +789,7 @@ function AppRow({ app }: { app: OAuthApplication }) {
                     </div>
                 )}
             </div>
+            <AppListingPanel app={app} />
             {secret && (
                 <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2">
                     <div className="text-[10.5px] uppercase tracking-[0.12em] text-amber-700 mb-1">New client secret (shown once)</div>

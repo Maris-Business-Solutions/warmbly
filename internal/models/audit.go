@@ -147,6 +147,9 @@ const (
 	AuditEntityPoolLink  AuditEntityType = "pool_link"
 	AuditEntityCloudLink AuditEntityType = "cloud_link"
 
+	// Community directory listing of one of the workspace's OAuth apps.
+	AuditEntityAppListing AuditEntityType = "app_listing"
+
 	// Inbox placement: a test or batch started or cancelled, and a campaign's
 	// scheduled test set up, changed or removed.
 	AuditEntityPlacementTest    AuditEntityType = "placement_test"

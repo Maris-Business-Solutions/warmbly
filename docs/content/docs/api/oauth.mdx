@@ -316,6 +316,72 @@ The [realtime gateway](/api/realtime/) and app-level webhooks deliver the same e
 
 Both are equally valid depending on what you are building. A dashboard-like integration benefits from the WebSocket's low latency and presence features. A data-pipeline or serverless integration benefits from the webhook's durable, individually-inspectable HTTP deliveries without holding a connection open for every installed org.
 
+## Publish to the community directory
+
+Once your app works, list it in the [community directory](/guides/integrations/#community-apps) so other workspaces on the instance can find and install it from their Integrations page. Use **Publish** on the app under **Settings -> OAuth apps**, or the endpoints below.
+
+A new listing is **unverified**. It is reachable at once by its link, `/app/integrations/apps/{slug}`, which opens with a warning that nobody has reviewed it, and it does not appear in the directory, search or recommendations. The instance's operators review it, and a **verified** listing joins every workspace's directory. A **rejected** listing is hidden, link included, and carries a `review_note` saying what to change; editing it sends it back for review.
+
+Any change to the listing, or to the app's name, logo, website or scopes, returns a verified listing to `unverified` and takes it out of the directory until it is reviewed again. A save that changes nothing keeps its standing.
+
+Install in the directory opens your `install_url`. Start the authorization-code flow from there with your own `state`, so the user lands on Warmbly's consent screen the same way they would from your site.
+
+All three endpoints require **Scope** `API_KEYS` and **org permission** `manage_api_keys`.
+
+#### Get the listing
+
+`GET /oauth/applications/{id}/listing`
+
+Returns `{"listing": {...}}`, or `{"listing": null}` when the app is not published.
+
+#### Publish or edit the listing
+
+`PUT /oauth/applications/{id}/listing`
+
+Replaces the whole listing, so repeating the request is safe.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `slug` | string | The link. 3 to 48 lowercase letters, numbers or single dashes, starting and ending with a letter or number. Unique on the instance; the built-in integrations' names are reserved. |
+| `tagline` | string | One line, at most 120 characters. |
+| `description` | string | Optional, at most 2,000 characters. Line breaks are kept; markup is shown as text. |
+| `category` | string | One of `crm`, `automation`, `notifications`, `meetings`, `data`, `verification`, `ai`, `other`. |
+| `install_url` | string | Where Install takes people. Must be `https`. |
+| `support_url` | string | Optional `https` link. |
+| `privacy_url` | string | Optional `https` link. |
+
+```json
+{
+  "listing": {
+    "application_id": "5a8f0c1e-2b3d-4e5f-8a9b-0c1d2e3f4a5b",
+    "organization_id": "11111111-2222-3333-4444-555555555555",
+    "slug": "acme-sync",
+    "tagline": "Push positive replies into Acme as deals",
+    "description": "",
+    "category": "crm",
+    "install_url": "https://acme.com/warmbly/install",
+    "support_url": "https://acme.com/support",
+    "privacy_url": "",
+    "verification": "unverified",
+    "submitted_at": "2026-10-03T09:00:00Z",
+    "created_at": "2026-10-03T09:00:00Z",
+    "updated_at": "2026-10-03T09:00:00Z"
+  }
+}
+```
+
+Refusals are `400` `invalid_listing` (the `message` names the field), `400` `app_not_listable` for a disabled or dynamically registered app, and `409` `listing_slug_taken`. See [error codes](/api/error-codes/#community-directory-refusals).
+
+#### Unpublish
+
+`DELETE /oauth/applications/{id}/listing`
+
+Removes the listing and its link. Workspaces that installed the app keep their grants until they revoke them. Succeeds when there is no listing, so it is safe to retry.
+
+#### Browsing the directory
+
+`GET /integrations/community` returns verified listings of active apps, most installed first, as `data` plus `pagination` (`limit` 1 to 200, default 100). `GET /integrations/community/{slug}` returns one published listing, verified or unverified. Both need **Scope** `INTEGRATIONS`, and each listing reports `installs` (workspaces with an active grant) and `installed` (whether the caller's workspace has one). See [integrations](/api/reference/integrations/#list-community-apps).
+
 ## Security notes
 
 - Redirect URIs are matched exactly, so register every callback you use.

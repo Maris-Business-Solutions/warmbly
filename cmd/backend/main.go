@@ -36,6 +36,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/aitools"
 	"github.com/warmbly/warmbly/internal/app/analytics"
 	"github.com/warmbly/warmbly/internal/app/apikey"
+	"github.com/warmbly/warmbly/internal/app/appdirectory"
 	"github.com/warmbly/warmbly/internal/app/audit"
 	"github.com/warmbly/warmbly/internal/app/auth"
 	behaviorapp "github.com/warmbly/warmbly/internal/app/behavior"
@@ -339,6 +340,7 @@ func main() {
 	var webhookServiceForHandler webhook.Service
 	var integrationServiceForHandler integration.Service
 	var oauthService *oauth.Service
+	var appDirectoryService *appdirectory.Service
 	var notificationService notification.Service
 	var twofaService twofa.Service
 	var viewPreferencesService viewprefs.Service
@@ -790,6 +792,10 @@ func main() {
 		// Materialize per-org webhook endpoints when an app is authorized/revoked or
 		// its webhook config changes (the app-level subscription model).
 		oauthService.WireWebhookSync(webhookRepository)
+		// Community app directory: published OAuth apps, reviewed before discovery.
+		appDirectoryRepo := repository.NewAppDirectoryRepository(primaryDB.Pool)
+		oauthService.WireListingGuard(appDirectoryRepo)
+		appDirectoryService = appdirectory.NewService(appDirectoryRepo, repository.NewOAuthRepository(primaryDB.Pool))
 		// integrationServiceForHandler is constructed after cipherService below —
 		// OAuth/secret sealing depends on the envelope-encryption service.
 		contactRepoForHandler = contactRepostory
@@ -2313,6 +2319,9 @@ func main() {
 
 		// OAuth 2.1 authorization server
 		OAuthService: oauthService,
+
+		// Community app directory
+		AppDirectoryService: appDirectoryService,
 
 		// On-demand Google Sheets -> leads sync
 		LeadSyncService: leadSyncServiceForHandler,

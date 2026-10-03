@@ -11,6 +11,7 @@ import (
 	"github.com/warmbly/warmbly/internal/pkg/emailverify"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,7 +41,8 @@ var ErrUseOAuth = errors.New("this provider connects via OAuth; start the author
 // talk to. Provider-specific behaviour (OAuth identity, event actions, inbound
 // webhooks) lives in the per-provider files in this package.
 type Service interface {
-	Catalog() []models.IntegrationCatalogEntry
+	// Catalog returns every built-in integration, ranked by popularity.
+	Catalog(ctx context.Context) []models.IntegrationCatalogEntry
 	ListConnections(ctx context.Context, orgID uuid.UUID) ([]models.IntegrationConnection, error)
 	GetConnection(ctx context.Context, orgID, id uuid.UUID) (*models.IntegrationConnection, error)
 
@@ -196,6 +198,10 @@ type service struct {
 	aiProvider generation.Provider
 	credits    credits.CreditService
 	aiSearch   generation.SearchClient
+
+	popMu sync.Mutex
+	pop   map[models.IntegrationProvider]int
+	popAt time.Time
 }
 
 // NewService builds the integration service. cipherSvc seals provider secrets
@@ -219,8 +225,9 @@ func (s *service) SetAISearch(sc generation.SearchClient) { s.aiSearch = sc }
 
 func (s *service) Repo() repository.IntegrationRepository { return s.repo }
 
-func (s *service) Catalog() []models.IntegrationCatalogEntry {
+func (s *service) Catalog(ctx context.Context) []models.IntegrationCatalogEntry {
 	entries := Catalog()
+	rankByPopularity(entries, s.popularity(ctx))
 	for i := range entries {
 		e := &entries[i]
 		if e.AuthMethod == string(models.IntegrationAuthOAuth) {

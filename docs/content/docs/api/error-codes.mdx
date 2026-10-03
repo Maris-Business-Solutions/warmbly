@@ -275,6 +275,16 @@ A batch runs every check that applies to the whole batch (the copy, the panel, t
 
 A `400` without one of these codes is a malformed request: an unknown `panel` or `tracking`, a `sequence_id` without its `campaign_id`, a missing subject or body on an ad-hoc test, a monitor `interval_days` outside `1` to `30` or an `alert_below` outside `0` to `100`, or on a batch `pace` `quick`, both or neither of `sender_account_ids` and `sender_scope`, an unknown `sender_scope.type`, `sample.mode` or `on_unavailable`, or `sample.stratify` on a sample that is not random or percent.
 
+#### Community directory refusals
+
+`PUT /oauth/applications/:id/listing` publishes or edits an app's [community directory listing](/api/oauth/#publish-to-the-community-directory). Nothing is saved on any refusal.
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `invalid_listing` | 400 | A listing field breaks a rule: the `slug` is not 3 to 48 lowercase letters, numbers or single dashes, or is reserved for a built-in integration; the `tagline` is empty or over 120 characters; the `description` is over 2,000; either holds control, invisible or bidirectional-override characters; the `category` is unknown; or `install_url`, `support_url` or `privacy_url` is not an `https` address on a host without credentials. The `message` names the field |
+| `app_not_listable` | 400 | The app cannot be listed: it is disabled, or it is a client created by dynamic registration, which has no publishing workspace |
+| `listing_slug_taken` | 409 | Another app on this instance already uses the `slug`. Choose another |
+
 ### 401 Unauthorized
 
 Returned when authentication fails.

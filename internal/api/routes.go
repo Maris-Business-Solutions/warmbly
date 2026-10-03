@@ -1140,6 +1140,9 @@ func Run(
 				operate := m.RequireAccess(models.PermUseIntegrations, models.APIPermIntegrations)
 
 				integrations.GET("/catalog", read, h.ListIntegrationCatalog)
+				// Community directory: verified apps for discovery, any published app by its link.
+				integrations.GET("/community", read, h.ListCommunityApps)
+				integrations.GET("/community/:slug", read, h.GetCommunityApp)
 				integrations.GET("/connections", read, h.ListIntegrationConnections)
 				integrations.POST("/connections", write, h.ConnectIntegration)
 				integrations.GET("/connections/:id", read, h.GetIntegrationConnection)
@@ -1208,6 +1211,10 @@ func Run(
 				oauthApps.PATCH("/:id", h.UpdateOAuthApplication)
 				oauthApps.DELETE("/:id", h.DeleteOAuthApplication)
 				oauthApps.POST("/:id/rotate-secret", h.RotateOAuthApplicationSecret)
+				// The app's community directory listing.
+				oauthApps.GET("/:id/listing", h.GetOAuthAppListing)
+				oauthApps.PUT("/:id/listing", h.PutOAuthAppListing)
+				oauthApps.DELETE("/:id/listing", h.DeleteOAuthAppListing)
 				// App-level webhook subscription: secret reveal/rotate + delivery
 				// observability (the per-org endpoints and the cross-org delivery log).
 				oauthApps.GET("/:id/webhook-secret", h.GetOAuthAppWebhookSecret)
@@ -1720,6 +1727,11 @@ func Run(
 		adminRoutes.GET("/limit-requests", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListLimitRequests)
 		adminRoutes.POST("/limit-requests/:id/approve", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminApproveLimitRequest)
 		adminRoutes.POST("/limit-requests/:id/reject", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminRejectLimitRequest)
+
+		// Community app directory review queue
+		adminRoutes.GET("/app-listings", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListAppListings)
+		adminRoutes.POST("/app-listings/:id/verify", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminVerifyAppListing)
+		adminRoutes.POST("/app-listings/:id/reject", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminRejectAppListing)
 
 		// Admin outreach composer. Reuses ManageOrganizations (the
 		// audit story is the same as direct overrides — admin sends

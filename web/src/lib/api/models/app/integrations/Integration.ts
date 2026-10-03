@@ -62,6 +62,8 @@ export interface IntegrationCatalogEntry {
     capability?: ProviderCapability;
     /** Whether the server has OAuth client credentials wired for this provider. */
     configured: boolean;
+    /** Popularity on this instance, 1 = most used. */
+    rank: number;
 }
 
 export type SyncDirection = "push" | "pull" | "both";

@@ -54,7 +54,7 @@ func (h *Handler) requireIntegrationActor(c *gin.Context, requirePaid bool) (org
 // ListIntegrationCatalog returns the static metadata for every integration
 // Warmbly supports, annotated with whether each OAuth provider is wired.
 func (h *Handler) ListIntegrationCatalog(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"catalog": h.IntegrationService.Catalog()})
+	c.JSON(http.StatusOK, gin.H{"catalog": h.IntegrationService.Catalog(c.Request.Context())})
 }
 
 // ListIntegrationConnections returns this org's connection rows (no secrets).
