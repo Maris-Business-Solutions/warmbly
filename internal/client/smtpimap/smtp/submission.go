@@ -61,9 +61,11 @@ var dialTCP = func(ctx context.Context, local *net.TCPAddr, addr string) (net.Co
 // own, marked ErrSMTPSEgressBlocked when this worker has learned that its own
 // network drops 465.
 func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port int, security string) (Dialed, error) {
+	// Read once: the race's goroutines outlive this call and must not read the package vars.
+	dialFn, egress := dialTCP, smtpsEgress
 	resolved := models.ResolveSMTPSecurity(security, port)
 	if resolved != models.MailSecurityTLS || port != PortSMTPS {
-		conn, err := dialTCP(ctx, local, models.MailDialAddress(host, port))
+		conn, err := dialFn(ctx, local, models.MailDialAddress(host, port))
 		return Dialed{Conn: conn, Port: port, Security: resolved}, err
 	}
 
@@ -71,14 +73,14 @@ func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port i
 	defer cancel()
 	results := make(chan dialOutcome, 2)
 	dial := func(port int) {
-		conn, err := dialTCP(raceCtx, local, models.MailDialAddress(host, port))
+		conn, err := dialFn(raceCtx, local, models.MailDialAddress(host, port))
 		results <- dialOutcome{conn: conn, err: err, port: port}
 	}
 	inFlight := 1
 	go dial(PortSMTPS)
 
 	// A worker that knows its 465 is blocked gives it no head start.
-	blocked := smtpsEgress.Blocked()
+	blocked := egress.Blocked()
 	headStartFor := fallbackHeadStart
 	if blocked {
 		headStartFor = 0
@@ -104,11 +106,11 @@ func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port i
 			inFlight--
 			if r.err == nil && r.conn != nil {
 				if r.port == PortSMTPS {
-					smtpsEgress.markOpen()
+					egress.markOpen()
 				} else if primaryErr == nil || dialTimedOut(primaryErr) {
-					smtpsEgress.markSilent(host)
+					egress.markSilent(host)
 				}
-				go closeLosers(results, inFlight)
+				go closeLosers(egress, results, inFlight)
 				return Dialed{Conn: r.conn, Port: r.port, Security: securityForPort(r.port), FellBack: r.port != port}, nil
 			}
 			if r.port != PortSMTPS {
@@ -134,11 +136,11 @@ func DialSubmission(ctx context.Context, local *net.TCPAddr, host string, port i
 // closeLosers drains the dials still in flight after a winner was taken, so
 // a socket that connects late is closed rather than leaked. A late 465 still
 // proves the port is open from here.
-func closeLosers(results <-chan dialOutcome, n int) {
+func closeLosers(egress *egressState, results <-chan dialOutcome, n int) {
 	for ; n > 0; n-- {
 		if r := <-results; r.conn != nil {
 			if r.port == PortSMTPS {
-				smtpsEgress.markOpen()
+				egress.markOpen()
 			}
 			r.conn.Close()
 		}
