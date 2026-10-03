@@ -14,6 +14,7 @@ import { useAutosave, type AutosaveStatus } from "@/hooks/useAutosave";
 import { useRegisterUnsaved } from "@/hooks/context/unsaved";
 import { PERSON_NAME_MAX, nameError, normalizeName } from "@/lib/displayName";
 import TimezonesSection from "./TimezonesSection";
+import { ThemeCards } from "@/components/app/theme/ThemePicker";
 
 // Header indicator priority when two autosaves share one SaveStatus.
 function combineStatus(a: AutosaveStatus, b: AutosaveStatus): AutosaveStatus {
@@ -85,7 +86,7 @@ export default function ProfileSettingsPage() {
     return (
         <SectionShell
             title="Profile"
-            description="Used in emails sent on your behalf, the sidebar avatar, and any invitation you send out."
+            description="Used in emails sent on your behalf, the sidebar avatar, and any invitation you send out, plus how the dashboard looks to you."
             actions={<SaveStatus status={status} onRetry={retry} />}
         >
             <Section eyebrow="Identity" description="Names appear on outgoing emails.">
@@ -129,6 +130,13 @@ export default function ProfileSettingsPage() {
                         className="w-full max-w-[280px] h-7 px-2.5 rounded-md border border-slate-200 bg-slate-50 text-[12.5px] text-slate-500 font-mono"
                     />
                 </Row>
+            </Section>
+
+            <Section
+                eyebrow="Appearance"
+                description="System follows your device and switches with it. Saved in this browser."
+            >
+                <ThemeCards />
             </Section>
 
             <TimezonesSection />

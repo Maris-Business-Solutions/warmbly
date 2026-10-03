@@ -119,6 +119,7 @@ import AdvisorSummaryBar from "@/components/app/advisor/AdvisorSummaryBar";
 import { useAdvisorEntityIndex } from "@/lib/api/hooks/app/advisor/useAdvisor";
 import type { AdvisorFinding } from "@/lib/api/models/app/advisor/Advisor";
 import { Checkbox } from "@/components/ui/checkbox";
+import { labelInk } from "@/lib/utils";
 
 export default function AddressesPage() {
     const p = useUserProfile();
@@ -890,7 +891,7 @@ function MailboxRow({
                                 <span
                                     key={t.id}
                                     className="hidden lg:inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-[9.5px] font-medium shrink-0"
-                                    style={{ backgroundColor: `${t.color}1a`, color: t.color }}
+                                    style={{ backgroundColor: `${t.color}1a`, color: labelInk(t.color) }}
                                 >
                                     <span className="size-1.5 rounded-full" style={{ backgroundColor: t.color }} />
                                     {t.title}

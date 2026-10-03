@@ -154,7 +154,7 @@ function CLIAuthInner() {
                     </div>
                 </motion.div>
 
-                <div className="mt-5 flex items-center justify-center gap-3 text-[12px] text-white/70">
+                <div className="theme-solid mt-5 flex items-center justify-center gap-3 text-[12px] text-white/70">
                     <Link to="/app/emails" className="hover:text-white transition-colors">Back to dashboard</Link>
                     <span className="text-white/40">·</span>
                     <a href="https://docs.warmbly.com/api/cli/" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">About the CLI</a>
@@ -181,8 +181,8 @@ function Steps({ current }: { current: "code" | "review" | "done" }) {
                         <div className="flex items-center gap-2">
                             <motion.span
                                 animate={{
-                                    backgroundColor: state === "todo" ? "#f1f5f9" : "#0284c7",
-                                    color: state === "todo" ? "#94a3b8" : "#ffffff",
+                                    backgroundColor: state === "todo" ? "var(--color-slate-100)" : "#0284c7",
+                                    color: state === "todo" ? "var(--color-slate-400)" : "#ffffff",
                                 }}
                                 className="size-6 rounded-full inline-flex items-center justify-center text-[11px] font-semibold"
                             >

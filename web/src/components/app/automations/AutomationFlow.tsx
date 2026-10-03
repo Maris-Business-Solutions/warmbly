@@ -560,9 +560,9 @@ function ConvergeEdge({
                             <div
                                 className="rounded border px-1 py-px text-[10px]"
                                 style={{
-                                    borderColor: (labelBgStyle as { stroke?: string } | undefined)?.stroke ?? "#e2e8f0",
-                                    background: (labelBgStyle as { fill?: string } | undefined)?.fill ?? "#fff",
-                                    color: (labelStyle as { fill?: string } | undefined)?.fill ?? "#475569",
+                                    borderColor: (labelBgStyle as { stroke?: string } | undefined)?.stroke ?? "light-dark(#e2e8f0, #2e2f34)",
+                                    background: (labelBgStyle as { fill?: string } | undefined)?.fill ?? "light-dark(#fff, #1a1b1e)",
+                                    color: (labelStyle as { fill?: string } | undefined)?.fill ?? "light-dark(#475569, #b4bac3)",
                                 }}
                             >
                                 {label}
@@ -612,7 +612,7 @@ function whenToHandle(w?: string): string {
 function styledEdge(id: string, source: string, target: string, sourceHandle: string, when: When): Edge {
     const aiLabel = when.startsWith("label:") ? when.slice("label:".length) : "";
     const color =
-        when === "true" ? "#0ea5e9" : when === "false" ? "#94a3b8" : when === "error" ? "#f43f5e" : aiLabel ? "#a855f7" : "#cbd5e1";
+        when === "true" ? "var(--wb-edge-sky)" : when === "false" ? "var(--wb-edge-muted)" : when === "error" ? "var(--wb-edge-rose)" : aiLabel ? "var(--wb-edge-violet)" : "var(--wb-edge-faint)";
     return {
         id,
         source,
@@ -624,7 +624,7 @@ function styledEdge(id: string, source: string, target: string, sourceHandle: st
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
         style: { stroke: color, strokeWidth: 1.5 },
         labelStyle: { fill: color },
-        labelBgStyle: { fill: "#fff", stroke: color },
+        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: color },
     };
 }
 
@@ -1499,7 +1499,7 @@ export default function AutomationFlow({
                     fitView
                     proOptions={{ hideAttribution: true }}
                 >
-                    <Background color="#e9eef5" gap={24} size={1} />
+                    <Background color="light-dark(#e9eef5, #25262a)" gap={24} size={1} />
                     <Controls showInteractive={false} />
                     <CanvasSelections selections={live.selections} />
                     <CanvasCursors cursors={live.cursors} />

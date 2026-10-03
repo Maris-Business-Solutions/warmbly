@@ -171,6 +171,8 @@ const StatsShareCard = React.forwardRef<HTMLDivElement, { data: ShareCardData; a
         return (
             <div
                 ref={ref}
+                // The exported image is the light design whichever theme the exporter uses.
+                className="theme-light"
                 style={{ width, height, background: SKY_BASE, position: "relative", overflow: "hidden", borderRadius: 0 }}
             >
                 <SkyBackdrop />

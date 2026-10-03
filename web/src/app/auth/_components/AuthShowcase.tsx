@@ -157,7 +157,7 @@ function SlideView({ slide }: { slide: Slide }) {
                 {/* Full-width card so a feature is always on screen as it slides in */}
                 <div className="w-full">{slide.mock}</div>
             </div>
-            <div className="pt-4 lg:pt-6">
+            <div className="theme-solid pt-4 lg:pt-6">
                 <div className="mb-1 flex items-center gap-2">
                     <Icon className="size-4 text-sky-200" />
                     <h3 className="text-[15px] font-bold tracking-tight text-white">{slide.title}</h3>

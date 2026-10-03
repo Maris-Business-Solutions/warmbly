@@ -43,6 +43,22 @@ const TONES = {
 } as const;
 export type DitherTone = keyof typeof TONES;
 
+// The same tones drawn for a dark ground: lighter and calmer, so dots glow
+// softly instead of buzzing. Read at paint time, so a chart picks up a theme
+// switch on its next repaint.
+const DARK_TONES: Record<DitherTone, readonly [number, number, number]> = {
+    sky: [96, 174, 226],
+    amber: [226, 176, 92],
+    rose: [228, 118, 136],
+    emerald: [84, 192, 150],
+    violet: [162, 142, 236],
+    slate: [150, 155, 165],
+};
+const toneRgb = (tone: DitherTone): readonly [number, number, number] =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+        ? DARK_TONES[tone]
+        : TONES[tone];
+
 // Dither dots blend into the page instead of sitting on it; lines and
 // hovered/selected elements stay fully opaque for definition.
 const FILL_ALPHA = 215;
@@ -129,7 +145,7 @@ export function DitherBarChart({
         const H = el.height;
         const img = ctx.createImageData(W, H);
         const buf = img.data;
-        const [cr, cg, cb] = TONES[tone];
+        const [cr, cg, cb] = toneRgb(tone);
         const n = data.length;
         if (n > 0) {
             const slot = W / n;
@@ -630,7 +646,7 @@ export function DitherAreaChart({
         const vals = disp.current[0] ?? data.map((d) => d.value);
         const ys = vals.map((v) => (yCssFor(v) / height) * rows);
         const curve = sampleCurve(ys, monotoneTangents(ys), cols);
-        const rgb = TONES[tone];
+        const rgb = toneRgb(tone);
         const revealX = reveal.current * cols;
         const lift = intensity.current;
         for (let x = 0; x < cols; x++) {
@@ -653,7 +669,7 @@ export function DitherAreaChart({
         paint();
     }, [paint]);
 
-    const tones = React.useMemo(() => [TONES[tone]] as const, [tone]);
+    const tones = React.useMemo(() => [toneRgb(tone)] as const, [tone]);
     useSparkles(starRef, geomRef, tones, reveal, intensity, reduced);
 
     const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -665,7 +681,7 @@ export function DitherAreaChart({
 
     const d = hover !== null ? data[hover] : null;
     const hoverX = hover !== null && data.length > 1 ? (hover / (data.length - 1)) * w : w / 2;
-    const [cr, cg, cb] = TONES[tone];
+    const [cr, cg, cb] = toneRgb(tone);
 
     return (
         <div
@@ -778,7 +794,7 @@ export function DitherMultiAreaChart({
             const vals = disp.current[s] ?? series[s].values;
             const ys = vals.map((v) => (yCssFor(v) / height) * rows);
             curves.push(sampleCurve(ys, monotoneTangents(ys), cols));
-            rgbs.push(TONES[series[s].tone]);
+            rgbs.push(toneRgb(series[s].tone));
         }
         const tops = new Array<number>(S);
         for (let x = 0; x < cols; x++) {
@@ -794,7 +810,7 @@ export function DitherMultiAreaChart({
             height,
             series.map((s, si) => ({
                 ys: (disp.current[si] ?? s.values).map((v) => yCssFor(v) * dpr),
-                rgb: TONES[s.tone],
+                rgb: toneRgb(s.tone),
             })),
             reveal.current,
         );
@@ -805,7 +821,7 @@ export function DitherMultiAreaChart({
         paint();
     }, [paint]);
 
-    const tones = React.useMemo(() => series.map((s) => TONES[s.tone]), [series]);
+    const tones = React.useMemo(() => series.map((s) => toneRgb(s.tone)), [series]);
     useSparkles(starRef, geomRef, tones, reveal, intensity, reduced);
 
     const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -848,7 +864,7 @@ export function DitherMultiAreaChart({
                         style={{ left: hoverX }}
                     />
                     {series.map((s) => {
-                        const [cr, cg, cb] = TONES[s.tone];
+                        const [cr, cg, cb] = toneRgb(s.tone);
                         return (
                             <div
                                 key={s.label}
@@ -873,7 +889,7 @@ export function DitherMultiAreaChart({
                             <>
                                 <div className="font-medium text-slate-900 whitespace-nowrap">{labels[hover]}</div>
                                 {series.map((s) => {
-                                    const [cr, cg, cb] = TONES[s.tone];
+                                    const [cr, cg, cb] = toneRgb(s.tone);
                                     return (
                                         <div key={s.label} className="flex items-center gap-1.5 whitespace-nowrap">
                                             <span
@@ -925,7 +941,7 @@ export function DitherMeter({
             const H = el.height;
             const img = ctx.createImageData(W, H);
             const buf = img.data;
-            const [cr, cg, cb] = TONES[tone];
+            const [cr, cg, cb] = toneRgb(tone);
             const fillEnd = cur * W;
             const ramp = Math.min(6 * dpr, W);
             for (let y = 0; y < H; y++) {
@@ -1032,7 +1048,7 @@ export function DitherColumns({
                     const y1 = H - (acc / max) * p * H;
                     acc += v;
                     const y0 = H - (acc / max) * p * H;
-                    const rgb = TONES[tones[s] ?? "sky"];
+                    const rgb = toneRgb(tones[s] ?? "sky");
                     for (let x = x0; x < x1 && x < W; x++) {
                         for (let y = Math.max(0, Math.floor(y0)); y < Math.min(H, Math.ceil(y1)); y++) {
                             const a = hot ? 1 : 0.85;
@@ -1140,7 +1156,7 @@ export function DitherStack({
         let acc = 0;
         for (const s of segments) {
             acc += clamp01(s.frac);
-            bounds.push({ end: Math.min(1, acc) * W * reveal, rgb: TONES[s.tone] });
+            bounds.push({ end: Math.min(1, acc) * W * reveal, rgb: toneRgb(s.tone) });
         }
         for (let y = 0; y < H; y++) {
             for (let x = 0; x < W; x++) {
@@ -1223,7 +1239,7 @@ export function DitherRing({
             const S = el.width;
             const img = ctx.createImageData(S, S);
             const buf = img.data;
-            const [cr, cg, cb] = TONES[tone];
+            const [cr, cg, cb] = toneRgb(tone);
             const c = S / 2;
             const rOut = c;
             const rIn = c - thickness * dpr;
@@ -1311,7 +1327,7 @@ export function DitherSlider({
 }) {
     const trackRef = React.useRef<HTMLDivElement | null>(null);
     const frac = max > min ? clamp01((value - min) / (max - min)) : 0;
-    const [cr, cg, cb] = TONES[tone];
+    const [cr, cg, cb] = toneRgb(tone);
 
     const snap = (raw: number) => Math.max(min, Math.min(max, Math.round(raw / step) * step));
 

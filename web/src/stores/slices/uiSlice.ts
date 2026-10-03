@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
+import { applyTheme, readStoredTheme, resolveTheme, storeTheme, type ResolvedTheme, type Theme, type ThemeOrigin } from '@/lib/theme'
 
-export type Theme = 'light' | 'dark' | 'system'
+export type { Theme } from '@/lib/theme'
 
 // Unibox list-column bounds. These are the preference's bounds; what the column
 // can actually render is additionally capped against the viewport at the drag
@@ -66,7 +67,7 @@ export interface UISlice {
 
   // Theme
   theme: Theme
-  resolvedTheme: 'light' | 'dark'
+  resolvedTheme: ResolvedTheme
 
   // Modals
   tagsModalOpen: boolean
@@ -102,8 +103,9 @@ export interface UISlice {
   setUniboxRailFavorites: (favorites: UniboxRailFavorite[]) => void
 
   // Actions - Theme
-  setTheme: (theme: Theme) => void
-  setResolvedTheme: (theme: 'light' | 'dark') => void
+  // origin is where the switch was asked for; the new theme spreads from it.
+  setTheme: (theme: Theme, origin?: ThemeOrigin) => void
+  setResolvedTheme: (theme: ResolvedTheme, origin?: ThemeOrigin) => void
 
   // Actions - Modals
   setTagsModalOpen: (open: boolean) => void
@@ -118,11 +120,6 @@ export interface UISlice {
   setUniboxListWidth: (width: number) => void
   setUniboxRailWidth: (width: number) => void
   setUniboxContactRailOpen: (open: boolean) => void
-}
-
-const getInitialTheme = (): Theme => {
-  if (typeof window === 'undefined') return 'system'
-  return (localStorage.getItem('theme') as Theme) || 'system'
 }
 
 // Rehydration bypasses the setter, so a stored value that is not a map of
@@ -185,14 +182,6 @@ export const applyRailOrder = (defaults: string[], stored: string[] | undefined)
   return out
 }
 
-// The dashboard is light-only today: every surface is styled on white, so a
-// resolved dark theme would flip only the CSS-variable components (command
-// palette, toasts) and look broken. 'dark'/'system' are accepted but resolve
-// to light until a real dark theme ships.
-const getResolvedTheme = (_theme: Theme): 'light' | 'dark' => {
-  return 'light'
-}
-
 export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) => ({
   // Sidebar
   navCollapsed: false,
@@ -206,8 +195,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   uniboxRailOwner: null,
 
   // Theme
-  theme: getInitialTheme(),
-  resolvedTheme: getResolvedTheme(getInitialTheme()),
+  theme: readStoredTheme(),
+  resolvedTheme: resolveTheme(readStoredTheme()),
 
   // Modals
   tagsModalOpen: false,
@@ -269,15 +258,17 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   setUniboxRailFavorites: (favorites) => set({ uniboxRailFavorites: sanitizeUniboxRailFavorites(favorites) }),
 
   // Actions - Theme
-  setTheme: (theme) => {
+  setTheme: (theme, origin) => {
     if (get().theme === theme) return
-    localStorage.setItem('theme', theme)
-    const resolvedTheme = getResolvedTheme(theme)
-    document.documentElement.classList.remove('dark')
+    storeTheme(theme)
+    const resolvedTheme = resolveTheme(theme)
+    applyTheme(resolvedTheme, origin)
     set({ theme, resolvedTheme })
   },
-  setResolvedTheme: (resolvedTheme) =>
-    set((state) => (state.resolvedTheme === resolvedTheme ? state : { resolvedTheme })),
+  setResolvedTheme: (resolvedTheme, origin) => {
+    applyTheme(resolvedTheme, origin)
+    set((state) => (state.resolvedTheme === resolvedTheme ? state : { resolvedTheme }))
+  },
 
   // Actions - Modals
   setTagsModalOpen: (tagsModalOpen) =>

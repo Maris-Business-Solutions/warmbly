@@ -81,7 +81,7 @@ export default function ProviderGlyph({
         return (
             <div
                 className={cn(
-                    "rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0",
+                    "rounded-md ring-1 ring-slate-200 bg-white dark:bg-[#e6e8eb] inline-flex items-center justify-center shrink-0",
                     tileDim,
                 )}
             >
@@ -101,7 +101,7 @@ export default function ProviderGlyph({
         return (
             <div
                 className={cn(
-                    "rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0",
+                    "rounded-md ring-1 ring-slate-200 bg-white dark:bg-[#e6e8eb] inline-flex items-center justify-center shrink-0",
                     tileDim,
                 )}
             >

@@ -92,7 +92,7 @@ export default function AuthLayout({
                 </div>
 
                 {/* Footer — mobile, on the sky below the card */}
-                <div className="mt-5 flex items-center justify-center gap-3 text-[12px] text-white/70 lg:hidden">
+                <div className="theme-solid mt-5 flex items-center justify-center gap-3 text-[12px] text-white/70 lg:hidden">
                     {brand.terms_url && <>
                         <a href={brand.terms_url} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Terms</a>
                         <span className="text-white/40">·</span>

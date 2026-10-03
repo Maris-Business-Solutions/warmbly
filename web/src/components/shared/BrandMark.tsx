@@ -1,5 +1,6 @@
 import { Logo } from "@/components/svg";
 import useBrand from "@/hooks/useBrand";
+import { cn } from "@/lib/utils";
 
 /**
  * The wordmark on the sky: sign-in, the CLI authorization page, the cloud
@@ -18,9 +19,10 @@ export default function BrandMark({ className }: { className: string }) {
             <span className="font-extrabold text-[18px] tracking-tight text-white">{brand.name}</span>
         </>
     );
-    if (!brand.website_url) return <div className={className}>{inner}</div>;
+    // Always drawn on the sky, so it keeps its white in either theme.
+    if (!brand.website_url) return <div className={cn("theme-solid", className)}>{inner}</div>;
     return (
-        <a href={brand.website_url} className={className}>
+        <a href={brand.website_url} className={cn("theme-solid", className)}>
             {inner}
         </a>
     );

@@ -22,6 +22,7 @@ import {
     PopoverMenuTrigger,
 } from "@/components/ui/popover-menu";
 import { cn } from "@/lib/utils";
+import { ThemeSwitch } from "@/components/app/theme/ThemePicker";
 
 export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
     const navigate = useNavigate();
@@ -96,6 +97,11 @@ export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
                     <div className="text-[11px] text-slate-400 truncate font-mono">
                         {user.email}
                     </div>
+                </div>
+                <PopoverMenuSeparator />
+                <div className="flex h-8 items-center justify-between gap-3 pl-3 pr-1.5">
+                    <span className="text-[12.5px] text-slate-700">Theme</span>
+                    <ThemeSwitch />
                 </div>
                 <PopoverMenuSeparator />
                 <PopoverMenuItem

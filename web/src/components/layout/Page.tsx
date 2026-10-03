@@ -66,7 +66,7 @@ export function PageTopbar({
             className={cn(
                 // Single 48px row on >=md; on mobile it wraps so action
                 // clusters drop to a second line instead of widening the page.
-                "min-h-12 md:h-12 px-5 py-1.5 md:py-0 border-b border-slate-200 flex flex-wrap md:flex-nowrap items-center gap-3 gap-y-1.5 shrink-0 bg-white sticky top-0 z-10",
+                "min-h-12 md:h-12 px-5 py-1.5 md:py-0 border-b border-slate-200 flex flex-wrap md:flex-nowrap items-center gap-3 gap-y-1.5 shrink-0 bg-white dark:bg-[rgb(17_18_20/0.72)] dark:backdrop-blur-md sticky top-0 z-10",
                 className,
             )}
         >

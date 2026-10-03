@@ -928,9 +928,9 @@ function ConvergeEdge({
                         className="nodrag nopan pointer-events-none absolute rounded border px-1 py-px text-[10px]"
                         style={{
                             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                            borderColor: (labelBgStyle as { stroke?: string } | undefined)?.stroke ?? "#e2e8f0",
-                            background: (labelBgStyle as { fill?: string } | undefined)?.fill ?? "#fff",
-                            color: (labelStyle as { fill?: string } | undefined)?.fill ?? "#475569",
+                            borderColor: (labelBgStyle as { stroke?: string } | undefined)?.stroke ?? "light-dark(#e2e8f0, #2e2f34)",
+                            background: (labelBgStyle as { fill?: string } | undefined)?.fill ?? "light-dark(#fff, #1a1b1e)",
+                            color: (labelStyle as { fill?: string } | undefined)?.fill ?? "light-dark(#475569, #b4bac3)",
                         }}
                     >
                         {label}
@@ -1538,7 +1538,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
         const ifMeta: Record<string, IfMeta> = {};
         const flowEdges: Edge[] = [];
         const edgeStyle = (cond: boolean) =>
-            cond ? { stroke: "#0ea5e9", strokeWidth: 2 } : { stroke: "#94a3b8" };
+            cond ? { stroke: "var(--wb-edge-sky)", strokeWidth: 2 } : { stroke: "var(--wb-edge-muted)" };
 
         sequences.forEach((s) => {
             const branches = ordered(s.conditions?.branches ?? []);
@@ -1561,9 +1561,9 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                     target: b.target_step_id ?? STOP_ID,
                     label: wt ? `${name} · ${wt}` : name,
                     reconnectable: true,
-                    style: { stroke: "#a855f7", strokeWidth: 2 },
-                    labelStyle: { fill: "#7e22ce", fontSize: 10 },
-                    labelBgStyle: { fill: "#fff", stroke: "#e9d5ff" },
+                    style: { stroke: "var(--wb-edge-violet)", strokeWidth: 2 },
+                    labelStyle: { fill: "light-dark(#7e22ce, #d8b4fe)", fontSize: 10 },
+                    labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e9d5ff, rgb(168 85 247 / 0.4))" },
                     labelBgPadding: [5, 3],
                     labelBgBorderRadius: 5,
                     data: { sourceId: s.id, branchId: b.branch_id },
@@ -1606,8 +1606,8 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                         target: nid,
                         label: "else",
                         style: edgeStyle(false),
-                        labelStyle: { fill: "#94a3b8", fontSize: 10 },
-                        labelBgStyle: { fill: "#fff", stroke: "#e2e8f0" },
+                        labelStyle: { fill: "light-dark(#94a3b8, #62666d)", fontSize: 10 },
+                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e2e8f0, #2e2f34)" },
                         labelBgPadding: [4, 2],
                         labelBgBorderRadius: 5,
                         data: { sourceId: s.id, branchId: b.branch_id },
@@ -1638,8 +1638,8 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                         label: wt || undefined,
                         reconnectable: true,
                         style: edgeStyle(true),
-                        labelStyle: { fill: "#0369a1", fontSize: 10 },
-                        labelBgStyle: { fill: "#fff", stroke: "#bae6fd" },
+                        labelStyle: { fill: "light-dark(#0369a1, #7dd3fc)", fontSize: 10 },
+                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#bae6fd, rgb(56 189 248 / 0.35))" },
                         labelBgPadding: [5, 3],
                         labelBgBorderRadius: 5,
                         data: { sourceId: s.id, branchId: b.branch_id },
@@ -1660,8 +1660,8 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                         label: wt ? `else · ${wt}` : "else",
                         reconnectable: true,
                         style: edgeStyle(false),
-                        labelStyle: { fill: "#475569", fontSize: 10 },
-                        labelBgStyle: { fill: "#fff", stroke: "#e2e8f0" },
+                        labelStyle: { fill: "light-dark(#475569, #b4bac3)", fontSize: 10 },
+                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e2e8f0, #2e2f34)" },
                         labelBgPadding: [5, 3],
                         labelBgBorderRadius: 5,
                         data: { sourceId: s.id, branchId: uncond.branch_id },
@@ -1676,8 +1676,8 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                         label: wt || undefined,
                         reconnectable: true,
                         style: edgeStyle(false),
-                        labelStyle: { fill: "#475569", fontSize: 10 },
-                        labelBgStyle: { fill: "#fff", stroke: "#e2e8f0" },
+                        labelStyle: { fill: "light-dark(#475569, #b4bac3)", fontSize: 10 },
+                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e2e8f0, #2e2f34)" },
                         labelBgPadding: [5, 3],
                         labelBgBorderRadius: 5,
                         data: { sourceId: s.id, branchId: uncond.branch_id },
@@ -1708,7 +1708,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                 target: sequences[0].id,
                 deletable: false,
                 reconnectable: false,
-                style: { stroke: "#c4b5fd", strokeWidth: 2 },
+                style: { stroke: "var(--wb-edge-violet-soft)", strokeWidth: 2 },
             });
         }
 
@@ -1747,7 +1747,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                     type: MarkerType.ArrowClosed,
                     width: 16,
                     height: 16,
-                    color: (e.style as { stroke?: string } | undefined)?.stroke ?? "#94a3b8",
+                    color: (e.style as { stroke?: string } | undefined)?.stroke ?? "var(--wb-edge-muted)",
                 },
             };
         });
@@ -2040,7 +2040,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                 fitView
                 proOptions={{ hideAttribution: true }}
             >
-                <Background color="#e9eef5" gap={24} size={1} />
+                <Background color="light-dark(#e9eef5, #25262a)" gap={24} size={1} />
                 <Controls showInteractive={false} />
                 <CanvasSelections selections={live.selections} />
                 <CanvasCursors cursors={live.cursors} />

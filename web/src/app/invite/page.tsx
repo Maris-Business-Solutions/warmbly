@@ -20,6 +20,7 @@ import { useAppStore } from "@/stores";
 import { Logo } from "@/components/svg";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
+import { labelInk } from "@/lib/utils";
 
 export default function InviteAcceptPage() {
     const [params] = useSearchParams();
@@ -140,7 +141,7 @@ export default function InviteAcceptPage() {
                                                 <span
                                                     key={r.id}
                                                     className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[10px] font-medium border"
-                                                    style={{ backgroundColor: `${r.color || "#64748b"}14`, borderColor: `${r.color || "#64748b"}55`, color: r.color || "#475569" }}
+                                                    style={{ backgroundColor: `${r.color || "#64748b"}14`, borderColor: `${r.color || "#64748b"}55`, color: labelInk(r.color || "#475569") }}
                                                 >
                                                     <span className="size-1.5 rounded-full" style={{ backgroundColor: r.color || "#64748b" }} />
                                                     {r.name}

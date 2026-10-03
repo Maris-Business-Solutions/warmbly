@@ -7,6 +7,6 @@ export default function AddBoxStepButton({ next = false, tt, loading = false, on
             {!next && <RiArrowLeftSLine className="w-4.5" />}
             <div>{!tt ? next ? "Next" : "Back" : tt}</div>
             {next && <RiArrowRightSLine className="w-4.5" />}
-        </> : <Loading className={`h-6 ${next ? "text-white" : "text-black"}`} />}
+        </> : <Loading className={`h-6 ${next ? "text-white" : "text-slate-900"}`} />}
     </button>
 }

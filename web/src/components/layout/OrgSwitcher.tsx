@@ -75,7 +75,7 @@ export function OrgSwitcher() {
                 >
                     <span
                         className={`size-6 rounded-md ring-1 ring-slate-200 flex items-center justify-center shrink-0 overflow-hidden ${
-                            orgAvatar ? "bg-white p-0.5" : "bg-slate-900"
+                            orgAvatar ? "bg-white dark:bg-transparent p-0.5" : "bg-slate-900"
                         }`}
                     >
                         {orgAvatar ? (
@@ -113,7 +113,7 @@ export function OrgSwitcher() {
                                 disabled={switchOrgMutation.isPending}
                                 selected={org.id === currentOrganization?.id}
                                 icon={
-                                    <span className={`size-5 rounded-md ring-1 ring-slate-200 flex items-center justify-center shrink-0 overflow-hidden ${avatar ? "bg-white p-px" : "bg-slate-900"}`}>
+                                    <span className={`size-5 rounded-md ring-1 ring-slate-200 flex items-center justify-center shrink-0 overflow-hidden ${avatar ? "bg-white dark:bg-transparent p-px" : "bg-slate-900"}`}>
                                         {avatar ? (
                                             <img
                                                 src={avatar}

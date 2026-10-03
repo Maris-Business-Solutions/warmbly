@@ -846,7 +846,7 @@ function LogPanel({ lines }: { lines: string[] }) {
     return (
         <pre
             ref={ref}
-            className="max-h-56 overflow-auto rounded-md border border-slate-200 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-200"
+            className="max-h-56 overflow-auto rounded-md border border-slate-200 dark:border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-200"
         >
             {lines.length > 0 ? lines.join("\n") : "Waiting for output"}
         </pre>
