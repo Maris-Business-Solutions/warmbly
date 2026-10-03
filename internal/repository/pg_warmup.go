@@ -147,6 +147,9 @@ type WarmupRepository interface {
 	GetParticipantHealth(ctx context.Context, accountID uuid.UUID, poolType string) (*models.WarmupParticipantHealth, error)
 	// GetParticipantHealthForAccount returns the participant row whatever pool it is in.
 	GetParticipantHealthForAccount(ctx context.Context, accountID uuid.UUID) (*models.WarmupParticipantHealth, error)
+	// GetParticipantHealthForAccounts is the batched form: one pool row per
+	// mailbox in the set, keyed by account id.
+	GetParticipantHealthForAccounts(ctx context.Context, accountIDs []uuid.UUID) (map[uuid.UUID]*models.WarmupParticipantHealth, error)
 	// GetCloudStanding is the standing Warmbly Cloud last reported for a
 	// mailbox it warms; nil for any other mailbox.
 	GetCloudStanding(ctx context.Context, accountID uuid.UUID) (*models.WarmupHealthInfo, error)
@@ -651,6 +654,36 @@ func (r *warmupRepository) GetCloudStanding(ctx context.Context, accountID uuid.
 // is in. Exact because a mailbox is in at most one (migration 000097).
 func (r *warmupRepository) GetParticipantHealthForAccount(ctx context.Context, accountID uuid.UUID) (*models.WarmupParticipantHealth, error) {
 	return r.scanParticipantHealth(r.db.QueryRow(ctx, participantHealthSelect, accountID))
+}
+
+// GetParticipantHealthForAccounts is the batched form of
+// GetParticipantHealthForAccount: the single pool row for each mailbox in the
+// set, keyed by account id, in one query. A mailbox in no pool is absent.
+func (r *warmupRepository) GetParticipantHealthForAccounts(ctx context.Context, accountIDs []uuid.UUID) (map[uuid.UUID]*models.WarmupParticipantHealth, error) {
+	out := make(map[uuid.UUID]*models.WarmupParticipantHealth, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return out, nil
+	}
+
+	query := participantHealthColumns + `
+			WHERE wpp.email_account_id = ANY($1::uuid[])`
+
+	rows, err := r.db.Query(ctx, query, accountIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		h, err := r.scanParticipantHealth(rows)
+		if err != nil {
+			return nil, err
+		}
+		if h != nil {
+			out[h.EmailAccountID] = h
+		}
+	}
+	return out, rows.Err()
 }
 
 func (r *warmupRepository) GetParticipantHealth(ctx context.Context, accountID uuid.UUID, poolType string) (*models.WarmupParticipantHealth, error) {

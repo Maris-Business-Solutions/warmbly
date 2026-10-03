@@ -85,6 +85,10 @@ type CampaignRepository interface {
 	// low-volume health-check warmup running whenever a mailbox is in use by a
 	// live campaign.
 	CountActiveCampaignsForAccount(ctx context.Context, accountID uuid.UUID) (int, error)
+	// CountActiveCampaignsForAccounts is the batched form, keyed by account id,
+	// so a status list resolves campaign membership for the whole page in one
+	// query. An account backing no active campaign maps to 0.
+	CountActiveCampaignsForAccounts(ctx context.Context, accountIDs []uuid.UUID) (map[uuid.UUID]int, error)
 
 	// ── Explicit sender pool (feature 1) ────────────────────────────────
 	// GetCampaignSenders returns the campaign's explicit sender rows.
@@ -1920,6 +1924,61 @@ func (r *campaignRepository) CountActiveCampaignsForAccount(ctx context.Context,
 	var count int
 	err := r.DB.QueryRow(ctx, query, accountID).Scan(&count)
 	return count, err
+}
+
+// CountActiveCampaignsForAccounts counts, for each mailbox in the set, the
+// distinct active campaigns it backs. Same scope rule as the single-account
+// form: tag-resolved, explicit enabled sender, or an "all" campaign (no tags,
+// no enabled senders) in the mailbox's tenant when the mailbox is active.
+func (r *campaignRepository) CountActiveCampaignsForAccounts(ctx context.Context, accountIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := make(map[uuid.UUID]int, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return out, nil
+	}
+	for _, id := range accountIDs {
+		out[id] = 0
+	}
+
+	query := `
+		SELECT a.id, COUNT(DISTINCT c.id)
+		FROM unnest($1::uuid[]) AS a(id)
+		JOIN email_accounts ea ON ea.id = a.id
+		LEFT JOIN campaigns c
+		  ON c.status = 'active'
+		 AND c.organization_id = ea.organization_id
+		 AND (
+			EXISTS (
+				SELECT 1 FROM campaign_email_tags cet
+				JOIN email_tags et ON et.tag_id = cet.tag_id
+				WHERE cet.campaign_id = c.id AND et.email_id = a.id
+			)
+			OR EXISTS (
+				SELECT 1 FROM campaign_senders cs
+				WHERE cs.campaign_id = c.id AND cs.email_account_id = a.id AND cs.enabled
+			)
+			OR (
+				ea.status = 'active'
+				AND NOT EXISTS (SELECT 1 FROM campaign_email_tags cet2 WHERE cet2.campaign_id = c.id)
+				AND NOT EXISTS (SELECT 1 FROM campaign_senders cs2 WHERE cs2.campaign_id = c.id AND cs2.enabled)
+			)
+		 )
+		GROUP BY a.id`
+
+	rows, err := r.DB.Query(ctx, query, accountIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id uuid.UUID
+		var count int
+		if err := rows.Scan(&id, &count); err != nil {
+			return nil, err
+		}
+		out[id] = count
+	}
+	return out, rows.Err()
 }
 
 // syncCampaignSendersTx replaces the explicit sender pool inside an existing tx.

@@ -43,6 +43,10 @@ func (accountStatusAnalyticsRepoStub) GetAccountDailyUsage(context.Context, uuid
 	return nil, errx.InternalError()
 }
 
+func (accountStatusAnalyticsRepoStub) GetAccountDailyUsageBatch(context.Context, []uuid.UUID, time.Time) (map[uuid.UUID]*models.AccountDailyUsage, *errx.Error) {
+	return nil, errx.InternalError()
+}
+
 type dashboardAnalyticsRepoStub struct {
 	repository.AnalyticsRepository
 	overallFrom time.Time

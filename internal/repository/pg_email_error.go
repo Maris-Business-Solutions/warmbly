@@ -52,6 +52,10 @@ type EmailAccountErrorRepository interface {
 	// only turn a repeat into a constraint violation.
 	CreateOnce(ctx context.Context, err *CreateEmailAccountError) (*EmailAccountError, *errx.Error)
 	GetByAccountID(ctx context.Context, accountID uuid.UUID, unresolvedOnly bool) ([]EmailAccountError, *errx.Error)
+	// GetByAccountIDs is the batched form, keyed by account id, so a status list
+	// reads every mailbox's errors in one query. Each account's errors keep the
+	// newest-first order.
+	GetByAccountIDs(ctx context.Context, accountIDs []uuid.UUID, unresolvedOnly bool) (map[uuid.UUID][]EmailAccountError, *errx.Error)
 	GetByUserID(ctx context.Context, userID uuid.UUID, limit int) ([]EmailAccountError, *errx.Error)
 	Resolve(ctx context.Context, errorID uuid.UUID, resolvedBy string) *errx.Error
 	ResolveByMethod(ctx context.Context, accountID uuid.UUID, method string) *errx.Error
@@ -191,6 +195,55 @@ func (r *emailAccountErrorRepository) GetByAccountID(ctx context.Context, accoun
 	}
 
 	return errors, nil
+}
+
+// GetByAccountIDs retrieves errors for many email accounts in one query.
+func (r *emailAccountErrorRepository) GetByAccountIDs(ctx context.Context, accountIDs []uuid.UUID, unresolvedOnly bool) (map[uuid.UUID][]EmailAccountError, *errx.Error) {
+	out := make(map[uuid.UUID][]EmailAccountError, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return out, nil
+	}
+
+	query := `
+		SELECT id, email_account_id, user_id, error_code, severity, resolve_method,
+		       title, message, user_message, action_required, task_id,
+		       resolved_at, resolved_by, created_at
+		FROM email_account_errors
+		WHERE email_account_id = ANY($1::uuid[])
+	`
+
+	if unresolvedOnly {
+		query += " AND resolved_at IS NULL"
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	rows, err := r.DB.Query(ctx, query, accountIDs)
+	if err != nil {
+		db.CaptureError(err, query, []any{accountIDs}, "query")
+		return nil, errx.InternalError()
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var e EmailAccountError
+		err := rows.Scan(
+			&e.ID, &e.EmailAccountID, &e.UserID, &e.ErrorCode, &e.Severity, &e.ResolveMethod,
+			&e.Title, &e.Message, &e.UserMessage, &e.ActionRequired, &e.TaskID,
+			&e.ResolvedAt, &e.ResolvedBy, &e.CreatedAt,
+		)
+		if err != nil {
+			db.CaptureError(err, "", nil, "scan")
+			return nil, errx.InternalError()
+		}
+		out[e.EmailAccountID] = append(out[e.EmailAccountID], e)
+	}
+	if err := rows.Err(); err != nil {
+		db.CaptureError(err, "", nil, "rows")
+		return nil, errx.InternalError()
+	}
+
+	return out, nil
 }
 
 // GetByUserID retrieves recent errors for a user across all their email accounts

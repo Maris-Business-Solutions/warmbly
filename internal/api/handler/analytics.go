@@ -2,11 +2,14 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 )
@@ -194,7 +197,12 @@ func (h *Handler) GetCampaignDailyStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": stats})
 }
 
-// GetAllAccountStatuses gets status of all email accounts
+// GetAllAccountStatuses lists email account statuses, one bounded page at a
+// time. A page view asks only for the mailbox ids it shows (email_ids);
+// otherwise the opaque cursor walks the whole inventory. The per-mailbox reads
+// are batched across the page, so a page's cost does not grow with the total
+// inventory, and the overflow beyond the old 1000-row cap is reachable through
+// next_cursor instead of being silently dropped.
 // GET /analytics/accounts
 func (h *Handler) GetAllAccountStatuses(c *gin.Context) {
 	// Account lookups are org-scoped (emailRepo.Search filters on
@@ -205,13 +213,43 @@ func (h *Handler) GetAllAccountStatuses(c *gin.Context) {
 		return
 	}
 
-	statuses, xerr := h.AnalyticsService.GetAllAccountStatuses(c.Request.Context(), *orgID)
+	// email_ids scopes the page to a visible set; invalid or over-limit is a
+	// 400, never a silently truncated or ignored filter.
+	var emailIDs []uuid.UUID
+	if raw := strings.TrimSpace(c.Query("email_ids")); raw != "" {
+		parts := strings.Split(raw, ",")
+		if len(parts) > config.AccountStatusMaxIDs {
+			errx.JSON(c, errx.New(errx.BadRequest, "too many email_ids"))
+			return
+		}
+		emailIDs = make([]uuid.UUID, 0, len(parts))
+		for _, p := range parts {
+			id, err := uuid.Parse(strings.TrimSpace(p))
+			if err != nil {
+				errx.JSON(c, errx.New(errx.BadRequest, "invalid email_ids"))
+				return
+			}
+			emailIDs = append(emailIDs, id)
+		}
+	}
+
+	limit := config.AccountStatusLimitDefault
+	if raw := c.Query("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > config.AccountStatusLimitMax {
+			errx.JSON(c, errx.New(errx.BadRequest, "invalid limit"))
+			return
+		}
+		limit = n
+	}
+
+	result, xerr := h.AnalyticsService.GetAccountStatusesPage(c.Request.Context(), *orgID, emailIDs, c.Query("cursor"), int32(limit))
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": statuses})
+	c.JSON(http.StatusOK, gin.H{"data": result.Data, "pagination": result.Pagination})
 }
 
 // GetAccountStatus gets status of a specific email account

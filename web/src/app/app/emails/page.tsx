@@ -167,9 +167,14 @@ export default function AddressesPage() {
     // index rather than asking for it.
     const advisor = useAdvisorEntityIndex("emails");
 
-    // One query feeds live health for every row; the realtime layer already
-    // invalidates ["analytics","accounts",…] on warmup/account events.
-    const statuses = useAccountStatuses();
+    // Live health for every loaded row, asked for by the visible mailbox ids
+    // (in bounded chunks) rather than an inventory-wide walk. The realtime layer
+    // already invalidates ["analytics","accounts",…] on warmup/account events.
+    const visibleEmailIds = useMemo(
+        () => (emailsData.emails ?? []).map((e) => e.id),
+        [emailsData.emails],
+    );
+    const statuses = useAccountStatuses(visibleEmailIds);
     // Coerce to an array defensively: a wrong-shape (non-array) response must
     // never reach a `for…of`, which would throw "{} is not iterable".
     const accountStatuses = useMemo(

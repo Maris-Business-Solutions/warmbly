@@ -34,6 +34,10 @@ type AnalyticsRepository interface {
 	// Email account status
 	GetAccountsWithErrors(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, *errx.Error)
 	GetAccountDailyUsage(ctx context.Context, accountID uuid.UUID, date time.Time) (*models.AccountDailyUsage, *errx.Error)
+	// GetAccountDailyUsageBatch reads the same day's usage for many mailboxes in
+	// one query, keyed by account id, so a status list avoids one round trip per
+	// mailbox. A missing mailbox is simply absent from the map.
+	GetAccountDailyUsageBatch(ctx context.Context, accountIDs []uuid.UUID, date time.Time) (map[uuid.UUID]*models.AccountDailyUsage, *errx.Error)
 
 	// Usage overview
 	GetEmailAccountCounts(ctx context.Context, orgID uuid.UUID) (*models.AccountsUsage, *errx.Error)
@@ -497,6 +501,70 @@ func (r *analyticsRepository) GetAccountDailyUsage(ctx context.Context, accountI
 	}
 
 	return &usage, nil
+}
+
+// GetAccountDailyUsageBatch is the batched form of GetAccountDailyUsage: one
+// pass over the mailbox set rather than a query per mailbox. It mirrors the
+// per-mailbox columns and the same completed-task ledger.
+func (r *analyticsRepository) GetAccountDailyUsageBatch(ctx context.Context, accountIDs []uuid.UUID, date time.Time) (map[uuid.UUID]*models.AccountDailyUsage, *errx.Error) {
+	out := make(map[uuid.UUID]*models.AccountDailyUsage, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return out, nil
+	}
+
+	query := `
+		SELECT
+			ea.id,
+			$2::date::text as date,
+			(
+				SELECT COUNT(*)
+				FROM tasks t
+				WHERE t.email_account_id = ea.id
+				  AND t.status = 'completed'
+				  AND t.task_type = 'campaign'
+				  AND t.completed_at >= $2::date
+				  AND t.completed_at < $2::date + INTERVAL '1 day'
+				  AND ` + taskDispatchedEmail + `
+			) as campaign_sent,
+			COALESCE(ea.campaign_limit, 50) as campaign_limit,
+			(
+				SELECT COUNT(*)
+				FROM tasks t
+				WHERE t.email_account_id = ea.id
+				  AND t.status = 'completed'
+				  AND t.task_type = 'warmup'
+				  AND t.completed_at >= $2::date
+				  AND t.completed_at < $2::date + INTERVAL '1 day'
+			) as warmup_sent,
+			COALESCE(ea.warmup_max, 0) as warmup_limit
+		FROM email_accounts ea
+		WHERE ea.id = ANY($1::uuid[])
+	`
+
+	params := []any{accountIDs, date}
+	rows, err := r.DB.Query(ctx, query, params...)
+	if err != nil {
+		db.CaptureError(err, query, params, "query")
+		return nil, errx.InternalError()
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id uuid.UUID
+		var usage models.AccountDailyUsage
+		if err := rows.Scan(&id, &usage.Date, &usage.CampaignSent, &usage.CampaignLimit, &usage.WarmupSent, &usage.WarmupLimit); err != nil {
+			db.CaptureError(err, "", nil, "scan")
+			return nil, errx.InternalError()
+		}
+		u := usage
+		out[id] = &u
+	}
+	if err := rows.Err(); err != nil {
+		db.CaptureError(err, "", nil, "rows")
+		return nil, errx.InternalError()
+	}
+
+	return out, nil
 }
 
 func (r *analyticsRepository) GetEmailAccountCounts(ctx context.Context, orgID uuid.UUID) (*models.AccountsUsage, *errx.Error) {

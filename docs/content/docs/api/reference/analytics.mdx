@@ -483,11 +483,19 @@ Each campaign's figures are the emails it sent from the start of `from` to the e
 
 `GET /analytics/accounts`
 
-Returns the health and usage status of every email account in the selected workspace. The request fails if any account's status cannot be calculated, so clients never receive a silently incomplete list. Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`.
+Returns the health and usage status of email accounts in the selected workspace, one bounded page at a time. The per-mailbox reads are batched across the page, so a page's cost does not grow with the size of the whole inventory. The request fails if a page's usage read cannot be completed, so clients never receive a silently incomplete page. Auth: **Scope** `READ_ANALYTICS` · **Org permission** `view_analytics`.
+
+### Query parameters
+
+| Parameter | In | Type | Description |
+| --- | --- | --- | --- |
+| `email_ids` | query | string | Comma-separated mailbox UUIDs to return the status of (up to 200). Use this to ask only for the mailboxes a page shows. A foreign-workspace id matches nothing. Invalid or over-limit returns `400`. |
+| `limit` | query | integer | Page size when walking the whole inventory, `1`-`1000`, default `1000`. Invalid returns `400`. Ignored in spirit when `email_ids` is set, since that set is already bounded. |
+| `cursor` | query | string | Opaque keyset cursor from a previous response's `pagination.next_cursor`. Invalid returns `400`. |
 
 ### Response
 
-The list is returned under a `data` envelope (no cursor; all of the caller's accounts are included). Each item has the same shape as [get account status](#get-account-status).
+Returned under the standard `data` plus `pagination` envelope. `pagination.next_cursor` is an opaque token for the next page, or `null` on the last page. Each item in `data` has the same shape as [get account status](#get-account-status). A workspace with more mailboxes than one page follows `next_cursor` to reach the rest, rather than having the overflow silently dropped.
 
 ```json
 {
@@ -509,7 +517,12 @@ The list is returned under a `data` envelope (no cursor; all of the caller's acc
       },
       "in_campaign": true
     }
-  ]
+  ],
+  "pagination": {
+    "total": 1,
+    "next_cursor": null,
+    "has_more": false
+  }
 }
 ```
 
