@@ -123,7 +123,7 @@ const DARK_DOCUMENT_CSS = `
   blockquote { border-left-color: #2e2f34; color: #8a8f98; }
 `;
 
-const DESIGNED = /<style[\s>]|\bbgcolor\s*=|\b(?:background|color)\s*:/i;
+const DESIGNED = /<style[\s>]|<[^>]*\s(?:bgcolor|color|text)\s*=|\b(?:background|color)\s*:/i;
 
 const isDesignedEmail = (body: string) => DESIGNED.test(body);
 

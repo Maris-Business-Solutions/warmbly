@@ -640,13 +640,17 @@ svg.loading circle {
   color: #0369a1; /* sky-700 */
 }
 
-/* The editor surface in the dark theme. A block that paints its own background
-   (a template's table cell or banner) keeps dark text, as the recipient sees it. */
+/* The editor surface in the dark theme. A block that paints a light background of its
+   own (a template's white table cell or banner) keeps dark text, as the recipient sees it. */
 .dark .tiptap-body h2, .dark .tiptap-body h3 { color: #f7f8f8; }
 .dark .tiptap-body a { color: #7dd3fc; }
 .dark .tiptap-body td, .dark .tiptap-body th { border-color: #2e2f34; }
 .dark .tiptap-body th { background: #16171a; }
-.dark .tiptap-body [style*="background"] { color: #0f172a; }
+.dark .tiptap-body :is(
+  [style*="background-color: #f" i], [style*="background-color:#f" i], [style*="background: #f" i], [style*="background:#f" i],
+  [style*="background-color: white" i], [style*="background: white" i],
+  [style*="rgb(255, 255, 255)"], [style*="rgb(255,255,255)"], [bgcolor^="#f" i], [bgcolor="white" i]
+) { color: #0f172a; }
 .dark .tiptap-body .tpl-var { border-color: #2e2f34; background: #1c1d20; color: #d0d6e0; }
 .dark .tiptap-body .tpl-if { border-color: #3b3d42; background: #25262a; color: #e6e8eb; }
 .dark .tiptap-body .tpl-ai { border-color: oklch(74.6% 0.16 232.661 / 0.35); background: oklch(68.5% 0.169 237.323 / 0.14); color: #7dd3fc; }

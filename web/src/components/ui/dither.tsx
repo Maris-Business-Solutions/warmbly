@@ -11,6 +11,7 @@
 
 import React from "react";
 import { useReducedMotion } from "framer-motion";
+import { useAppStore } from "@/stores";
 
 // Ordered 8x8 Bayer matrix: 64 threshold levels, so density ramps render as
 // smooth halftone gradients instead of the harsh stripe patterns a 4x4 gives.
@@ -44,8 +45,7 @@ const TONES = {
 export type DitherTone = keyof typeof TONES;
 
 // The same tones drawn for a dark ground: lighter and calmer, so dots glow
-// softly instead of buzzing. Read at paint time, so a chart picks up a theme
-// switch on its next repaint.
+// softly instead of buzzing. Charts take the theme as an input so a switch repaints them.
 const DARK_TONES: Record<DitherTone, readonly [number, number, number]> = {
     sky: [96, 174, 226],
     amber: [226, 176, 92],
@@ -54,10 +54,9 @@ const DARK_TONES: Record<DitherTone, readonly [number, number, number]> = {
     violet: [162, 142, 236],
     slate: [150, 155, 165],
 };
-const toneRgb = (tone: DitherTone): readonly [number, number, number] =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-        ? DARK_TONES[tone]
-        : TONES[tone];
+const toneRgb = (tone: DitherTone, dark: boolean): readonly [number, number, number] =>
+    dark ? DARK_TONES[tone] : TONES[tone];
+const useDarkTheme = () => useAppStore((s) => s.resolvedTheme === "dark");
 
 // Dither dots blend into the page instead of sitting on it; lines and
 // hovered/selected elements stay fully opaque for definition.
@@ -128,6 +127,7 @@ export function DitherBarChart({
     selected?: number | null;
     onSelect?: (i: number) => void;
 }) {
+    const dark = useDarkTheme();
     const reduced = useReducedMotion();
     const [wrapRef, { w }] = useMeasure<HTMLDivElement>();
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -145,7 +145,7 @@ export function DitherBarChart({
         const H = el.height;
         const img = ctx.createImageData(W, H);
         const buf = img.data;
-        const [cr, cg, cb] = toneRgb(tone);
+        const [cr, cg, cb] = toneRgb(tone, dark);
         const n = data.length;
         if (n > 0) {
             const slot = W / n;
@@ -189,7 +189,7 @@ export function DitherBarChart({
             }
         }
         ctx.putImageData(img, 0, 0);
-    }, [data, w, height, tone, hover, ghost, selected]);
+    }, [data, w, height, tone, hover, ghost, selected, dark]);
 
     const paintRef = React.useRef(paint);
     React.useEffect(() => {
@@ -614,6 +614,7 @@ export function DitherAreaChart({
     className?: string;
     renderTooltip?: (d: DitherBarDatum) => React.ReactNode;
 }) {
+    const dark = useDarkTheme();
     const reduced = useReducedMotion();
     const [wrapRef, { w }] = useMeasure<HTMLDivElement>();
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -646,7 +647,7 @@ export function DitherAreaChart({
         const vals = disp.current[0] ?? data.map((d) => d.value);
         const ys = vals.map((v) => (yCssFor(v) / height) * rows);
         const curve = sampleCurve(ys, monotoneTangents(ys), cols);
-        const rgb = toneRgb(tone);
+        const rgb = toneRgb(tone, dark);
         const revealX = reveal.current * cols;
         const lift = intensity.current;
         for (let x = 0; x < cols; x++) {
@@ -662,14 +663,14 @@ export function DitherAreaChart({
             [{ ys: vals.map((v) => yCssFor(v) * dpr), rgb }],
             reveal.current,
         );
-    }, [data, w, height, tone, yCssFor, disp, reveal, intensity]);
+    }, [data, w, height, tone, yCssFor, disp, reveal, intensity, dark]);
 
     React.useEffect(() => {
         paintRef.current = paint;
         paint();
     }, [paint]);
 
-    const tones = React.useMemo(() => [toneRgb(tone)] as const, [tone]);
+    const tones = React.useMemo(() => [toneRgb(tone, dark)] as const, [tone, dark]);
     useSparkles(starRef, geomRef, tones, reveal, intensity, reduced);
 
     const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -681,7 +682,7 @@ export function DitherAreaChart({
 
     const d = hover !== null ? data[hover] : null;
     const hoverX = hover !== null && data.length > 1 ? (hover / (data.length - 1)) * w : w / 2;
-    const [cr, cg, cb] = toneRgb(tone);
+    const [cr, cg, cb] = toneRgb(tone, dark);
 
     return (
         <div
@@ -756,6 +757,7 @@ export function DitherMultiAreaChart({
     className?: string;
     renderTooltip?: (i: number) => React.ReactNode;
 }) {
+    const dark = useDarkTheme();
     const reduced = useReducedMotion();
     const [wrapRef, { w }] = useMeasure<HTMLDivElement>();
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -794,7 +796,7 @@ export function DitherMultiAreaChart({
             const vals = disp.current[s] ?? series[s].values;
             const ys = vals.map((v) => (yCssFor(v) / height) * rows);
             curves.push(sampleCurve(ys, monotoneTangents(ys), cols));
-            rgbs.push(toneRgb(series[s].tone));
+            rgbs.push(toneRgb(series[s].tone, dark));
         }
         const tops = new Array<number>(S);
         for (let x = 0; x < cols; x++) {
@@ -810,18 +812,18 @@ export function DitherMultiAreaChart({
             height,
             series.map((s, si) => ({
                 ys: (disp.current[si] ?? s.values).map((v) => yCssFor(v) * dpr),
-                rgb: toneRgb(s.tone),
+                rgb: toneRgb(s.tone, dark),
             })),
             reveal.current,
         );
-    }, [labels, series, w, height, yCssFor, disp, reveal, intensity]);
+    }, [labels, series, w, height, yCssFor, disp, reveal, intensity, dark]);
 
     React.useEffect(() => {
         paintRef.current = paint;
         paint();
     }, [paint]);
 
-    const tones = React.useMemo(() => series.map((s) => toneRgb(s.tone)), [series]);
+    const tones = React.useMemo(() => series.map((s) => toneRgb(s.tone, dark)), [series, dark]);
     useSparkles(starRef, geomRef, tones, reveal, intensity, reduced);
 
     const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -864,7 +866,7 @@ export function DitherMultiAreaChart({
                         style={{ left: hoverX }}
                     />
                     {series.map((s) => {
-                        const [cr, cg, cb] = toneRgb(s.tone);
+                        const [cr, cg, cb] = toneRgb(s.tone, dark);
                         return (
                             <div
                                 key={s.label}
@@ -889,7 +891,7 @@ export function DitherMultiAreaChart({
                             <>
                                 <div className="font-medium text-slate-900 whitespace-nowrap">{labels[hover]}</div>
                                 {series.map((s) => {
-                                    const [cr, cg, cb] = toneRgb(s.tone);
+                                    const [cr, cg, cb] = toneRgb(s.tone, dark);
                                     return (
                                         <div key={s.label} className="flex items-center gap-1.5 whitespace-nowrap">
                                             <span
@@ -925,6 +927,7 @@ export function DitherMeter({
     animate?: boolean;
     className?: string;
 }) {
+    const dark = useDarkTheme();
     const reduced = useReducedMotion();
     const [wrapRef, { w }] = useMeasure<HTMLDivElement>();
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -941,7 +944,7 @@ export function DitherMeter({
             const H = el.height;
             const img = ctx.createImageData(W, H);
             const buf = img.data;
-            const [cr, cg, cb] = toneRgb(tone);
+            const [cr, cg, cb] = toneRgb(tone, dark);
             const fillEnd = cur * W;
             const ramp = Math.min(6 * dpr, W);
             for (let y = 0; y < H; y++) {
@@ -966,7 +969,7 @@ export function DitherMeter({
             }
             ctx.putImageData(img, 0, 0);
         },
-        [w, height, tone],
+        [w, height, tone, dark],
     );
 
     React.useEffect(() => {
@@ -1014,6 +1017,7 @@ export function DitherColumns({
     className?: string;
     onHover?: (i: number | null) => void;
 }) {
+    const dark = useDarkTheme();
     const reduced = useReducedMotion();
     const [wrapRef, { w }] = useMeasure<HTMLDivElement>();
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -1048,7 +1052,7 @@ export function DitherColumns({
                     const y1 = H - (acc / max) * p * H;
                     acc += v;
                     const y0 = H - (acc / max) * p * H;
-                    const rgb = toneRgb(tones[s] ?? "sky");
+                    const rgb = toneRgb(tones[s] ?? "sky", dark);
                     for (let x = x0; x < x1 && x < W; x++) {
                         for (let y = Math.max(0, Math.floor(y0)); y < Math.min(H, Math.ceil(y1)); y++) {
                             const a = hot ? 1 : 0.85;
@@ -1064,7 +1068,7 @@ export function DitherColumns({
             }
         }
         ctx.putImageData(img, 0, 0);
-    }, [data, tones, w, height, hover]);
+    }, [data, tones, w, height, hover, dark]);
 
     const paintRef = React.useRef(paint);
     React.useEffect(() => {
@@ -1135,6 +1139,7 @@ export function DitherStack({
     height?: number;
     className?: string;
 }) {
+    const dark = useDarkTheme();
     const reduced = useReducedMotion();
     const [wrapRef, { w }] = useMeasure<HTMLDivElement>();
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -1156,7 +1161,7 @@ export function DitherStack({
         let acc = 0;
         for (const s of segments) {
             acc += clamp01(s.frac);
-            bounds.push({ end: Math.min(1, acc) * W * reveal, rgb: toneRgb(s.tone) });
+            bounds.push({ end: Math.min(1, acc) * W * reveal, rgb: toneRgb(s.tone, dark) });
         }
         for (let y = 0; y < H; y++) {
             for (let x = 0; x < W; x++) {
@@ -1175,7 +1180,7 @@ export function DitherStack({
             }
         }
         ctx.putImageData(img, 0, 0);
-    }, [segments, w, height]);
+    }, [segments, w, height, dark]);
 
     const paintRef = React.useRef(paint);
     React.useEffect(() => {
@@ -1225,6 +1230,7 @@ export function DitherRing({
     className?: string;
     children?: React.ReactNode;
 }) {
+    const dark = useDarkTheme();
     const reduced = useReducedMotion();
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
     const curRef = React.useRef(0);
@@ -1239,7 +1245,7 @@ export function DitherRing({
             const S = el.width;
             const img = ctx.createImageData(S, S);
             const buf = img.data;
-            const [cr, cg, cb] = toneRgb(tone);
+            const [cr, cg, cb] = toneRgb(tone, dark);
             const c = S / 2;
             const rOut = c;
             const rIn = c - thickness * dpr;
@@ -1272,7 +1278,7 @@ export function DitherRing({
             }
             ctx.putImageData(img, 0, 0);
         },
-        [size, thickness, tone],
+        [size, thickness, tone, dark],
     );
 
     React.useEffect(() => {
@@ -1325,9 +1331,10 @@ export function DitherSlider({
     className?: string;
     label?: string;
 }) {
+    const dark = useDarkTheme();
     const trackRef = React.useRef<HTMLDivElement | null>(null);
     const frac = max > min ? clamp01((value - min) / (max - min)) : 0;
-    const [cr, cg, cb] = toneRgb(tone);
+    const [cr, cg, cb] = toneRgb(tone, dark);
 
     const snap = (raw: number) => Math.max(min, Math.min(max, Math.round(raw / step) * step));
 
