@@ -66,6 +66,15 @@ func (s *campaignService) computeAndStore(ctx context.Context, campaign *models.
 		return nil, err
 	}
 	if s.planSnapshotRepo != nil {
+		// A planner walk for an older campaign version can finish after a newer
+		// walk has already stored its snapshot. Re-read the campaign's current
+		// version and skip the write when the plan computed here is already
+		// superseded, so a late older walk cannot overwrite a newer snapshot.
+		// The next pass recomputes for the current version; the returned plan is
+		// still the one this caller asked for.
+		if current, cerr := s.campaignRepository.GetByID(ctx, campaign.ID); cerr == nil && current != nil && planVersionKey(current) != key {
+			return plan, nil
+		}
 		snap := &repository.CampaignSendPlanSnapshot{
 			CampaignID:     campaign.ID,
 			OrganizationID: orgID,

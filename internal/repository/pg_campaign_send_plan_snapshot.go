@@ -74,6 +74,10 @@ func (r *campaignSendPlanSnapshotRepository) Upsert(ctx context.Context, snap *C
 	if err != nil {
 		return err
 	}
+	// The guard rejects a regression: a planner walk for an older version starts
+	// earlier, so its computed_at is earlier, and it must not overwrite a newer
+	// walk's snapshot that already landed. version_key is a hash and is not
+	// ordered, so recency is taken from computed_at (stamped at walk start).
 	_, err = r.db.Exec(ctx, `
 		INSERT INTO campaign_send_plan_snapshots (campaign_id, organization_id, day, version_key, plan, computed_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -84,6 +88,7 @@ func (r *campaignSendPlanSnapshotRepository) Upsert(ctx context.Context, snap *C
 			plan = EXCLUDED.plan,
 			computed_at = EXCLUDED.computed_at,
 			updated_at = NOW()
+		WHERE campaign_send_plan_snapshots.computed_at <= EXCLUDED.computed_at
 	`, snap.CampaignID, snap.OrganizationID, snap.Day, snap.VersionKey, raw, snap.ComputedAt)
 	return err
 }
