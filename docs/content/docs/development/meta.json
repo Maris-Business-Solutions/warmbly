@@ -15,6 +15,7 @@
     "data-control",
     "configuration",
     "whole-domain-connect",
+    "slack-app",
     "instance-health",
     "operator-notifications",
     "updates",

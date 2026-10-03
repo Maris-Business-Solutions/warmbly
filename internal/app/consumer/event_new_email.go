@@ -156,7 +156,19 @@ func (s *JobsService) ingestNewEmail(ctx context.Context, e *models.JobEventNewE
 		}
 	}
 
+	if s.SlackInbox != nil && e.Message.MayBeInbound() {
+		if account, aerr := s.EmailRepository.GetByID(ctx, e.Message.EmailID); aerr == nil && account != nil && account.OrganizationID != nil {
+			s.SlackInbox.InboundMessage(ctx, *account.OrganizationID, account, e.Message)
+		}
+	}
+
 	return nil
+}
+
+// SlackInboxPoster mirrors one stored inbox arrival into Slack. It must not
+// block ingest; delivery happens in the background.
+type SlackInboxPoster interface {
+	InboundMessage(ctx context.Context, orgID uuid.UUID, account *models.Email, msg *models.EmailMessageStoreData)
 }
 
 func (s *JobsService) publishEmailUpdated(ctx context.Context, userID uuid.UUID, message *models.EmailMessageStoreData) {

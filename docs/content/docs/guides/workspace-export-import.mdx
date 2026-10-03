@@ -22,7 +22,7 @@ The data is split into groups. Every export includes **Workspace**; the rest are
 | Campaigns | Campaigns, folders, sequences, senders, linked segments, attachments, the email image library, per-campaign settings, each lead's step progress with its per-link clicks and per-event opens, the colleagues [copied on each lead](/guides/campaigns/#copying-colleagues-on-one-lead), [placement monitors](/guides/placement-tests/#campaign-placement-monitors), and the [unsubscribe links](/guides/unsubscribe/) already in recipients' inboxes |
 | CRM | Pipelines, deals, tasks, and meeting bookings |
 | Automations | Automations, connected integrations, and lead sync sources |
-| Assistant | Assistant sessions and messages, skills, MCP servers, and AI settings |
+| Assistant | Assistant sessions and messages (including conversations held in [Slack](/guides/slack/)), skills, MCP servers, and AI settings |
 | Warmup | Warmup participation, routing rules, statistics and inbox placement history, appeals, and the standing of every penalised address, current or removed, so a move is not a way past a block |
 | Inbox | Unified inbox threads, message bodies, conversation labels, mailbox sync state, and completed automatic-tagging verdicts with their raw probabilities |
 | Send history | Queued and completed send tasks with their payloads |
@@ -119,6 +119,7 @@ An import runs as one transaction. If anything fails, nothing lands and the work
 - **Check campaign schedules.** Per-contact progress travels, so a running campaign resumes at the step it reached rather than restarting.
 - **Expect the daily send counters to be honoured.** Today's counts come across, so a mailbox cannot double its volume by being migrated mid-day.
 - **Re-authorize integrations** if you exported without credentials.
+- **Reconnect Slack, then link again.** A Slack install belongs to the Slack app of the instance that made it, and Slack sends that app's messages to that instance only. Reconnect under **Integrations > Slack** on the destination, and each member links their Slack account again (the bot offers a link button the first time they message it). Assistant conversations held in Slack arrive in the dashboard history, where you can continue them.
 - **Rotate each webhook's signing secret.** The secret is encrypted at rest with the source instance's key, so it travels only in an export that carries credentials. Exported without them, the endpoint arrives with no secret and its deliveries will not verify at your receiver. Open each endpoint and use **Rotate secret**, then put the new value in your receiver.
 
 <Callout type="info" title="Moving from a self-hosted instance">
@@ -132,6 +133,8 @@ A few things belong to the instance rather than the workspace and are left out o
 [Mailbox imports](/guides/mailbox-import/) do not travel either, finished or running: an import is work the source instance is doing, and its rows hold credentials in flight. The mailboxes an import connected are ordinary mailboxes and move with the Workspace group, and the saved column mappings come too, so the same file maps itself on the destination. Let a running import finish before exporting: rows it has not connected yet are not in the archive.
 
 [Contact imports](/guides/contacts-crm/#importing) do not travel, finished or running, for the same reason: an import is work the source instance is doing. The contacts it created are ordinary contacts and move with the Contacts group, and the saved column mappings come with them. Let a running import finish before exporting, or the rows it has not reached are not in the archive.
+
+[Slack](/guides/slack/) account links, the record of which Slack thread belongs to which assistant conversation, and which Slack thread mirrors which inbox conversation in the [inbox channel](/guides/slack/#inbox-in-slack) do not travel. They name the Slack install on the source instance, so members link again after Slack is reconnected on the destination, and inbox conversations start new Slack threads there. The assistant conversations themselves move with the Assistant group.
 
 Reply and forward drafts kept in your browser are also excluded. Finish or copy them before moving to another instance. See [reply drafts](/guides/unibox/#reply-drafts).
 

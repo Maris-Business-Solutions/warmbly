@@ -74,6 +74,11 @@ func Run(
 	// Generic per-automation inbound trigger: the token in the path is the
 	// credential, resolving to one automation that runs with the JSON body.
 	r.POST("/api/v1/integrations/inbound/automation/:token", h.InboundAutomation)
+	// Slack app request URLs. No session: every request is verified against
+	// SLACK_SIGNING_SECRET before its body is parsed.
+	r.POST("/api/v1/integrations/slack/events", h.SlackEvents)
+	r.POST("/api/v1/integrations/slack/interactivity", h.SlackInteractivity)
+	r.POST("/api/v1/integrations/slack/commands", h.SlackCommands)
 
 	// OAuth 2.1 authorization-server discovery (RFC 8414): public + unversioned.
 	r.GET("/.well-known/oauth-authorization-server", h.OAuthServerMetadata)
@@ -631,6 +636,23 @@ func Run(
 				integrationsOAuth.POST("/start", h.StartIntegrationOAuth)
 				integrationsOAuth.POST("/finish", h.FinishIntegrationOAuth)
 				integrationsOAuth.POST("/reauth/:id", h.ReauthIntegration)
+			}
+
+			// Slack panel. Link preview and confirm carry no org: the link code
+			// names it, and confirming requires membership of that org.
+			slackPanel := jwtOnly.Group("/integrations/slack")
+			slackPanel.Use(m.RateLimitMiddleware(models.RateLimitWrite))
+			{
+				slackRead := m.RequireAnyAccess(models.APIPermIntegrations, models.PermManageSettings, models.PermUseIntegrations)
+				slackWrite := m.RequireAccess(models.PermManageSettings, models.APIPermIntegrations)
+				slackPanel.GET("/status", m.RequireOrganization(), h.GetSlackStatus)
+				slackPanel.GET("/channels", m.RequireOrganization(), slackRead, h.ListSlackChannels)
+				slackPanel.PUT("/settings", m.RequireOrganization(), slackWrite, h.UpdateSlackSettings)
+				slackPanel.GET("/link/:code", h.PreviewSlackLink)
+				slackPanel.POST("/link", h.ConfirmSlackLink)
+				slackPanel.PATCH("/link", m.RequireOrganization(), h.UpdateMySlackLink)
+				slackPanel.DELETE("/link", m.RequireOrganization(), h.DeleteMySlackLink)
+				slackPanel.DELETE("/links/:id", m.RequireOrganization(), slackWrite, h.RemoveSlackLink)
 			}
 
 			// Template preview/validation (no campaign id; can't be a static sibling

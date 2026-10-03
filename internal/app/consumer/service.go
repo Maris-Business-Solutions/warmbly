@@ -68,6 +68,10 @@ type JobsService struct {
 	StreamingPublisher *pubsub.StreamingPublisher
 	AdvancedService    advanced.Service
 
+	// SlackInbox mirrors inbox arrivals into the workspace's Slack inbox
+	// channel. Optional; nil skips the mirror.
+	SlackInbox SlackInboxPoster
+
 	// InboxTagger classifies inbound mail into labels and a relevance score.
 	// Optional and nil by default: an instance with no TypeSafe key configured
 	// never constructs it, and this handler's tagging step is skipped entirely.

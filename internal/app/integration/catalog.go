@@ -137,6 +137,7 @@ func Catalog() []models.IntegrationCatalogEntry {
 				"One-click OAuth into your workspace",
 				"Ping a channel the moment a prospect replies",
 				"Warn the team when warmup health or deliverability dips",
+				"Ask the Warmbly assistant and contact support from Slack",
 			},
 			Events:      notifyEvents,
 			ActionTypes: []string{string(models.IntegrationActionSlackNotify)},

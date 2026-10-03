@@ -39,6 +39,64 @@ export interface NotificationPreferences {
 
 export type NotificationCategoryKey = Exclude<keyof NotificationPreferences, "email_digest_minutes">;
 
+export interface NotificationCategoryDef {
+    key: NotificationCategoryKey;
+    label: string;
+    hint: string;
+}
+
+// Every category, grouped as the settings page shows them. The Slack routing
+// panel reads the same list, so a new category shows up in both.
+export const NOTIFICATION_CATEGORY_GROUPS: { id: string; label: string; categories: NotificationCategoryDef[] }[] = [
+    {
+        id: "inbound",
+        label: "Inbound activity",
+        categories: [
+            { key: "inbound_reply", label: "Reply received", hint: "A recipient replied to a cold email." },
+            { key: "inbound_out_of_office", label: "Out-of-office detected", hint: "An auto-responder hit one of your sends." },
+        ],
+    },
+    {
+        id: "health",
+        label: "Health",
+        categories: [
+            { key: "health_bounce", label: "Bounce detected", hint: "A campaign starts bouncing. Notifies the campaign owner." },
+            { key: "health_complaint", label: "Spam complaint", hint: "Any complaint event on one of your campaigns." },
+            { key: "health_worker_downtime", label: "Worker downtime", hint: "A sender worker stops responding." },
+            { key: "inbox_action_required", label: "Mail that needs action", hint: "A mailbox received automated mail that needs someone to act, like a failed payment, a suspended account or a suspicious sign-in. Goes to members who manage mailboxes and use the inbox." },
+            { key: "health_domain_auth", label: "Domain authentication failing", hint: "A sending domain lost its SPF or DMARC record. Cold sending and warmup stop from it if it is not fixed." },
+            { key: "campaign_paused", label: "Campaign auto-paused", hint: "A guardrail stopped a campaign because its bounce, complaint, or reply rate left the band." },
+            { key: "placement_alert", label: "Placement monitor alert", hint: "A campaign's scheduled placement test found less of its mail in the inbox than its alert threshold." },
+            { key: "placement_finished", label: "Placement test finished", hint: "A placement test you started has a verdict for every copy." },
+        ],
+    },
+    {
+        id: "security",
+        label: "Security",
+        categories: [
+            { key: "security_new_signin", label: "New sign-in", hint: "Your account was accessed from a device you haven't used before." },
+        ],
+    },
+    {
+        id: "billing",
+        label: "Billing",
+        categories: [
+            { key: "billing_alert", label: "Trial and billing alerts", hint: "Your trial is about to expire or your workspace was paused. Goes to members who manage billing." },
+        ],
+    },
+    {
+        id: "team",
+        label: "Team",
+        categories: [
+            { key: "team_activity", label: "Teammate joined your workspace", hint: "A new member accepted an invite. Goes to members who manage the team." },
+        ],
+    },
+];
+
+export const NOTIFICATION_CATEGORY_KEYS: NotificationCategoryKey[] = NOTIFICATION_CATEGORY_GROUPS.flatMap((g) =>
+    g.categories.map((c) => c.key),
+);
+
 // Email-channel bounds from the deployment: the window range clients should
 // offer, and the rolling 24h per-user email budget (0 = unlimited).
 export interface EmailDeliveryInfo {

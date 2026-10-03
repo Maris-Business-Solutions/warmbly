@@ -25,10 +25,20 @@ type EmailSender interface {
 	Send(ctx context.Context, to, cc, bcc []string, subject, message string) error
 }
 
-// SlackNotifier posts to the org's connected Slack. Satisfied by the
-// integration service (NotifySlack).
+// SlackNotice is one notification as Slack renders it.
+type SlackNotice struct {
+	Category          models.NotificationCategory
+	Title, Body, Link string
+	// Meta carries ids a card can act on, such as "unibox_email_id".
+	Meta map[string]any
+}
+
+// SlackNotifier delivers to Slack. Satisfied by slackapp.Notifier.
 type SlackNotifier interface {
-	NotifySlack(ctx context.Context, orgID uuid.UUID, title, body string) error
+	// NotifyOrg posts to the workspace's routed channel.
+	NotifyOrg(ctx context.Context, orgID uuid.UUID, n SlackNotice) error
+	// NotifyMember DMs one member; a no-op unless they linked Slack with DMs on.
+	NotifyMember(ctx context.Context, orgID, userID uuid.UUID, n SlackNotice) error
 }
 
 // UserLookup resolves a user's email + name for email delivery. Satisfied by
@@ -259,15 +269,20 @@ func (s *service) notifyOne(ctx context.Context, userID uuid.UUID, orgID *uuid.U
 		}
 	}
 
-	// Slack: post to the org's connected workspace (detached, best-effort).
+	// Slack: the org channel once per notification, plus this member's DM
+	// (detached, best-effort).
 	slackFired := false
-	if cat.Channels.Slack && !suppressSlack && s.slack != nil && orgID != nil {
-		slackFired = true
-		org := *orgID
+	if cat.Channels.Slack && s.slack != nil && orgID != nil {
+		org, postOrg := *orgID, !suppressSlack
+		slackFired = postOrg
+		notice := slackNotice(category, title, body, link, meta, uniboxEmailID)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 			defer cancel()
-			_ = s.slack.NotifySlack(ctx, org, title, body)
+			if postOrg {
+				_ = s.slack.NotifyOrg(ctx, org, notice)
+			}
+			_ = s.slack.NotifyMember(ctx, org, userID, notice)
 		}()
 	}
 
@@ -276,4 +291,16 @@ func (s *service) notifyOne(ctx context.Context, userID uuid.UUID, orgID *uuid.U
 		go s.deliverPush(userID, category, title, body, link)
 	}
 	return slackFired
+}
+
+// slackNotice copies meta so the detached delivery never shares the caller's map.
+func slackNotice(category models.NotificationCategory, title, body, link string, meta map[string]any, uniboxEmailID *uuid.UUID) SlackNotice {
+	m := make(map[string]any, len(meta)+1)
+	for k, v := range meta {
+		m[k] = v
+	}
+	if uniboxEmailID != nil && *uniboxEmailID != uuid.Nil {
+		m["unibox_email_id"] = uniboxEmailID.String()
+	}
+	return SlackNotice{Category: category, Title: title, Body: body, Link: link, Meta: m}
 }
