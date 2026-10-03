@@ -7,9 +7,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/app/warmupramp"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
+	"github.com/warmbly/warmbly/internal/utils/paging"
 )
 
 type AnalyticsService interface {
@@ -30,6 +32,12 @@ type AnalyticsService interface {
 	// list: the partner cap on today's warmup target.
 	GetAccountStatusDetail(ctx context.Context, orgID, accountID uuid.UUID) (*models.EmailAccountStatus, *errx.Error)
 	GetAllAccountStatuses(ctx context.Context, orgID uuid.UUID) ([]models.EmailAccountStatus, *errx.Error)
+	// GetAccountStatusesPage is the bounded, batched form behind GET
+	// /analytics/accounts: one page of statuses for the whole inventory (keyset
+	// cursor) or for a named set of visible mailbox ids. Per-mailbox reads are
+	// batched across the page, so its cost is bounded by the page, not by the
+	// total inventory.
+	GetAccountStatusesPage(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID, cursor string, limit int32) (*models.EmailAccountStatusesResult, *errx.Error)
 
 	// Usage overview
 	GetUsageOverview(ctx context.Context, orgID, userID uuid.UUID, period string) (*models.UsageOverview, *errx.Error)
@@ -69,10 +77,6 @@ func NewService(
 		warmupRepo:             warmupRepo,
 	}
 }
-
-// warmupHealthPoolLookup lists the pools to check for a participant's health,
-// premium first so paid orgs reflect their premium-pool reputation.
-var warmupHealthPoolLookup = []string{"premium", "free"}
 
 func (s *analyticsService) GetWarmupAnalytics(ctx context.Context, orgID uuid.UUID, emailAccountID *uuid.UUID, from, to time.Time) (*models.WarmupAnalytics, *errx.Error) {
 	// Get daily stats
@@ -206,7 +210,9 @@ func (s *analyticsService) GetAccountStatusDetail(ctx context.Context, orgID, ac
 
 // accountStatus builds one mailbox's status; rates is the org's rolling
 // placement, read once by the caller. withPartners adds the partner cap, a
-// pool-wide read that lists must not repeat per mailbox.
+// pool-wide read that lists must not repeat per mailbox. It reads the mailbox
+// and its per-mailbox signals itself; the list path prefetches those in bulk
+// and calls assembleAccountStatus directly.
 func (s *analyticsService) accountStatus(ctx context.Context, orgID, accountID uuid.UUID, rates map[uuid.UUID]models.WarmupPlacementRate, withPartners bool) (*models.EmailAccountStatus, *errx.Error) {
 	// Get email account (org-scoped lookup)
 	email, xerr := s.emailRepo.Get(ctx, orgID.String(), accountID.String())
@@ -215,44 +221,13 @@ func (s *analyticsService) accountStatus(ctx context.Context, orgID, accountID u
 	}
 
 	// Get daily usage
-	now := time.Now().UTC()
-	usage, xerr := s.analyticsRepo.GetAccountDailyUsage(ctx, accountID, now)
+	usage, xerr := s.analyticsRepo.GetAccountDailyUsage(ctx, accountID, time.Now().UTC())
 	if xerr != nil {
 		return nil, xerr
 	}
 
-	// Get errors
-	var errors []models.AccountError
-	if s.emailAccountErrorsRepo != nil {
-		dbErrors, err := s.emailAccountErrorsRepo.GetByAccountID(ctx, accountID, true)
-		if err == nil {
-			for _, e := range dbErrors {
-				errors = append(errors, models.AccountError{
-					ID:             e.ID,
-					ErrorCode:      e.ErrorCode,
-					Severity:       e.Severity,
-					Title:          e.Title,
-					Message:        e.Message,
-					ActionRequired: e.ActionRequired,
-					CreatedAt:      e.CreatedAt,
-				})
-			}
-		}
-	}
-	if errors == nil {
-		errors = make([]models.AccountError, 0)
-	}
-
-	// Calculate health, then fold in warmup-pool reputation so the single
-	// score the user sees reflects spam placement / complaints / throttling.
-	health := calculateAccountHealth(email, errors)
+	errs := s.accountErrors(ctx, accountID)
 	warmupHealth := s.buildWarmupHealth(ctx, accountID)
-	applyWarmupHealth(&health, warmupHealth)
-	var placement *models.WarmupPlacementRate
-	if r, ok := rates[accountID]; ok {
-		placement = &r
-	}
-	applyWarmupPlacement(&health, placement)
 
 	inCampaign := false
 	if s.campaignRepo != nil {
@@ -260,6 +235,62 @@ func (s *analyticsService) accountStatus(ctx context.Context, orgID, accountID u
 			inCampaign = n > 0
 		}
 	}
+
+	return s.assembleAccountStatus(ctx, email, usage, errs, warmupHealth, inCampaign, rates, withPartners), nil
+}
+
+// accountErrors reads a mailbox's active errors in the API shape, never nil.
+// Error surfacing is best-effort: a failed read is an empty list, not a 500 on
+// the whole status.
+func (s *analyticsService) accountErrors(ctx context.Context, accountID uuid.UUID) []models.AccountError {
+	if s.emailAccountErrorsRepo == nil {
+		return make([]models.AccountError, 0)
+	}
+	dbErrors, err := s.emailAccountErrorsRepo.GetByAccountID(ctx, accountID, true)
+	if err != nil {
+		return make([]models.AccountError, 0)
+	}
+	return toAccountErrors(dbErrors)
+}
+
+// toAccountErrors maps stored error rows into the API shape, never nil.
+func toAccountErrors(dbErrors []repository.EmailAccountError) []models.AccountError {
+	errs := make([]models.AccountError, 0, len(dbErrors))
+	for _, e := range dbErrors {
+		errs = append(errs, models.AccountError{
+			ID:             e.ID,
+			ErrorCode:      e.ErrorCode,
+			Severity:       e.Severity,
+			Title:          e.Title,
+			Message:        e.Message,
+			ActionRequired: e.ActionRequired,
+			CreatedAt:      e.CreatedAt,
+		})
+	}
+	return errs
+}
+
+// assembleAccountStatus turns a mailbox and its already-fetched signals (usage,
+// errors, warmup-pool health, campaign membership, placement rates) into the
+// status shape. Everything SQL-bound is passed in so both the single-mailbox
+// read and the batched list build a status the same way; the few remaining
+// reads here (ramp target, partner cap, last send failure, cold ramp,
+// lifecycle) are conditional and best-effort, and on a list are bounded by the
+// page.
+func (s *analyticsService) assembleAccountStatus(ctx context.Context, email *models.Email, usage *models.AccountDailyUsage, errs []models.AccountError, warmupHealth *models.WarmupHealthInfo, inCampaign bool, rates map[uuid.UUID]models.WarmupPlacementRate, withPartners bool) *models.EmailAccountStatus {
+	if errs == nil {
+		errs = make([]models.AccountError, 0)
+	}
+
+	// Calculate health, then fold in warmup-pool reputation so the single
+	// score the user sees reflects spam placement / complaints / throttling.
+	health := calculateAccountHealth(email, errs)
+	applyWarmupHealth(&health, warmupHealth)
+	var placement *models.WarmupPlacementRate
+	if r, ok := rates[email.ID]; ok {
+		placement = &r
+	}
+	applyWarmupPlacement(&health, placement)
 
 	// Build warmup status if warmup has ever been enabled (active or paused).
 	var warmupStatus *models.WarmupStatusInfo
@@ -303,7 +334,7 @@ func (s *analyticsService) accountStatus(ctx context.Context, orgID, accountID u
 		Status:        email.Status,
 		LastSyncedAt:  &email.LastSyncedAt,
 		Health:        health,
-		Errors:        errors,
+		Errors:        errs,
 		DailyUsage:    *usage,
 		WarmupStatus:  warmupStatus,
 		WarmupHealth:  warmupHealth,
@@ -311,7 +342,7 @@ func (s *analyticsService) accountStatus(ctx context.Context, orgID, accountID u
 		InCampaign:    inCampaign,
 		ColdRamp:      coldRamp,
 		SendLifecycle: lifecycle,
-	}, nil
+	}
 }
 
 // warmupHealthState reads the band off the API shape, defaulting to healthy
@@ -326,28 +357,41 @@ func warmupHealthState(h *models.WarmupHealthInfo) models.WarmupHealthState {
 // warmupDiversityWindow matches the selector's domain-history window.
 const warmupDiversityWindow = 7 * 24 * time.Hour
 
-// buildWarmupHealth looks up the mailbox's warmup-pool health (premium pool
-// first), or the standing Warmbly Cloud reported, and maps it into the API
-// shape. Returns nil when there is neither or the lookup fails; health
-// surfacing must never break status.
+// buildWarmupHealth looks up the mailbox's warmup-pool health, or the standing
+// Warmbly Cloud reported, and maps it into the API shape. Returns nil when
+// there is neither or the lookup fails; health surfacing must never break
+// status. A mailbox is in at most one pool (migration 000097), so the single
+// participant row resolves its reputation whatever pool it sits in.
 func (s *analyticsService) buildWarmupHealth(ctx context.Context, accountID uuid.UUID) *models.WarmupHealthInfo {
 	if s.warmupRepo == nil {
 		return nil
 	}
-	for _, poolType := range warmupHealthPoolLookup {
-		h, err := s.warmupRepo.GetParticipantHealth(ctx, accountID, poolType)
-		if err != nil || h == nil {
-			continue
-		}
+	participant, err := s.warmupRepo.GetParticipantHealthForAccount(ctx, accountID)
+	if err != nil {
+		participant = nil
+	}
+	return s.warmupHealthFromParticipant(ctx, accountID, participant)
+}
+
+// warmupHealthFromParticipant maps a resolved participant row into the API
+// shape, adding the partner-diversity read-out, and falls back to the Warmbly
+// Cloud standing for a mailbox in no pool. Shared by the single-mailbox read
+// and the batched list, which resolves the participant row for the page in one
+// query rather than once per mailbox.
+func (s *analyticsService) warmupHealthFromParticipant(ctx context.Context, accountID uuid.UUID, participant *models.WarmupParticipantHealth) *models.WarmupHealthInfo {
+	if s.warmupRepo == nil {
+		return nil
+	}
+	if participant != nil {
 		info := &models.WarmupHealthInfo{
-			PoolType:     poolType,
-			State:        string(h.HealthState),
-			Score:        h.LastHealthScore,
-			BlockedUntil: h.BlockedUntil,
-			EvaluatedAt:  h.LastHealthEvaluatedAt,
+			PoolType:     participant.PoolType,
+			State:        string(participant.HealthState),
+			Score:        participant.LastHealthScore,
+			BlockedUntil: participant.BlockedUntil,
+			EvaluatedAt:  participant.LastHealthEvaluatedAt,
 		}
-		if h.LastHealthReason != nil {
-			info.Reason = *h.LastHealthReason
+		if participant.LastHealthReason != nil {
+			info.Reason = *participant.LastHealthReason
 		}
 		// Best-effort: the counts are a read-out, never a reason to fail status.
 		if d, derr := s.warmupRepo.GetPartnerDiversity(ctx, accountID, time.Now().Add(-warmupDiversityWindow)); derr == nil {
@@ -410,24 +454,112 @@ func applyWarmupHealth(health *models.AccountHealth, wh *models.WarmupHealthInfo
 	health.Issues = append(health.Issues, issue)
 }
 
+// GetAllAccountStatuses walks the whole inventory through the batched, keyset
+// page builder. It no longer stops at a silent 1000-row cap: it follows the
+// cursor to the end, so a caller that needs every status still gets every
+// status, in batched pages rather than a sequential per-mailbox walk.
 func (s *analyticsService) GetAllAccountStatuses(ctx context.Context, orgID uuid.UUID) ([]models.EmailAccountStatus, *errx.Error) {
-	// Get all email accounts for the organization
-	emailsResult, xerr := s.emailRepo.Search(ctx, orgID.String(), "", nil, nil, 1000, nil)
+	statuses := make([]models.EmailAccountStatus, 0)
+	cursor := ""
+	for {
+		page, xerr := s.GetAccountStatusesPage(ctx, orgID, nil, cursor, config.AccountStatusLimitMax)
+		if xerr != nil {
+			return nil, xerr
+		}
+		statuses = append(statuses, page.Data...)
+		if page.Pagination.NextCursor == nil {
+			break
+		}
+		cursor = *page.Pagination.NextCursor
+	}
+	return statuses, nil
+}
+
+// GetAccountStatusesPage builds one page of account statuses. emailIDs scopes
+// the page to a visible set (the dashboard asks only for what it shows);
+// otherwise the keyset cursor walks the whole inventory. Every per-mailbox read
+// is batched across the page, and the shared placement rate is read once, so
+// the page's cost is bounded by the page size, not by the total inventory.
+func (s *analyticsService) GetAccountStatusesPage(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID, cursor string, limit int32) (*models.EmailAccountStatusesResult, *errx.Error) {
+	// The opaque cursor decodes to the keyset position; an invalid token is a
+	// 400, never a silently ignored full-inventory scan.
+	cursorID, xerr := paging.DecodeCursor(cursor)
 	if xerr != nil {
 		return nil, xerr
 	}
 
+	// emailRepo.Search scopes on organization_id and, when emailIDs is set,
+	// intersects with it — a foreign-org id selects no row, so a page can never
+	// disclose another tenant's status.
+	emailsResult, xerr := s.emailRepo.Search(ctx, orgID.String(), "", cursorID, nil, limit, emailIDs)
+	if xerr != nil {
+		return nil, xerr
+	}
+
+	emails := emailsResult.Data
+	result := &models.EmailAccountStatusesResult{
+		Data:       make([]models.EmailAccountStatus, 0, len(emails)),
+		Pagination: emailsResult.Pagination,
+	}
+	if len(emails) == 0 {
+		return result, nil
+	}
+
+	ids := make([]uuid.UUID, len(emails))
+	for i := range emails {
+		ids[i] = emails[i].ID
+	}
+
+	now := time.Now().UTC()
 	rates := s.placementRates(ctx, orgID, nil)
-	statuses := make([]models.EmailAccountStatus, 0, len(emailsResult.Data))
-	for _, email := range emailsResult.Data {
-		status, xerr := s.accountStatus(ctx, orgID, email.ID, rates, false)
+
+	// Batched per-mailbox reads: usage is required and propagates its error
+	// (never a silently incomplete list), the rest are best-effort read-outs.
+	usage, xerr := s.analyticsRepo.GetAccountDailyUsageBatch(ctx, ids, now)
+	if xerr != nil {
+		return nil, xerr
+	}
+
+	errsByID := make(map[uuid.UUID][]models.AccountError, len(ids))
+	if s.emailAccountErrorsRepo != nil {
+		raw, xerr := s.emailAccountErrorsRepo.GetByAccountIDs(ctx, ids, true)
 		if xerr != nil {
 			return nil, xerr
 		}
-		statuses = append(statuses, *status)
+		for id, rows := range raw {
+			errsByID[id] = toAccountErrors(rows)
+		}
 	}
 
-	return statuses, nil
+	campByID := map[uuid.UUID]int{}
+	if s.campaignRepo != nil {
+		if m, err := s.campaignRepo.CountActiveCampaignsForAccounts(ctx, ids); err == nil {
+			campByID = m
+		}
+	}
+
+	healthByID := map[uuid.UUID]*models.WarmupParticipantHealth{}
+	if s.warmupRepo != nil {
+		if m, err := s.warmupRepo.GetParticipantHealthForAccounts(ctx, ids); err == nil {
+			healthByID = m
+		}
+	}
+
+	day := now.Format("2006-01-02")
+	for i := range emails {
+		email := emails[i]
+		u := usage[email.ID]
+		if u == nil {
+			// Deleted between the page read and the usage read: report an empty
+			// day rather than drop the row or fail the whole page.
+			u = &models.AccountDailyUsage{Date: day, CampaignLimit: email.CampaignLimit, WarmupLimit: email.WarmupMax}
+		}
+		warmupHealth := s.warmupHealthFromParticipant(ctx, email.ID, healthByID[email.ID])
+		status := s.assembleAccountStatus(ctx, &email, u, errsByID[email.ID], warmupHealth, campByID[email.ID] > 0, rates, false)
+		result.Data = append(result.Data, *status)
+	}
+
+	return result, nil
 }
 
 func (s *analyticsService) GetUsageOverview(ctx context.Context, orgID, userID uuid.UUID, period string) (*models.UsageOverview, *errx.Error) {

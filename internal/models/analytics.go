@@ -204,6 +204,13 @@ type EmailAccountStatus struct {
 	ColdRamp *ColdRampInfo `json:"cold_ramp,omitempty"`
 }
 
+// EmailAccountStatusesResult is one page of account statuses. Data carries the
+// page; Pagination holds the opaque next_cursor for the rest of the inventory.
+type EmailAccountStatusesResult struct {
+	Data       []EmailAccountStatus `json:"data"`
+	Pagination Pagination           `json:"pagination"`
+}
+
 // ColdRampInfo explains a cold cap held below the mailbox's configured limit.
 type ColdRampInfo struct {
 	// Ceiling is today's allowance; MailboxCap is what the owner configured.

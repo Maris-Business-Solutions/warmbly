@@ -397,6 +397,16 @@ const (
 	UniboxLimitMax     = 100
 	UniboxLimitDefault = 50
 
+	// Account-status list paging (GET /analytics/accounts). The default and
+	// ceiling match the 1000-row cap this endpoint used to apply silently, so a
+	// caller with no more mailboxes than that sees the same page; beyond it the
+	// overflow is reachable through next_cursor instead of being dropped.
+	AccountStatusLimitDefault = 1000
+	AccountStatusLimitMax     = 1000
+	// AccountStatusMaxIDs bounds an email_ids request, so a page view asks only
+	// for the mailboxes it shows.
+	AccountStatusMaxIDs = 200
+
 	// ContactMailHostBatchSize is how many contacts one provider sweep pass
 	// reads; lookups are per distinct domain, so a pass costs far fewer.
 	ContactMailHostBatchSize = 2000

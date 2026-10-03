@@ -17410,10 +17410,42 @@
           "analytics"
         ],
         "summary": "List account statuses",
-        "description": "Health and usage status of every email account the caller owns. Returned under a data envelope (no cursor; all accounts included). Accounts that fail to build are skipped.",
+        "description": "Health and usage status of the caller's email accounts, one bounded page at a time, under a data plus pagination envelope with an opaque cursor. Per-mailbox reads are batched across the page, so a page's cost does not grow with the total inventory, and a workspace with more mailboxes than one page reaches the rest through next_cursor instead of having them silently dropped.",
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "email_ids",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated mailbox UUIDs to return the status of (up to 200). Use this to ask only for the mailboxes a page shows. A foreign-workspace id matches nothing. Invalid or over-limit returns 400.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size when walking the whole inventory. Invalid returns 400.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1000
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque keyset cursor from a previous response's pagination.next_cursor. Invalid returns 400.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -37276,9 +37308,10 @@
       },
       "AccountStatusList": {
         "type": "object",
-        "description": "All of the caller's account statuses under a data envelope (no cursor).",
+        "description": "One page of account statuses under the standard data plus pagination envelope. next_cursor is an opaque token for the next page, or null on the last.",
         "required": [
-          "data"
+          "data",
+          "pagination"
         ],
         "properties": {
           "data": {
@@ -37286,6 +37319,9 @@
             "items": {
               "$ref": "#/components/schemas/AccountStatus"
             }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
           }
         }
       },
