@@ -180,11 +180,12 @@ func (s *Service) requireLinked(ctx context.Context, p *interaction) *actor {
 // member may decide, and each card is decided once.
 func (s *Service) handleApproval(ctx context.Context, p *interaction, value, decision string) {
 	rowID, toolCallID, ok := parseApprovalValue(value)
-	if !ok {
-		return
-	}
 	a := s.requireLinked(ctx, p)
 	if a == nil {
+		return
+	}
+	if !ok {
+		s.whisper(ctx, a.token, p, "This approval card is from an earlier version and can no longer decide anything. Ask Warmbly again, or approve it in the dashboard.")
 		return
 	}
 	row, err := s.repo.GetAgentThreadByID(ctx, a.link.OrganizationID, rowID)
