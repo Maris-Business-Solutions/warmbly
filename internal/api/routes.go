@@ -489,9 +489,10 @@ func Run(
 		// Warmbly MCP server: exposes the shared tool registry over the MCP
 		// streamable-HTTP transport. Accepts an API key (static header) or an OAuth
 		// 2.1 access token (one-command `claude mcp add` + browser sign-in); an
-		// unauthenticated request gets the RFC 9728 discovery challenge. Each tool is
-		// gated by its RequiredAPIPerm, send-class tools are never exposed, and
-		// per-key rate limits apply.
+		// unauthenticated request gets the RFC 9728 discovery challenge. The caller
+		// needs AI_AGENT (MCPEndpoint checks it), each tool is gated by its
+		// RequiredAPIPerm, send-class tools are never exposed, and per-key rate
+		// limits apply.
 		mcpServer := base.Group("/mcp")
 		mcpServer.Use(m.MCPAuthMiddleware(), m.APIKeyUsageMiddleware(), m.RateLimitMiddleware(models.RateLimitWrite))
 		mcpServer.POST("", h.MCPEndpoint)
@@ -776,23 +777,25 @@ func Run(
 			}
 
 			// AI skills (org playbooks). CRUD gated on manage_settings (JWT) or
-			// the AI_AGENT scope (API key); every mutation audits (ai_skill).
+			// the AI_AGENT scope (API key); a key's writes also need its creator
+			// to hold manage_settings. Every mutation audits (ai_skill).
 			skillsGroup := protected.Group("/ai/skills")
 			skillsGroup.Use(m.RequireOrganization())
 			{
+				skillWrite := m.RequireKeyHolder(models.PermManageSettings)
 				skillsGroup.GET("", m.RequireAccess(models.PermManageSettings, models.APIPermAIAgent), h.ListSkills)
-				skillsGroup.POST("", m.RequireAccess(models.PermManageSettings, models.APIPermAIAgent), h.CreateSkill)
-				skillsGroup.PATCH("/:id", m.RequireAccess(models.PermManageSettings, models.APIPermAIAgent), h.UpdateSkill)
-				skillsGroup.DELETE("/:id", m.RequireAccess(models.PermManageSettings, models.APIPermAIAgent), h.DeleteSkill)
+				skillsGroup.POST("", m.RequireAccess(models.PermManageSettings, models.APIPermAIAgent), skillWrite, h.CreateSkill)
+				skillsGroup.PATCH("/:id", m.RequireAccess(models.PermManageSettings, models.APIPermAIAgent), skillWrite, h.UpdateSkill)
+				skillsGroup.DELETE("/:id", m.RequireAccess(models.PermManageSettings, models.APIPermAIAgent), skillWrite, h.DeleteSkill)
 			}
 
 			// REST tool surface for non-MCP agents (Hermes/OpenAI-style function
-			// calling). No route-level permission gate on purpose, matching the
-			// MCP endpoint: the registry enforces each
-			// tool's own permission bits, the list reflects only what the caller
-			// may use, and send-class tools are never exposed.
+			// calling). Gated on use_ai (JWT) or AI_AGENT (key), matching the MCP
+			// endpoint; the registry then enforces each tool's own permission
+			// bits, the list reflects only what the caller may use, and
+			// send-class tools are never exposed.
 			agentTools := protected.Group("/ai/tools")
-			agentTools.Use(m.RequireOrganization())
+			agentTools.Use(m.RequireOrganization(), m.RequireAccess(models.PermUseAI, models.APIPermAIAgent))
 			{
 				agentTools.GET("", m.RateLimitMiddleware(models.RateLimitRead), h.ListAgentTools)
 				agentTools.POST("/:name/call", m.RateLimitMiddleware(models.RateLimitWrite), h.CallAgentTool)
@@ -1576,6 +1579,10 @@ func Run(
 				ai.GET("/sessions/:id/messages", useAI, h.AgentSessionMessages)
 				ai.POST("/sessions/:id/messages", useAI, h.AgentMessage)
 				ai.POST("/sessions/:id/approve", useAI, h.AgentApprove)
+
+				// Workspace "always allow" tool policies, listed and revoked by settings managers.
+				ai.GET("/tool-policies", m.RequirePermission(models.PermManageSettings), h.ListAIToolPolicies)
+				ai.DELETE("/tool-policies/:tool", m.RequirePermission(models.PermManageSettings), h.RevokeAIToolPolicy)
 
 				// Connected MCP servers (external tools). Admin-only; sealing
 				// credentials and exposing external tools is a settings action.

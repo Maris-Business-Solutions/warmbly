@@ -179,8 +179,8 @@ func (s *Service) requireLinked(ctx context.Context, p *interaction) *actor {
 // handleApproval resumes a paused run; only the session owner's linked Slack
 // member may decide, and each card is decided once.
 func (s *Service) handleApproval(ctx context.Context, p *interaction, value, decision string) {
-	rowID, err := uuid.Parse(value)
-	if err != nil {
+	rowID, toolCallID, ok := parseApprovalValue(value)
+	if !ok {
 		return
 	}
 	a := s.requireLinked(ctx, p)
@@ -214,7 +214,7 @@ func (s *Service) handleApproval(ctx context.Context, p *interaction, value, dec
 		Blocks: blocks(contextBlock(verb + " by <@" + p.User.ID + ">")),
 	})
 	_ = s.repo.SetAgentThreadApproval(ctx, row.OrganizationID, row.ID, "")
-	s.resumeTurn(ctx, token, row, invocation(a.member, a.link), decision)
+	s.resumeTurn(ctx, token, row, invocation(a.member, a.link), toolCallID, decision)
 }
 
 // channelRefusal applies workspace settings and Slack Connect to an explicit

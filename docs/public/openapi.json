@@ -22643,7 +22643,7 @@
       "get": {
         "operationId": "ai_tools_list",
         "summary": "List agent tools",
-        "description": "The AI tool registry filtered to what the caller's credentials allow. `format=openai` (aliases `hermes`, `functions`) returns OpenAI function-calling objects; the default returns `{name, description, input_schema}` per tool. Send-class tools are never listed.",
+        "description": "The AI tool registry filtered to what the caller's credentials allow. Needs `AI_AGENT` for keys and OAuth tokens, or `use_ai` for dashboard members. `format=openai` (aliases `hermes`, `functions`) returns OpenAI function-calling objects; the default returns `{name, description, input_schema}` per tool. Send-class tools are never listed.",
         "tags": [
           "ai"
         ],
@@ -22713,6 +22713,16 @@
               }
             }
           },
+          "403": {
+            "description": "The credentials lack AI_AGENT, or the member lacks use_ai.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limited.",
             "content": {
@@ -22730,7 +22740,7 @@
       "post": {
         "operationId": "ai_tools_call",
         "summary": "Execute an agent tool",
-        "description": "Runs one registry tool. The request body is the tool's JSON argument object (empty body = no arguments). Each tool enforces its own permission; send-class tools are never callable here.",
+        "description": "Runs one registry tool. The request body is the tool's JSON argument object (empty body = no arguments). Needs `AI_AGENT` for keys and OAuth tokens, or `use_ai` for dashboard members, and each tool enforces its own permission; send-class tools are never callable here.",
         "tags": [
           "ai"
         ],
@@ -22816,7 +22826,7 @@
             }
           },
           "403": {
-            "description": "The credentials lack the permission for this tool.",
+            "description": "The credentials lack AI_AGENT (or use_ai), or the permission for this tool.",
             "content": {
               "application/json": {
                 "schema": {

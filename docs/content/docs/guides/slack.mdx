@@ -63,16 +63,18 @@ It runs as your linked Warmbly account with the permissions your role has at tha
 
 ### Approvals
 
-Reading runs straight away. A change shows an approval card in the thread with a plain-language summary and three buttons:
+Reading runs straight away. A change shows an approval card in the thread with the action, every argument the assistant passed, and these buttons:
 
 - **Approve** runs that one action.
 - **Deny** skips it.
-- **Always allow** approves it and every later action of that kind, as in the dashboard.
+- **Always allow** approves it and every later action of that kind, as in the dashboard. It is offered only to a member with **Manage settings**, and never for the actions that [always ask](/guides/ai-assistant/#approvals).
 
-Only the person whose conversation it is can press them. Anyone else in the channel sees the card but cannot act on it.
+Only the person whose conversation it is can press them. Anyone else in the channel sees the card but cannot act on it. Each card decides the one action it shows: once it is decided, here or in the dashboard, its buttons do nothing.
+
+When the details do not fit in a Slack message, the card says so and carries **Open in Warmbly**, so you can read all of it before you decide. Secrets a step returns, such as a webhook signing secret, are never shown in Slack.
 
 <Callout type="warn" title="Sending always asks">
-Anything that sends mail to a real recipient needs your approval every time, and **Always allow** is never offered for it. The card shows the full message and the sending mailbox, and only that exact message goes out.
+Anything that sends mail to a real recipient needs your approval every time, and **Always allow** is never offered for it. The card shows the sending mailbox, the recipient, the subject and the message, and only that exact message goes out.
 </Callout>
 
 ### Credits and history

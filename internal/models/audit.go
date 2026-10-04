@@ -133,6 +133,9 @@ const (
 	// AI skill (org playbook) create/update/delete.
 	AuditEntityAISkill AuditEntityType = "ai_skill"
 
+	// Workspace "always allow" policy for one assistant tool, set or revoked.
+	AuditEntityAIToolPolicy AuditEntityType = "ai_tool_policy"
+
 	// Connected MCP server (external tools) connect/update/disconnect.
 	AuditEntityMCPServer AuditEntityType = "mcp_server"
 

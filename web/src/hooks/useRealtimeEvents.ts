@@ -525,6 +525,8 @@ export function useRealtimeEvents() {
           ai_session: [['ai', 'sessions']],
           // AI skills (org playbooks).
           ai_skill: [['ai', 'skills']],
+          // Workspace "always allow" policies for assistant tools.
+          ai_tool_policy: [['ai', 'tool-policies']],
           // Connected MCP servers (external tools).
           mcp_server: [['ai', 'connections']],
           // A teammate published, edited or unpublished one of the workspace's apps.

@@ -37,6 +37,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 			"role_ids": arrProp("Role UUIDs to assign (use instead of role_id for multiple).", strProp("Role UUID.")),
 		}, "email"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		JWTOnly:         true,
 		RequiredOrgPerm: models.PermManageTeam,
 		Handler:         d.inviteMember,
@@ -51,6 +52,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 			"role_ids":       arrProp("Role UUIDs to set (replaces the member's roles).", strProp("Role UUID.")),
 		}, "member_user_id"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		JWTOnly:         true,
 		RequiredOrgPerm: models.PermManageTeam,
 		Handler:         d.updateMemberRole,
@@ -92,13 +94,14 @@ func (d Deps) registerTeamTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "get_invitation_link",
-		Description: "Get the shareable invite link/token for a pending invitation.",
+		Description: "Issue the shareable invite token for a pending invitation. The token is shown to the member, never to you.",
 		InputSchema: objectSchema(map[string]any{
 			"invitation_id": strProp("The invitation UUID."),
 		}, "invitation_id"),
 		Risk:            generation.RiskRead,
 		JWTOnly:         true,
 		RequiredOrgPerm: models.PermManageTeam,
+		SecretFields:    []string{"token"},
 		Handler:         d.getInvitationLink,
 	})
 }

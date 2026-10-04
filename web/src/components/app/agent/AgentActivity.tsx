@@ -5,7 +5,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckIcon, ChevronDownIcon, ExternalLinkIcon, ShieldCheckIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, CopyIcon, ExternalLinkIcon, KeyRoundIcon, ShieldCheckIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgentPending, AgentToolStep } from "@/stores/slices/agentSlice";
 import AgentMark from "./AgentMark";
@@ -77,6 +77,47 @@ export function WorkingStatus({
 }
 
 function StepRow({ step }: { step: AgentToolStep }) {
+    return (
+        <>
+            <StepLine step={step} />
+            {step.secrets && Object.keys(step.secrets).length > 0 && <SecretBox secrets={step.secrets} />}
+        </>
+    );
+}
+
+// A secret a step returned: shown once here, never to Remie and never stored.
+function SecretBox({ secrets }: { secrets: Record<string, string> }) {
+    const [copied, setCopied] = React.useState<string | null>(null);
+    return (
+        <div className="my-1 ml-5 rounded-md border border-amber-200 bg-amber-50/60 px-2.5 py-2">
+            <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-amber-800">
+                <KeyRoundIcon className="size-3" />
+                Shown once. Copy it now; Remie cannot see it.
+            </div>
+            {Object.entries(secrets).map(([k, v]) => (
+                <div key={k} className="mt-1.5 flex items-center gap-2">
+                    <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-amber-700">{k}</span>
+                    <code className="min-w-0 flex-1 truncate rounded bg-white px-1.5 py-0.5 font-mono text-[11.5px] text-slate-800 ring-1 ring-amber-200">
+                        {v}
+                    </code>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            void navigator.clipboard?.writeText(v);
+                            setCopied(k);
+                        }}
+                        className="h-6 shrink-0 rounded-md px-1.5 text-[11.5px] text-amber-800 hover:bg-amber-100 inline-flex items-center gap-1 transition-colors"
+                    >
+                        {copied === k ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+                        {copied === k ? "Copied" : "Copy"}
+                    </button>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function StepLine({ step }: { step: AgentToolStep }) {
     const detail = step.result || step.argsSummary;
     return (
         <motion.div
@@ -224,8 +265,21 @@ export function ActivityTrace({
     );
 }
 
+// A labelled block of verbatim text, scrolled when long. HTML is shown as source, never rendered.
+function Verbatim({ label, text }: { label: string; text: string }) {
+    return (
+        <div className="mt-2">
+            <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">{label}</div>
+            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-slate-700">
+                {text}
+            </pre>
+        </div>
+    );
+}
+
 // The pause a write or send asks for. Nothing runs until one of the buttons
-// is pressed; "always allow" is offered for writes only, never for sends.
+// is pressed. "Always allow" appears only when the server offers it: to a
+// settings manager, for a write that does not always ask.
 export function ApprovalCard({
     pending,
     onDecide,
@@ -234,6 +288,8 @@ export function ApprovalCard({
     onDecide: (d: "approve" | "deny" | "always_allow") => void;
 }) {
     const isSend = pending.risk === "send";
+    const preview = pending.preview;
+    const [argsOpen, setArgsOpen] = React.useState(!preview);
     return (
         <motion.div
             initial={{ opacity: 0, y: 6, scale: 0.97 }}
@@ -255,10 +311,50 @@ export function ApprovalCard({
                     <ShieldCheckIcon className="size-3.5 shrink-0 text-slate-400" />
                     {toolAction(pending.tool)}
                 </div>
-                {pending.argsSummary && (
-                    <div className="mt-1.5 whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-slate-600">
-                        {pending.argsSummary}
+                {preview && (
+                    <>
+                        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+                            <dt className="text-slate-500">From</dt>
+                            <dd className="min-w-0 break-words font-medium text-slate-800">{preview.from}</dd>
+                            <dt className="text-slate-500">To</dt>
+                            <dd className="min-w-0 break-words font-medium text-slate-800">{preview.to.join(", ")}</dd>
+                            <dt className="text-slate-500">Subject</dt>
+                            <dd className="min-w-0 break-words text-slate-800">{preview.subject || "(none)"}</dd>
+                        </dl>
+                        <Verbatim label="Message" text={preview.body} />
+                        {preview.body_html && <Verbatim label="HTML body" text={preview.body_html} />}
+                    </>
+                )}
+                {pending.arguments ? (
+                    <div className="mt-2">
+                        <button
+                            type="button"
+                            aria-expanded={argsOpen}
+                            onClick={() => setArgsOpen(!argsOpen)}
+                            className="-mx-1 inline-flex h-6 items-center gap-1 rounded px-1 text-[11.5px] font-medium text-slate-600 hover:bg-slate-100"
+                        >
+                            All arguments
+                            <ChevronDownIcon
+                                className={cn("size-3 transition-transform duration-200", argsOpen && "rotate-180")}
+                            />
+                        </button>
+                        {argsOpen && (
+                            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-slate-600">
+                                {pending.arguments}
+                            </pre>
+                        )}
+                        {pending.argumentsTruncated && (
+                            <p className="mt-1 text-[11px] text-amber-700">
+                                These arguments are too long to show in full. Skip if you cannot verify them.
+                            </p>
+                        )}
                     </div>
+                ) : (
+                    pending.argsSummary && (
+                        <div className="mt-1.5 whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-slate-600">
+                            {pending.argsSummary}
+                        </div>
+                    )
                 )}
             </div>
             <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
@@ -275,8 +371,9 @@ export function ApprovalCard({
                 >
                     Skip
                 </button>
-                {!isSend && (
+                {!isSend && pending.alwaysAllowOffered && (
                     <button
+                        title="Run this kind of action without asking, for everyone in the workspace"
                         onClick={() => onDecide("always_allow")}
                         className="ml-auto h-7 px-2.5 rounded-md text-[12px] text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
                     >

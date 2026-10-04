@@ -38,8 +38,16 @@ type AgentRepository interface {
 	AppendMessages(ctx context.Context, orgID, userID, sessionID uuid.UUID, msgs []models.AgentMessageRow) error
 	LoadTranscript(ctx context.Context, orgID, userID, sessionID uuid.UUID) ([]models.AgentMessageRow, error)
 
+	// ClaimPendingTool clears the session's pending approval when it is for toolCallID and returns it; one caller wins.
+	ClaimPendingTool(ctx context.Context, orgID, sessionID uuid.UUID, toolCallID string) (*models.PendingAgentTool, error)
+	// ClearPendingTool drops whatever approval the session is waiting on.
+	ClearPendingTool(ctx context.Context, orgID, sessionID uuid.UUID) error
+
 	GetToolPolicies(ctx context.Context, orgID uuid.UUID) (map[string]string, error)
+	ListToolPolicies(ctx context.Context, orgID uuid.UUID) ([]models.AIToolPolicy, error)
 	SetToolPolicy(ctx context.Context, orgID uuid.UUID, toolName, decision string, createdBy uuid.UUID) error
+	// DeleteToolPolicy reports whether a policy was removed.
+	DeleteToolPolicy(ctx context.Context, orgID uuid.UUID, toolName string) (bool, error)
 }
 
 type agentRepository struct {
@@ -300,7 +308,69 @@ func (r *agentRepository) SetToolPolicy(ctx context.Context, orgID uuid.UUID, to
 	_, err := r.DB.Exec(ctx, `
 		INSERT INTO ai_tool_policies (org_id, tool_name, decision, created_by)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (org_id, tool_name) DO UPDATE SET decision = EXCLUDED.decision`,
+		ON CONFLICT (org_id, tool_name) DO UPDATE SET decision = EXCLUDED.decision, created_by = EXCLUDED.created_by, created_at = now()`,
 		orgID, toolName, decision, createdBy)
 	return err
+}
+
+func (r *agentRepository) ClaimPendingTool(ctx context.Context, orgID, sessionID uuid.UUID, toolCallID string) (*models.PendingAgentTool, error) {
+	var raw []byte
+	err := r.DB.QueryRow(ctx, `
+		UPDATE agent_sessions s
+		SET context = s.context - 'pending', updated_at = now()
+		FROM (
+			SELECT id, context->'pending' AS pending
+			FROM agent_sessions
+			WHERE id = $1 AND org_id = $2 AND context->'pending'->>'tool_call_id' = $3
+			FOR UPDATE
+		) old
+		WHERE s.id = old.id
+		RETURNING old.pending`, sessionID, orgID, toolCallID).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var p models.PendingAgentTool
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *agentRepository) ClearPendingTool(ctx context.Context, orgID, sessionID uuid.UUID) error {
+	_, err := r.DB.Exec(ctx, `UPDATE agent_sessions SET context = context - 'pending', updated_at = now() WHERE id = $1 AND org_id = $2 AND context->'pending' IS NOT NULL`, sessionID, orgID)
+	return err
+}
+
+func (r *agentRepository) ListToolPolicies(ctx context.Context, orgID uuid.UUID) ([]models.AIToolPolicy, error) {
+	rows, err := r.DB.Query(ctx, `
+		SELECT p.org_id, p.tool_name, p.decision, p.created_by,
+			TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), p.created_at
+		FROM ai_tool_policies p
+		LEFT JOIN users u ON u.id = p.created_by
+		WHERE p.org_id = $1
+		ORDER BY p.created_at DESC, p.tool_name`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.AIToolPolicy, 0)
+	for rows.Next() {
+		var p models.AIToolPolicy
+		if err := rows.Scan(&p.OrgID, &p.ToolName, &p.Decision, &p.CreatedBy, &p.CreatedByName, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (r *agentRepository) DeleteToolPolicy(ctx context.Context, orgID uuid.UUID, toolName string) (bool, error) {
+	tag, err := r.DB.Exec(ctx, `DELETE FROM ai_tool_policies WHERE org_id = $1 AND tool_name = $2`, orgID, toolName)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }

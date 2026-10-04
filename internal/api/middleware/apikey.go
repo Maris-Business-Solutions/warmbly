@@ -352,6 +352,35 @@ func (h *Handler) RequireAccess(orgPerm models.OrganizationPermission, apiPerm u
 	}
 }
 
+// RequireKeyHolder passes an API key only while the member who created it holds perm; other callers pass.
+func (h *Handler) RequireKeyHolder(perm models.OrganizationPermission) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetString(AuthTypeKey) != AuthTypeAPIKey {
+			c.Next()
+			return
+		}
+		userID, err := GetUserUUID(c)
+		orgID := GetOrganizationID(c)
+		if err != nil || orgID == nil || h.OrganizationService == nil {
+			errx.JSON(c, errx.ErrForbidden)
+			c.Abort()
+			return
+		}
+		has, xerr := h.memberHasPermission(c, *orgID, userID, perm)
+		if xerr != nil {
+			errx.JSON(c, xerr)
+			c.Abort()
+			return
+		}
+		if !has {
+			errx.JSON(c, errx.New(errx.Forbidden, "the member who created this API key does not have this permission"))
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // orNotPermitted is the lookup failure when there is one, and the member's missing permission otherwise.
 func orNotPermitted(xerr *errx.Error) *errx.Error {
 	if xerr != nil {

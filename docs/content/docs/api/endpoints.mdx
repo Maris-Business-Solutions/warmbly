@@ -638,10 +638,16 @@ Remie, the dashboard AI assistant, is JWT only: sessions are private to the memb
 | GET | `/ai/sessions/:id/messages` | organization member (use AI) |
 | POST | `/ai/sessions/:id/messages` | organization member (use AI, SSE) |
 | POST | `/ai/sessions/:id/approve` | organization member (use AI, SSE) |
+| GET | `/ai/tool-policies` | `manage_settings` |
+| DELETE | `/ai/tool-policies/:tool` | `manage_settings` |
+
+`POST /ai/sessions/:id/approve` takes `{"decision": "approve" | "deny" | "always_allow", "tool_call_id": "..."}`. `tool_call_id` is required and must be the call the session is waiting on (the `tool_call_id` of its `approval_required` event, or `pending.tool_call_id` from `GET /ai/sessions/:id/messages`); any other answers `409` `approval_not_pending`, and so does a second decision on the same call. `always_allow` saves a workspace policy only for a member with `manage_settings` and only for a tool that may be always allowed; otherwise it approves this one call. The `approval_required` event and `pending` carry `arguments` (every argument as indented JSON with sorted keys, capped at 16 KiB, with `arguments_truncated`), `preview` for a send (`from`, `to`, `subject`, `body`, `body_html`), and `always_allow_offered`.
+
+`GET /ai/tool-policies` lists the tools the assistant runs without asking (`tool_name`, `created_by`, `created_by_name`, `created_at`); `DELETE /ai/tool-policies/:tool` revokes one. Both audit as `ai_tool_policy`.
 
 ### AI skills
 
-Org playbooks the AI features follow (see the [AI skills](/guides/ai-skills/) guide). Gated on `manage_settings` for JWT callers, or the `AI_AGENT` scope for API keys.
+Org playbooks the AI features follow (see the [AI skills](/guides/ai-skills/) guide). Gated on `manage_settings` for JWT callers, or the `AI_AGENT` scope for API keys. Creating, editing or deleting one with an API key also needs the member who created the key to hold `manage_settings`.
 
 | Method | Path | Permission |
 |--------|------|------------|
@@ -652,12 +658,12 @@ Org playbooks the AI features follow (see the [AI skills](/guides/ai-skills/) gu
 
 ### Agent tools (REST)
 
-The AI tool registry over plain HTTP for function-calling agents that do not speak MCP (see [Agent tools](/api/agent-tools/)). Like the MCP endpoint, there is no route-level scope on purpose: each tool enforces its own permission, the list reflects only what the caller may use, and send-class tools are never exposed.
+The AI tool registry over plain HTTP for function-calling agents that do not speak MCP (see [Agent tools](/api/agent-tools/)). Like the MCP endpoint, it needs `AI_AGENT` (or `use_ai` for JWT callers); each tool then enforces its own permission, the list reflects only what the caller may use, and send-class tools are never exposed.
 
-| Method | Path | API Permission |
-|--------|------|----------------|
-| GET | `/ai/tools` | permission of each listed tool |
-| POST | `/ai/tools/:name/call` | permission of the tool being called |
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/ai/tools` | `use_ai` / `AI_AGENT`, then the permission of each listed tool |
+| POST | `/ai/tools/:name/call` | `use_ai` / `AI_AGENT`, then the permission of the tool being called |
 
 ### Connected MCP servers
 
@@ -690,7 +696,7 @@ The two `/integrations/slack/link` routes that take a code do not need a workspa
 
 ## MCP server
 
-`POST /v1/mcp` exposes the tool registry over the [Model Context Protocol](/api/mcp/) streamable-HTTP transport. It accepts an API key or an OAuth 2.1 access token (an unauthenticated request gets the RFC 9728 discovery challenge). Each tool is gated by its scope, `tools/list` reflects only what the credential allows, and send-class tools are never exposed. Per-key rate limits apply.
+`POST /v1/mcp` exposes the tool registry over the [Model Context Protocol](/api/mcp/) streamable-HTTP transport. It accepts an API key or an OAuth 2.1 access token holding `AI_AGENT` (an unauthenticated request gets the RFC 9728 discovery challenge). Each tool is gated by its scope, `tools/list` reflects only what the credential allows, and send-class tools are never exposed. Per-key rate limits apply.
 
 ## Public
 

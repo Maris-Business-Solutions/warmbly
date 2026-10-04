@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -102,6 +104,13 @@ type StreamEvent struct {
 	OpenURL    string `json:"open_url,omitempty"`
 	// Args is a tool_start's full arguments for in-process renderers; never sent to a client.
 	Args json.RawMessage `json:"-"`
+	// Approval card: every argument (sorted, capped), the resolved send, and whether "always allow" is offered.
+	Arguments          string                   `json:"arguments,omitempty"`
+	ArgumentsTruncated bool                     `json:"arguments_truncated,omitempty"`
+	Preview            *models.AgentSendPreview `json:"preview,omitempty"`
+	AlwaysAllowOffered bool                     `json:"always_allow_offered,omitempty"`
+	// Secrets are a tool_secret's values, shown once to the member and never to the model or the transcript.
+	Secrets map[string]string `json:"secrets,omitempty"`
 }
 
 // toolResultEvent builds the tool_result SSE step, extracting a draft artifact
@@ -130,6 +139,7 @@ const (
 	evTool      = "tool_start"
 	evToolDone  = "tool_result"
 	evApproval  = "approval_required"
+	evSecret    = "tool_secret"
 	evError     = "error"
 	evDone      = "done"
 )
@@ -146,17 +156,25 @@ type Service interface {
 
 	// Transcript returns the session's persisted history hydrated into the same
 	// turn/block shape the live stream renders, so a reopened tab looks identical
-	// to a fresh run.
-	Transcript(ctx context.Context, orgID, userID, sessionID uuid.UUID) ([]HydratedTurn, *errx.Error)
+	// to a fresh run, plus the approval it is waiting on as the reader sees it.
+	Transcript(ctx context.Context, inv aitools.Invocation, sessionID uuid.UUID) ([]HydratedTurn, *models.PendingAgentTool, *errx.Error)
 
 	// RunMessage streams a new user message's run. inv carries the caller's
 	// identity + org permission bits. emit is called for each SSE step.
 	RunMessage(ctx context.Context, inv aitools.Invocation, sessionID uuid.UUID, messageID, text, page, resource string, emit func(StreamEvent)) *errx.Error
 
 	// Resume continues a paused run after the user's decision
-	// (approve | deny | always_allow).
-	Resume(ctx context.Context, inv aitools.Invocation, sessionID uuid.UUID, decision string, emit func(StreamEvent)) *errx.Error
+	// (approve | deny | always_allow) on the tool call named by toolCallID.
+	Resume(ctx context.Context, inv aitools.Invocation, sessionID uuid.UUID, toolCallID, decision string, emit func(StreamEvent)) *errx.Error
+
+	// ListToolPolicies lists the workspace's "always allow" tools that take effect.
+	ListToolPolicies(ctx context.Context, orgID uuid.UUID) ([]models.AIToolPolicy, *errx.Error)
+	// RevokeToolPolicy removes one, so the tool asks again.
+	RevokeToolPolicy(ctx context.Context, inv aitools.Invocation, toolName string) *errx.Error
 }
+
+// errApprovalNotPending answers a decision on a tool call the session is not waiting on.
+var errApprovalNotPending = errx.NewWithIdentifier(errx.Conflict, "approval_not_pending", "This action is no longer waiting for approval.")
 
 type service struct {
 	repo     repository.AgentRepository
@@ -265,12 +283,52 @@ type HydratedTurn struct {
 	Blocks []HydratedBlock `json:"blocks"`
 }
 
-func (s *service) Transcript(ctx context.Context, orgID, userID, sessionID uuid.UUID) ([]HydratedTurn, *errx.Error) {
-	msgs, xerr := s.loadTranscript(ctx, orgID, s.sessionScope(ctx, orgID, userID, sessionID), sessionID)
-	if xerr != nil {
-		return nil, xerr
+func (s *service) Transcript(ctx context.Context, inv aitools.Invocation, sessionID uuid.UUID) ([]HydratedTurn, *models.PendingAgentTool, *errx.Error) {
+	owner := s.sessionScope(ctx, inv.OrgID, inv.UserID, sessionID)
+	sess, err := s.repo.GetSession(ctx, inv.OrgID, owner, sessionID)
+	if err != nil || sess == nil {
+		return nil, nil, errx.New(errx.NotFound, "session not found")
 	}
-	return hydrateTranscript(msgs), nil
+	msgs, xerr := s.loadTranscript(ctx, inv.OrgID, owner, sessionID)
+	if xerr != nil {
+		return nil, nil, xerr
+	}
+	if owner != inv.UserID {
+		msgs = s.forReader(ctx, inv, msgs)
+	}
+	pending := sess.Context.Pending
+	if pending != nil {
+		p := *pending
+		if p.Arguments == "" {
+			p.Arguments, p.ArgumentsTruncated = canonicalArgs(p.Args)
+		}
+		p.AlwaysAllowOffered = s.alwaysAllowOffered(inv, p.ToolName, p.Risk)
+		pending = &p
+	}
+	return hydrateTranscript(msgs), pending, nil
+}
+
+// withheldResult replaces a shared conversation's tool result for a member whose role cannot run that tool.
+const withheldResult = `{"withheld":"This result came from a tool your role cannot use."}`
+
+// forReader withholds tool results from a member reading someone else's conversation when they may not run that tool.
+func (s *service) forReader(ctx context.Context, inv aitools.Invocation, msgs []generation.AgentMessage) []generation.AgentMessage {
+	allowed := map[string]bool{}
+	for _, d := range s.registry.ToolDefs(ctx, inv) {
+		allowed[d.Name] = true
+	}
+	calls := map[string]string{}
+	out := make([]generation.AgentMessage, len(msgs))
+	for i, m := range msgs {
+		for _, tc := range m.ToolCalls {
+			calls[tc.ID] = tc.Name
+		}
+		if m.Role == "tool" && !allowed[calls[m.ToolCallID]] {
+			m.Content = withheldResult
+		}
+		out[i] = m
+	}
+	return out
 }
 
 // hydrateTranscript folds the stored provider-agnostic messages into the
@@ -345,6 +403,9 @@ func (s *service) RunMessage(ctx context.Context, inv aitools.Invocation, sessio
 	if xerr != nil {
 		return xerr
 	}
+	if owner != inv.UserID {
+		genMsgs = s.forReader(ctx, inv, genMsgs)
+	}
 	userMsg := generation.AgentMessage{Role: "user", Content: text}
 	if perr := s.persist(ctx, inv.OrgID, owner, sessionID, []generation.AgentMessage{userMsg}, 0); perr != nil {
 		return errx.New(errx.Internal, "failed to save message")
@@ -362,26 +423,43 @@ func (s *service) RunMessage(ctx context.Context, inv aitools.Invocation, sessio
 	return s.runLoop(ctx, inv, sess, genMsgs, len(genMsgs), messageID, emit)
 }
 
-func (s *service) Resume(ctx context.Context, inv aitools.Invocation, sessionID uuid.UUID, decision string, emit func(StreamEvent)) *errx.Error {
+func (s *service) Resume(ctx context.Context, inv aitools.Invocation, sessionID uuid.UUID, toolCallID, decision string, emit func(StreamEvent)) *errx.Error {
 	owner := s.sessionScope(ctx, inv.OrgID, inv.UserID, sessionID)
 	sess, err := s.repo.GetSession(ctx, inv.OrgID, owner, sessionID)
 	if err != nil || sess == nil {
 		return errx.New(errx.NotFound, "session not found")
 	}
-	pending := sess.Context.Pending
-	if pending == nil {
-		return errx.New(errx.BadRequest, "no tool awaiting approval")
+	if strings.TrimSpace(toolCallID) == "" {
+		return errx.New(errx.BadRequest, "tool_call_id is required")
 	}
 
 	genMsgs, xerr := s.loadTranscript(ctx, inv.OrgID, owner, sessionID)
 	if xerr != nil {
 		return xerr
 	}
+	if owner != inv.UserID {
+		genMsgs = s.forReader(ctx, inv, genMsgs)
+	}
 	baseline := len(genMsgs)
 
-	// Always-allow persists an org policy for write tools (never send).
-	if decision == "always_allow" && pending.Risk == string(generation.RiskWrite) {
-		_ = s.repo.SetToolPolicy(ctx, inv.OrgID, pending.ToolName, "always_allow", inv.UserID)
+	// The decision binds to one tool call, and only the caller that clears it runs it.
+	pending, cerr := s.repo.ClaimPendingTool(ctx, inv.OrgID, sessionID, toolCallID)
+	if cerr != nil {
+		return errx.New(errx.Internal, "failed to resume")
+	}
+	if pending == nil {
+		return errApprovalNotPending
+	}
+	sess.Context.Pending = nil
+
+	// A workspace policy is set only by a member who manages settings, and never for a tool that always asks.
+	if decision == "always_allow" {
+		if s.alwaysAllowOffered(inv, pending.ToolName, pending.Risk) {
+			if perr := s.repo.SetToolPolicy(ctx, inv.OrgID, pending.ToolName, "always_allow", inv.UserID); perr == nil && s.audit != nil {
+				s.audit.LogAction(ctx, inv.OrgID, inv.UserID, models.AuditActionCreate, models.AuditEntityAIToolPolicy, nil, inv.IP, inv.UserAgent, nil, map[string]string{"tool": pending.ToolName})
+			}
+		}
+		decision = "approve"
 	}
 
 	assistant := generation.AgentMessage{Role: "assistant", ToolCalls: []generation.ToolCall{{
@@ -396,9 +474,9 @@ func (s *service) Resume(ctx context.Context, inv aitools.Invocation, sessionID 
 		// Resolve the pending tool from the invocation's full tool set (static
 		// registry tools PLUS dynamic per-org tools like connected MCP servers),
 		// which registry.Call does not cover.
-		out, cerr := s.executeTool(ctx, inv, pending.ToolName, pending.Args)
-		if cerr != nil {
-			b, _ := json.Marshal(map[string]string{"error": cerr.Error()})
+		out, eerr := s.executeTool(ctx, inv, pending.ToolName, pending.Args, emit)
+		if eerr != nil {
+			b, _ := json.Marshal(map[string]string{"error": eerr.Error()})
 			out = string(b)
 		}
 		toolResult = out
@@ -410,14 +488,10 @@ func (s *service) Resume(ctx context.Context, inv aitools.Invocation, sessionID 
 		generation.AgentMessage{Role: "tool", ToolCallID: pending.ToolCallID, Content: toolResult},
 	)
 
-	// Clear the pending marker before continuing.
-	sess.Context.Pending = nil
-	_ = s.repo.UpdateSessionContext(ctx, inv.OrgID, inv.UserID, sessionID, sess.Context)
-
 	// Give the resumed segment its own credit-idempotency namespace. Reusing the
 	// original message id would collide with the pre-pause iterations (which
 	// already consumed messageID:1..N), so the resumed loop's iterations 1..N
-	// would replay for free. Pending is cleared above, so a resume is single-
+	// would replay for free. Pending was claimed above, so a resume is single-
 	// shot and a fresh id is safe.
 	return s.runLoop(ctx, inv, sess, genMsgs, baseline, "resume:"+uuid.NewString(), emit)
 }
@@ -452,7 +526,7 @@ func (s *service) runLoop(ctx context.Context, inv aitools.Invocation, sess *mod
 	req := generation.AgentRequest{
 		System:        s.systemPrompt(sess, voiceBlock, skillsBlock),
 		Messages:      genMsgs,
-		Tools:         s.registry.ToolDefs(ctx, inv),
+		Tools:         s.boundTools(ctx, inv, emit),
 		Model:         model,
 		MaxIterations: DefaultRunBudget,
 		OnEvent: func(ev generation.AgentEvent) {
@@ -495,23 +569,31 @@ func (s *service) runLoop(ctx context.Context, inv aitools.Invocation, sess *mod
 			return nil
 		},
 		Approve: func(ctx context.Context, tool generation.ToolDef, call generation.ToolCall) error {
-			// Send-class is always per-action (never auto-allowed). External MCP
-			// tools are also never auto-allowed. Write-class auto-runs only when
-			// an org policy says always_allow.
-			if tool.Risk == generation.RiskWrite && policies[tool.Name] == "always_allow" && !strings.HasPrefix(tool.Name, "mcp_") {
+			if s.autoAllowed(policies, tool) {
 				return nil
 			}
-			sess.Context.Pending = &models.PendingAgentTool{
-				MessageID:   messageID,
-				ToolCallID:  call.ID,
-				ToolName:    call.Name,
-				Risk:        string(tool.Risk),
-				Args:        call.Args,
-				ArgsSummary: summarizeArgs(call.Args),
+			p := &models.PendingAgentTool{
+				MessageID:  messageID,
+				ToolCallID: call.ID,
+				ToolName:   call.Name,
+				Risk:       string(tool.Risk),
+				Args:       call.Args,
 			}
+			// A send shows its resolved sender and recipients, and runs with exactly those.
+			if preview, pinned, perr := s.registry.PreviewSend(ctx, inv, call.Name, call.Args); perr == nil && preview != nil {
+				p.Preview = preview
+				if len(pinned) > 0 {
+					p.Args = pinned
+				}
+			}
+			p.ArgsSummary = summarizeArgs(p.Args)
+			p.Arguments, p.ArgumentsTruncated = canonicalArgs(p.Args)
+			p.AlwaysAllowOffered = s.alwaysAllowOffered(inv, call.Name, string(tool.Risk))
+			sess.Context.Pending = p
 			emit(StreamEvent{
-				Type: evApproval, Tool: call.Name, Risk: string(tool.Risk),
-				ArgsSummary: summarizeArgs(call.Args), ToolCallID: call.ID,
+				Type: evApproval, Tool: call.Name, Risk: p.Risk, ToolCallID: call.ID,
+				ArgsSummary: p.ArgsSummary, Arguments: p.Arguments, ArgumentsTruncated: p.ArgumentsTruncated,
+				Preview: p.Preview, AlwaysAllowOffered: p.AlwaysAllowOffered,
 			})
 			return generation.ErrApprovalRequired
 		},
@@ -530,6 +612,8 @@ func (s *service) runLoop(ctx context.Context, inv aitools.Invocation, sess *mod
 				lastRemaining = bal
 			}
 		}
+		sess.Context.Pending = nil
+		_ = s.repo.ClearPendingTool(ctx, sess.OrgID, sess.ID)
 		emit(StreamEvent{Type: evError, Code: "provider_error", Message: "Remie hit an error. Please try again.", CreditsRemaining: lastRemaining})
 		return nil
 	}
@@ -578,13 +662,114 @@ func (s *service) emitStop(emit func(StreamEvent), reason string, remaining int)
 // executeTool runs an approved tool by name, resolving it from the invocation's
 // full tool set (static + dynamic per-org tools). This is how a resumed run
 // executes a paused write/MCP tool, since registry.Call only knows static tools.
-func (s *service) executeTool(ctx context.Context, inv aitools.Invocation, name string, args json.RawMessage) (string, error) {
-	for _, d := range s.registry.ToolDefs(ctx, inv) {
+func (s *service) executeTool(ctx context.Context, inv aitools.Invocation, name string, args json.RawMessage, emit func(StreamEvent)) (string, error) {
+	for _, d := range s.boundTools(ctx, inv, emit) {
 		if d.Name == name {
 			return d.Handler(ctx, args)
 		}
 	}
 	return "", aitools.ErrToolNotFound
+}
+
+// boundTools is the invocation's tool set, with secret-bearing results withheld from the model.
+func (s *service) boundTools(ctx context.Context, inv aitools.Invocation, emit func(StreamEvent)) []generation.ToolDef {
+	defs := s.registry.ToolDefs(ctx, inv)
+	for i := range defs {
+		t, ok := s.registry.Get(defs[i].Name)
+		if !ok || len(t.SecretFields) == 0 {
+			continue
+		}
+		run, name, fields := defs[i].Handler, defs[i].Name, t.SecretFields
+		defs[i].Handler = func(ctx context.Context, args json.RawMessage) (string, error) {
+			out, err := run(ctx, args)
+			if err != nil {
+				return out, err
+			}
+			redacted, secrets := withholdSecrets(out, fields)
+			if len(secrets) > 0 {
+				emit(StreamEvent{Type: evSecret, Tool: name, Secrets: secrets})
+			}
+			return redacted, nil
+		}
+	}
+	return defs
+}
+
+// secretPlaceholder is what the model and the stored transcript hold in place of a secret.
+const secretPlaceholder = "[withheld: shown once to the member in the dashboard]"
+
+// withholdSecrets replaces the named top-level result fields with a placeholder and returns their values.
+func withholdSecrets(out string, fields []string) (string, map[string]string) {
+	var m map[string]any
+	if json.Unmarshal([]byte(out), &m) != nil {
+		return out, nil
+	}
+	secrets := map[string]string{}
+	for _, f := range fields {
+		v, ok := m[f].(string)
+		if !ok || v == "" {
+			continue
+		}
+		secrets[f] = v
+		m[f] = secretPlaceholder
+	}
+	if len(secrets) == 0 {
+		return out, nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return `{"withheld":"` + secretPlaceholder + `"}`, secrets
+	}
+	return string(b), secrets
+}
+
+// autoAllowed reports whether a workspace policy lets this write tool run without asking.
+func (s *service) autoAllowed(policies map[string]string, tool generation.ToolDef) bool {
+	if tool.Risk != generation.RiskWrite || policies[tool.Name] != "always_allow" || strings.HasPrefix(tool.Name, "mcp_") {
+		return false
+	}
+	t, ok := s.registry.Get(tool.Name)
+	return ok && !t.AlwaysAsk
+}
+
+// alwaysAllowOffered reports whether inv may turn this tool into a workspace "always allow".
+func (s *service) alwaysAllowOffered(inv aitools.Invocation, toolName, risk string) bool {
+	if inv.IsAPIKey || risk != string(generation.RiskWrite) || strings.HasPrefix(toolName, "mcp_") {
+		return false
+	}
+	if !inv.OrgPerms.HasPermission(models.PermManageSettings) {
+		return false
+	}
+	t, ok := s.registry.Get(toolName)
+	return ok && t.Risk == generation.RiskWrite && !t.AlwaysAsk
+}
+
+func (s *service) ListToolPolicies(ctx context.Context, orgID uuid.UUID) ([]models.AIToolPolicy, *errx.Error) {
+	rows, err := s.repo.ListToolPolicies(ctx, orgID)
+	if err != nil {
+		return nil, errx.New(errx.Internal, "failed to list tool policies")
+	}
+	out := make([]models.AIToolPolicy, 0, len(rows))
+	for _, p := range rows {
+		if s.autoAllowed(map[string]string{p.ToolName: p.Decision}, generation.ToolDef{Name: p.ToolName, Risk: generation.RiskWrite}) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+func (s *service) RevokeToolPolicy(ctx context.Context, inv aitools.Invocation, toolName string) *errx.Error {
+	removed, err := s.repo.DeleteToolPolicy(ctx, inv.OrgID, toolName)
+	if err != nil {
+		return errx.New(errx.Internal, "failed to revoke tool policy")
+	}
+	if !removed {
+		return errx.ErrNotFound
+	}
+	if s.audit != nil {
+		s.audit.LogAction(ctx, inv.OrgID, inv.UserID, models.AuditActionDelete, models.AuditEntityAIToolPolicy, nil, inv.IP, inv.UserAgent, nil, map[string]string{"tool": toolName})
+	}
+	return nil
 }
 
 // --- helpers ---
@@ -690,14 +875,47 @@ func summarizeArgs(args json.RawMessage) string {
 	if err := json.Unmarshal(args, &m); err != nil {
 		return ""
 	}
-	parts := make([]string, 0, len(m))
-	for k, v := range m {
-		parts = append(parts, fmt.Sprintf("%s=%v", k, v))
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, 4)
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, m[k]))
 		if len(parts) >= 4 {
 			break
 		}
 	}
 	return truncateRunesTitle(strings.Join(parts, ", "), 160)
+}
+
+// canonicalArgs renders every argument as indented JSON with sorted keys, capped at AgentApprovalArgsMax bytes.
+func canonicalArgs(args json.RawMessage) (string, bool) {
+	if len(args) == 0 {
+		return "", false
+	}
+	var v any
+	if err := json.Unmarshal(args, &v); err != nil {
+		return truncateBytes(string(args), models.AgentApprovalArgsMax)
+	}
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return truncateBytes(string(args), models.AgentApprovalArgsMax)
+	}
+	return truncateBytes(string(b), models.AgentApprovalArgsMax)
+}
+
+// truncateBytes cuts s to at most n bytes on a rune boundary and reports whether it cut.
+func truncateBytes(s string, n int) (string, bool) {
+	if len(s) <= n {
+		return s, false
+	}
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut], true
 }
 
 // summarize renders a short human line for a tool result step row.
@@ -709,6 +927,9 @@ func summarize(tool, result string) string {
 		}
 		if e, ok := m["error"]; ok {
 			return fmt.Sprintf("error: %v", e)
+		}
+		if _, ok := m["withheld"]; ok {
+			return "result withheld"
 		}
 		if id, ok := m["campaign_id"]; ok {
 			return fmt.Sprintf("created campaign %v", id)

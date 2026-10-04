@@ -9,7 +9,7 @@ The rules are identical to MCP: every tool is gated by its own permission bits, 
 
 - **List**: `GET https://api.warmbly.com/v1/ai/tools`
 - **Execute**: `POST https://api.warmbly.com/v1/ai/tools/{name}/call`
-- **Auth**: an API key or OAuth access token as a bearer header, or a dashboard JWT. For keys, each tool checks its own scope from the [permissions](/api/permissions/) table; for JWT members, the matching organization permission.
+- **Auth**: an API key or OAuth access token as a bearer header, or a dashboard JWT. Both endpoints need the `AI_AGENT` scope for keys and tokens (and, for an OAuth token, a member with **Use AI**), or the **Use AI** permission for JWT members; without it they answer `403`. Each tool then checks its own scope from the [permissions](/api/permissions/) table; for JWT members, the matching organization permission.
 
 ## List the tools
 

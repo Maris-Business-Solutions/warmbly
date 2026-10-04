@@ -10,7 +10,7 @@ Open Remie from the blue blob in the top bar or `Cmd/Ctrl + I`. The panel follow
 The same assistant also answers in Slack, from a DM, a mention or `/warmbly`. See [Slack](/guides/slack/#the-assistant).
 
 <Callout type="info" title="What it can and cannot do">
-Remie acts as you: only what your role allows, only in your workspace, never another organization's data. Every change asks first, and **sending is never auto-approved**, even with "Always allow" on.
+Remie acts as you: only what your role allows, only in your workspace, never another organization's data. Every change asks first. **Sending, starting things that send, and changing who has access are never auto-approved**, even with "Always allow" on.
 </Callout>
 
 Remie needs a paid plan; a free trial has no credit allowance and the AI surfaces stay locked. Beyond that, access is the **Use AI** role permission (on for admins and managers, off for viewers); without it Remie and AI drafting are hidden. Admins can cap per-member spend by day, week, or month. See [AI credits](/guides/ai-credits/) and [Team and roles](/guides/team-roles/).
@@ -18,6 +18,8 @@ Remie needs a paid plan; a free trial has no credit allowance and the AI surface
 ## Conversations and the panel
 
 Conversations are **private to you by default**. An admin can enable **Shared history** under Settings > Workspace > Remie, after which every member with Use AI sees, opens, continues, and deletes any conversation, attributed by owner. Turning it on exposes existing conversations, so decide deliberately. Delete individually from the history rail, or **Clear history** to remove every conversation you own.
+
+In a teammate's conversation, the results of tools your own role cannot use are withheld, from you and from Remie when you continue it; you see that a step ran, not what it returned. Secrets are never kept in any conversation: an invitation token or a webhook signing secret is shown once, to the member who asked for it, in the dashboard step that produced it. Remie itself never sees them, and Slack never shows them.
 
 Conversations run as tabs: open several with **+**, and a run keeps streaming in its own tab while you read another. Expanding gives a full workspace with searchable history grouped by day.
 
@@ -65,9 +67,20 @@ It knows what page you are on, so "summarize this campaign" and "draft a reply h
 
 ## Approvals
 
-**Reading runs automatically.** **Changing always asks**, showing an approval card with a plain-language summary. You can **Approve** that one action, **Skip** it, or **Always allow** that kind of action workspace-wide from then on.
+**Reading runs automatically.** **Changing always asks**, showing an approval card with the action and every argument Remie passed (expand **All arguments** to read them). You can **Approve** that one action or **Skip** it. A member with **Manage settings** can also choose **Always allow**, which lets that kind of action run without asking for everyone in the workspace from then on; other members approve one action at a time.
 
-Sending is stricter and never auto-approves. The card shows the full message and sending mailbox, and only that exact message goes out. It refuses suppressed addresses. Starting a campaign and enabling an automation carry their own approvals, since both put mail in motion.
+Some actions always ask, and **Always allow** is never offered for them:
+
+- sending a reply or a new email, and placement tests
+- starting or stopping a campaign, enabling an automation, starting warmup, releasing a mailbox's send hold or a lead's hold, and adding leads to a campaign, since each puts mail in motion
+- inviting a member, changing a member's role, and creating or editing an API key
+- tools from [connected MCP servers](/guides/connect-mcp-tools/)
+
+A send's card shows the sending mailbox, the recipient, the subject, and the plain and HTML bodies, and only that exact message goes out, from that mailbox, to that recipient. If the conversation gets a newer message before you approve a reply, the reply is refused and Remie asks again. It refuses suppressed addresses.
+
+Each approval decides one specific action: approving a card that is no longer waiting (because it was already decided, in another tab or in Slack) does nothing.
+
+Settings > Workspace > Remie lists every action that is always allowed, who allowed it and when. A member with Manage settings can **Revoke** one, after which it asks again.
 
 **Drafts stay drafts.** Campaigns Remie builds are never started and automations are left disabled; you get a button to open them in the real editor. Copy it writes is grounded in your workspace [voice profile](/guides/unibox/) and follows the same human-writing rules as the rest of Warmbly.
 
