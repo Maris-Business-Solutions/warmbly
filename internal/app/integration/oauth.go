@@ -108,10 +108,12 @@ func NewOAuthManager() *OAuthManager {
 		"https://www.googleapis.com/auth/userinfo.email",
 	}, true, identifyGoogle)
 
+	// Pipedrive takes its scopes from the app in Developer Hub, not the URL.
 	register(models.IntegrationPipedrive, "PIPEDRIVE", oauth2.Endpoint{
-		AuthURL:  "https://oauth.pipedrive.com/oauth/authorize",
-		TokenURL: "https://oauth.pipedrive.com/oauth/token",
-	}, []string{"contacts:full", "deals:full"}, false, identifyPipedrive)
+		AuthURL:   "https://oauth.pipedrive.com/oauth/authorize",
+		TokenURL:  "https://oauth.pipedrive.com/oauth/token",
+		AuthStyle: oauth2.AuthStyleInHeader,
+	}, PipedriveRequiredScopes, false, identifyPipedrive)
 
 	register(models.IntegrationSalesforce, "SALESFORCE", oauth2.Endpoint{
 		AuthURL:  "https://login.salesforce.com/services/oauth2/authorize",
@@ -131,6 +133,11 @@ var HubSpotRequiredScopes = []string{
 	"crm.objects.owners.read",
 	"crm.schemas.contacts.read", "crm.schemas.contacts.write",
 }
+
+// PipedriveRequiredScopes are what Pipedrive CRM mode needs. The app also
+// asks for contact-fields:full (the Warmbly person fields) and webhooks:full
+// (instant updates); without them the sync still runs, on polling alone.
+var PipedriveRequiredScopes = []string{"deals:full", "contacts:full", "activities:full", "users:read"}
 
 // HubSpotOptionalScopes unlock list import and reading logged email bodies;
 // a portal without them still connects.
@@ -311,6 +318,15 @@ func (m *OAuthManager) Exchange(ctx context.Context, p models.IntegrationProvide
 	if p == models.IntegrationHubSpot {
 		acct.UIDomain = hubspotUIDomain(ctx, m, tok.AccessToken)
 	}
+	if p == models.IntegrationPipedrive {
+		if v, ok := tok.Extra("api_domain").(string); ok {
+			acct.APIDomain, _ = PipedriveAPIDomain(v)
+		}
+		acct.CompanyID, acct.CompanyDomain = pipedriveCompany(ctx, m, tok.AccessToken, acct.APIDomain)
+		if acct.APIDomain == "" && acct.CompanyDomain != "" {
+			acct.APIDomain, _ = PipedriveAPIDomain("https://" + acct.CompanyDomain + ".pipedrive.com")
+		}
+	}
 	if id, ok := tok.Extra("id").(string); ok {
 		acct.IdentityURL = strings.TrimSpace(id)
 	}
@@ -378,6 +394,11 @@ type extAccount struct {
 	IdentityURL string
 	// InstallerID is the Slack member who approved the install (authed_user).
 	InstallerID string
+	// APIDomain is the Pipedrive company host every API call goes to;
+	// CompanyID and CompanyDomain name that company.
+	APIDomain     string
+	CompanyID     string
+	CompanyDomain string
 }
 
 // --- identity resolvers -----------------------------------------------------
@@ -449,7 +470,13 @@ func identifyPipedrive(ctx context.Context, m *OAuthManager, tok *oauth2.Token) 
 			Email       string `json:"email"`
 		} `json:"data"`
 	}
-	if err := m.getJSON(ctx, "https://api.pipedrive.com/v1/users/me", tok.AccessToken, &out); err != nil {
+	base := "https://api.pipedrive.com"
+	if v, ok := tok.Extra("api_domain").(string); ok {
+		if d, err := PipedriveAPIDomain(v); err == nil {
+			base = d
+		}
+	}
+	if err := m.getJSON(ctx, base+"/v1/users/me", tok.AccessToken, &out); err != nil {
 		return "", "", nil, err
 	}
 	name := out.Data.CompanyName
@@ -457,6 +484,37 @@ func identifyPipedrive(ctx context.Context, m *OAuthManager, tok *oauth2.Token) 
 		name = out.Data.Email
 	}
 	return fmt.Sprintf("%d", out.Data.ID), name, nil, nil
+}
+
+// PipedriveAPIDomain accepts only an https Pipedrive host, since the access
+// token is sent there.
+func PipedriveAPIDomain(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
+		return "", errors.New("not a pipedrive api domain")
+	}
+	host := strings.ToLower(u.Hostname())
+	if !strings.HasSuffix(host, ".pipedrive.com") || strings.Count(host, ".") != 2 {
+		return "", errors.New("not a pipedrive api domain")
+	}
+	return "https://" + host, nil
+}
+
+// pipedriveCompany reads the company the token belongs to. Best-effort.
+func pipedriveCompany(ctx context.Context, m *OAuthManager, token, base string) (string, string) {
+	if base == "" {
+		base = "https://api.pipedrive.com"
+	}
+	var out struct {
+		Data struct {
+			CompanyID     int64  `json:"company_id"`
+			CompanyDomain string `json:"company_domain"`
+		} `json:"data"`
+	}
+	if err := m.getJSON(ctx, base+"/v1/users/me", token, &out); err != nil || out.Data.CompanyID == 0 {
+		return "", ""
+	}
+	return fmt.Sprintf("%d", out.Data.CompanyID), strings.ToLower(strings.TrimSpace(out.Data.CompanyDomain))
 }
 
 // identifySalesforce resolves the connected Salesforce org + username by GETting

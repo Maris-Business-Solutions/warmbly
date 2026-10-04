@@ -40,7 +40,7 @@ import type TaskType from "@/lib/api/models/app/crm/TaskType";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import useCrmProvider from "@/hooks/useCrmProvider";
-import { HubSpotMark } from "./HubSpot";
+import { CrmMark } from "./crmProviders";
 
 export default function TaskTypePicker({
     value,
@@ -53,8 +53,9 @@ export default function TaskTypePicker({
 }) {
     const { data: types = [], isPending } = useTaskTypes();
     const createType = useCreateTaskType();
-    // HubSpot's task types are fixed, so nothing here creates or edits one.
-    const { isHubSpot } = useCrmProvider();
+    // The connected CRM's task types are its own, so nothing here creates or
+    // edits one.
+    const { isExternal, crm } = useCrmProvider();
 
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
@@ -136,14 +137,14 @@ export default function TaskTypePicker({
                         }`}
                     >
                         <div className="px-2 py-1.5 border-b border-slate-200 flex items-center gap-1.5">
-                            {isHubSpot && <HubSpotMark className="w-3 h-3" title="HubSpot task types" />}
+                            {isExternal && <CrmMark provider={crm.id} className="w-3 h-3" title={`${crm.name} ${crm.words.task} types`} />}
                             <input
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (
                                         e.key === "Enter" &&
-                                        !isHubSpot &&
+                                        !isExternal &&
                                         query.trim() &&
                                         !queryMatchesExisting
                                     ) {
@@ -155,7 +156,7 @@ export default function TaskTypePicker({
                                         setOpen(false);
                                     }
                                 }}
-                                placeholder={isHubSpot ? "Search HubSpot task types…" : "Search or create…"}
+                                placeholder={isExternal ? `Search ${crm.name} ${crm.words.task} types…` : "Search or create…"}
                                 autoFocus
                                 className="w-full h-5 bg-transparent text-[12px] text-slate-900 placeholder:text-slate-400 outline-none"
                             />
@@ -180,7 +181,7 @@ export default function TaskTypePicker({
                                 </div>
                             ) : (
                                 filtered.map((t) =>
-                                    isHubSpot ? (
+                                    isExternal ? (
                                         <button
                                             key={t.id}
                                             type="button"
@@ -212,7 +213,7 @@ export default function TaskTypePicker({
                                 )
                             )}
 
-                            {!isHubSpot && query.trim() && !queryMatchesExisting && (
+                            {!isExternal && query.trim() && !queryMatchesExisting && (
                                 <button
                                     type="button"
                                     onClick={createAndPick}
@@ -228,13 +229,13 @@ export default function TaskTypePicker({
                                 </button>
                             )}
 
-                            {isHubSpot && !isPending && filtered.length === 0 && (
+                            {isExternal && !isPending && filtered.length === 0 && (
                                 <div className="px-3 py-3 text-[11.5px] text-slate-400 text-center">
-                                    {query.trim() ? "No HubSpot task type matches" : "No task types"}
+                                    {query.trim() ? `No ${crm.name} ${crm.words.task} type matches` : "No task types"}
                                 </div>
                             )}
 
-                            {!isHubSpot &&
+                            {!isExternal &&
                                 !isPending &&
                                 filtered.length === 0 &&
                                 !query.trim() && (

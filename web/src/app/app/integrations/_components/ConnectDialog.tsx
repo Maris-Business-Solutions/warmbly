@@ -86,6 +86,7 @@ const FIELDS_BY_PROVIDER: Record<string, FieldDef[]> = {
 const NEXT_STEP: Record<string, string> = {
     slack: "Mention @Warmbly in any channel or message it to ask about your outreach. Pick where notifications and inbox replies go in setup.",
     hubspot: "Finish the CRM setup: what syncs, and in which direction.",
+    pipedrive: "Finish the CRM setup: what syncs, and in which direction.",
     salesforce: "Finish the setup: sync rules, field mapping and the first import.",
     discord: "Choose which Warmbly events post to the channel.",
 };

@@ -41,7 +41,7 @@ func (s *Service) RunDrainer(ctx context.Context) {
 			_ = s.d.Repo.PurgeJobs(ctx)
 		case <-t.C:
 			for n := 0; n < drainPerTick && ctx.Err() == nil; n++ {
-				jobs, err := s.d.Repo.ClaimJobs(ctx, 1, drainLease)
+				jobs, err := s.d.Repo.ClaimJobs(ctx, provider, 1, drainLease)
 				if err != nil {
 					log.Warn().Err(err).Msg("hubspot: claim jobs")
 					break
@@ -164,7 +164,7 @@ func (s *Service) syncLocalDeal(ctx context.Context, o *org, id uuid.UUID) error
 	if err != nil || deal == nil {
 		return nil
 	}
-	link, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectDeal, id)
+	link, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, provider, models.CRMObjectDeal, id)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (s *Service) syncLocalTask(ctx context.Context, o *org, id uuid.UUID) error
 	if err != nil || task == nil {
 		return nil
 	}
-	link, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectTask, id)
+	link, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, provider, models.CRMObjectTask, id)
 	if err != nil {
 		return err
 	}
@@ -210,7 +210,7 @@ func (s *Service) syncLocalNote(ctx context.Context, o *org, id uuid.UUID) error
 	if err != nil || note == nil {
 		return nil
 	}
-	if link, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectNote, id); err != nil || link != nil {
+	if link, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, provider, models.CRMObjectNote, id); err != nil || link != nil {
 		return err
 	}
 	if xerr := s.PushNoteCreate(ctx, o.ID, note); xerr != nil {

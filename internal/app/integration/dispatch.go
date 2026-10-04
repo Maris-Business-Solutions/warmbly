@@ -170,7 +170,7 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 	case models.IntegrationActionHubSpotUpsert:
 		// While HubSpot is the workspace CRM, every send, reply and contact
 		// syncs on its own; this action would only add duplicate notes.
-		if s.crmMode != nil && s.crmMode(ctx, target.Secrets.Conn.OrganizationID) {
+		if s.crmMode != nil && s.crmMode(ctx, target.Secrets.Conn.OrganizationID) == models.CRMProviderHubSpot {
 			return nil
 		}
 		token, terr := s.accessTokenFor(ctx, &target.Secrets)
@@ -181,12 +181,16 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 		return hubspotUpsertContact(ctx, token, contactEmail(data), props, msg.plainText())
 
 	case models.IntegrationActionPipedriveUpsert:
+		// In Pipedrive mode people are created and kept current by the sync.
+		if s.crmMode != nil && s.crmMode(ctx, target.Secrets.Conn.OrganizationID) == models.CRMProviderPipedrive {
+			return nil
+		}
 		token, terr := s.accessTokenFor(ctx, &target.Secrets)
 		if terr != nil {
 			return errReauthRequired
 		}
 		props := s.crmProps(ctx, sub, models.IntegrationPipedrive, data, autoCfg)
-		return pipedriveUpsertPerson(ctx, token, contactEmail(data), props)
+		return pipedriveUpsertPerson(ctx, pipedriveBase(&target.Secrets.Conn), token, contactEmail(data), props)
 
 	case models.IntegrationActionSalesforceUpsert:
 		// Salesforce writes go through the native sync only.

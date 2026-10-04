@@ -22,6 +22,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/contactimport"
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/crm"
+	"github.com/warmbly/warmbly/internal/app/crmmode"
 	"github.com/warmbly/warmbly/internal/app/dangerzone"
 	"github.com/warmbly/warmbly/internal/app/delegation"
 	"github.com/warmbly/warmbly/internal/app/discount"
@@ -47,6 +48,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/orgrisk"
 	"github.com/warmbly/warmbly/internal/app/orgtransfer"
 	"github.com/warmbly/warmbly/internal/app/passkey"
+	"github.com/warmbly/warmbly/internal/app/pipedrive"
 	"github.com/warmbly/warmbly/internal/app/placement"
 	"github.com/warmbly/warmbly/internal/app/poollink"
 	"github.com/warmbly/warmbly/internal/app/ratelimit"
@@ -288,6 +290,10 @@ type Handler struct {
 	// HubSpot runs a workspace's CRM on HubSpot when it chooses so. Nil on
 	// processes built without it.
 	HubSpot *hubspot.Service
+	// Pipedrive runs a workspace's CRM on Pipedrive when it chooses so.
+	Pipedrive *pipedrive.Service
+	// CRMModes routes the CRM mode endpoints to the CRM a workspace runs on.
+	CRMModes *crmmode.Registry
 
 	// OAuth 2.1 authorization server (third-party app registration + the
 	// authorization-code-with-PKCE flow + bearer-token validation).

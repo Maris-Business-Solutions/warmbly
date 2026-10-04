@@ -577,7 +577,7 @@ var Tables = []Table{
 	{
 		Name: "crm_settings", Group: models.OrgDataGroupAutomations,
 		Scope: scopeOrg,
-		Note:  "Which CRM the workspace runs on and its setup choices. The connection travels with it, so HubSpot mode resumes on the destination once its OAuth app is configured.",
+		Note:  "Which CRM the workspace runs on and its setup choices. The connection travels with it, so HubSpot or Pipedrive mode resumes on the destination once its OAuth app is configured.",
 	},
 	{
 		Name: "crm_owners", Group: models.OrgDataGroupAutomations,

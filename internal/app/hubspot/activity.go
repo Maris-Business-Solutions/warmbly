@@ -203,7 +203,7 @@ func (s *Service) logEmail(ctx context.Context, o *org, job *models.CRMSyncJob) 
 
 	logIt := (inbound && o.Config.Activity.Replies) || (!inbound && o.Config.Activity.Sent)
 	if logIt {
-		if done, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectEmail, logKey); err != nil {
+		if done, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, provider, models.CRMObjectEmail, logKey); err != nil {
 			return err
 		} else if done != nil {
 			logIt = false
@@ -348,7 +348,7 @@ func (s *Service) openDealAssocs(ctx context.Context, o *org, contactID uuid.UUI
 			ids = append(ids, d.ID)
 		}
 	}
-	links, err := s.d.Repo.LinksForLocal(ctx, o.ID, models.CRMObjectDeal, ids)
+	links, err := s.d.Repo.LinksForLocal(ctx, o.ID, provider, models.CRMObjectDeal, ids)
 	if err != nil {
 		return nil
 	}
@@ -457,7 +457,7 @@ func (s *Service) logEvent(ctx context.Context, o *org, p map[string]any) error 
 	case "bounce":
 		props[propStatus] = statusBounced
 		if taskID, perr := uuid.Parse(str(p, "task_id")); perr == nil {
-			if l, _ := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectEmail, taskID); l != nil && o.Config.Activity.Bounces {
+			if l, _ := s.d.Repo.GetLinkByLocal(ctx, o.ID, provider, models.CRMObjectEmail, taskID); l != nil && o.Config.Activity.Bounces {
 				_, _ = o.Client.Update(ctx, "emails", l.ExternalID, map[string]string{"hs_email_status": "BOUNCED"})
 			}
 		}
