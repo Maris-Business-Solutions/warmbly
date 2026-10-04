@@ -25,8 +25,8 @@ defmodule RealtimeWeb.UserSocket do
   channel("org:*", RealtimeWeb.OrgChannel)
   channel("admin:*", RealtimeWeb.AdminChannel)
 
-  # API keys and OAuth tokens arrive in this header; only the short-lived ws
-  # ticket may ride the query string, which proxies and access logs record.
+  # API keys and OAuth tokens belong in this header; the query string, which
+  # proxies record, is a deprecated fallback for them kept for existing clients.
   @credential_header "x-warmbly-token"
 
   @impl true
@@ -43,10 +43,21 @@ defmodule RealtimeWeb.UserSocket do
     query = Map.get(params, "token")
 
     cond do
-      present?(header) -> {:ok, header}
-      present?(query) and Auth.long_lived?(query) -> {:error, :credential_in_query}
-      present?(query) -> {:ok, query}
-      true -> {:error, :missing_token}
+      present?(header) ->
+        {:ok, header}
+
+      present?(query) and Auth.long_lived?(query) ->
+        Logger.info(
+          "Socket credential in the query string; send it in the x-warmbly-token header"
+        )
+
+        {:ok, query}
+
+      present?(query) ->
+        {:ok, query}
+
+      true ->
+        {:error, :missing_token}
     end
   end
 

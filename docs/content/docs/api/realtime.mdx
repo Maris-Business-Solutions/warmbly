@@ -25,7 +25,7 @@ Three token types are accepted:
 - **OAuth access token** (`wmat_…`): send an access token whose grant includes the realtime scope (the lowercased permission, `realtime_subscribe`) in the same `X-Warmbly-Token` header. It connects on the granting user's behalf with exactly the scopes they approved. See [OAuth](/api/oauth/).
 - **Short-lived JWT**: browser sessions call the authenticated socket endpoint to mint a 10-minute connection token and pass it as the `token` query parameter. This is what the dashboard itself uses.
 
-API keys and OAuth access tokens are refused in the URL (code `4003`): URLs end up in proxy and access logs, and these credentials outlive any session. Only the 10-minute connection token may travel in the query string. Browsers cannot set headers on a WebSocket, so connect with an API key or OAuth token from a server-side client.
+Send API keys and OAuth access tokens in the `x-warmbly-token` header. Putting one in the URL as `token` still works but is deprecated: URLs end up in proxy and access logs, and these credentials outlive any session, so it will stop working in a later API version. The 10-minute connection token belongs in the query string. Browsers cannot set headers on a WebSocket, so connect with an API key or OAuth token from a server-side client.
 
 A credential stops working on the socket as soon as it does on the REST API: a revoked key or token, a holder banned from signing in, or a suspended OAuth app is refused at the handshake. Signing out, signing out everywhere, changing or resetting a password, and an account ban also close every socket that user has open; the dashboard reconnects on its own with a fresh connection token if its session is still valid.
 

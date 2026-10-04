@@ -9,9 +9,14 @@ defmodule RealtimeWeb.UserSocketCredentialTest do
     assert UserSocket.credential(%{"token" => @ticket}, %{}) == {:ok, @ticket}
   end
 
-  test "an API key or OAuth token in the query string is refused" do
-    assert UserSocket.credential(%{"token" => "wmbly_abc"}, %{}) == {:error, :credential_in_query}
-    assert UserSocket.credential(%{"token" => "wmat_abc"}, %{}) == {:error, :credential_in_query}
+  test "an API key or OAuth token in the query string is still accepted, deprecated" do
+    assert UserSocket.credential(%{"token" => "wmbly_abc"}, %{}) == {:ok, "wmbly_abc"}
+    assert UserSocket.credential(%{"token" => "wmat_abc"}, %{}) == {:ok, "wmat_abc"}
+  end
+
+  test "the header wins over the query string" do
+    info = %{x_headers: [{"x-warmbly-token", "wmbly_header"}]}
+    assert UserSocket.credential(%{"token" => "wmbly_query"}, info) == {:ok, "wmbly_header"}
   end
 
   test "an API key is read from the x-warmbly-token header" do
