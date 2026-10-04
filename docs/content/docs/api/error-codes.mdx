@@ -140,11 +140,11 @@ A password must be 8 to 128 characters. There is no composition rule, but it is 
 
 | `code` | Status | Meaning |
 |--------|--------|---------|
-| `invalid_name` | 400 | A first name, last name, workspace name, company name or OAuth app name broke the naming rules. The `message` names the field and the rule |
+| `invalid_name` | 400 | A first name, last name, workspace name, company name, OAuth app name or mailbox display name broke the naming rules. The `message` names the field and the rule |
 
 Names are shown to other people, including in invitation and notification emails, so they carry plain text only. The same rules apply to the dashboard, the API, the setup page and `warmblyctl`:
 
-- a first or last name is at most 50 characters and contains a letter; a workspace or company name is at most 64 characters and contains a letter or a number
+- a first or last name is at most 50 characters and contains a letter; a workspace or company name is at most 64 characters and contains a letter or a number; a mailbox display name keeps its own 2 to 100 character bound
 - no links, web addresses or email addresses: nothing with `@`, `//`, `www.` or a scheme such as `https:`, no hostname such as `example.com`, and no IP address. Full-width and ideographic dots count as dots
 - no control characters, invisible formatting characters (zero-width and bidirectional overrides), `<`, `>`, `` ` `` or `\`, and no more than three stacked combining marks
 - leading and trailing spaces are trimmed and runs of spaces become one, and that is the form stored

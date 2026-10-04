@@ -1316,6 +1316,9 @@ func (r *emailRepository) Update(ctx context.Context, orgID, emailAccountID stri
 		if !validate.EmailName(udata.Name) {
 			return nil, errx.ErrEmailName
 		}
+		if xerr := validate.MailboxNameShown(*udata.Name); xerr != nil {
+			return nil, xerr
+		}
 		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", "name", argPos))
 		args = append(args, *udata.Name)
 		argPos++

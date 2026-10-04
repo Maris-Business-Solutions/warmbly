@@ -18,6 +18,8 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/observability/errs"
 	"github.com/warmbly/warmbly/internal/pkg/crypt"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
+	"github.com/warmbly/warmbly/internal/utils/validate"
 	"golang.org/x/oauth2"
 )
 
@@ -353,6 +355,13 @@ func validateSMTPIMAPInput(data *models.NewSMTPIMAPAccount) *errx.Error {
 	}
 	if !validNameLen(&data.Name) {
 		return errx.ErrEmailName
+	}
+	// Replaced rather than refused, so a row of an import file still connects.
+	if validate.MailboxNameShown(data.Name) != nil {
+		data.Name = displayname.FromEmail(data.Email)
+		if len([]rune(data.Name)) < 2 {
+			data.Name = "Mailbox"
+		}
 	}
 	if strings.TrimSpace(data.SMTP.Host) == "" {
 		return errx.ErrEmailSMTPHost
