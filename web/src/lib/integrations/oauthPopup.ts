@@ -44,10 +44,13 @@ export async function authorizeInPopup(start: () => Promise<string>, onOpened?: 
     const popup = window.open("about:blank", "warmbly_oauth", popupFeatures());
     if (!popup) throw new Error(POPUP_BLOCKED);
     let closedTimer: number | undefined;
+    const request = start();
+    // A request that loses the race to a closed window still settles; keep its failure handled.
+    request.catch(() => {});
     let url: string;
     try {
         url = await Promise.race([
-            start(),
+            request,
             new Promise<never>((_, reject) => {
                 closedTimer = window.setInterval(() => {
                     if (popup.closed) reject(new Error(POPUP_CLOSED));
