@@ -18,6 +18,21 @@ In the dashboard, open **Settings -> OAuth apps** and register an application. Y
 
 You receive a **client ID** and a **client secret**, shown only once. Keep the secret server-side and use it to authenticate the token exchange.
 
+### App logo
+
+The logo works like the workspace logo: upload it to the app, and Warmbly stores it and sets it.
+
+- `POST /oauth/applications/{id}/logo` takes a multipart `file`: PNG or JPG, at most 2 MB, between 32 and 1,024 pixels on each side. Warmbly decodes the image and stores a fresh copy of it, so nothing but the pixels is kept (no camera or location metadata, and no extra bytes after the image). The response is the updated app, and the previous logo is deleted.
+- `DELETE /oauth/applications/{id}/logo` removes it.
+
+Both need **Scope** `API_KEYS` and **org permission** `manage_api_keys`, like the rest of the app. A logo is shown to every workspace that sees the consent screen or the directory, so `logo_url` in the create and update bodies only accepts an address this instance issued for your workspace; any other address is refused with `400` `invalid_logo`. An update without `logo_url` keeps the current logo.
+
+### When an app is suspended or a workspace is blocked
+
+The instance's operators can **suspend** an app. A suspended app cannot sign anyone in, its tokens stop working (access and refresh alike), its webhook deliveries stop, and it leaves the [community directory](#publish-to-the-community-directory). The app's `suspended_at` and `suspended_reason` say so, and only an operator can lift it. An app you disable yourself behaves the same way until you enable it again.
+
+Operators can also **block** a workspace or a person from registering and publishing apps. `GET /oauth/applications` reports it in `developer_access` (`blocked`, `reason`), and registering or publishing then answers `403` `developer_access_blocked`. Apps the workspace already has keep working unless they were suspended too.
+
 ## Public clients and dynamic registration
 
 Native apps, CLI tools, and MCP clients cannot safely hold a secret. They connect as public clients: no client secret, and PKCE is mandatory rather than optional. There are two ways to get a public `client_id`.
@@ -318,11 +333,15 @@ Both are equally valid depending on what you are building. A dashboard-like inte
 
 ## Publish to the community directory
 
-Once your app works, list it in the [community directory](/guides/integrations/#community-apps) so other workspaces on the instance can find and install it from their Integrations page. Use **Publish** on the app under **Settings -> OAuth apps**, or the endpoints below.
+Once your app works, publish it to the [community directory](/guides/integrations/#community-apps). Use **Publish** on the app under **Settings -> OAuth apps**, or the endpoints below.
 
-A new listing is **unverified**. It is reachable at once by its link, `/app/integrations/apps/{slug}`, which opens with a warning that nobody has reviewed it, and it does not appear in the directory, search or recommendations. The instance's operators review it, and a **verified** listing joins every workspace's directory. A **rejected** listing is hidden, link included, and carries a `review_note` saying what to change; editing it sends it back for review.
+A published listing has a `status`:
 
-Any change to the listing, or to the app's name, logo, website or scopes, returns a verified listing to `unverified` and takes it out of the directory until it is reviewed again. A save that changes nothing keeps its standing.
+- `published`: link only. It opens at `/app/integrations/apps/{slug}` with a note that it is shared by link, and stays out of the directory, search and recommendations until 25 workspaces on the instance use it.
+- `featured`: the instance's team picked it. It is listed with a Featured badge whatever its installs.
+- `hidden`: the team took it down. It is reachable nowhere, and `status_note` says why.
+
+Any change to the listing, or to the app's name, logo, website or scopes, returns a `featured` listing to `published`. A save that changes nothing keeps its status, and a `hidden` listing stays hidden when edited.
 
 Install in the directory opens your `install_url`. Start the authorization-code flow from there with your own `state`, so the user lands on Warmbly's consent screen the same way they would from your site.
 
@@ -362,7 +381,7 @@ Replaces the whole listing, so repeating the request is safe.
     "install_url": "https://acme.com/warmbly/install",
     "support_url": "https://acme.com/support",
     "privacy_url": "",
-    "verification": "unverified",
+    "status": "published",
     "submitted_at": "2026-10-03T09:00:00Z",
     "created_at": "2026-10-03T09:00:00Z",
     "updated_at": "2026-10-03T09:00:00Z"
@@ -380,7 +399,7 @@ Removes the listing and its link. Workspaces that installed the app keep their g
 
 #### Browsing the directory
 
-`GET /integrations/community` returns verified listings of active apps, most installed first, as `data` plus `pagination` (`limit` 1 to 200, default 100). `GET /integrations/community/{slug}` returns one published listing, verified or unverified. Both need **Scope** `INTEGRATIONS`, and each listing reports `installs` (workspaces with an active grant) and `installed` (whether the caller's workspace has one). See [integrations](/api/reference/integrations/#list-community-apps).
+`GET /integrations/community` returns the listed apps (featured ones first, then those used by at least 25 workspaces, most installed first), as `data` plus `pagination` (`limit` 1 to 200, default 100). `GET /integrations/community/{slug}` returns one published or featured listing, listed or not. Both need **Scope** `INTEGRATIONS`, and each listing reports `installs` (workspaces with an active grant) and `installed` (whether the caller's workspace has one). See [integrations](/api/reference/integrations/#list-community-apps).
 
 ## Security notes
 

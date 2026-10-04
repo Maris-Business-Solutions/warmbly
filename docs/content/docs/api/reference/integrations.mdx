@@ -50,7 +50,7 @@ A `catalog` array of provider entries.
 
 `GET /integrations/community`
 
-Returns the verified [community directory](/guides/integrations/#community-apps) listings of active apps, most installed first. An unverified listing is never returned here.
+Returns the [community directory](/guides/integrations/#community-apps) listings shown in discovery: featured apps first, then published apps used by at least 25 workspaces, most installed first. A link-only app is never returned here.
 
 Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
 
@@ -81,7 +81,8 @@ Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_setti
       "permissions": [
         { "name": "READ_EMAILS", "value": 1, "description": "View email accounts and settings", "category": "read" }
       ],
-      "verification": "verified",
+      "status": "featured",
+      "listed": true,
       "installs": 12,
       "installed": false,
       "published_at": "2026-10-03T09:00:00Z"
@@ -91,13 +92,13 @@ Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_setti
 }
 ```
 
-`developer` is the publishing workspace's name. `installs` counts workspaces on this instance with an active grant, and `installed` says whether anyone in the caller's workspace has one. No credential, redirect URI or webhook setting is ever included.
+`status` is `featured` or `published`, and `listed` says whether it shows in discovery. `developer` is the publishing workspace's name. `installs` counts workspaces on this instance with an active grant, and `installed` says whether anyone in the caller's workspace has one. No credential, redirect URI or webhook setting is ever included.
 
 ## Get a community app
 
 `GET /integrations/community/{slug}`
 
-Returns one published listing by its slug, verified or unverified, in the same shape as a list item. This is how a shared link to an unverified app resolves. A rejected or unpublished listing, or one whose app is disabled, returns `404`.
+Returns one listing by its slug, listed or link only, in the same shape as a list item. This is how a shared link resolves. A hidden or unpublished listing, or one whose app is disabled, returns `404`.
 
 Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
 

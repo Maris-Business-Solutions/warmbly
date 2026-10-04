@@ -17902,7 +17902,7 @@
       "get": {
         "operationId": "integrations_community_list",
         "summary": "List community apps",
-        "description": "Verified community directory listings of active OAuth apps, most installed first. An unverified listing is never returned here; open it by its slug.",
+        "description": "Community directory listings shown in discovery: featured apps first, then published apps used by at least 25 workspaces, most installed first. A link-only app is never returned here; open it by its slug.",
         "tags": [
           "integrations"
         ],
@@ -17936,7 +17936,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Verified community apps.",
+            "description": "Listed community apps.",
             "content": {
               "application/json": {
                 "schema": {
@@ -17992,7 +17992,7 @@
       "get": {
         "operationId": "integrations_community_get",
         "summary": "Get a community app",
-        "description": "One published listing by its slug, verified or unverified. A rejected or unpublished listing, or one whose app is disabled, returns 404.",
+        "description": "One listing by its slug, listed or link only. A hidden or unpublished listing, or one whose app is disabled, returns 404.",
         "tags": [
           "integrations"
         ],
@@ -37811,7 +37811,8 @@
           "developer",
           "scopes",
           "permissions",
-          "verification",
+          "status",
+          "listed",
           "installs",
           "installed",
           "published_at"
@@ -37898,12 +37899,17 @@
             },
             "description": "The same permissions, spelled out."
           },
-          "verification": {
+          "status": {
             "type": "string",
             "enum": [
-              "unverified",
-              "verified"
-            ]
+              "published",
+              "featured"
+            ],
+            "description": "featured: picked by the instance's team. published: link only unless widely used."
+          },
+          "listed": {
+            "type": "boolean",
+            "description": "Shown in discovery: featured, or used by at least 25 workspaces."
           },
           "installs": {
             "type": "integer",

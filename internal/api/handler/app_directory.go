@@ -49,12 +49,17 @@ func (h *Handler) PutOAuthAppListing(c *gin.Context) {
 	if !ok {
 		return
 	}
+	userID, uerr := middleware.GetUserUUID(c)
+	if uerr != nil {
+		errx.JSON(c, errx.ErrUnauthorized)
+		return
+	}
 	var w models.AppListingWrite
 	if err := c.ShouldBindJSON(&w); err != nil {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
-	l, outcome, xerr := h.AppDirectoryService.SaveListing(c.Request.Context(), orgID, appID, w)
+	l, outcome, xerr := h.AppDirectoryService.SaveListing(c.Request.Context(), orgID, userID, appID, w)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
@@ -64,7 +69,7 @@ func (h *Handler) PutOAuthAppListing(c *gin.Context) {
 		if outcome == appdirectory.SaveCreated {
 			action = models.AuditActionCreate
 		}
-		h.auditOrg(c, action, models.AuditEntityAppListing, &appID, nil, map[string]string{"slug": l.Slug, "verification": string(l.Verification)})
+		h.auditOrg(c, action, models.AuditEntityAppListing, &appID, nil, map[string]string{"slug": l.Slug, "status": string(l.Status)})
 	}
 	c.JSON(http.StatusOK, gin.H{"listing": l})
 }
@@ -85,7 +90,7 @@ func (h *Handler) DeleteOAuthAppListing(c *gin.Context) {
 
 // --- Workspace: browsing the directory (GET /integrations/community[/:slug])
 
-// ListCommunityApps returns verified listings, most installed first.
+// ListCommunityApps returns the listings shown in discovery: featured first, then most installed.
 func (h *Handler) ListCommunityApps(c *gin.Context) {
 	orgID, ok := requireOrgID(c)
 	if !ok {
@@ -118,7 +123,7 @@ func (h *Handler) ListCommunityApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": apps, "pagination": pg})
 }
 
-// GetCommunityApp opens a published listing by its link, verified or not.
+// GetCommunityApp opens a published listing by its link, listed or not.
 func (h *Handler) GetCommunityApp(c *gin.Context) {
 	orgID, ok := requireOrgID(c)
 	if !ok {
@@ -132,7 +137,7 @@ func (h *Handler) GetCommunityApp(c *gin.Context) {
 	c.JSON(http.StatusOK, app)
 }
 
-// --- Operator: the review queue (/admin/app-listings)
+// --- Operator: directory moderation (/admin/app-listings)
 
 // AdminListAppListings is GET /admin/app-listings.
 func (h *Handler) AdminListAppListings(c *gin.Context) {
@@ -154,17 +159,9 @@ func (h *Handler) AdminListAppListings(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
-// AdminVerifyAppListing is POST /admin/app-listings/:id/verify.
-func (h *Handler) AdminVerifyAppListing(c *gin.Context) {
-	h.reviewAppListing(c, models.AppListingVerified, "verify_app_listing")
-}
-
-// AdminRejectAppListing is POST /admin/app-listings/:id/reject.
-func (h *Handler) AdminRejectAppListing(c *gin.Context) {
-	h.reviewAppListing(c, models.AppListingRejected, "reject_app_listing")
-}
-
-func (h *Handler) reviewAppListing(c *gin.Context, verdict models.AppListingVerification, action string) {
+// AdminSetAppListingStatus is PUT /admin/app-listings/:id/status: feature,
+// unfeature (published) or hide a listing.
+func (h *Handler) AdminSetAppListingStatus(c *gin.Context) {
 	adminID := middleware.GetAdminUserID(c)
 	if adminID == nil {
 		errx.JSON(c, errx.ErrUnauthorized)
@@ -174,16 +171,20 @@ func (h *Handler) reviewAppListing(c *gin.Context, verdict models.AppListingVeri
 	if !ok {
 		return
 	}
-	var body models.ReviewAppListingBody
-	_ = c.ShouldBindJSON(&body) // the note is optional on verify
-	item, xerr := h.AppDirectoryService.Review(c.Request.Context(), id, *adminID, verdict, body.Note)
+	var body models.SetAppListingStatus
+	if err := c.ShouldBindJSON(&body); err != nil {
+		errx.JSON(c, errx.InvalidBody(err))
+		return
+	}
+	item, xerr := h.AppDirectoryService.SetStatus(c.Request.Context(), id, *adminID, body.Status, body.Note)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
 	}
-	h.audit(c, models.AuditAction(action), models.AuditEntityAppListing, &id, map[string]string{
+	h.audit(c, models.AuditAction("set_app_listing_status"), models.AuditEntityAppListing, &id, map[string]string{
 		"slug":            item.Slug,
 		"organization_id": item.OrganizationID.String(),
+		"status":          string(item.Status),
 		"note":            body.Note,
 	})
 	c.JSON(http.StatusOK, item)

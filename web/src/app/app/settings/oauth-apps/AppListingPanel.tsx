@@ -1,13 +1,13 @@
-// Community directory controls for one OAuth app: publish it, see where review
-// stands, copy the share link, edit or unpublish. A published app is reachable by
-// its link right away and joins the directory once an operator verifies it; any
-// edit to what the listing shows sends it back for review.
+// Community directory controls for one OAuth app: publish it, copy the share
+// link, edit or unpublish. A published app is reachable by its link and joins the
+// directory when the team features it or enough workspaces use it; editing a
+// featured listing removes the feature.
 
 import React from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
-import { BadgeCheckIcon, BlocksIcon, ClockIcon, CopyIcon, ExternalLinkIcon, Loader2Icon, ShieldXIcon, XIcon } from "lucide-react";
+import { BlocksIcon, CopyIcon, EyeOffIcon, ExternalLinkIcon, LinkIcon, Loader2Icon, StarIcon, XIcon } from "lucide-react";
 
 import { Label, TextInput } from "@/components/ui/field";
 import { useConfirm } from "@/hooks/context/confirm";
@@ -15,6 +15,7 @@ import { useAppListing, useDeleteAppListing, useSaveAppListing } from "@/lib/api
 import {
     communityAppPath,
     LISTING_CATEGORY_LABELS,
+    POPULAR_INSTALLS,
     type AppListing,
     type AppListingCategory,
     type AppListingInput,
@@ -39,7 +40,7 @@ function shareLink(slug: string): string {
     return `${window.location.origin}${communityAppPath(slug)}`;
 }
 
-export default function AppListingPanel({ app }: { app: OAuthApplication }) {
+export default function AppListingPanel({ app, blocked = false }: { app: OAuthApplication; blocked?: boolean }) {
     const listingQuery = useAppListing(app.id);
     const unpublish = useDeleteAppListing(app.id);
     const confirm = useConfirm();
@@ -54,7 +55,7 @@ export default function AppListingPanel({ app }: { app: OAuthApplication }) {
         <div className="mt-2 rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2">
             <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Community directory</span>
-                {listing && <VerificationBadge listing={listing} />}
+                {listing && <StatusBadge listing={listing} />}
                 <div className="ml-auto flex items-center gap-1">
                     {listing ? (
                         <>
@@ -96,8 +97,16 @@ export default function AppListingPanel({ app }: { app: OAuthApplication }) {
                         <button
                             type="button"
                             onClick={() => setEditing(true)}
-                            disabled={app.status !== "active"}
-                            title={app.status !== "active" ? "Enable the app before publishing it" : undefined}
+                            disabled={app.status !== "active" || !!app.suspended_at || blocked}
+                            title={
+                                blocked
+                                    ? "Publishing apps is blocked for this workspace"
+                                    : app.suspended_at
+                                      ? "A suspended app can’t be published"
+                                      : app.status !== "active"
+                                        ? "Enable the app before publishing it"
+                                        : undefined
+                            }
                             className="h-6 px-2 rounded bg-sky-600 hover:bg-sky-700 text-white text-[11.5px] font-medium inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <BlocksIcon className="w-3 h-3" />
@@ -108,16 +117,16 @@ export default function AppListingPanel({ app }: { app: OAuthApplication }) {
             </div>
             <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
                 {!listing
-                    ? "List this app so other workspaces can find and install it."
-                    : listing.verification === "verified"
-                      ? "Listed in every workspace's Integrations page."
-                      : listing.verification === "rejected"
-                        ? "Hidden. Edit the listing to address the note below and send it for review again."
-                        : "Waiting for review. Until it is verified, only people with the link can open it, and they see an unverified warning."}
+                    ? `Publish it to get a link you can share. It shows in the directory when we feature it or ${POPULAR_INSTALLS} workspaces use it.`
+                    : listing.status === "featured"
+                      ? "Featured in every workspace's Integrations page."
+                      : listing.status === "hidden"
+                        ? "Hidden by us, so its link doesn't open. Contact support if you think that's a mistake."
+                        : `Shared by link. It joins the directory when we feature it or once ${POPULAR_INSTALLS} workspaces use it.`}
             </p>
-            {listing?.verification === "rejected" && listing.review_note && (
+            {listing?.status === "hidden" && listing.status_note && (
                 <p className="mt-1.5 rounded border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11.5px] text-rose-800 whitespace-pre-line">
-                    {listing.review_note}
+                    {listing.status_note}
                 </p>
             )}
             <AnimatePresence>
@@ -127,13 +136,13 @@ export default function AppListingPanel({ app }: { app: OAuthApplication }) {
     );
 }
 
-function VerificationBadge({ listing }: { listing: AppListing }) {
+function StatusBadge({ listing }: { listing: AppListing }) {
     const tone =
-        listing.verification === "verified"
-            ? { cls: "bg-emerald-50 text-emerald-700", icon: BadgeCheckIcon, label: "Verified" }
-            : listing.verification === "rejected"
-              ? { cls: "bg-rose-50 text-rose-700", icon: ShieldXIcon, label: "Not approved" }
-              : { cls: "bg-amber-50 text-amber-700", icon: ClockIcon, label: "Unverified" };
+        listing.status === "featured"
+            ? { cls: "bg-sky-50 text-sky-700", icon: StarIcon, label: "Featured" }
+            : listing.status === "hidden"
+              ? { cls: "bg-rose-50 text-rose-700", icon: EyeOffIcon, label: "Hidden" }
+              : { cls: "bg-slate-100 text-slate-600", icon: LinkIcon, label: "Link only" };
     return (
         <span className={cn("inline-flex items-center gap-1 h-5 px-1.5 rounded text-[9.5px] uppercase tracking-[0.08em] font-medium", tone.cls)}>
             <tone.icon className="w-3 h-3" />
@@ -188,7 +197,7 @@ function ListingModal({ app, listing, onClose }: { app: OAuthApplication; listin
             : !httpsOk(form.support_url, false) || !httpsOk(form.privacy_url, false)
               ? "Support and privacy links must start with https://."
               : null;
-    const resubmits = listing?.verification === "verified" && dirty;
+    const unfeatures = listing?.status === "featured" && dirty;
 
     async function submit() {
         if (problem) {
@@ -205,7 +214,7 @@ function ListingModal({ app, listing, onClose }: { app: OAuthApplication; listin
                 support_url: form.support_url.trim(),
                 privacy_url: form.privacy_url.trim(),
             });
-            toast.success(listing ? "Listing saved" : "Published. Share the link while it waits for review.");
+            toast.success(listing ? "Listing saved" : "Published. Share the link with the people who use it.");
             onClose();
         } catch (e) {
             toast.error((e as { message?: string })?.message ?? "Could not save the listing");
@@ -248,10 +257,10 @@ function ListingModal({ app, listing, onClose }: { app: OAuthApplication; listin
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                    <div className="rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2 text-[11.5px] text-slate-600 leading-relaxed">
-                        Your app's name, logo, website and permissions come from the app itself. Once published, anyone with the
-                        link can open it with an unverified warning. It appears in the directory after it is reviewed, and any
-                        change to the listing or the app sends it back for review.
+                    <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-[11.5px] text-slate-600 leading-relaxed">
+                        Your app's name, logo, website and permissions come from the app itself. Publishing gives you a link anyone
+                        can open. It shows in the directory when we feature it or {POPULAR_INSTALLS} workspaces use it, and
+                        editing a featured app removes the feature until we pick it again.
                     </div>
 
                     <div>
@@ -373,7 +382,7 @@ function ListingModal({ app, listing, onClose }: { app: OAuthApplication; listin
 
                 <div className="border-t border-slate-200 px-4 py-3 flex items-center gap-2 shrink-0">
                     <span className="text-[11px] text-slate-400 min-w-0 truncate">
-                        {problem ?? (resubmits ? "Saving sends it back for review." : "")}
+                        {problem ?? (unfeatures ? "Saving removes the Featured mark until we pick it again." : "")}
                     </span>
                     <div className="ml-auto flex items-center gap-2">
                         <button

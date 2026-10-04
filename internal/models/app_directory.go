@@ -6,21 +6,22 @@ import (
 	"github.com/google/uuid"
 )
 
-// AppListingVerification is an operator's verdict on a directory listing.
-type AppListingVerification string
+// AppListingStatus is where a directory listing can be seen.
+type AppListingStatus string
 
 const (
-	// AppListingUnverified is reachable by its link and absent from discovery.
-	AppListingUnverified AppListingVerification = "unverified"
-	// AppListingVerified is shown in every workspace's Integrations page.
-	AppListingVerified AppListingVerification = "verified"
-	// AppListingRejected is hidden everywhere until its developer edits it.
-	AppListingRejected AppListingVerification = "rejected"
+	// AppListingPublished is reachable by its link, and listed in discovery
+	// once config.AppDirectoryPopularInstalls workspaces use it.
+	AppListingPublished AppListingStatus = "published"
+	// AppListingFeatured was picked by an operator and is always listed.
+	AppListingFeatured AppListingStatus = "featured"
+	// AppListingHidden was taken down by an operator and is reachable nowhere.
+	AppListingHidden AppListingStatus = "hidden"
 )
 
-func (v AppListingVerification) Valid() bool {
+func (v AppListingStatus) Valid() bool {
 	switch v {
-	case AppListingUnverified, AppListingVerified, AppListingRejected:
+	case AppListingPublished, AppListingFeatured, AppListingHidden:
 		return true
 	}
 	return false
@@ -41,21 +42,21 @@ var AppListingCategories = []string{
 
 // AppListing is one OAuth app's page in the community directory.
 type AppListing struct {
-	ApplicationID  uuid.UUID              `json:"application_id"`
-	OrganizationID uuid.UUID              `json:"organization_id"`
-	Slug           string                 `json:"slug"`
-	Tagline        string                 `json:"tagline"`
-	Description    string                 `json:"description"`
-	Category       string                 `json:"category"`
-	InstallURL     string                 `json:"install_url"`
-	SupportURL     string                 `json:"support_url"`
-	PrivacyURL     string                 `json:"privacy_url"`
-	Verification   AppListingVerification `json:"verification"`
-	ReviewNote     string                 `json:"review_note,omitempty"`
-	ReviewedAt     *time.Time             `json:"reviewed_at,omitempty"`
-	SubmittedAt    time.Time              `json:"submitted_at"`
-	CreatedAt      time.Time              `json:"created_at"`
-	UpdatedAt      time.Time              `json:"updated_at"`
+	ApplicationID  uuid.UUID        `json:"application_id"`
+	OrganizationID uuid.UUID        `json:"organization_id"`
+	Slug           string           `json:"slug"`
+	Tagline        string           `json:"tagline"`
+	Description    string           `json:"description"`
+	Category       string           `json:"category"`
+	InstallURL     string           `json:"install_url"`
+	SupportURL     string           `json:"support_url"`
+	PrivacyURL     string           `json:"privacy_url"`
+	Status         AppListingStatus `json:"status"`
+	StatusNote     string           `json:"status_note,omitempty"`
+	StatusAt       *time.Time       `json:"status_at,omitempty"`
+	SubmittedAt    time.Time        `json:"submitted_at"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 // AppListingWrite is the developer's publish/edit payload.
@@ -88,11 +89,13 @@ type CommunityApp struct {
 	Scopes        uint64    `json:"scopes"`
 	// Permissions spells out Scopes for a viewer who cannot read the API
 	// permission catalog.
-	Permissions  []APIPermission        `json:"permissions"`
-	Verification AppListingVerification `json:"verification"`
-	Installs     int                    `json:"installs"`
-	Installed    bool                   `json:"installed"`
-	PublishedAt  time.Time              `json:"published_at"`
+	Permissions []APIPermission  `json:"permissions"`
+	Status      AppListingStatus `json:"status"`
+	// Listed: shown in discovery, because it is featured or widely used.
+	Listed      bool      `json:"listed"`
+	Installs    int       `json:"installs"`
+	Installed   bool      `json:"installed"`
+	PublishedAt time.Time `json:"published_at"`
 }
 
 // AdminAppListing is a listing in the operator's review queue.
@@ -106,16 +109,17 @@ type AdminAppListing struct {
 	AppStatus        string          `json:"app_status"`
 	OrganizationName string          `json:"organization_name"`
 	Installs         int             `json:"installs"`
-	ReviewedBy       *uuid.UUID      `json:"reviewed_by,omitempty"`
-	ReviewedByEmail  string          `json:"reviewed_by_email,omitempty"`
+	Listed           bool            `json:"listed"`
+	StatusBy         *uuid.UUID      `json:"status_by,omitempty"`
+	StatusByEmail    string          `json:"status_by_email,omitempty"`
 }
 
 // AdminAppListingSearch filters the review queue.
 type AdminAppListingSearch struct {
-	Q            string `form:"q"`
-	Verification string `form:"verification"`
-	Limit        int    `form:"limit"`
-	Offset       int    `form:"-"`
+	Q      string `form:"q"`
+	Status string `form:"status"`
+	Limit  int    `form:"limit"`
+	Offset int    `form:"-"`
 }
 
 // AdminAppListingsResult is the review queue page.
@@ -124,9 +128,11 @@ type AdminAppListingsResult struct {
 	Pagination Pagination        `json:"pagination"`
 }
 
-// ReviewAppListingBody carries the operator's note to the developer.
-type ReviewAppListingBody struct {
-	Note string `json:"note"`
+// SetAppListingStatus is an operator's decision on a listing; the note is
+// shown to the developer and required to hide one.
+type SetAppListingStatus struct {
+	Status AppListingStatus `json:"status"`
+	Note   string           `json:"note"`
 }
 
 // PermissionsIn lists the API permissions a scope mask grants, in catalog order.

@@ -24,6 +24,9 @@ export interface OAuthApplication {
     // Bitmask of the API permissions this app may request (same bits as API keys).
     scopes: number;
     status: OAuthAppStatus;
+    /** Set when an operator suspended the app; the owner cannot lift it. */
+    suspended_at?: Date;
+    suspended_reason?: string;
     created_at: Date;
     updated_at: Date;
 }
@@ -35,6 +38,8 @@ export interface OAuthApplicationWithSecret extends OAuthApplication {
 
 export interface OAuthApplicationsResult {
     applications: OAuthApplication[];
+    /** Whether an operator has blocked this workspace or person from registering and publishing apps. */
+    developer_access?: { blocked: boolean; reason?: string };
 }
 
 export interface OAuthApplicationInput {

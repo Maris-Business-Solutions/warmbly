@@ -50,6 +50,13 @@ func (o PresignOp) Method() string {
 //
 // Keys are opaque; implementations may translate to filesystem paths, S3
 // object keys, etc. Callers should not assume a particular separator.
+// PublicURLer is implemented by stores that can say which URL PutPublic
+// returns for a key, so a caller can tell its own public objects from any
+// other URL.
+type PublicURLer interface {
+	PublicURL(key string) string
+}
+
 type Store interface {
 	// Get returns the object's body. The caller must close the reader.
 	// Returns ErrNotFound when the key doesn't exist.

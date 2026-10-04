@@ -1140,7 +1140,7 @@ func Run(
 				operate := m.RequireAccess(models.PermUseIntegrations, models.APIPermIntegrations)
 
 				integrations.GET("/catalog", read, h.ListIntegrationCatalog)
-				// Community directory: verified apps for discovery, any published app by its link.
+				// Community directory: listed apps for discovery, any published app by its link.
 				integrations.GET("/community", read, h.ListCommunityApps)
 				integrations.GET("/community/:slug", read, h.GetCommunityApp)
 				integrations.GET("/connections", read, h.ListIntegrationConnections)
@@ -1211,6 +1211,9 @@ func Run(
 				oauthApps.PATCH("/:id", h.UpdateOAuthApplication)
 				oauthApps.DELETE("/:id", h.DeleteOAuthApplication)
 				oauthApps.POST("/:id/rotate-secret", h.RotateOAuthApplicationSecret)
+				// The app's logo, stored and set by the server like the workspace logo.
+				oauthApps.POST("/:id/logo", h.UploadOAuthApplicationLogo)
+				oauthApps.DELETE("/:id/logo", h.DeleteOAuthApplicationLogo)
 				// The app's community directory listing.
 				oauthApps.GET("/:id/listing", h.GetOAuthAppListing)
 				oauthApps.PUT("/:id/listing", h.PutOAuthAppListing)
@@ -1728,10 +1731,19 @@ func Run(
 		adminRoutes.POST("/limit-requests/:id/approve", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminApproveLimitRequest)
 		adminRoutes.POST("/limit-requests/:id/reject", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminRejectLimitRequest)
 
-		// Community app directory review queue
+		// Community app directory: feature, unfeature or hide a listing
 		adminRoutes.GET("/app-listings", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListAppListings)
-		adminRoutes.POST("/app-listings/:id/verify", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminVerifyAppListing)
-		adminRoutes.POST("/app-listings/:id/reject", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminRejectAppListing)
+		adminRoutes.PUT("/app-listings/:id/status", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminSetAppListingStatus)
+
+		// OAuth app moderation and developer blocks
+		adminRoutes.GET("/oauth-apps", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListOAuthApps)
+		adminRoutes.POST("/oauth-apps/:id/suspend", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminSuspendOAuthApp)
+		adminRoutes.POST("/oauth-apps/:id/unsuspend", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminUnsuspendOAuthApp)
+		adminRoutes.POST("/oauth-apps/:id/revoke-grants", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminRevokeOAuthAppGrants)
+		adminRoutes.POST("/oauth-apps/:id/remove-logo", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminRemoveOAuthAppLogo)
+		adminRoutes.GET("/oauth-developer-blocks", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListOAuthDeveloperBlocks)
+		adminRoutes.POST("/oauth-developer-blocks", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminCreateOAuthDeveloperBlock)
+		adminRoutes.DELETE("/oauth-developer-blocks/:id", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminDeleteOAuthDeveloperBlock)
 
 		// Admin outreach composer. Reuses ManageOrganizations (the
 		// audit story is the same as direct overrides — admin sends

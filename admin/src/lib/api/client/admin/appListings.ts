@@ -1,8 +1,13 @@
-// /admin/app-listings: review queue for the community app directory.
+// /admin/app-listings: the community app directory, featured, listed and hidden.
 
 import { Request } from "@/lib/api/client";
 import { buildSearchQuery } from "@/lib/api/client/admin/query";
-import type { AdminAppListing, AdminAppListingSearch, AdminAppListingsResult } from "@/lib/api/models/admin";
+import type {
+    AdminAppListing,
+    AdminAppListingSearch,
+    AdminAppListingsResult,
+    AppListingStatus,
+} from "@/lib/api/models/admin";
 
 export function listAppListings(params: AdminAppListingSearch = {}): Promise<AdminAppListingsResult> {
     return Request({
@@ -12,20 +17,11 @@ export function listAppListings(params: AdminAppListingSearch = {}): Promise<Adm
     });
 }
 
-export function verifyAppListing(id: string, note: string): Promise<AdminAppListing> {
+export function setAppListingStatus(id: string, status: AppListingStatus, note: string): Promise<AdminAppListing> {
     return Request({
-        method: "POST",
-        url: `/admin/app-listings/${id}/verify`,
+        method: "PUT",
+        url: `/admin/app-listings/${id}/status`,
         authorization: true,
-        data: { note },
-    });
-}
-
-export function rejectAppListing(id: string, note: string): Promise<AdminAppListing> {
-    return Request({
-        method: "POST",
-        url: `/admin/app-listings/${id}/reject`,
-        authorization: true,
-        data: { note },
+        data: { status, note },
     });
 }

@@ -380,11 +380,11 @@ const router = createBrowserRouter([
             element: <Navigate to="/app/settings/oauth-apps" replace />,
           },
           {
-            // /apps/:slug is a community app's shareable link: the directory with
-            // its drawer open, so the page stays mounted while it opens and closes.
-            path: "integrations/apps?/:slug?",
+            // The store and every page in it (/connected, /category/:c, /:provider,
+            // /apps/:slug); one mounted page so search and drawers survive navigation.
+            path: "integrations/*",
             element: <IntegrationsPage />,
-            handle: { stableParams: ["slug"] },
+            handle: { stableParams: ["*"] },
           },
           {
             path: "automations",

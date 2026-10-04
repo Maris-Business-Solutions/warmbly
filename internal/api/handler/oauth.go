@@ -2,12 +2,10 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -43,7 +41,8 @@ func (h *Handler) ListOAuthApplications(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.Internal, "lookup failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"applications": apps})
+	userID, _ := middleware.GetUserUUID(c)
+	c.JSON(http.StatusOK, gin.H{"applications": apps, "developer_access": h.OAuthService.DeveloperAccess(c.Request.Context(), *orgID, userID)})
 }
 
 func (h *Handler) CreateOAuthApplication(c *gin.Context) {
@@ -62,8 +61,17 @@ func (h *Handler) CreateOAuthApplication(c *gin.Context) {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
+	if xerr := checkAppLogo(c.Request.Context(), h.Storage, *orgID, w.LogoURL, ""); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
 	app, err := h.OAuthService.RegisterApplication(c.Request.Context(), *orgID, userID, w)
 	if err != nil {
+		var blocked *oauth.DeveloperBlockedError
+		if errors.As(err, &blocked) {
+			errx.JSON(c, errx.NewWithIdentifier(errx.Forbidden, "developer_access_blocked", blocked.Error()))
+			return
+		}
 		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
 		return
 	}
@@ -107,6 +115,19 @@ func (h *Handler) UpdateOAuthApplication(c *gin.Context) {
 	var w models.OAuthApplicationWrite
 	if err := c.ShouldBindJSON(&w); err != nil {
 		errx.JSON(c, errx.InvalidBody(err))
+		return
+	}
+	current, gerr := h.OAuthService.GetApplication(c.Request.Context(), *orgID, id)
+	if gerr != nil {
+		errx.JSON(c, errx.New(errx.Internal, "lookup failed"))
+		return
+	}
+	if current == nil {
+		errx.JSON(c, errx.New(errx.NotFound, "application not found"))
+		return
+	}
+	if xerr := checkAppLogo(c.Request.Context(), h.Storage, *orgID, w.LogoURL, current.LogoURL); xerr != nil {
+		errx.JSON(c, xerr)
 		return
 	}
 	app, uerr := h.OAuthService.UpdateApplication(c.Request.Context(), *orgID, id, w)
@@ -285,12 +306,21 @@ func (h *Handler) UploadOAuthAppLogo(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.BadRequest, "no organization selected"))
 		return
 	}
-	body, mime, ext, xerr := readAvatarUpload(c)
+	raw, _, _, xerr := readAvatarUpload(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
 	}
-	key := fmt.Sprintf("oauth-app-logos/%s-%d%s", orgID.String(), time.Now().Unix(), ext)
+	body, mime, ext, xerr := reencodeLogo(raw)
+	if xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	key, err := appLogoKey(*orgID, ext)
+	if err != nil {
+		errx.JSON(c, errx.InternalError())
+		return
+	}
 	url, xerr := putPublicObject(c.Request.Context(), h.Storage, key, body, mime)
 	if xerr != nil {
 		errx.JSON(c, xerr)

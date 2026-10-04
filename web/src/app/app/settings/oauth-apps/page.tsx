@@ -9,13 +9,8 @@ import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-    ArrowLeftIcon,
-    ArrowRightIcon,
-    CheckCircle2Icon,
     CheckIcon,
     ChevronRightIcon,
-    CopyIcon,
-    ImageIcon,
     Loader2Icon,
     PencilIcon,
     PlusIcon,
@@ -28,18 +23,18 @@ import {
 import { NoAccess } from "@/components/layout/NoAccess";
 import { usePermission } from "@/hooks/usePermission";
 import { EmptyBlock } from "@/components/layout/Page";
-import { Label, SearchInput, TextInput } from "@/components/ui/field";
+import { Label, TextInput } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "@/hooks/context/confirm";
 import useAPIPermissions from "@/lib/api/hooks/app/api-keys/useAPIPermissions";
 import type APIPermission from "@/lib/api/models/app/apikeys/APIPermission";
 import {
     useOAuthApps,
-    useCreateOAuthApp,
     useUpdateOAuthApp,
     useDeleteOAuthApp,
     useRotateOAuthAppSecret,
-    useUploadOAuthAppLogo,
+    useSetOAuthAppLogo,
+    useDeleteOAuthAppLogo,
     useOAuthAppWebhookSecret,
     useRotateOAuthAppWebhookSecret,
     useOAuthAppWebhookEndpoints,
@@ -48,7 +43,7 @@ import {
 import { useWebhookEventCatalog } from "@/lib/api/hooks/app/webhooks/useWebhooks";
 import listOAuthAppWebhookDeliveries from "@/lib/api/client/app/oauth/listOAuthAppWebhookDeliveries";
 import { useAuthorizedApps, useRevokeAuthorizedApp } from "@/lib/api/hooks/app/oauth/useAuthorizedApps";
-import type { OAuthApplication, OAuthApplicationWithSecret } from "@/lib/api/models/app/oauth/OAuthApp";
+import type { OAuthApplication } from "@/lib/api/models/app/oauth/OAuthApp";
 import type {
     WebhookDelivery,
     WebhookDeliveryStatus,
@@ -56,7 +51,10 @@ import type {
     WebhookEventDescriptor,
 } from "@/lib/api/models/app/webhooks/Webhook";
 import { SectionShell } from "../_components/SectionShell";
+import { AvatarUploader } from "@/components/app/avatar/AvatarUploader";
 import AppListingPanel from "./AppListingPanel";
+import { AppLogo, CopyButton, EventPicker } from "./parts";
+import RegisterAppDialog from "./RegisterAppDialog";
 
 function formatRelative(date: Date | string | undefined): string {
     if (!date) return "never";
@@ -80,28 +78,6 @@ function hostOf(url: string): string {
     } catch {
         return url;
     }
-}
-
-function CopyButton({ value, label }: { value: string; label?: string }) {
-    const [copied, setCopied] = React.useState(false);
-    return (
-        <button
-            type="button"
-            onClick={async () => {
-                try {
-                    await navigator.clipboard.writeText(value);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                } catch {
-                    /* clipboard blocked */
-                }
-            }}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 h-7 text-[11.5px] text-slate-600 hover:bg-slate-50"
-        >
-            {copied ? <CheckIcon className="w-3.5 h-3.5 text-emerald-600" /> : <CopyIcon className="w-3.5 h-3.5" />}
-            {copied ? "Copied" : (label ?? "Copy")}
-        </button>
-    );
 }
 
 // ScopePicker is a checkbox grid over the API permissions, toggling bits in the
@@ -152,136 +128,6 @@ function ScopePicker({ value, onChange }: { value: number; onChange: (v: number)
     );
 }
 
-// EventPicker — grouped by WebhookEventDescriptor.category with a search header
-// and checkbox-square rows. Empty selection = "all events the granting org
-// allows"; firehose events are flagged with an amber chip.
-function EventPicker({
-    catalog,
-    value,
-    onChange,
-}: {
-    catalog: WebhookEventDescriptor[];
-    value: string[];
-    onChange: (next: string[]) => void;
-}) {
-    const [q, setQ] = React.useState("");
-    const selected = new Set(value);
-
-    const filtered = React.useMemo(() => {
-        const needle = q.trim().toLowerCase();
-        if (!needle) return catalog;
-        return catalog.filter(
-            (d) =>
-                d.type.toLowerCase().includes(needle) ||
-                d.category.toLowerCase().includes(needle) ||
-                d.description.toLowerCase().includes(needle),
-        );
-    }, [catalog, q]);
-
-    const grouped = React.useMemo(() => {
-        const g: Record<string, WebhookEventDescriptor[]> = {};
-        for (const d of filtered) (g[d.category] ??= []).push(d);
-        return g;
-    }, [filtered]);
-
-    const toggle = (type: string) => {
-        const next = new Set(selected);
-        if (next.has(type)) next.delete(type);
-        else next.add(type);
-        onChange([...next]);
-    };
-
-    return (
-        <div className="space-y-2.5">
-            <div className="flex items-center gap-2">
-                <SearchInput value={q} onChange={setQ} placeholder="Search events…" className="flex-1" />
-                {value.length > 0 && (
-                    <button
-                        type="button"
-                        onClick={() => onChange([])}
-                        className="h-7 px-2.5 rounded-md border border-slate-200 text-[11.5px] text-slate-600 hover:bg-slate-50 shrink-0"
-                    >
-                        Subscribe to all
-                    </button>
-                )}
-            </div>
-            <div
-                className={cn(
-                    "rounded-md border px-2.5 py-2 text-[11.5px] leading-relaxed",
-                    value.length === 0
-                        ? "border-sky-200 bg-sky-50 text-sky-700"
-                        : "border-slate-200 bg-slate-50 text-slate-500",
-                )}
-            >
-                {value.length === 0 ? (
-                    <>Subscribed to all events the granting org allows. New event types are included automatically (high-volume events excluded).</>
-                ) : (
-                    <>
-                        Subscribed to <span className="font-medium">{value.length}</span>{" "}
-                        {value.length === 1 ? "event" : "events"}. Leave none selected to receive all the events each org allows.
-                    </>
-                )}
-            </div>
-            <div className="max-h-[280px] overflow-y-auto rounded-md border border-slate-200 divide-y divide-slate-100">
-                {Object.keys(grouped).length === 0 ? (
-                    <div className="px-3 py-6 text-center text-[11.5px] text-slate-400">No events match.</div>
-                ) : (
-                    Object.entries(grouped).map(([cat, list]) => (
-                        <div key={cat} className="p-1.5">
-                            <div className="px-1.5 py-1 text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">
-                                {cat}
-                            </div>
-                            <div className="space-y-0.5">
-                                {list.map((d) => {
-                                    const on = selected.has(d.type);
-                                    return (
-                                        <button
-                                            key={d.type}
-                                            type="button"
-                                            onClick={() => toggle(d.type)}
-                                            className={cn(
-                                                "w-full flex items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors",
-                                                on ? "bg-sky-50" : "hover:bg-slate-50",
-                                            )}
-                                        >
-                                            <span
-                                                className={cn(
-                                                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded",
-                                                    on ? "bg-sky-600 text-white" : "border border-slate-300",
-                                                )}
-                                            >
-                                                {on && <CheckIcon className="w-3 h-3" />}
-                                            </span>
-                                            <span className="min-w-0 flex-1">
-                                                <span className="flex items-center gap-1.5">
-                                                    <span className="block text-[12px] font-medium text-slate-700 font-mono truncate">
-                                                        {d.type}
-                                                    </span>
-                                                    {d.firehose && (
-                                                        <span className="shrink-0 inline-flex items-center rounded-sm bg-amber-50 border border-amber-200 px-1 text-[9.5px] uppercase tracking-[0.08em] font-semibold text-amber-700">
-                                                            High volume
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                {d.description && (
-                                                    <span className="block text-[11px] text-slate-400 leading-tight">{d.description}</span>
-                                                )}
-                                            </span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-            <p className="text-[10.5px] text-amber-700">
-                High-volume events are only sent if you select them explicitly.
-            </p>
-        </div>
-    );
-}
-
 const DELIVERY_TONE: Record<WebhookDeliveryStatus, string> = {
     delivered: "bg-emerald-50 text-emerald-700 border-emerald-100",
     pending: "bg-slate-100 text-slate-600 border-slate-200",
@@ -303,392 +149,6 @@ function DeliveryStatusBadge({ status }: { status: WebhookDeliveryStatus }) {
     );
 }
 
-const TILE_COLORS = ["bg-sky-600", "bg-indigo-600", "bg-emerald-600", "bg-rose-600", "bg-amber-600", "bg-fuchsia-600"];
-
-// AppLogo renders an app's uploaded logo, or a colored letter tile as a fallback.
-function AppLogo({ name, url, size = "md" }: { name: string; url?: string | null; size?: "sm" | "md" | "lg" }) {
-    const dim =
-        size === "lg"
-            ? "w-16 h-16 text-[22px] rounded-2xl"
-            : size === "sm"
-              ? "w-8 h-8 text-[12px] rounded-md"
-              : "w-9 h-9 text-[13px] rounded-lg";
-    if (url) return <img src={url} alt={name} className={cn(dim, "object-cover border border-slate-200 shrink-0")} />;
-    const letter = (name.trim()[0] ?? "?").toUpperCase();
-    const color = TILE_COLORS[letter.charCodeAt(0) % TILE_COLORS.length];
-    return <div className={cn(dim, color, "flex items-center justify-center text-white font-semibold shrink-0")}>{letter}</div>;
-}
-
-const WIZARD_STEPS = ["Basics", "Branding", "Redirects", "Webhook domains", "Webhooks", "Scopes"] as const;
-
-// Stepper — the horizontal progress indicator at the top of the register wizard.
-function Stepper({ step }: { step: number }) {
-    return (
-        <div className="px-4 pt-3 pb-1 shrink-0">
-            <div className="flex items-center">
-                {WIZARD_STEPS.map((label, i) => {
-                    const done = i < step;
-                    const active = i === step;
-                    return (
-                        <React.Fragment key={label}>
-                            <div className="flex items-center gap-1.5">
-                                <span
-                                    className={cn(
-                                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold transition-colors",
-                                        active ? "bg-sky-600 text-white" : done ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-400",
-                                    )}
-                                >
-                                    {done ? <CheckIcon className="w-3 h-3" /> : i + 1}
-                                </span>
-                                <span
-                                    className={cn(
-                                        "text-[11px] font-medium hidden sm:inline transition-colors",
-                                        active ? "text-slate-900" : done ? "text-slate-500" : "text-slate-400",
-                                    )}
-                                >
-                                    {label}
-                                </span>
-                            </div>
-                            {i < WIZARD_STEPS.length - 1 && (
-                                <span className={cn("mx-2 h-px flex-1 transition-colors", i < step ? "bg-sky-200" : "bg-slate-200")} />
-                            )}
-                        </React.Fragment>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
-// RegisterModal — a multi-step onboarding wizard for creating an OAuth app:
-// Basics -> Branding (logo) -> Redirects -> Scopes -> reveal credentials. The
-// modal animates in, steps slide, and a stepper shows progress.
-function RegisterModal({ onClose }: { onClose: () => void }) {
-    const create = useCreateOAuthApp();
-    const uploadLogo = useUploadOAuthAppLogo();
-    const catalog = useWebhookEventCatalog();
-    const fileRef = React.useRef<HTMLInputElement>(null);
-
-    const [step, setStep] = React.useState(0);
-    const [name, setName] = React.useState("");
-    const [description, setDescription] = React.useState("");
-    const [website, setWebsite] = React.useState("");
-    const [logoUrl, setLogoUrl] = React.useState("");
-    const [redirects, setRedirects] = React.useState("");
-    const [webhookDomains, setWebhookDomains] = React.useState("");
-    const [webhookUrl, setWebhookUrl] = React.useState("");
-    const [webhookEvents, setWebhookEvents] = React.useState<string[]>([]);
-    const [scopes, setScopes] = React.useState(0);
-    const [created, setCreated] = React.useState<OAuthApplicationWithSecret | null>(null);
-
-    const redirectList = redirects.split("\n").map((s) => s.trim()).filter(Boolean);
-    const webhookDomainList = webhookDomains.split("\n").map((s) => s.trim()).filter(Boolean);
-
-    const webhookUrlValid = webhookUrl.trim() === "" || /^https:\/\/.+/i.test(webhookUrl.trim());
-
-    const stepValid = (i: number): boolean => {
-        if (i === 0) return name.trim().length > 0;
-        if (i === 2) return redirectList.length > 0;
-        if (i === 4) return webhookUrlValid; // webhook step optional, but the URL must be https if given
-        if (i === 5) return scopes !== 0;
-        return true; // branding (logo) and webhook domains are optional
-    };
-
-    const goNext = () => {
-        if (!stepValid(step)) {
-            toast.error(
-                step === 0
-                    ? "Give the app a name"
-                    : step === 2
-                      ? "Add at least one redirect URI"
-                      : step === 4
-                        ? "The webhook URL must start with https://"
-                        : "Select at least one scope",
-            );
-            return;
-        }
-        setStep((s) => Math.min(s + 1, WIZARD_STEPS.length - 1));
-    };
-    const goBack = () => setStep((s) => Math.max(s - 1, 0));
-
-    const onPickLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        e.target.value = "";
-        if (!file) return;
-        try {
-            const { logo_url } = await uploadLogo.mutateAsync(file);
-            setLogoUrl(logo_url);
-        } catch (err) {
-            toast.error((err as { message?: string })?.message ?? "Could not upload the logo");
-        }
-    };
-
-    const submit = async () => {
-        if (!stepValid(0) || !stepValid(2) || !stepValid(4) || !stepValid(5)) {
-            toast.error("Fill in the required fields");
-            return;
-        }
-        try {
-            const app = await create.mutateAsync({
-                name: name.trim(),
-                description: description.trim(),
-                website_url: website.trim(),
-                logo_url: logoUrl || undefined,
-                redirect_uris: redirectList,
-                allowed_webhook_domains: webhookDomainList,
-                webhook_url: webhookUrl.trim() || undefined,
-                webhook_events: webhookUrl.trim() ? webhookEvents : undefined,
-                scopes,
-            });
-            setCreated(app);
-            toast.success("App registered");
-        } catch (e) {
-            toast.error((e as { message?: string })?.message ?? "Could not register the app");
-        }
-    };
-
-    // Rendered through a portal to document.body so the modal mounts as a clean
-    // top-level subtree (outside the Settings content's AnimatePresence) and its
-    // entrance animation always plays.
-    return createPortal(
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div
-                className="absolute inset-0 bg-slate-900/40"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.12, ease: "easeOut" }}
-                onClick={onClose}
-            />
-            <motion.div
-                className="relative w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-slate-200"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-            >
-                <div className="flex items-center border-b border-slate-200 px-4 h-11 shrink-0">
-                    <span className="text-[12.5px] font-medium text-slate-900">
-                        {created ? "App created" : "Register an OAuth app"}
-                    </span>
-                    <button onClick={onClose} className="ml-auto h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100">
-                        <XIcon className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {created ? (
-                    <RevealStep app={created} onDone={onClose} />
-                ) : (
-                    <>
-                        <Stepper step={step} />
-                        <div className="relative flex-1 overflow-y-auto">
-                            <AnimatePresence mode="wait" initial={false}>
-                                <motion.div
-                                    key={step}
-                                    initial={{ opacity: 0, x: 24 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -24 }}
-                                    transition={{ duration: 0.18, ease: "easeOut" }}
-                                    className="p-4 space-y-3"
-                                >
-                                    {step === 0 && (
-                                        <>
-                                            <div>
-                                                <Label>Name</Label>
-                                                <TextInput value={name} onChange={setName} placeholder="Acme Integration" className="w-full" />
-                                            </div>
-                                            <div>
-                                                <Label>Description</Label>
-                                                <TextInput value={description} onChange={setDescription} placeholder="What the app does" className="w-full" />
-                                            </div>
-                                            <div>
-                                                <Label>Website</Label>
-                                                <TextInput value={website} onChange={setWebsite} placeholder="https://acme.com" className="w-full" />
-                                            </div>
-                                        </>
-                                    )}
-                                    {step === 1 && (
-                                        <>
-                                            <p className="text-[12px] text-slate-500 leading-relaxed">
-                                                Add a logo so people recognize your app on the consent screen when they connect it.
-                                            </p>
-                                            <div className="flex items-center gap-3">
-                                                <AppLogo name={name || "?"} url={logoUrl} size="lg" />
-                                                <div>
-                                                    <input ref={fileRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={onPickLogo} />
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => fileRef.current?.click()}
-                                                            disabled={uploadLogo.isPending}
-                                                            className="h-8 px-3 rounded-md border border-slate-200 text-[12px] text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5 disabled:opacity-60"
-                                                        >
-                                                            {uploadLogo.isPending ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
-                                                            {logoUrl ? "Replace logo" : "Upload logo"}
-                                                        </button>
-                                                        {logoUrl && (
-                                                            <button type="button" onClick={() => setLogoUrl("")} className="text-[11.5px] text-slate-400 hover:text-rose-600">
-                                                                Remove
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <p className="mt-1.5 text-[10.5px] text-slate-400">PNG or JPG, up to 2MB. Optional.</p>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-                                    {step === 2 && (
-                                        <div>
-                                            <Label>Redirect URIs</Label>
-                                            <textarea
-                                                value={redirects}
-                                                onChange={(e) => setRedirects(e.target.value)}
-                                                placeholder={"https://acme.com/oauth/callback"}
-                                                rows={3}
-                                                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[12px] font-mono text-slate-900 placeholder:text-slate-400 outline-none resize-y focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                                            />
-                                            <p className="mt-1 text-[11px] text-slate-400">One per line. Must be HTTPS (or a loopback URL), matched exactly.</p>
-                                        </div>
-                                    )}
-                                    {step === 3 && (
-                                        <div>
-                                            <Label>Webhook domains</Label>
-                                            <textarea
-                                                value={webhookDomains}
-                                                onChange={(e) => setWebhookDomains(e.target.value)}
-                                                placeholder={".acme.com\nhooks.partner.com"}
-                                                rows={3}
-                                                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[12px] font-mono text-slate-900 placeholder:text-slate-400 outline-none resize-y focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                                            />
-                                            <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                                                Webhooks this app registers must point at these domains. Use a leading dot for subdomains
-                                                (.acme.com matches hooks.acme.com); a bare domain (acme.com) is an exact match. Leave empty to
-                                                forbid this app from registering webhooks.
-                                            </p>
-                                        </div>
-                                    )}
-                                    {step === 4 && (
-                                        <>
-                                            <p className="text-[12px] text-slate-500 leading-relaxed">
-                                                Optionally receive Warmbly events over webhooks. Each org that authorizes the app gets its own
-                                                signed delivery stream, scoped to what that org granted. You can skip this and add it later.
-                                            </p>
-                                            <div>
-                                                <Label>Webhook URL</Label>
-                                                <TextInput
-                                                    value={webhookUrl}
-                                                    onChange={setWebhookUrl}
-                                                    placeholder="https://hooks.acme.com/warmbly"
-                                                    className="w-full"
-                                                />
-                                                <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
-                                                    Must be https and its host must fall within the allowed webhook domains above. Leave empty to
-                                                    skip webhooks for now.
-                                                </p>
-                                                {!webhookUrlValid && (
-                                                    <p className="mt-1 text-[11px] text-rose-600">The webhook URL must start with https://</p>
-                                                )}
-                                            </div>
-                                            {webhookUrl.trim() !== "" && (
-                                                <div>
-                                                    <Label>Events</Label>
-                                                    {catalog.isPending ? (
-                                                        <div className="py-6 text-center text-[11.5px] text-slate-400">Loading events…</div>
-                                                    ) : (
-                                                        <EventPicker
-                                                            catalog={catalog.data?.event_types ?? []}
-                                                            value={webhookEvents}
-                                                            onChange={setWebhookEvents}
-                                                        />
-                                                    )}
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                    {step === 5 && (
-                                        <div>
-                                            <Label>Scopes</Label>
-                                            <ScopePicker value={scopes} onChange={setScopes} />
-                                        </div>
-                                    )}
-                                </motion.div>
-                            </AnimatePresence>
-                        </div>
-
-                        <div className="px-4 py-2.5 border-t border-slate-200 flex items-center gap-2 shrink-0">
-                            {step > 0 ? (
-                                <button onClick={goBack} className="h-8 px-3 rounded-md border border-slate-200 text-[12.5px] text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1.5">
-                                    <ArrowLeftIcon className="w-3.5 h-3.5" /> Back
-                                </button>
-                            ) : (
-                                <button onClick={onClose} className="h-8 px-3 rounded-md border border-slate-200 text-[12.5px] text-slate-600 hover:bg-slate-50">
-                                    Cancel
-                                </button>
-                            )}
-                            <span className="ml-auto text-[11px] text-slate-400">
-                                Step {step + 1} of {WIZARD_STEPS.length}
-                            </span>
-                            {step < WIZARD_STEPS.length - 1 ? (
-                                <button onClick={goNext} className="h-8 px-3 rounded-md bg-sky-600 text-white text-[12.5px] font-medium hover:bg-sky-700 inline-flex items-center gap-1.5">
-                                    Next <ArrowRightIcon className="w-3.5 h-3.5" />
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={submit}
-                                    disabled={create.isPending}
-                                    className="h-8 px-3 rounded-md bg-sky-600 text-white text-[12.5px] font-medium hover:bg-sky-700 disabled:opacity-60 inline-flex items-center gap-1.5"
-                                >
-                                    {create.isPending ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <CheckIcon className="w-3.5 h-3.5" />}
-                                    Create app
-                                </button>
-                            )}
-                        </div>
-                    </>
-                )}
-            </motion.div>
-        </div>,
-        document.body,
-    );
-}
-
-// RevealStep shows the one-time client credentials after the app is created.
-function RevealStep({ app, onDone }: { app: OAuthApplicationWithSecret; onDone: () => void }) {
-    return (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            <div className="flex items-center gap-2 text-emerald-600">
-                <CheckCircle2Icon className="w-4 h-4" />
-                <span className="text-[12.5px] font-medium">{app.name} is ready</span>
-            </div>
-            <p className="text-[12px] text-slate-500 leading-relaxed">
-                Save the client secret now. For security it is shown only once and cannot be retrieved later (you can rotate it if you lose it).
-            </p>
-            <div>
-                <Label>Client ID</Label>
-                <div className="flex items-center gap-1.5">
-                    <code className="flex-1 truncate rounded-md border border-slate-200 bg-slate-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-slate-700">
-                        {app.client_id}
-                    </code>
-                    <CopyButton value={app.client_id} />
-                </div>
-            </div>
-            <div>
-                <Label>Client secret</Label>
-                <div className="flex items-center gap-1.5">
-                    <code className="flex-1 truncate rounded-md border border-amber-200 bg-amber-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-amber-800">
-                        {app.client_secret}
-                    </code>
-                    <CopyButton value={app.client_secret ?? ""} />
-                </div>
-            </div>
-            <div className="pt-1">
-                <button onClick={onDone} className="h-8 px-3 rounded-md bg-sky-600 text-white text-[12.5px] font-medium hover:bg-sky-700">
-                    Done
-                </button>
-            </div>
-        </div>
-    );
-}
-
 // AppWebhookChip — an at-a-glance chip when the app has a webhook URL set,
 // showing the live install count (per-org endpoints it materialized).
 function AppWebhookChip({ app }: { app: OAuthApplication }) {
@@ -707,7 +167,7 @@ function AppWebhookChip({ app }: { app: OAuthApplication }) {
     );
 }
 
-function AppRow({ app }: { app: OAuthApplication }) {
+function AppRow({ app, blocked }: { app: OAuthApplication; blocked: boolean }) {
     const del = useDeleteOAuthApp();
     const rotate = useRotateOAuthAppSecret();
     const confirm = useConfirm();
@@ -731,7 +191,14 @@ function AppRow({ app }: { app: OAuthApplication }) {
             <div className="flex items-start gap-3">
                 <AppLogo name={app.name} url={app.logo_url} size="md" />
                 <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-semibold text-slate-800 truncate">{app.name}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[13px] font-semibold text-slate-800 truncate">{app.name}</span>
+                        {app.suspended_at ? (
+                            <span className="h-[18px] px-1.5 rounded bg-rose-50 text-rose-700 text-[10.5px] font-medium inline-flex items-center shrink-0">Suspended</span>
+                        ) : app.status === "disabled" ? (
+                            <span className="h-[18px] px-1.5 rounded bg-slate-100 text-slate-500 text-[10.5px] font-medium inline-flex items-center shrink-0">Disabled</span>
+                        ) : null}
+                    </div>
                     {app.description && <div className="text-[11.5px] text-slate-400 truncate">{app.description}</div>}
                     <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                         <code className="truncate rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-mono text-slate-600">
@@ -789,7 +256,13 @@ function AppRow({ app }: { app: OAuthApplication }) {
                     </div>
                 )}
             </div>
-            <AppListingPanel app={app} />
+            {app.suspended_at && (
+                <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-800 leading-relaxed">
+                    Suspended by the instance’s administrators, so it can’t sign anyone in and its tokens don’t work
+                    {app.suspended_reason ? `: ${app.suspended_reason}` : "."}
+                </div>
+            )}
+            <AppListingPanel app={app} blocked={blocked} />
             {secret && (
                 <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2">
                     <div className="text-[10.5px] uppercase tracking-[0.12em] text-amber-700 mb-1">New client secret (shown once)</div>
@@ -1104,6 +577,8 @@ function AppDeliveryRow({ delivery }: { delivery: WebhookDelivery }) {
 // webhook signing secret, installs, and delivery log when a webhook URL is set.
 function EditModal({ app, onClose }: { app: OAuthApplication; onClose: () => void }) {
     const update = useUpdateOAuthApp();
+    const setLogo = useSetOAuthAppLogo();
+    const deleteLogo = useDeleteOAuthAppLogo();
     const catalog = useWebhookEventCatalog();
 
     const [name, setName] = React.useState(app.name);
@@ -1144,7 +619,6 @@ function EditModal({ app, onClose }: { app: OAuthApplication; onClose: () => voi
                     name: name.trim(),
                     description: description.trim(),
                     website_url: website.trim(),
-                    logo_url: app.logo_url || undefined,
                     redirect_uris: redirectList,
                     allowed_webhook_domains: webhookDomainList,
                     webhook_url: webhookUrl.trim() || undefined,
@@ -1183,6 +657,17 @@ function EditModal({ app, onClose }: { app: OAuthApplication; onClose: () => voi
                     </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    <AvatarUploader
+                        shape="square"
+                        current={app.logo_url || null}
+                        fallbackInitials={(app.name.trim()[0] ?? "?").toUpperCase()}
+                        onUpload={async (blob) => {
+                            await setLogo.mutateAsync({ id: app.id, blob });
+                        }}
+                        onRemove={async () => {
+                            await deleteLogo.mutateAsync(app.id);
+                        }}
+                    />
                     <div>
                         <Label>Name</Label>
                         <TextInput value={name} onChange={setName} placeholder="Acme Integration" className="w-full" />
@@ -1322,6 +807,7 @@ export default function OAuthAppsPage() {
     if (!canManage) return <NoAccess feature="OAuth apps" permissionLabel="Manage API keys" />;
 
     const list = apps.data?.applications ?? [];
+    const access = apps.data?.developer_access;
 
     return (
         <SectionShell
@@ -1331,7 +817,9 @@ export default function OAuthAppsPage() {
                 tab === "apps" ? (
                     <button
                         onClick={() => setCreateOpen(true)}
-                        className="h-7 px-3 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5"
+                        disabled={access?.blocked}
+                        title={access?.blocked ? "Registering apps is blocked for this workspace" : undefined}
+                        className="h-7 px-3 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 disabled:bg-slate-200 disabled:text-slate-500"
                     >
                         <PlusIcon className="w-3.5 h-3.5" /> Register app
                     </button>
@@ -1339,6 +827,12 @@ export default function OAuthAppsPage() {
             }
         >
             <div className="px-4 py-5 md:px-8 md:py-6">
+                {access?.blocked && (
+                    <div className="mb-4 rounded-md bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-900 leading-relaxed">
+                        The instance’s administrators have blocked this workspace from registering and publishing apps
+                        {access.reason ? `: ${access.reason}` : "."} Existing apps keep working unless they are suspended.
+                    </div>
+                )}
                 <div className="mb-3 flex items-center gap-1 border-b border-slate-200">
                     {(
                         [
@@ -1380,7 +874,7 @@ export default function OAuthAppsPage() {
                             ) : (
                                 <div className="space-y-2">
                                     {list.map((app) => (
-                                        <AppRow key={app.id} app={app} />
+                                        <AppRow key={app.id} app={app} blocked={!!access?.blocked} />
                                     ))}
                                 </div>
                             )
@@ -1392,7 +886,7 @@ export default function OAuthAppsPage() {
             </div>
 
             <AnimatePresence>
-                {createOpen && <RegisterModal key="register-oauth-app" onClose={() => setCreateOpen(false)} />}
+                {createOpen && <RegisterAppDialog key="register-oauth-app" onClose={() => setCreateOpen(false)} />}
             </AnimatePresence>
         </SectionShell>
     );

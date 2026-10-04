@@ -795,6 +795,7 @@ func main() {
 		// Community app directory: published OAuth apps, reviewed before discovery.
 		appDirectoryRepo := repository.NewAppDirectoryRepository(primaryDB.Pool)
 		oauthService.WireListingGuard(appDirectoryRepo)
+		oauthService.WireAdmin(repository.NewOAuthAdminRepository(primaryDB.Pool))
 		appDirectoryService = appdirectory.NewService(appDirectoryRepo, repository.NewOAuthRepository(primaryDB.Pool))
 		// integrationServiceForHandler is constructed after cipherService below —
 		// OAuth/secret sealing depends on the envelope-encryption service.

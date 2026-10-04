@@ -116,8 +116,8 @@ func (s *Service) validateAuthorize(ctx context.Context, req AuthorizeRequest) (
 	if err != nil {
 		return nil, 0, errServer("client lookup failed")
 	}
-	if app == nil || app.Status != models.OAuthAppActive {
-		return nil, 0, errUnauthorizedClient("unknown or disabled client")
+	if app == nil || !app.Usable() {
+		return nil, 0, errUnauthorizedClient("unknown, disabled or suspended client")
 	}
 	if !redirectAllowed(app, req.RedirectURI) {
 		return nil, 0, errInvalidRequest("redirect_uri does not match a registered URI")
@@ -296,8 +296,8 @@ func (s *Service) authenticateClient(ctx context.Context, clientID, clientSecret
 	if err != nil {
 		return nil, errServer("client lookup failed")
 	}
-	if app == nil || app.Status != models.OAuthAppActive {
-		return nil, errInvalidClient("unknown or disabled client")
+	if app == nil || !app.Usable() {
+		return nil, errInvalidClient("unknown, disabled or suspended client")
 	}
 	if app.IsPublic {
 		return app, nil

@@ -1,7 +1,7 @@
 // Package appdirectory is the community app directory: OAuth apps a workspace
-// publishes for other workspaces to install. A listing is reachable by its link
-// once published and shown in discovery only after an operator verifies it; any
-// change to what it shows sends it back for review.
+// publishes for other workspaces to install. A published listing is reachable
+// by its link and shown in discovery only when an operator features it or
+// enough workspaces use it; any change to what it shows ends a feature.
 package appdirectory
 
 import (
@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -30,6 +31,9 @@ const (
 	ErrCodeSlugTaken = "listing_slug_taken"
 	// ErrCodeNotListable is the response code for an app that cannot be listed.
 	ErrCodeNotListable = "app_not_listable"
+	// ErrCodeDeveloperBlocked is the response code when an operator has blocked
+	// this workspace or person from publishing apps.
+	ErrCodeDeveloperBlocked = "developer_access_blocked"
 
 	maxTagline     = 120
 	maxDescription = 2000
@@ -105,11 +109,19 @@ const (
 )
 
 // SaveListing publishes or edits the app's listing. An edit that changes
-// nothing keeps its verdict; any real change returns it to the review queue.
-func (s *Service) SaveListing(ctx context.Context, orgID, appID uuid.UUID, w models.AppListingWrite) (*models.AppListing, SaveOutcome, *errx.Error) {
+// nothing keeps its status; a real change ends a feature, and a hidden listing stays hidden.
+func (s *Service) SaveListing(ctx context.Context, orgID, userID, appID uuid.UUID, w models.AppListingWrite) (*models.AppListing, SaveOutcome, *errx.Error) {
 	app, xerr := s.listableApp(ctx, orgID, appID)
 	if xerr != nil {
 		return nil, SaveUnchanged, xerr
+	}
+	if block, err := s.oauth.DeveloperBlock(ctx, orgID, userID); err != nil {
+		return nil, SaveUnchanged, errx.New(errx.Internal, "lookup failed")
+	} else if block != nil {
+		return nil, SaveUnchanged, errx.NewWithIdentifier(errx.Forbidden, ErrCodeDeveloperBlocked, "publishing apps is blocked for this workspace")
+	}
+	if app.SuspendedAt != nil {
+		return nil, SaveUnchanged, errx.NewWithIdentifier(errx.BadRequest, ErrCodeNotListable, "this app is suspended")
 	}
 	if app.Status != models.OAuthAppActive {
 		return nil, SaveUnchanged, errx.NewWithIdentifier(errx.BadRequest, ErrCodeNotListable, "enable the app before publishing it")
@@ -152,22 +164,22 @@ func (s *Service) DeleteListing(ctx context.Context, orgID, appID uuid.UUID) *er
 	return nil
 }
 
-// Browse lists verified apps for discovery, most installed first.
+// Browse lists the apps shown in discovery: featured first, then most installed.
 func (s *Service) Browse(ctx context.Context, viewerOrgID uuid.UUID, limit, offset int) ([]models.CommunityApp, int64, *errx.Error) {
-	apps, total, err := s.repo.ListVerified(ctx, viewerOrgID, limit, offset)
+	apps, total, err := s.repo.ListListed(ctx, viewerOrgID, config.AppDirectoryPopularInstalls, limit, offset)
 	if err != nil {
 		return nil, 0, errx.New(errx.Internal, "lookup failed")
 	}
 	return apps, total, nil
 }
 
-// Open returns a published listing by its link, verified or not.
+// Open returns a published listing by its link, listed or not.
 func (s *Service) Open(ctx context.Context, viewerOrgID uuid.UUID, slug string) (*models.CommunityApp, *errx.Error) {
 	slug = strings.ToLower(strings.TrimSpace(slug))
 	if !slugRe.MatchString(slug) {
 		return nil, errx.New(errx.NotFound, "app not found")
 	}
-	app, err := s.repo.GetPublished(ctx, viewerOrgID, slug)
+	app, err := s.repo.GetPublished(ctx, viewerOrgID, slug, config.AppDirectoryPopularInstalls)
 	if err != nil {
 		return nil, errx.New(errx.Internal, "lookup failed")
 	}
@@ -178,13 +190,13 @@ func (s *Service) Open(ctx context.Context, viewerOrgID uuid.UUID, slug string) 
 }
 
 func (s *Service) AdminList(ctx context.Context, q *models.AdminAppListingSearch) (*models.AdminAppListingsResult, *errx.Error) {
-	if q.Verification != "" && !models.AppListingVerification(q.Verification).Valid() {
-		return nil, errx.New(errx.BadRequest, "invalid verification filter")
+	if q.Status != "" && !models.AppListingStatus(q.Status).Valid() {
+		return nil, errx.New(errx.BadRequest, "invalid status filter")
 	}
 	if q.Limit <= 0 || q.Limit > 200 {
 		q.Limit = 50
 	}
-	rows, total, err := s.repo.AdminList(ctx, q)
+	rows, total, err := s.repo.AdminList(ctx, q, config.AppDirectoryPopularInstalls)
 	if err != nil {
 		return nil, errx.New(errx.Internal, "lookup failed")
 	}
@@ -197,23 +209,26 @@ func (s *Service) AdminList(ctx context.Context, q *models.AdminAppListingSearch
 	return res, nil
 }
 
-// Review records an operator's verdict. A rejection needs a note, because it is
+// SetStatus records an operator's decision. Hiding needs a note, because it is
 // the only thing the developer sees about why.
-func (s *Service) Review(ctx context.Context, appID, adminID uuid.UUID, verdict models.AppListingVerification, note string) (*models.AdminAppListing, *errx.Error) {
+func (s *Service) SetStatus(ctx context.Context, appID, adminID uuid.UUID, status models.AppListingStatus, note string) (*models.AdminAppListing, *errx.Error) {
+	if !status.Valid() {
+		return nil, errx.New(errx.BadRequest, "status must be published, featured or hidden")
+	}
 	note = strings.TrimSpace(note)
-	if verdict == models.AppListingRejected && note == "" {
-		return nil, errx.New(errx.BadRequest, "a note is required to reject a listing")
+	if status == models.AppListingHidden && note == "" {
+		return nil, errx.New(errx.BadRequest, "a note is required to hide a listing")
 	}
 	if utf8.RuneCountInString(note) > maxReviewNote {
 		return nil, errx.New(errx.BadRequest, "the note is too long")
 	}
-	if err := s.repo.SetVerification(ctx, appID, verdict, adminID, note); err != nil {
+	if err := s.repo.SetStatus(ctx, appID, status, adminID, note); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errx.New(errx.NotFound, "listing not found")
 		}
-		return nil, errx.New(errx.Internal, "review failed")
+		return nil, errx.New(errx.Internal, "update failed")
 	}
-	item, err := s.repo.AdminGet(ctx, appID)
+	item, err := s.repo.AdminGet(ctx, appID, config.AppDirectoryPopularInstalls)
 	if err != nil || item == nil {
 		return nil, errx.New(errx.Internal, "lookup failed")
 	}

@@ -63,12 +63,12 @@ func TestNormalizeRefuses(t *testing.T) {
 	}
 }
 
-func TestSameContentIgnoresVerdict(t *testing.T) {
+func TestSameContentIgnoresStatus(t *testing.T) {
 	a, _ := normalize(validWrite())
 	b, _ := normalize(validWrite())
-	a.Verification = models.AppListingVerified
+	a.Status = models.AppListingFeatured
 	if !sameContent(a, b) {
-		t.Fatal("identical content should compare equal regardless of verdict")
+		t.Fatal("identical content should compare equal regardless of status")
 	}
 	b.InstallURL = "https://other.example/install"
 	if sameContent(a, b) {

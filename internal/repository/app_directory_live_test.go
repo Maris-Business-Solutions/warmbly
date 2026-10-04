@@ -13,9 +13,9 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
-// The community directory shows only verified listings of active apps, opens
-// published ones by link, never a rejected one, and keeps every developer write
-// inside the publishing organization.
+// The community directory lists featured and widely installed apps only, opens
+// any published one by link, never a hidden one, and keeps every developer
+// write inside the publishing organization.
 //
 //	WARMBLY_TEST_DB=postgres://warmbly:warmbly@localhost:15432/<db>?sslmode=disable \
 //	  go test ./internal/repository/ -run LiveAppDirectory -v
@@ -96,12 +96,13 @@ func TestLiveAppDirectory(t *testing.T) {
 	repo := NewAppDirectoryRepository(pool)
 	ctx := context.Background()
 	slug := "acme-" + f.tag
+	const popular = 2
 
-	verifiedSlugs := func() map[string]models.CommunityApp {
+	listed := func() map[string]models.CommunityApp {
 		t.Helper()
-		apps, _, err := repo.ListVerified(ctx, f.viewer, 200, 0)
+		apps, _, err := repo.ListListed(ctx, f.viewer, popular, 200, 0)
 		if err != nil {
-			t.Fatalf("ListVerified: %v", err)
+			t.Fatalf("ListListed: %v", err)
 		}
 		out := map[string]models.CommunityApp{}
 		for _, a := range apps {
@@ -109,24 +110,32 @@ func TestLiveAppDirectory(t *testing.T) {
 		}
 		return out
 	}
+	status := func() models.AppListingStatus {
+		t.Helper()
+		got, err := repo.GetListing(ctx, f.pub, f.app)
+		if err != nil || got == nil {
+			t.Fatalf("GetListing = %v, %v", got, err)
+		}
+		return got.Status
+	}
 
 	l := f.listing(f.app, slug)
 	if err := repo.SaveListing(ctx, l); err != nil {
 		t.Fatalf("SaveListing: %v", err)
 	}
-	if l.Verification != models.AppListingUnverified {
-		t.Fatalf("new listing verification = %q, want unverified", l.Verification)
+	if l.Status != models.AppListingPublished {
+		t.Fatalf("new listing status = %q, want published", l.Status)
 	}
 
-	t.Run("an unverified listing opens by link and stays out of discovery", func(t *testing.T) {
-		if _, ok := verifiedSlugs()[slug]; ok {
-			t.Fatal("unverified listing was listed")
+	t.Run("a new listing opens by link and stays out of discovery", func(t *testing.T) {
+		if _, ok := listed()[slug]; ok {
+			t.Fatal("a new listing was listed")
 		}
-		app, err := repo.GetPublished(ctx, f.viewer, slug)
+		app, err := repo.GetPublished(ctx, f.viewer, slug, popular)
 		if err != nil || app == nil {
 			t.Fatalf("GetPublished = %v, %v", app, err)
 		}
-		if app.Developer != "Org A" || app.Verification != models.AppListingUnverified || len(app.Permissions) != 2 {
+		if app.Developer != "Org A" || app.Listed || len(app.Permissions) != 2 {
 			t.Fatalf("unexpected listing: %+v", app)
 		}
 	})
@@ -154,85 +163,115 @@ func TestLiveAppDirectory(t *testing.T) {
 		}
 	})
 
-	t.Run("a verified listing is listed with live installs", func(t *testing.T) {
-		admin := f.user
-		if err := repo.SetVerification(ctx, f.app, models.AppListingVerified, admin, ""); err != nil {
-			t.Fatalf("verify: %v", err)
-		}
+	t.Run("enough live installs list a published app", func(t *testing.T) {
 		f.grant(t, pool, f.app, f.viewer, false)
 		f.grant(t, pool, f.app, f.viewer, false)
-		f.grant(t, pool, f.app, f.other, false)
 		f.grant(t, pool, f.app, f.pub, true)
-		got, ok := verifiedSlugs()[slug]
-		if !ok {
-			t.Fatal("verified listing missing from discovery")
+		if _, ok := listed()[slug]; ok {
+			t.Fatal("listed with one live workspace")
 		}
-		if got.Installs != 2 || !got.Installed {
-			t.Fatalf("installs = %d installed = %v, want 2 and true", got.Installs, got.Installed)
+		f.grant(t, pool, f.app, f.other, false)
+		got, ok := listed()[slug]
+		if !ok {
+			t.Fatal("not listed at the install threshold")
+		}
+		if got.Installs != 2 || !got.Installed || !got.Listed {
+			t.Fatalf("installs = %d installed = %v listed = %v", got.Installs, got.Installed, got.Listed)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE oauth_access_grants SET revoked_at = now() WHERE application_id = $1`, f.app); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := listed()[slug]; ok {
+			t.Fatal("still listed after the installs were revoked")
+		}
+	})
+
+	t.Run("a featured app is listed and an edit ends the feature", func(t *testing.T) {
+		if err := repo.SetStatus(ctx, f.app, models.AppListingFeatured, f.user, ""); err != nil {
+			t.Fatalf("feature: %v", err)
+		}
+		if got, ok := listed()[slug]; !ok || got.Status != models.AppListingFeatured {
+			t.Fatalf("featured app listed = %v status = %q", ok, got.Status)
+		}
+		edit := f.listing(f.app, slug)
+		edit.Tagline = "Sync replies, edited"
+		if err := repo.SaveListing(ctx, edit); err != nil {
+			t.Fatalf("edit: %v", err)
+		}
+		if edit.Status != models.AppListingPublished {
+			t.Fatalf("edited status = %q, want published", edit.Status)
+		}
+	})
+
+	t.Run("a change to the app ends the feature", func(t *testing.T) {
+		if err := repo.SetStatus(ctx, f.app, models.AppListingFeatured, f.user, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Unfeature(ctx, f.pub, f.app); err != nil {
+			t.Fatalf("Unfeature: %v", err)
+		}
+		if s := status(); s != models.AppListingPublished {
+			t.Fatalf("after Unfeature: %q", s)
 		}
 	})
 
 	t.Run("a disabled app leaves discovery and its link", func(t *testing.T) {
+		if err := repo.SetStatus(ctx, f.app, models.AppListingFeatured, f.user, ""); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := pool.Exec(ctx, `UPDATE oauth_applications SET status = 'disabled' WHERE id = $1`, f.app); err != nil {
 			t.Fatal(err)
 		}
 		defer func() { _, _ = pool.Exec(ctx, `UPDATE oauth_applications SET status = 'active' WHERE id = $1`, f.app) }()
-		if _, ok := verifiedSlugs()[slug]; ok {
+		if _, ok := listed()[slug]; ok {
 			t.Fatal("disabled app listed")
 		}
-		if app, _ := repo.GetPublished(ctx, f.viewer, slug); app != nil {
+		if app, _ := repo.GetPublished(ctx, f.viewer, slug, popular); app != nil {
 			t.Fatal("disabled app opened by link")
 		}
 	})
 
-	t.Run("a change to the app returns it to review", func(t *testing.T) {
-		if err := repo.Unverify(ctx, f.pub, f.app); err != nil {
-			t.Fatalf("Unverify: %v", err)
+	t.Run("a hidden listing is unreachable and an edit keeps it hidden", func(t *testing.T) {
+		if err := repo.SetStatus(ctx, f.app, models.AppListingHidden, f.user, "wrong logo"); err != nil {
+			t.Fatalf("hide: %v", err)
 		}
-		got, _ := repo.GetListing(ctx, f.pub, f.app)
-		if got == nil || got.Verification != models.AppListingUnverified {
-			t.Fatalf("after Unverify: %+v", got)
-		}
-	})
-
-	t.Run("a rejected listing is unreachable and an edit resubmits it", func(t *testing.T) {
-		if err := repo.SetVerification(ctx, f.app, models.AppListingRejected, f.user, "wrong logo"); err != nil {
-			t.Fatalf("reject: %v", err)
-		}
-		if app, _ := repo.GetPublished(ctx, f.viewer, slug); app != nil {
-			t.Fatal("rejected listing opened by link")
+		if app, _ := repo.GetPublished(ctx, f.viewer, slug, popular); app != nil {
+			t.Fatal("hidden listing opened by link")
 		}
 		edit := f.listing(f.app, slug)
 		edit.Tagline = "Sync replies, fixed"
 		if err := repo.SaveListing(ctx, edit); err != nil {
-			t.Fatalf("resubmit: %v", err)
+			t.Fatalf("edit: %v", err)
 		}
-		if edit.Verification != models.AppListingUnverified {
-			t.Fatalf("resubmitted verification = %q", edit.Verification)
+		if edit.Status != models.AppListingHidden || edit.StatusNote != "wrong logo" {
+			t.Fatalf("edited hidden listing = %q %q", edit.Status, edit.StatusNote)
 		}
 	})
 
-	t.Run("the admin queue filters and pages", func(t *testing.T) {
+	t.Run("the admin list filters and pages", func(t *testing.T) {
 		second := f.listing(f.second, "second-"+f.tag)
 		if err := repo.SaveListing(ctx, second); err != nil {
 			t.Fatalf("second listing: %v", err)
 		}
-		rows, total, err := repo.AdminList(ctx, &models.AdminAppListingSearch{Q: f.tag, Verification: "unverified", Limit: 1})
+		if err := repo.SetStatus(ctx, f.app, models.AppListingPublished, f.user, ""); err != nil {
+			t.Fatal(err)
+		}
+		rows, total, err := repo.AdminList(ctx, &models.AdminAppListingSearch{Q: f.tag, Status: "published", Limit: 1}, popular)
 		if err != nil {
 			t.Fatalf("AdminList: %v", err)
 		}
 		if total != 2 || len(rows) != 1 {
 			t.Fatalf("total = %d rows = %d, want 2 and 1", total, len(rows))
 		}
-		rest, _, err := repo.AdminList(ctx, &models.AdminAppListingSearch{Q: f.tag, Verification: "unverified", Limit: 1, Offset: 1})
+		rest, _, err := repo.AdminList(ctx, &models.AdminAppListingSearch{Q: f.tag, Status: "published", Limit: 1, Offset: 1}, popular)
 		if err != nil || len(rest) != 1 || rest[0].ApplicationID == rows[0].ApplicationID {
 			t.Fatalf("second page = %+v, %v", rest, err)
 		}
 		if rows[0].OrganizationName != "Org A" || len(rows[0].Permissions) != 2 {
 			t.Fatalf("unexpected admin row: %+v", rows[0])
 		}
-		got, err := repo.AdminGet(ctx, f.app)
-		if err != nil || got == nil || got.ReviewedByEmail == "" {
+		got, err := repo.AdminGet(ctx, f.app, popular)
+		if err != nil || got == nil || got.StatusByEmail == "" || got.Listed {
 			t.Fatalf("AdminGet = %+v, %v", got, err)
 		}
 	})
@@ -244,8 +283,8 @@ func TestLiveAppDirectory(t *testing.T) {
 		if got, _ := repo.GetListing(ctx, f.pub, f.app); got != nil {
 			t.Fatal("listing survived DeleteListing")
 		}
-		if err := repo.SetVerification(ctx, f.app, models.AppListingVerified, f.user, ""); !errors.Is(err, pgx.ErrNoRows) {
-			t.Fatalf("verify missing listing err = %v, want no rows", err)
+		if err := repo.SetStatus(ctx, f.app, models.AppListingFeatured, f.user, ""); !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("feature missing listing err = %v, want no rows", err)
 		}
 	})
 }

@@ -13,6 +13,10 @@ const (
 
 	CampaignDailyLimitMin = 3
 
+	// AppDirectoryPopularInstalls is how many workspaces must use a community
+	// app before it is listed in the directory without being featured.
+	AppDirectoryPopularInstalls = 25
+
 	// SignatureHTMLMax/SignaturePlainMax bound a stored mailbox signature.
 	// The old ceiling was 1000 characters for both, which a real signature
 	// exceeds the moment it carries a logo or a table: Gmail itself allows

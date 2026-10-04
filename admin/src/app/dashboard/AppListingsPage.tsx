@@ -1,13 +1,13 @@
-// Community app directory review queue. A published app is reachable by its
-// link with an unverified warning; verifying it adds it to every workspace's
-// Integrations page, rejecting hides it until the developer edits it. Any edit
-// to a verified listing or to its app returns it here as unverified.
+// Community app directory. A published app is link only until it is featured
+// here or enough workspaces use it; featuring lists it in every workspace's
+// Integrations page, hiding takes it down, link included. An edit to a featured
+// listing, or to its app, removes the feature.
 
 import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { BadgeCheck, ExternalLink, XCircle } from "lucide-react";
+import { EyeOff, ExternalLink, RotateCcw, Star, StarOff } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,20 +26,26 @@ import { DataTable, type Column } from "@/components/data/DataTable";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 import { AdminPerm } from "@/lib/auth/permissions";
 import { useCursorPager } from "@/lib/useCursorPager";
-import { listAppListings, rejectAppListing, verifyAppListing } from "@/lib/api/client/admin/appListings";
-import type { AdminAppListing, AppListingVerification } from "@/lib/api/models/admin";
+import { listAppListings, setAppListingStatus } from "@/lib/api/client/admin/appListings";
+import type { AdminAppListing, AppListingStatus } from "@/lib/api/models/admin";
 
-const STATUS_TONE: Record<AppListingVerification, string> = {
-    unverified: "border-amber-300 text-amber-700 bg-amber-50",
-    verified: "border-emerald-300 text-emerald-700 bg-emerald-50",
-    rejected: "border-red-300 text-red-700 bg-red-50",
+const STATUS_LABEL: Record<AppListingStatus, string> = {
+    published: "Link only",
+    featured: "Featured",
+    hidden: "Hidden",
+};
+
+const STATUS_TONE: Record<AppListingStatus, string> = {
+    published: "border-zinc-300 text-zinc-600 bg-zinc-50",
+    featured: "border-sky-300 text-sky-700 bg-sky-50",
+    hidden: "border-red-300 text-red-700 bg-red-50",
 };
 
 const STATUS_OPTIONS = [
-    { value: "unverified", label: "Awaiting review" },
-    { value: "verified", label: "Verified" },
-    { value: "rejected", label: "Rejected" },
     { value: "any", label: "Any status" },
+    { value: "published", label: "Link only" },
+    { value: "featured", label: "Featured" },
+    { value: "hidden", label: "Hidden" },
 ];
 
 function hostOf(url: string): string {
@@ -50,13 +56,13 @@ function hostOf(url: string): string {
     }
 }
 
-export default function AppListingsPage() {
+export default function AppListingsPage({ embedded = false }: { embedded?: boolean }) {
     const canManage = useAdminPerm(AdminPerm.ManageOrganizations);
     const [query, setQuery] = useState("");
-    const [status, setStatus] = useState<AppListingVerification | "any">("unverified");
+    const [status, setStatus] = useState<AppListingStatus | "any">("any");
     const pager = useCursorPager();
     const { reset } = pager;
-    const [reviewing, setReviewing] = useState<{ item: AdminAppListing; mode: "verify" | "reject" } | null>(null);
+    const [acting, setActing] = useState<{ item: AdminAppListing; to: AppListingStatus } | null>(null);
 
     const filterKey = JSON.stringify({ query, status });
     useEffect(() => {
@@ -68,7 +74,7 @@ export default function AppListingsPage() {
         queryFn: () =>
             listAppListings({
                 q: query.trim() || undefined,
-                verification: status === "any" ? "" : status,
+                status: status === "any" ? "" : status,
                 limit: 50,
                 cursor: pager.cursor,
             }),
@@ -169,28 +175,21 @@ export default function AppListingsPage() {
             header: "Status",
             cell: (r) => (
                 <div>
-                    <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.verification]}`}>
-                        {r.verification}
+                    <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status]}`}>
+                        {STATUS_LABEL[r.status]}
                     </Badge>
-                    {r.app_status !== "active" && (
-                        <div className="text-[10px] text-muted-foreground mt-1">app {r.app_status}</div>
+                    {r.status === "published" && r.listed && (
+                        <div className="text-[10px] text-muted-foreground mt-1">listed by installs</div>
                     )}
-                    {r.review_note && (
-                        <div className="text-[10px] text-muted-foreground mt-1 max-w-xs truncate" title={r.review_note}>
-                            "{r.review_note}"
+                    {r.app_status !== "active" && <div className="text-[10px] text-muted-foreground mt-1">app {r.app_status}</div>}
+                    {r.status === "hidden" && r.status_note && (
+                        <div className="text-[10px] text-muted-foreground mt-1 max-w-xs truncate" title={r.status_note}>
+                            "{r.status_note}"
                         </div>
                     )}
                 </div>
             ),
-            csv: (r) => r.verification,
-        },
-        {
-            id: "submitted",
-            header: "Submitted",
-            cell: (r) => (
-                <span className="text-xs text-muted-foreground">{new Date(r.submitted_at).toLocaleDateString()}</span>
-            ),
-            csv: (r) => r.submitted_at,
+            csv: (r) => r.status,
         },
         {
             id: "actions",
@@ -198,28 +197,24 @@ export default function AppListingsPage() {
             align: "right",
             cell: (r) => (
                 <div className="space-x-1.5 whitespace-nowrap">
-                    <Button
-                        size="sm"
-                        disabled={!canManage || r.verification === "verified"}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setReviewing({ item: r, mode: "verify" });
-                        }}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs disabled:bg-zinc-200"
-                    >
-                        <BadgeCheck className="size-3" /> Verify
-                    </Button>
-                    <Button
-                        size="sm"
-                        disabled={!canManage || r.verification === "rejected"}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setReviewing({ item: r, mode: "reject" });
-                        }}
-                        className="bg-red-600 hover:bg-red-700 text-white text-xs disabled:bg-zinc-200"
-                    >
-                        <XCircle className="size-3" /> {r.verification === "verified" ? "Remove" : "Reject"}
-                    </Button>
+                    {r.status === "featured" ? (
+                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "published" })}>
+                            <StarOff className="size-3" /> Unfeature
+                        </ActionButton>
+                    ) : r.status === "published" ? (
+                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "featured" })} tone="sky">
+                            <Star className="size-3" /> Feature
+                        </ActionButton>
+                    ) : null}
+                    {r.status === "hidden" ? (
+                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "published" })}>
+                            <RotateCcw className="size-3" /> Restore
+                        </ActionButton>
+                    ) : (
+                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "hidden" })} tone="red">
+                            <EyeOff className="size-3" /> Hide
+                        </ActionButton>
+                    )}
                 </div>
             ),
         },
@@ -227,15 +222,17 @@ export default function AppListingsPage() {
 
     return (
         <div>
-            <PageHeader
-                title="App directory"
-                description="OAuth apps workspaces have published to the community directory. Unverified apps open only from their link, with a warning; verifying one lists it in every workspace's Integrations page."
-            />
+            {!embedded && (
+                <PageHeader
+                    title="App directory"
+                    description="OAuth apps workspaces have published. A published app opens only from its link until you feature it or 25 workspaces use it. Featured apps appear in every workspace's Integrations page; hidden apps open nowhere."
+                />
+            )}
             <Explorer
-                activeCount={(query ? 1 : 0) + (status !== "unverified" ? 1 : 0)}
+                activeCount={(query ? 1 : 0) + (status !== "any" ? 1 : 0)}
                 onReset={() => {
                     setQuery("");
-                    setStatus("unverified");
+                    setStatus("any");
                 }}
                 filters={
                     <>
@@ -245,9 +242,9 @@ export default function AppListingsPage() {
                         <FilterGroup label="Status">
                             <SelectFilter
                                 value={status}
-                                onChange={(v) => setStatus(v as AppListingVerification | "any")}
+                                onChange={(v) => setStatus(v as AppListingStatus | "any")}
                                 options={STATUS_OPTIONS}
-                                placeholder="Awaiting review"
+                                placeholder="Any status"
                             />
                         </FilterGroup>
                     </>
@@ -261,11 +258,10 @@ export default function AppListingsPage() {
                     error={error}
                     onRetry={() => refetch()}
                     errorTitle="Failed to load app listings"
-                    onRowClick={canManage ? (r) => setReviewing({ item: r, mode: r.verification === "verified" ? "reject" : "verify" }) : undefined}
                     storageKey="admin.app-listings"
                     csvName="warmbly-app-listings"
                     noun="listings"
-                    emptyTitle="Nothing to review"
+                    emptyTitle="No published apps"
                     emptyHint="No listings match these filters."
                     pager={{
                         canPrev: pager.canPrev,
@@ -279,36 +275,78 @@ export default function AppListingsPage() {
                 />
             </Explorer>
 
-            {reviewing && (
-                <ReviewDialog
-                    item={reviewing.item}
-                    mode={reviewing.mode}
-                    onModeChange={(mode) => setReviewing({ item: reviewing.item, mode })}
-                    onOpenChange={(v) => !v && setReviewing(null)}
-                />
-            )}
+            {acting && <StatusDialog item={acting.item} to={acting.to} onOpenChange={(v) => !v && setActing(null)} />}
         </div>
     );
 }
 
-function ReviewDialog({
+function ActionButton({
+    children,
+    onClick,
+    disabled,
+    tone,
+}: {
+    children: React.ReactNode;
+    onClick: () => void;
+    disabled: boolean;
+    tone?: "sky" | "red";
+}) {
+    return (
+        <Button
+            size="sm"
+            variant={tone ? "default" : "outline"}
+            disabled={disabled}
+            onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+            }}
+            className={
+                tone === "sky"
+                    ? "bg-sky-600 hover:bg-sky-700 text-white text-xs"
+                    : tone === "red"
+                      ? "bg-red-600 hover:bg-red-700 text-white text-xs"
+                      : "text-xs"
+            }
+        >
+            {children}
+        </Button>
+    );
+}
+
+const DIALOG_COPY: Record<AppListingStatus, { title: string; body: string; cta: string }> = {
+    featured: {
+        title: "Feature",
+        body: "Lists it in every workspace's Integrations page with a Featured badge. Check that the install URL, website and description belong to the same product and that the permissions fit what it does. Any later edit removes the feature.",
+        cta: "Feature",
+    },
+    published: {
+        title: "Set to link only",
+        body: "Removes it from the directory unless enough workspaces use it. Its link keeps working.",
+        cta: "Set to link only",
+    },
+    hidden: {
+        title: "Hide",
+        body: "Takes it down everywhere: out of the directory and its link stops working. Workspaces that installed it keep their access until they revoke it. The developer sees your note.",
+        cta: "Hide",
+    },
+};
+
+function StatusDialog({
     item,
-    mode,
-    onModeChange,
+    to,
     onOpenChange,
 }: {
     item: AdminAppListing;
-    mode: "verify" | "reject";
-    onModeChange: (m: "verify" | "reject") => void;
+    to: AppListingStatus;
     onOpenChange: (v: boolean) => void;
 }) {
     const qc = useQueryClient();
     const [note, setNote] = useState("");
+    const copy = DIALOG_COPY[to];
     const mutation = useMutation({
-        mutationFn: () =>
-            mode === "verify" ? verifyAppListing(item.application_id, note) : rejectAppListing(item.application_id, note),
+        mutationFn: () => setAppListingStatus(item.application_id, to, note),
         onSuccess: () => {
-            toast.success(mode === "verify" ? `${item.name} verified` : `${item.name} rejected`);
+            toast.success(`${item.name}: ${STATUS_LABEL[to].toLowerCase()}`);
             qc.invalidateQueries({ queryKey: ["admin", "app-listings"] });
             onOpenChange(false);
         },
@@ -319,11 +357,10 @@ function ReviewDialog({
         <Dialog open onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>{item.name}</DialogTitle>
-                    <DialogDescription>
-                        Published by {item.organization_name || item.organization_id}. Check that the install URL, website and
-                        description belong to the same product, and that the permissions fit what it says it does.
-                    </DialogDescription>
+                    <DialogTitle>
+                        {copy.title} {item.name}
+                    </DialogTitle>
+                    <DialogDescription>{copy.body}</DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-3 text-xs">
@@ -332,54 +369,34 @@ function ReviewDialog({
                         <p className="whitespace-pre-line text-muted-foreground max-h-40 overflow-y-auto">{item.description}</p>
                     )}
                     <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1">
+                        <dt className="text-muted-foreground">Publisher</dt>
+                        <dd>{item.organization_name || item.organization_id}</dd>
                         <dt className="text-muted-foreground">Install</dt>
                         <dd className="font-mono break-all">{item.install_url}</dd>
                         <dt className="text-muted-foreground">Website</dt>
                         <dd className="font-mono break-all">{item.website_url || "none"}</dd>
-                        {item.support_url && (
-                            <>
-                                <dt className="text-muted-foreground">Support</dt>
-                                <dd className="font-mono break-all">{item.support_url}</dd>
-                            </>
-                        )}
-                        {item.privacy_url && (
-                            <>
-                                <dt className="text-muted-foreground">Privacy</dt>
-                                <dd className="font-mono break-all">{item.privacy_url}</dd>
-                            </>
-                        )}
                         <dt className="text-muted-foreground">Permissions</dt>
                         <dd>{item.permissions.map((p) => p.name.toLowerCase()).join(", ") || "none"}</dd>
+                        <dt className="text-muted-foreground">Installs</dt>
+                        <dd>{item.installs.toLocaleString()}</dd>
                     </dl>
                 </div>
 
-                <div className="flex gap-1.5">
-                    {(["verify", "reject"] as const).map((m) => (
-                        <Button
-                            key={m}
-                            size="sm"
-                            variant={mode === m ? "default" : "outline"}
-                            onClick={() => onModeChange(m)}
-                            className="text-xs"
-                        >
-                            {m === "verify" ? "Verify" : item.verification === "verified" ? "Remove from directory" : "Reject"}
-                        </Button>
-                    ))}
-                </div>
-
-                <div>
-                    <Label htmlFor="review-note" className="text-xs font-medium">
-                        Note to the developer {mode === "reject" ? "(required)" : "(optional)"}
-                    </Label>
-                    <Textarea
-                        id="review-note"
-                        rows={3}
-                        maxLength={1000}
-                        placeholder={mode === "reject" ? "What needs to change before it can be listed" : "Optional"}
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                    />
-                </div>
+                {to === "hidden" && (
+                    <div>
+                        <Label htmlFor="listing-note" className="text-xs font-medium">
+                            Note to the developer (required)
+                        </Label>
+                        <Textarea
+                            id="listing-note"
+                            rows={3}
+                            maxLength={1000}
+                            placeholder="Why it was taken down"
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                        />
+                    </div>
+                )}
 
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -387,18 +404,16 @@ function ReviewDialog({
                     </Button>
                     <Button
                         onClick={() => {
-                            if (mode === "reject" && note.trim() === "") {
-                                toast.error("Add a note so the developer knows what to change");
+                            if (to === "hidden" && note.trim() === "") {
+                                toast.error("Add a note so the developer knows why");
                                 return;
                             }
                             mutation.mutate();
                         }}
                         disabled={mutation.isPending}
-                        className={
-                            mode === "verify" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"
-                        }
+                        className={to === "hidden" ? "bg-red-600 hover:bg-red-700 text-white" : "bg-sky-600 hover:bg-sky-700 text-white"}
                     >
-                        {mutation.isPending ? "Working…" : mode === "verify" ? "Verify" : "Reject"}
+                        {mutation.isPending ? "Working…" : copy.cta}
                     </Button>
                 </DialogFooter>
             </DialogContent>

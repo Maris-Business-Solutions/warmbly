@@ -68,9 +68,17 @@ type OAuthApplication struct {
 	IsPublic bool `json:"is_public"`
 	// DynamicallyRegistered is true for clients created at runtime via the RFC 7591
 	// registration endpoint (no owning org/user until a human grants access).
-	DynamicallyRegistered bool      `json:"dynamically_registered"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	DynamicallyRegistered bool `json:"dynamically_registered"`
+	// SuspendedAt is an operator's suspension; the owner cannot lift it.
+	SuspendedAt     *time.Time `json:"suspended_at,omitempty"`
+	SuspendedReason string     `json:"suspended_reason,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+// Usable reports whether the app may authorize, issue or accept tokens.
+func (a *OAuthApplication) Usable() bool {
+	return a.Status == OAuthAppActive && a.SuspendedAt == nil
 }
 
 // OAuthApplicationWithSecret is returned exactly once, on create or secret
@@ -144,4 +152,73 @@ type OAuthAuthorizedApp struct {
 	Scopes        uint64     `json:"scopes"`
 	AuthorizedAt  time.Time  `json:"authorized_at"`
 	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
+}
+
+// OAuthDeveloperBlock stops a workspace or a person from registering or
+// publishing OAuth apps. Exactly one of OrganizationID and UserID is set.
+type OAuthDeveloperBlock struct {
+	ID               uuid.UUID  `json:"id"`
+	OrganizationID   *uuid.UUID `json:"organization_id,omitempty"`
+	OrganizationName string     `json:"organization_name,omitempty"`
+	UserID           *uuid.UUID `json:"user_id,omitempty"`
+	UserEmail        string     `json:"user_email,omitempty"`
+	Reason           string     `json:"reason"`
+	BlockedByEmail   string     `json:"blocked_by_email,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+}
+
+// OAuthDeveloperAccess is what a workspace may do with OAuth apps right now.
+type OAuthDeveloperAccess struct {
+	Blocked bool   `json:"blocked"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// AdminOAuthApp is an app as the operator's moderation list shows it.
+type AdminOAuthApp struct {
+	ID               uuid.UUID       `json:"id"`
+	OrganizationID   uuid.UUID       `json:"organization_id"`
+	OrganizationName string          `json:"organization_name"`
+	CreatedBy        uuid.UUID       `json:"created_by"`
+	CreatedByEmail   string          `json:"created_by_email"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	LogoURL          string          `json:"logo_url"`
+	WebsiteURL       string          `json:"website_url"`
+	ClientID         string          `json:"client_id"`
+	RedirectURIs     []string        `json:"redirect_uris"`
+	WebhookURL       string          `json:"webhook_url"`
+	Permissions      []APIPermission `json:"permissions"`
+	Status           OAuthAppStatus  `json:"status"`
+	IsPublic         bool            `json:"is_public"`
+	SuspendedAt      *time.Time      `json:"suspended_at,omitempty"`
+	SuspendedReason  string          `json:"suspended_reason,omitempty"`
+	Installs         int             `json:"installs"`
+	ListingSlug      string          `json:"listing_slug,omitempty"`
+	ListingStatus    string          `json:"listing_status,omitempty"`
+	OrgBlocked       bool            `json:"org_blocked"`
+	CreatorBlocked   bool            `json:"creator_blocked"`
+	CreatedAt        time.Time       `json:"created_at"`
+}
+
+// AdminOAuthAppSearch filters the moderation list. Status is active,
+// disabled or suspended.
+type AdminOAuthAppSearch struct {
+	Q      string `form:"q"`
+	Status string `form:"status"`
+	Limit  int    `form:"limit"`
+	Offset int    `form:"-"`
+}
+
+type AdminOAuthAppsResult struct {
+	Data       []AdminOAuthApp `json:"data"`
+	Pagination Pagination      `json:"pagination"`
+}
+
+// CreateOAuthDeveloperBlock is the operator's block request: a workspace or a
+// person, a reason, and whether to suspend the apps they already have.
+type CreateOAuthDeveloperBlock struct {
+	OrganizationID *uuid.UUID `json:"organization_id"`
+	UserID         *uuid.UUID `json:"user_id"`
+	Reason         string     `json:"reason"`
+	SuspendApps    bool       `json:"suspend_apps"`
 }
