@@ -245,7 +245,7 @@ func (s *stripeService) CreateCheckoutSession(ctx context.Context, userID uuid.U
 
 	params := &stripe.CheckoutSessionParams{
 		Mode:                     stripe.String(string(stripe.CheckoutSessionModeSubscription)),
-		AutomaticTax:             &stripe.CheckoutSessionAutomaticTaxParams{Enabled: stripe.Bool(true)},
+		AutomaticTax:             &stripe.CheckoutSessionAutomaticTaxParams{Enabled: stripe.Bool(false)},
 		BillingAddressCollection: stripe.String(string(stripe.CheckoutSessionBillingAddressCollectionRequired)),
 		TaxIDCollection:          &stripe.CheckoutSessionTaxIDCollectionParams{Enabled: stripe.Bool(true)},
 		NameCollection:           businessNameCollection(),
@@ -415,7 +415,7 @@ func (s *stripeService) CreateCreditCheckoutSession(ctx context.Context, userID,
 
 	params := &stripe.CheckoutSessionParams{
 		Mode:                     stripe.String(string(stripe.CheckoutSessionModePayment)),
-		AutomaticTax:             &stripe.CheckoutSessionAutomaticTaxParams{Enabled: stripe.Bool(true)},
+		AutomaticTax:             &stripe.CheckoutSessionAutomaticTaxParams{Enabled: stripe.Bool(false)},
 		BillingAddressCollection: stripe.String(string(stripe.CheckoutSessionBillingAddressCollectionRequired)),
 		TaxIDCollection:          &stripe.CheckoutSessionTaxIDCollectionParams{Enabled: stripe.Bool(true)},
 		NameCollection:           businessNameCollection(),
@@ -733,7 +733,7 @@ func (s *stripeService) ChangePlan(ctx context.Context, orgID uuid.UUID, newPlan
 			},
 		},
 		ProrationBehavior: stripe.String(prorationBehavior),
-		AutomaticTax:      &stripe.SubscriptionAutomaticTaxParams{Enabled: stripe.Bool(true)},
+		AutomaticTax:      &stripe.SubscriptionAutomaticTaxParams{Enabled: stripe.Bool(false)},
 	}
 	if couponID != nil {
 		params.Discounts = []*stripe.SubscriptionDiscountParams{{Coupon: stripe.String(*couponID)}}
@@ -792,7 +792,7 @@ func (s *stripeService) PreviewPlanChange(ctx context.Context, orgID uuid.UUID, 
 
 	// Preview the upcoming invoice with the plan change
 	params := &stripe.InvoiceCreatePreviewParams{
-		AutomaticTax: &stripe.InvoiceCreatePreviewAutomaticTaxParams{Enabled: stripe.Bool(true)},
+		AutomaticTax: &stripe.InvoiceCreatePreviewAutomaticTaxParams{Enabled: stripe.Bool(false)},
 		Customer:     stripe.String(sub.StripeCustomerID),
 		Subscription: stripe.String(*sub.StripeSubscriptionID),
 		SubscriptionDetails: &stripe.InvoiceCreatePreviewSubscriptionDetailsParams{
