@@ -7,12 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
 // Internal email-message-map endpoints. Workers call these instead of touching
 // Postgres directly (per CLAUDE.md), mirroring the DEK endpoints. Auth via
-// middleware.InternalAuthMiddleware (static bearer token in INTERNAL_API_TOKEN).
+// middleware.NodeBrokerAuthMiddleware (the node token).
 //
 //	PUT    /api/v1/internal/email-message-map  body {user_id,email_id,message_id,id,thread_id} -> 204
 //	GET    /api/v1/internal/email-message-map?user_id=&email_id=&message_id=
@@ -50,7 +51,7 @@ func (h *Handler) InternalPutEmailMessageMap(c *gin.Context) {
 		ThreadID:  p.ThreadID,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -63,7 +64,7 @@ func (h *Handler) InternalGetEmailMessageMap(c *gin.Context) {
 	}
 	data, err := h.EmailMessageMap.Get(c.Request.Context(), userID, emailID, messageID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if data == nil {
@@ -94,7 +95,7 @@ func (h *Handler) InternalDeleteEmailMessageMap(c *gin.Context) {
 		id = parsed
 	}
 	if err := h.EmailMessageMap.Del(c.Request.Context(), userID, emailID, messageID, id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.Status(http.StatusNoContent)

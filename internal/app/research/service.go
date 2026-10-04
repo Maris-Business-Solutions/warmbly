@@ -113,6 +113,9 @@ func (s *service) RunResearch(ctx context.Context, inv aitools.Invocation, conta
 		Status: models.ResearchRunning, Objective: strings.TrimSpace(objective),
 	}
 	created, replayed, err := s.repo.CreateRun(ctx, run, idempotencyKey)
+	if errors.Is(err, repository.ErrResearchContactNotFound) {
+		return nil, errx.New(errx.NotFound, "contact not found")
+	}
 	if err != nil {
 		return nil, errx.New(errx.Internal, "failed to create research run")
 	}
@@ -242,7 +245,7 @@ func (s *service) execute(ctx context.Context, inv aitools.Invocation, run *mode
 	var captured *models.ResearchResult
 	saveAttempts := 0
 	tools := make([]generation.ToolDef, 0, 4)
-	for _, t := range s.registry.ToolDefsByName(inv, "search_web", "fetch_url", "load_skill") {
+	for _, t := range s.registry.ResearchTools(inv, "search_web", "fetch_url", "load_skill") {
 		switch t.Name {
 		case "search_web":
 			tools = append(tools, budgeted(t, &searchBudget))

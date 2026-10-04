@@ -28,6 +28,10 @@ type Invocation struct {
 	// IsAPIKey selects which permission mask gates the tool: API-key callers
 	// (MCP, developer sockets) are gated on APIPerms; JWT callers on OrgPerms.
 	IsAPIKey bool
+	// ActsForMember marks an OAuth token: it also needs OrgPerms, its member's permissions.
+	ActsForMember bool
+	// FreshAuthed marks a member session that confirmed the account holder within the reauth window.
+	FreshAuthed bool
 	// IP / UserAgent flow into the audit trail for write-class tools.
 	IP        string
 	UserAgent string
@@ -52,7 +56,23 @@ type Tool struct {
 	// routes have no API-key permission bit, so a zero RequiredAPIPerm must NOT
 	// be read as "open to keys". The dashboard agent (JWT) still gets them.
 	JWTOnly bool
+	// AlwaysAsk keeps the tool out of workspace "always allow" policies: it starts sending, or changes who has access.
+	AlwaysAsk bool
+	// FreshAuth holds a member to the same recent confirmation the tool's REST route requires.
+	FreshAuth bool
+	// SecretFields are top-level result keys the assistant never sees; the member is shown them once.
+	SecretFields []string
+	// Preview resolves a send's sender, recipients and subject for the approval card, and pins them in the returned args.
+	Preview func(ctx context.Context, inv Invocation, args json.RawMessage) (*models.AgentSendPreview, json.RawMessage, error)
 	Handler Handler
+}
+
+// run executes the tool, refusing a member session that has not confirmed recently when the tool needs it.
+func (t Tool) run(ctx context.Context, inv Invocation, args json.RawMessage) (string, error) {
+	if t.FreshAuth && !inv.IsAPIKey && !inv.FreshAuthed {
+		return "", ErrToolNeedsFreshAuth
+	}
+	return t.Handler(ctx, inv, args)
 }
 
 // allowed reports whether the invocation's permissions grant this tool. A zero
@@ -60,6 +80,9 @@ type Tool struct {
 func (t Tool) allowed(inv Invocation) bool {
 	if inv.IsAPIKey {
 		if t.JWTOnly {
+			return false
+		}
+		if inv.ActsForMember && inv.OrgPerms&t.RequiredOrgPerm != t.RequiredOrgPerm {
 			return false
 		}
 		return t.RequiredAPIPerm == 0 || models.HasAPIPermission(inv.APIPerms, t.RequiredAPIPerm)
@@ -136,7 +159,7 @@ func (r *Registry) ToolDefs(ctx context.Context, inv Invocation) []generation.To
 			InputSchema: t.InputSchema,
 			Risk:        t.Risk,
 			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
-				return t.Handler(ctx, inv, args)
+				return t.run(ctx, inv, args)
 			},
 		})
 	}
@@ -148,9 +171,29 @@ func (r *Registry) ToolDefs(ctx context.Context, inv Invocation) []generation.To
 
 // ToolDefsByName returns bound ToolDefs for only the named tools the invocation
 // is permitted to use (unknown or unpermitted names are skipped). Feature agents
-// (e.g. contact research) use this to pull a specific subset like search_web +
-// fetch_url without exposing the whole registry.
+// (e.g. the advisor fixer) use this to pull a specific subset without exposing
+// the whole registry.
 func (r *Registry) ToolDefsByName(inv Invocation, names ...string) []generation.ToolDef {
+	return r.bindNamed(inv, true, names...)
+}
+
+// researchTools are the tools a feature agent may run under its own route's gate: public web lookups and playbooks.
+var researchTools = map[string]bool{"search_web": true, "fetch_url": true, "load_skill": true}
+
+// ResearchTools binds search_web, fetch_url and load_skill for a feature whose
+// own route or schedule already authorized the caller (contact research, AI
+// variables at send time). Any other name is ignored.
+func (r *Registry) ResearchTools(inv Invocation, names ...string) []generation.ToolDef {
+	keep := make([]string, 0, len(names))
+	for _, n := range names {
+		if researchTools[n] {
+			keep = append(keep, n)
+		}
+	}
+	return r.bindNamed(inv, false, keep...)
+}
+
+func (r *Registry) bindNamed(inv Invocation, gate bool, names ...string) []generation.ToolDef {
 	want := make(map[string]bool, len(names))
 	for _, n := range names {
 		want[n] = true
@@ -161,7 +204,7 @@ func (r *Registry) ToolDefsByName(inv Invocation, names ...string) []generation.
 			continue
 		}
 		t := r.tools[name]
-		if !t.allowed(inv) {
+		if gate && !t.allowed(inv) {
 			continue
 		}
 		defs = append(defs, generation.ToolDef{
@@ -170,7 +213,7 @@ func (r *Registry) ToolDefsByName(inv Invocation, names ...string) []generation.
 			InputSchema: t.InputSchema,
 			Risk:        t.Risk,
 			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
-				return t.Handler(ctx, inv, args)
+				return t.run(ctx, inv, args)
 			},
 		})
 	}
@@ -178,12 +221,26 @@ func (r *Registry) ToolDefsByName(inv Invocation, names ...string) []generation.
 }
 
 // WebResearchTools returns fresh read-only web tools (search_web, fetch_url)
-// bound to an org, for feature agents that only need public-web lookups (e.g.
-// research-mode campaign AI variables at send time). Read-only web tools require
-// no org permission, so a bare org-scoped invocation suffices. Returned defs are
+// bound to an org, for research-mode campaign AI variables at send time, which
+// the campaign's own permissions already authorized. Returned defs are
 // unbudgeted; the caller wraps them with its own per-run budget.
 func (r *Registry) WebResearchTools(orgID uuid.UUID) []generation.ToolDef {
-	return r.ToolDefsByName(Invocation{OrgID: orgID}, "search_web", "fetch_url")
+	return r.ResearchTools(Invocation{OrgID: orgID}, "search_web", "fetch_url")
+}
+
+// PreviewSend resolves a gated call's send preview and pinned args; nil when the tool has no preview.
+func (r *Registry) PreviewSend(ctx context.Context, inv Invocation, name string, args json.RawMessage) (*models.AgentSendPreview, json.RawMessage, error) {
+	t, ok := r.tools[name]
+	if !ok || t.Preview == nil || !t.allowed(inv) {
+		return nil, nil, nil
+	}
+	return t.Preview(ctx, inv, args)
+}
+
+// Permits reports whether inv may run the named static tool; unknown names are not permitted.
+func (r *Registry) Permits(inv Invocation, name string) bool {
+	t, ok := r.tools[name]
+	return ok && t.allowed(inv)
 }
 
 // Call invokes a single tool by name under inv, enforcing its permission gate.
@@ -197,5 +254,5 @@ func (r *Registry) Call(ctx context.Context, inv Invocation, name string, args j
 	if !t.allowed(inv) {
 		return "", ErrToolForbidden
 	}
-	return t.Handler(ctx, inv, args)
+	return t.run(ctx, inv, args)
 }

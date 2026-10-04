@@ -86,8 +86,11 @@ type conn struct {
 	usageMu  sync.Mutex
 }
 
-func (c *conn) instanceURL() string { return configString(c.DisplayFields, "instance_url") }
-func (c *conn) sfUserID() string    { return NormalizeID(configString(c.DisplayFields, "sf_user_id")) }
+func (c *conn) instanceURL() string {
+	v, _ := integration.SalesforceInstanceURL(configString(c.DisplayFields, "instance_url"))
+	return v
+}
+func (c *conn) sfUserID() string { return NormalizeID(configString(c.DisplayFields, "sf_user_id")) }
 
 // recordURL is a record's address in the org; Salesforce redirects /<id> to
 // the right Lightning page for any object.

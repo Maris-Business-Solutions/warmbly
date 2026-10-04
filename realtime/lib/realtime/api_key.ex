@@ -56,8 +56,28 @@ defmodule Realtime.ApiKey do
          :ok <- check_status(key_data),
          :ok <- check_expiration(key_data),
          :ok <- check_permission(key_data),
-         :ok <- check_ip_restriction(key_data, client_ip) do
+         :ok <- check_ip_restriction(key_data, client_ip),
+         :ok <- check_live(key_data) do
       {:ok, key_data.user_id}
+    end
+  end
+
+  # Uncached, so a revoked key, a banned holder or one who left the workspace stops at once.
+  @live_query """
+  SELECT 1 FROM api_keys k JOIN users u ON u.id = k.user_id
+  WHERE k.id = $1 AND k.status = 'active' AND (u.ban_scope & 1) = 0
+    AND EXISTS (SELECT 1 FROM organization_members m
+                WHERE m.organization_id = k.organization_id AND m.user_id = k.user_id
+                  AND m.accepted_at IS NOT NULL)
+  """
+
+  defp check_live(%{id: id}) do
+    with {:ok, bin} <- Ecto.UUID.dump(id),
+         {:ok, %{rows: [_ | _]}} <- Repo.query(@live_query, [bin]) do
+      :ok
+    else
+      {:ok, %{rows: []}} -> {:error, :key_inactive}
+      _ -> {:error, :database_error}
     end
   end
 
@@ -73,7 +93,8 @@ defmodule Realtime.ApiKey do
 
   defp lookup_key(api_key) do
     key_hash = hash_key(api_key)
-    cache_key = "apikey:#{key_hash}"
+    # v2: ids are cached as uuid strings.
+    cache_key = "apikey:v2:#{key_hash}"
 
     # Try Redis cache first
     case get_cached(cache_key) do
@@ -124,8 +145,8 @@ defmodule Realtime.ApiKey do
       from(ak in "api_keys",
         where: ak.key_hash == ^key_hash,
         select: %{
-          id: ak.id,
-          user_id: ak.user_id,
+          id: type(ak.id, Ecto.UUID),
+          user_id: type(ak.user_id, Ecto.UUID),
           status: ak.status,
           permissions: ak.permissions,
           allowed_ips: ak.allowed_ips,

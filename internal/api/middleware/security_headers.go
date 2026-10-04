@@ -1,14 +1,14 @@
 package middleware
 
 import (
+	"net"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SecurityHeaders sets the response headers that tell a browser what it may do
-// with an API response. None of them were being sent by any layer: not the Go
-// services, not the nginx images, not the edge.
+// with an API response, on every response the API serves.
 //
 // The API answers JSON, so the policy can be the strictest one there is. It
 // loads nothing, frames nothing, and may not be framed. That matters because
@@ -47,6 +47,22 @@ func SecurityHeaders() gin.HandlerFunc {
 	}
 }
 
+// PageHeaders is the part of SecurityHeaders a service serving framable pages
+// can carry (the forms service): no content sniffing, a referrer policy, and
+// HSTS over TLS on ownHost only, never on a customer's domain. Each page sets its own CSP.
+func PageHeaders(ownHost string) gin.HandlerFunc {
+	ownHost = strings.ToLower(ownHost)
+	return func(c *gin.Context) {
+		h := c.Writer.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if ownHost != "" && requestIsHTTPS(c) && strings.EqualFold(requestHostname(c.Request.Host), ownHost) {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		c.Next()
+	}
+}
+
 // requestIsHTTPS reports whether the client reached us over TLS. Termination is
 // always upstream (Railway, Caddy, nginx), so the forwarded header is the
 // signal.
@@ -64,4 +80,12 @@ func requestIsHTTPS(c *gin.Context) bool {
 		return strings.EqualFold(strings.TrimSpace(strings.Split(proto, ",")[0]), "https")
 	}
 	return false
+}
+
+// requestHostname is the request's Host without a port.
+func requestHostname(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
+	}
+	return host
 }

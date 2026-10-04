@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/repository"
 )
 
 // warmupRoutingRulePayload is the wire shape for create/update requests.
@@ -140,7 +142,7 @@ func (h *Handler) UpdateWarmupRoutingRule(c *gin.Context) {
 	}
 	rule := payload.toModel(orgID, ruleID)
 	if err := h.WarmupRoutingRepo.Update(c.Request.Context(), rule); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		warmupRoutingWriteError(c, err)
 		return
 	}
 
@@ -163,7 +165,7 @@ func (h *Handler) DeleteWarmupRoutingRule(c *gin.Context) {
 		return
 	}
 	if err := h.WarmupRoutingRepo.Delete(c.Request.Context(), orgID, ruleID); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		warmupRoutingWriteError(c, err)
 		return
 	}
 
@@ -180,4 +182,12 @@ func requireOrgID(c *gin.Context) (uuid.UUID, bool) {
 	}
 	errx.JSON(c, errx.New(errx.Forbidden, "organization context required"))
 	return uuid.Nil, false
+}
+
+func warmupRoutingWriteError(c *gin.Context, err error) {
+	if errors.Is(err, repository.ErrWarmupRoutingRuleNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "warmup routing rule not found"})
+		return
+	}
+	errx.JSON(c, errx.New(errx.Internal, err.Error()))
 }

@@ -15,10 +15,7 @@ defmodule Realtime.OAuthToken do
   require Logger
 
   alias Realtime.ApiKey
-  alias Realtime.ErrorReporter
   alias Realtime.Repo
-
-  import Ecto.Query
 
   # OAuth2 access token prefix
   @prefix "wmat_"
@@ -61,32 +58,37 @@ defmodule Realtime.OAuthToken do
   # Reuse the API key hashing so both token types hash identically.
   defp hash_token(token), do: ApiKey.hash_key(token)
 
+  # The holder must still be a member, not banned from signing in, and the app usable,
+  # the same conditions the API applies when it resolves the token.
+  @lookup_query """
+  SELECT g.user_id::text, g.scopes, g.access_expires_at, g.revoked_at
+  FROM oauth_access_grants g
+  WHERE g.access_token_hash = $1
+    AND EXISTS (SELECT 1 FROM organization_members m
+                WHERE m.organization_id = g.organization_id AND m.user_id = g.user_id)
+    AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = g.user_id AND (u.ban_scope & 1) <> 0)
+    AND EXISTS (SELECT 1 FROM oauth_applications a
+                WHERE a.id = g.application_id AND a.status = 'active' AND a.suspended_at IS NULL)
+  """
+
   defp lookup_token(token) do
-    token_hash = hash_token(token)
+    case Repo.query(@lookup_query, [hash_token(token)]) do
+      {:ok, %{rows: [[user_id, scopes, expires_at, revoked_at] | _]}} ->
+        {:ok,
+         %{
+           user_id: user_id,
+           scopes: scopes,
+           access_expires_at: expires_at,
+           revoked_at: revoked_at
+         }}
 
-    query =
-      from(g in "oauth_access_grants",
-        where: g.access_token_hash == ^token_hash,
-        select: %{
-          user_id: g.user_id,
-          scopes: g.scopes,
-          access_expires_at: g.access_expires_at,
-          revoked_at: g.revoked_at
-        }
-      )
-
-    case Repo.one(query) do
-      nil ->
+      {:ok, %{rows: []}} ->
         {:error, :invalid_key}
 
-      grant ->
-        {:ok, grant}
+      {:error, reason} ->
+        Logger.error("OAuth token query failed: #{inspect(reason)}")
+        {:error, :database_error}
     end
-  rescue
-    e ->
-      Logger.error("OAuth token query failed: #{inspect(e)}")
-      ErrorReporter.capture_exception(e, stacktrace: __STACKTRACE__)
-      {:error, :database_error}
   end
 
   defp check_revoked(%{revoked_at: nil}), do: :ok

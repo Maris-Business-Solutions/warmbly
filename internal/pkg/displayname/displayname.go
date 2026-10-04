@@ -103,6 +103,19 @@ func Clean(s string, kind Kind) string {
 	return ""
 }
 
+// CleanOr is Clean after cutting s to kind's length on a rune boundary, or
+// fallback when nothing passes. For a name nobody can be asked to shorten.
+func CleanOr(s string, kind Kind, fallback string) string {
+	r := []rune(Normalize(s))
+	if n := maxLength(kind); len(r) > n {
+		r = r[:n]
+	}
+	if out := Clean(string(r), kind); out != "" {
+		return out
+	}
+	return fallback
+}
+
 // Displayable returns the normalized name when it is safe to show another
 // person, otherwise "". It skips the length bound so a stored name that
 // predates it still renders; the caller supplies the fallback.
@@ -112,6 +125,14 @@ func Displayable(s string) string {
 		return ""
 	}
 	return s
+}
+
+// DisplayableOr is Displayable with a neutral fallback.
+func DisplayableOr(s, fallback string) string {
+	if out := Displayable(s); out != "" {
+		return out
+	}
+	return fallback
 }
 
 // FromEmail derives a first name from an address's local part, with the

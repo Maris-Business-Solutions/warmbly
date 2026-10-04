@@ -15,7 +15,8 @@ import (
 // OAuth `code` and `state` on the callback bouncers, the team invitation token
 // on the preview lookup, the socket ticket on /v1/getaway's reply, the form
 // prefill ticket. Others carry one in the path: inbound webhook secrets,
-// unsubscribe tokens, device and warmup tokens. None of them may reach stdout,
+// unsubscribe tokens, device and warmup tokens, and the pairing codes of the
+// Slack, CLI and pool links. None of them may reach stdout,
 // the container log, or whatever aggregates it.
 //
 // So the query is dropped and a path parameter named in credentialParams is
@@ -37,7 +38,7 @@ func RequestLogger() gin.HandlerFunc {
 }
 
 // credentialParams are the route parameter names whose value is a credential.
-var credentialParams = map[string]bool{"secret": true, "token": true}
+var credentialParams = map[string]bool{"secret": true, "token": true, "code": true}
 
 // loggedPath is the request path with every credential parameter replaced by
 // its name, rebuilt from the matched route so no value is guessed at.

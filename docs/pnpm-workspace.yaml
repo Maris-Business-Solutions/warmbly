@@ -9,25 +9,13 @@ allowBuilds:
 overrides:
   picomatch: ^4.0.4
   path-to-regexp: ^8.4.0
-  # Clear CVE-2026-59869 (DoS via crafted YAML) and GHSA-5p4m-2wfm-xmqj
-  # (quadratic CPU use resolving !!omap) in the transitive js-yaml.
+  # Floor transitive dependencies at their patched releases.
   js-yaml: ^4.3.2
-  # Clear the libvips CVEs inherited by sharp (fixed in 0.35.0).
   sharp: ^0.35.0
-  # next pins postcss to an exact 8.4.31, which carries the sourceMappingURL
-  # file-read / path-traversal advisories (CVE-2026-45623, GHSA-r28c-9q8g-f849).
+  # next pins an exact postcss; lift it to the patched line.
   postcss: ^8.5.23
-  # Clear CVE-2026-67213 (DoS via infinite loop) in the transitive nanoid.
   nanoid: ^3.3.17
-  # Clear GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq in the image-size that
-  # fumadocs-core pulls in. Build-time only on repo-authored MDX, but the docs
-  # site is in scope for the dependency scan and an unjustified high finding is
-  # the same amount of work to explain as to fix.
   image-size: ^2.0.3
-  # Clear GHSA-w9m9-85wc-3x92 (DoS through uncontrolled AST recursion) in the
-  # postcss-selector-parser fumadocs-ui pulls in.
   postcss-selector-parser: '>=7.1.3'
-  # fumadocs-mdx pins an esbuild carrying GHSA-g7r4-m6w7-qqqr, where the dev
-  # server serves any file to any origin. Build-time only here, and the docs
-  # site is a static export, but the fix is a version bump.
+  # fumadocs-mdx pins an older esbuild; lift it to the patched line.
   esbuild: '>=0.28.1'

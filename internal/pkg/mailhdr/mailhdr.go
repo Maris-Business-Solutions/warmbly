@@ -7,6 +7,7 @@
 package mailhdr
 
 import (
+	"errors"
 	"mime"
 	"net/mail"
 	"strings"
@@ -26,17 +27,12 @@ func Subject(s string) string {
 }
 
 // Address encodes one address entry, which may be bare ("a@b.com") or carry a
-// display name ("Ana Rodríguez <a@b.com>"). Unparseable input is returned
-// trimmed but otherwise untouched: it is better to send what the caller meant
-// than to drop a recipient.
+// display name ("Ana Rodríguez <a@b.com>"). Anything that is not exactly one
+// address encodes to "", so it never reaches a header.
 func Address(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
+	parsed, ok := parseOne(s)
+	if !ok {
 		return ""
-	}
-	parsed, err := mail.ParseAddress(s)
-	if err != nil {
-		return s
 	}
 	if parsed.Name == "" {
 		// Keep a plain address plain; String would wrap it in angle brackets.
@@ -45,6 +41,85 @@ func Address(s string) string {
 	// mail.Address.String RFC 2047-encodes a non-ASCII display name and quotes
 	// one containing specials.
 	return parsed.String()
+}
+
+// ValidAddress reports whether s is exactly one address, with or without a
+// display name, in a form Address can encode.
+func ValidAddress(s string) bool {
+	_, ok := parseOne(s)
+	return ok
+}
+
+// parseOne reads one address entry, accepting the legacy "Ana (a@b.com)" form
+// through Bare and refusing any control character.
+func parseOne(s string) (*mail.Address, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || hasControl(s) {
+		return nil, false
+	}
+	// A pasted list is several recipients, never one.
+	if list, err := mail.ParseAddressList(s); err == nil && len(list) > 1 {
+		return nil, false
+	}
+	if parsed, err := mail.ParseAddress(s); err == nil {
+		return parsed, true
+	}
+	if b := Bare(s); b != s {
+		if parsed, err := mail.ParseAddress(b); err == nil && parsed.Name == "" {
+			return parsed, true
+		}
+	}
+	return nil, false
+}
+
+// ValidMessageID reports whether s is one Message-ID, bracketed or not:
+// printable ASCII with no whitespace and no angle brackets inside.
+func ValidMessageID(s string) bool {
+	id := strings.TrimSpace(s)
+	if strings.HasPrefix(id, "<") && strings.HasSuffix(id, ">") {
+		id = id[1 : len(id)-1]
+	}
+	if id == "" || len(id) > maxHeaderValue {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if c := id[i]; c <= ' ' || c > '~' || c == '<' || c == '>' {
+			return false
+		}
+	}
+	return true
+}
+
+// maxHeaderValue is RFC 5322's line limit, the most one unfolded value can be.
+const maxHeaderValue = 998
+
+// ErrUnsafeHeader is returned for a header that cannot be written as one line.
+var ErrUnsafeHeader = errors.New("mail header name or value is not a single line")
+
+// CheckHeader refuses a header whose name is not a field name or whose value
+// carries CR, LF or NUL, any of which would end the header early.
+func CheckHeader(name, value string) error {
+	if name == "" {
+		return ErrUnsafeHeader
+	}
+	for i := 0; i < len(name); i++ {
+		if c := name[i]; c <= ' ' || c > '~' || c == ':' {
+			return ErrUnsafeHeader
+		}
+	}
+	if strings.ContainsAny(value, "\r\n\x00") {
+		return ErrUnsafeHeader
+	}
+	return nil
+}
+
+func hasControl(s string) bool {
+	for _, r := range s {
+		if r < ' ' || r == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 // AddressList encodes a To/Cc/Bcc header value from its entries. Empty entries

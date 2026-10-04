@@ -13,7 +13,14 @@ import (
 
 // Inside HubSpot: the Warmbly card on contact records and the "Add to Warmbly
 // campaign" workflow action. HubSpot signs every request with the app's
-// client secret; the portal it names picks the workspace.
+// client secret; the portal it names picks the workspace. The card acts as the
+// member matched to the signed-in HubSpot user; a workflow acts as the owner.
+
+// User is the signed-in HubSpot user a card request was signed for.
+type User struct {
+	ID    string
+	Email string
+}
 
 // Leads enrolls contacts in campaigns and reads their campaign state (the
 // contact service). Nil disables the in-HubSpot actions.
@@ -60,11 +67,37 @@ func (s *Service) portalOrg(ctx context.Context, portalID string) (*org, *errx.E
 		return nil, errx.NewWithIdentifier(errx.NotFound, "crm_not_connected",
 			"This HubSpot account is not connected to a Warmbly workspace in HubSpot mode.")
 	}
+	// A portal must name exactly one workspace, or nothing is chosen for it.
+	if len(ids) > 1 {
+		return nil, errx.New(errx.Conflict,
+			"This HubSpot account is connected to more than one Warmbly workspace in HubSpot mode. Keep HubSpot mode on in one of them.")
+	}
 	o, err := s.resolve(ctx, ids[0])
 	if err != nil || o == nil {
 		return nil, errx.NewWithIdentifier(errx.NotFound, "crm_not_connected", "HubSpot mode is off for this workspace.")
 	}
 	return o, nil
+}
+
+// cardMember is the member a card request acts as: the one matched to the
+// signed-in HubSpot user, holding every permission in perm.
+func (s *Service) cardMember(ctx context.Context, o *org, u User, perm models.OrganizationPermission) (string, *errx.Error) {
+	email := strings.TrimSpace(u.Email)
+	if email == "" || strings.TrimSpace(u.ID) == "" {
+		return "", errx.New(errx.Forbidden, "HubSpot did not say who you are. Reload the record and try again.")
+	}
+	id, perms, err := s.d.Repo.MemberForOwnerEmail(ctx, o.ID, provider, email)
+	if err != nil {
+		return "", errx.InternalError()
+	}
+	if id == nil {
+		return "", errx.New(errx.Forbidden,
+			"Your HubSpot user is not matched to a Warmbly member. Ask a workspace admin to match you under Owners on the HubSpot page in Warmbly.")
+	}
+	if !perms.HasPermission(perm) {
+		return "", errx.New(errx.Forbidden, "Your Warmbly role does not allow this. Ask a workspace admin for access.")
+	}
+	return id.String(), nil
 }
 
 // contactFor finds the Warmbly contact behind a HubSpot record.
@@ -94,10 +127,16 @@ func (s *Service) contactFor(ctx context.Context, o *org, hsContactID, email str
 }
 
 // Card builds the record card for a HubSpot contact.
-func (s *Service) Card(ctx context.Context, portalID, hsContactID, email string) (*CardView, *errx.Error) {
+func (s *Service) Card(ctx context.Context, portalID string, u User, hsContactID, email string) (*CardView, *errx.Error) {
 	o, xerr := s.portalOrg(ctx, portalID)
 	if xerr != nil {
-		return &CardView{Campaigns: []CardCampaign{}, Options: []CardOption{}}, nil
+		if xerr.Code == errx.NotFound {
+			return &CardView{Campaigns: []CardCampaign{}, Options: []CardOption{}}, nil
+		}
+		return nil, xerr
+	}
+	if _, xerr := s.cardMember(ctx, o, u, models.PermViewCampaigns|models.PermViewContacts); xerr != nil {
+		return nil, xerr
 	}
 	out := &CardView{Connected: true, Campaigns: []CardCampaign{}, Options: []CardOption{}}
 	opts, err := s.d.Repo.CampaignOptions(ctx, o.ID, "", 50)
@@ -148,11 +187,24 @@ func stepLabel(done, total int) string {
 }
 
 // Enroll adds a HubSpot contact to a Warmbly campaign, creating the Warmbly
-// contact from the HubSpot record when it is new.
-func (s *Service) Enroll(ctx context.Context, portalID, hsContactID, email, campaignID, hsUserEmail string) *errx.Error {
+// contact from the HubSpot record when it is new. A card request (u set) acts
+// as the user's matched member; a workflow acts as the workspace owner.
+func (s *Service) Enroll(ctx context.Context, portalID, hsContactID, email, campaignID string, u *User) *errx.Error {
 	o, xerr := s.portalOrg(ctx, portalID)
 	if xerr != nil {
 		return xerr
+	}
+	var actor string
+	if u != nil {
+		if actor, xerr = s.cardMember(ctx, o, *u, models.PermManageCampaigns|models.PermManageContacts); xerr != nil {
+			return xerr
+		}
+	} else {
+		id, err := s.d.Repo.FallbackActor(ctx, o.ID)
+		if err != nil {
+			return errx.InternalError()
+		}
+		actor = id.String()
 	}
 	if s.d.Leads == nil {
 		return errx.New(errx.NotImplemented, "enrolment from HubSpot is not available on this instance")
@@ -175,7 +227,6 @@ func (s *Service) Enroll(ctx context.Context, portalID, hsContactID, email, camp
 	if !found {
 		return errx.New(errx.NotFound, "That campaign is not in this workspace or has finished.")
 	}
-	actor := s.actorFor(ctx, o, hsUserEmail)
 	c, err := s.contactFor(ctx, o, hsContactID, email)
 	if err != nil {
 		return errx.InternalError()
@@ -218,27 +269,13 @@ func (s *Service) Enroll(ctx context.Context, portalID, hsContactID, email, camp
 	return nil
 }
 
-// actorFor is the member a HubSpot user's action is recorded as.
-func (s *Service) actorFor(ctx context.Context, o *org, hsUserEmail string) string {
-	if hsUserEmail = strings.ToLower(strings.TrimSpace(hsUserEmail)); hsUserEmail != "" {
-		owners, _ := s.d.Repo.ListOwners(ctx, o.ID, provider)
-		for _, ow := range owners {
-			if strings.EqualFold(ow.Email, hsUserEmail) && ow.UserID != nil {
-				return ow.UserID.String()
-			}
-		}
-	}
-	id, err := s.d.Repo.FallbackActor(ctx, o.ID)
-	if err != nil {
-		return ""
-	}
-	return id.String()
-}
-
 // SetPaused holds or resumes every campaign a HubSpot contact is in.
-func (s *Service) SetPaused(ctx context.Context, portalID, hsContactID, email string, paused bool) *errx.Error {
+func (s *Service) SetPaused(ctx context.Context, portalID string, u User, hsContactID, email string, paused bool) *errx.Error {
 	o, xerr := s.portalOrg(ctx, portalID)
 	if xerr != nil {
+		return xerr
+	}
+	if _, xerr := s.cardMember(ctx, o, u, models.PermManageCampaigns); xerr != nil {
 		return xerr
 	}
 	c, err := s.contactFor(ctx, o, hsContactID, email)

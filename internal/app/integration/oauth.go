@@ -200,6 +200,36 @@ func SalesforceLoginHost(in string) (string, error) {
 	return v, nil
 }
 
+// salesforceInstanceSuffixes are the domains Salesforce serves an org's REST API
+// from: My Domain and instance hosts, Government Cloud and the China region.
+var salesforceInstanceSuffixes = []string{".salesforce.com", ".force.com", ".cloudforce.com", ".salesforce.mil", ".sfcrmproducts.cn"}
+
+// SalesforceInstanceURL canonicalises an org's API host to https://host, and
+// accepts only a Salesforce domain on the default port: the bearer token goes there.
+func SalesforceInstanceURL(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Opaque != "" ||
+		(u.Port() != "" && u.Port() != "443") || u.RawQuery != "" || u.Fragment != "" ||
+		strings.Trim(u.Path, "/") != "" {
+		return "", errors.New("salesforce instance url is not a salesforce host")
+	}
+	host := strings.ToLower(u.Hostname())
+	if len(host) > 253 {
+		return "", errors.New("salesforce instance url is not a salesforce host")
+	}
+	for _, r := range host {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '.') {
+			return "", errors.New("salesforce instance url is not a salesforce host")
+		}
+	}
+	for _, suffix := range salesforceInstanceSuffixes {
+		if strings.HasSuffix(host, suffix) && len(host) > len(suffix) && !strings.Contains(host, "..") {
+			return "https://" + host, nil
+		}
+	}
+	return "", errors.New("salesforce instance url is not a salesforce host")
+}
+
 // AuthCodeURL builds the provider authorization URL. It returns the URL plus
 // the PKCE verifier to persist (empty when the provider doesn't use PKCE).
 func (m *OAuthManager) AuthCodeURL(p models.IntegrationProvider, state, loginHost string) (authURL, verifier string, err error) {
@@ -271,12 +301,12 @@ func (m *OAuthManager) Exchange(ctx context.Context, p models.IntegrationProvide
 	}
 
 	acct := extAccount{ID: extID, Name: extName}
-	// Salesforce (and other per-tenant APIs) return the org's API host as an
-	// "instance_url" extra on the token. Capture it so action handlers know
-	// which host to call — the value is persisted in the connection's
-	// non-secret display fields by OAuthFinish.
-	if iu, ok := tok.Extra("instance_url").(string); ok && strings.HasPrefix(strings.TrimSpace(iu), "https://") {
-		acct.InstanceURL = strings.TrimRight(strings.TrimSpace(iu), "/")
+	// Salesforce returns the org's API host as an "instance_url" extra; only a
+	// Salesforce domain is kept, since the access token is sent there.
+	if iu, ok := tok.Extra("instance_url").(string); ok {
+		if v, verr := SalesforceInstanceURL(iu); verr == nil {
+			acct.InstanceURL = v
+		}
 	}
 	if p == models.IntegrationHubSpot {
 		acct.UIDomain = hubspotUIDomain(ctx, m, tok.AccessToken)
@@ -327,8 +357,10 @@ func (m *OAuthManager) RefreshIfNeeded(ctx context.Context, p models.Integration
 		exp := tok.Expiry.UTC()
 		refreshed.ExpiresAt = &exp
 	}
-	if iu, ok := tok.Extra("instance_url").(string); ok && strings.HasPrefix(strings.TrimSpace(iu), "https://") {
-		refreshed.InstanceURL = strings.TrimRight(strings.TrimSpace(iu), "/")
+	if iu, ok := tok.Extra("instance_url").(string); ok {
+		if v, verr := SalesforceInstanceURL(iu); verr == nil {
+			refreshed.InstanceURL = v
+		}
 	}
 	return refreshed, true, nil
 }
@@ -438,6 +470,14 @@ func identifySalesforce(ctx context.Context, m *OAuthManager, tok *oauth2.Token)
 	if idURL == "" {
 		return "", "", nil, nil
 	}
+	// The bearer token is sent to this URL, so it must be a Salesforce host.
+	u, err := url.Parse(idURL)
+	if err != nil || u.User != nil {
+		return "", "", nil, errors.New("salesforce identity url is not a salesforce host")
+	}
+	if _, err := SalesforceInstanceURL(u.Scheme + "://" + u.Host); err != nil {
+		return "", "", nil, errors.New("salesforce identity url is not a salesforce host")
+	}
 	var out struct {
 		OrganizationID string `json:"organization_id"`
 		Username       string `json:"username"`
@@ -532,10 +572,7 @@ func scopesFromToken(tok *oauth2.Token, requested []string) []string {
 
 func randomURLToken(n int) string {
 	buf := make([]byte, n)
-	if _, err := rand.Read(buf); err != nil {
-		// rand.Read essentially never fails; degrade to a time-seeded value
-		// only to keep the flow alive rather than panic.
-		return base64.RawURLEncoding.EncodeToString([]byte(time.Now().UTC().String()))
-	}
+	// crypto/rand crashes the program rather than return an error, so there is no weak fallback.
+	_, _ = rand.Read(buf)
 	return base64.RawURLEncoding.EncodeToString(buf)
 }

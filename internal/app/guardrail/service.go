@@ -10,6 +10,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/audit"
 	"github.com/warmbly/warmbly/internal/app/notification"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -158,7 +159,7 @@ func (s *service) announce(ctx context.Context, c repository.GuardrailCampaign, 
 	if s.notifier != nil {
 		s.notifier.NotifyOrg(ctx, orgID, models.PermViewCampaigns, uuid.Nil,
 			models.NotifCampaignPaused,
-			fmt.Sprintf("%s was paused automatically", c.Name),
+			fmt.Sprintf("%s was paused automatically", displayname.DisplayableOr(c.Name, "A campaign")),
 			b.Reason,
 			"/app/campaigns/"+campaignID.String(),
 			map[string]any{

@@ -63,5 +63,10 @@ export interface SlackLinkPreview {
     slack_team_id: string;
     slack_team_name: string;
     slack_user_id: string;
+    // The Slack account's name and avatar as Slack reports them; either may be empty.
+    slack_user_name: string;
+    slack_user_avatar: string;
+    // The Slack account's email is the signed-in user's Warmbly email, which linking requires.
+    email_matches: boolean;
     expires_at: Date;
 }

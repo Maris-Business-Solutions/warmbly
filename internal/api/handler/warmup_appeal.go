@@ -18,9 +18,9 @@ type submitWarmupAppealRequest struct {
 // GetWarmupBanStatus returns whether a mailbox is blocked from warmup, why, and
 // whether the owner can appeal. Powers the dashboard ban banner.
 func (h *Handler) GetWarmupBanStatus(c *gin.Context) {
-	userID, err := middleware.GetUserUUID(c)
-	if err != nil {
-		errx.JSON(c, errx.ErrUnauthorized)
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.JSON(c, errx.ErrNoOrganization)
 		return
 	}
 	accountID, perr := uuid.Parse(c.Param("id"))
@@ -29,7 +29,7 @@ func (h *Handler) GetWarmupBanStatus(c *gin.Context) {
 		return
 	}
 
-	status, xerr := h.WarmupService.GetBanStatus(c.Request.Context(), userID, accountID)
+	status, xerr := h.WarmupService.GetBanStatus(c.Request.Context(), *orgID, accountID)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
@@ -37,8 +37,13 @@ func (h *Handler) GetWarmupBanStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
-// SubmitWarmupAppeal lets the mailbox owner appeal a warmup ban with a reason.
+// SubmitWarmupAppeal lets a member who manages mailboxes appeal a warmup ban with a reason.
 func (h *Handler) SubmitWarmupAppeal(c *gin.Context) {
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.JSON(c, errx.ErrNoOrganization)
+		return
+	}
 	userID, err := middleware.GetUserUUID(c)
 	if err != nil {
 		errx.JSON(c, errx.ErrUnauthorized)
@@ -56,7 +61,7 @@ func (h *Handler) SubmitWarmupAppeal(c *gin.Context) {
 		return
 	}
 
-	appealID, xerr := h.WarmupService.SubmitAppeal(c.Request.Context(), userID, accountID, req.Reason)
+	appealID, xerr := h.WarmupService.SubmitAppeal(c.Request.Context(), *orgID, userID, accountID, req.Reason)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return

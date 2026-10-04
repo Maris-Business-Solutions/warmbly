@@ -23,7 +23,7 @@ func (h *Handler) AdminListJobs(c *gin.Context) {
 	}
 	jobs, err := h.JobRuns.List(c.Request.Context())
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if jobs == nil {
@@ -45,7 +45,7 @@ func (h *Handler) AdminRunJob(c *gin.Context) {
 	}
 	found, err := h.JobRuns.RequestRun(c.Request.Context(), name)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if !found {

@@ -30,6 +30,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "invite_member",
+		FreshAuth:   true,
 		Description: "Invite a user to the organization by email with one or more roles. Returns the invitation id.",
 		InputSchema: objectSchema(map[string]any{
 			"email":    strProp("The invitee's email address."),
@@ -37,6 +38,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 			"role_ids": arrProp("Role UUIDs to assign (use instead of role_id for multiple).", strProp("Role UUID.")),
 		}, "email"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		JWTOnly:         true,
 		RequiredOrgPerm: models.PermManageTeam,
 		Handler:         d.inviteMember,
@@ -44,6 +46,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "update_member_role",
+		FreshAuth:   true,
 		Description: "Change a member's role assignment.",
 		InputSchema: objectSchema(map[string]any{
 			"member_user_id": strProp("The member's user UUID."),
@@ -51,6 +54,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 			"role_ids":       arrProp("Role UUIDs to set (replaces the member's roles).", strProp("Role UUID.")),
 		}, "member_user_id"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		JWTOnly:         true,
 		RequiredOrgPerm: models.PermManageTeam,
 		Handler:         d.updateMemberRole,
@@ -92,13 +96,14 @@ func (d Deps) registerTeamTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "get_invitation_link",
-		Description: "Get the shareable invite link/token for a pending invitation.",
+		Description: "Issue the shareable invite token for a pending invitation. The token is shown to the member, never to you.",
 		InputSchema: objectSchema(map[string]any{
 			"invitation_id": strProp("The invitation UUID."),
 		}, "invitation_id"),
 		Risk:            generation.RiskRead,
 		JWTOnly:         true,
 		RequiredOrgPerm: models.PermManageTeam,
+		SecretFields:    []string{"token"},
 		Handler:         d.getInvitationLink,
 	})
 }
@@ -196,7 +201,7 @@ func (d Deps) removeMember(ctx context.Context, inv Invocation, args json.RawMes
 	if err != nil {
 		return "", err
 	}
-	if xerr := d.Org.RemoveMember(ctx, inv.OrgID, memberID); xerr != nil {
+	if xerr := d.Org.RemoveMember(ctx, inv.OrgID, inv.UserID, memberID); xerr != nil {
 		return "", fromErrx(xerr)
 	}
 	d.logAudit(ctx, inv, models.AuditActionRemove, models.AuditEntityOrganizationMember, &memberID, nil)

@@ -17,6 +17,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/emailsend"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 )
 
 // ListAgentDrafts — GET /unibox/agent-drafts
@@ -38,6 +39,15 @@ func (h *Handler) ListAgentDrafts(c *gin.Context) {
 	if err != nil {
 		errx.Handle(c, errx.InternalError())
 		return
+	}
+	if len(restrictedMailboxes(c)) > 0 {
+		kept := drafts[:0]
+		for _, d := range drafts {
+			if middleware.APIKeyAllowsEmailAccount(c, d.EmailAccountID) {
+				kept = append(kept, d)
+			}
+		}
+		drafts = kept
 	}
 	c.JSON(http.StatusOK, gin.H{"data": drafts})
 }
@@ -85,6 +95,10 @@ func (h *Handler) ApproveAgentDraft(c *gin.Context) {
 		errx.Handle(c, errx.New(errx.NotFound, "draft not found"))
 		return
 	}
+	if xerr := mailboxAllowed(c, draft.EmailAccountID); xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
 	if draft.Status != models.AIDraftPending {
 		errx.Handle(c, errx.New(errx.Conflict, "this draft was already handled"))
 		return
@@ -112,7 +126,7 @@ func (h *Handler) ApproveAgentDraft(c *gin.Context) {
 		ThreadID:  draft.ThreadID,
 		SendMode:  "instant",
 	}
-	if draft.InReplyTo != "" {
+	if mailhdr.ValidMessageID(draft.InReplyTo) {
 		sendReq.InReplyTo = []string{draft.InReplyTo}
 	}
 
@@ -158,6 +172,19 @@ func (h *Handler) DiscardAgentDraft(c *gin.Context) {
 	if h.AIDraftRepo == nil {
 		errx.Handle(c, errx.New(errx.ServiceUnavailable, "the inbox agent is not configured"))
 		return
+	}
+	if len(restrictedMailboxes(c)) > 0 {
+		draft, derr := h.AIDraftRepo.GetDraft(c.Request.Context(), *orgID, draftID)
+		if derr != nil {
+			errx.Handle(c, errx.InternalError())
+			return
+		}
+		if draft != nil {
+			if xerr := mailboxAllowed(c, draft.EmailAccountID); xerr != nil {
+				errx.Handle(c, xerr)
+				return
+			}
+		}
 	}
 	ok, err := h.AIDraftRepo.SetDraftStatus(c.Request.Context(), *orgID, draftID, models.AIDraftDiscarded)
 	if err != nil {

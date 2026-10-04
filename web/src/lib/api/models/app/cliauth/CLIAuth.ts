@@ -10,6 +10,9 @@ export interface CLIAuthCode {
     cli_version: string;
     scopes: number;
     scope_names: string[];
+    // Present when looked up for a workspace: what approving there grants, capped to your role.
+    granted_scopes?: number;
+    granted_scope_names?: string[];
     status: CLIAuthCodeStatus;
     organization_id?: string;
     api_key_id?: string;

@@ -37,13 +37,17 @@ The link is offered on a self-hosted instance as the last step of onboarding whe
 
 The whole flow takes about a minute. A code expires after 15 minutes if nobody approves it; start again from the instance.
 
+The link belongs to the whole instance, not to one workspace, so connecting and disconnecting it, and bringing in mailboxes from the cloud workspace, is an instance administrator's job: it needs a platform admin account with the manage settings admin permission (the [first owner](/development/first-run/) has it) signed in with two-factor authentication. Once the instance is linked, any member with the manage mailboxes permission sees the link and puts their own workspace's mailboxes on it: enrolling, pausing and resuming, and connecting Google and Microsoft mailboxes through Warmbly Cloud. The onboarding step that links the instance is shown only to an administrator who can complete it.
+
 ## Google and Microsoft mailboxes: sign in through Warmbly Cloud
 
-On a linked instance, signing in one mailbox under **Add account > Google** or **Add account > Microsoft** no longer needs an OAuth client of your own. The sign-in window opens on Warmbly's verified Google and Microsoft apps, and when you approve:
+On a linked instance, signing in one mailbox under **Add account > Google** or **Add account > Microsoft** no longer needs an OAuth client of your own. The sign-in window opens on a Warmbly Cloud page first. It names the address of the instance asking and the Cloud workspace the mailbox will join; press **Continue** and Warmbly's verified Google or Microsoft app takes over. If you did not start the sign-in yourself, close that page: the mailbox would join the workspace it names. When you approve:
 
 - the mailbox is created in your Warmbly Cloud workspace, where its sign-in lives, and starts warming in the pool right away
 - your instance gets a mirror of the mailbox with no credential on it. Campaigns, replies and the unibox work from your server as before; to send and sync, the instance asks the cloud for a short-lived access token (about an hour, cached) using its link token
 - the refresh grant never leaves the cloud. Removing the mailbox from either side, unlinking the instance, or the cloud blocking the mailbox stops the instance sending from it within the hour
+
+The sign-in only completes in the browser that pressed **Continue**, and Cloud only ever sends it back to the address the instance registered when it was linked (its `APP_URL`). An instance linked before it had an address set cannot use this until you set `APP_URL`, disconnect it and link it again. The exchange with Google or Microsoft is protected with PKCE, so an authorization code is useless to anyone but Cloud.
 
 These mailboxes show the blue **Cloud** badge with "Signed in through Warmbly Cloud". The `BOX_GOOGLE_*` and `BOX_OUTLOOK_*` variables are still honoured when set, but an instance without them can now connect Google and Microsoft mailboxes as long as it is linked.
 
@@ -61,7 +65,7 @@ A Google or Microsoft mailbox that was signed in with your instance's own OAuth 
 
 ## What your instance shows
 
-Once linked, the **Mailboxes** page marks every enrolled mailbox with a blue **Cloud** badge on its address and its avatar and a "Warmed by Warmbly Cloud" line under it (amber while paused), shows the cloud's daily count in the warmup column with the same warming animation local warmup uses, and offers **Warm in Warmbly Cloud**, pause, resume and remove in each row's warmup menu. The mailbox drawer's Warmup tab shows the same block with the cloud's numbers in place of the local controls. Any member can see this; enrolling needs the manage mailboxes permission and linking needs manage settings.
+Once linked, the **Mailboxes** page marks every enrolled mailbox with a blue **Cloud** badge on its address and its avatar and a "Warmed by Warmbly Cloud" line under it (amber while paused), shows the cloud's daily count in the warmup column with the same warming animation local warmup uses, and offers **Warm in Warmbly Cloud**, pause, resume and remove in each row's warmup menu. The mailbox drawer's Warmup tab shows the same block with the cloud's numbers in place of the local controls. This is shown to members with the manage mailboxes permission.
 
 **Settings > Warmbly Cloud** lists every active mailbox with a switch for whether it is in the pool. For enrolled mailboxes it shows the cloud's view:
 
@@ -140,11 +144,11 @@ On your instance, **Settings > Warmbly Cloud > Disconnect** removes every enroll
 
 ## Self-hosting notes
 
-- Traffic is outbound only: the instance calls `WARMBLY_CLOUD_URL` (default `https://api.warmbly.com`) over HTTPS. Nothing needs to reach the instance from the internet
+- Traffic is outbound only: the instance calls `WARMBLY_CLOUD_URL` (default `https://api.warmbly.com`) over HTTPS, on port 443 or 8443, and only to a public address. Plain HTTP to `localhost` is accepted only when `APP_ENV` is `dev`. Nothing needs to reach the instance from the internet
 - The instance token is stored sealed with `CREDENTIALS_ENCRYPTION_KEY`. Rotating that key invalidates the stored token; reconnect afterwards
 - Brokered access tokens reach the worker through the backend's internal API (`/api/v1/internal/cloud-link/token/:id`), so workers keep needing only `ENCRYPTED_KEYS_BACKEND_URL` and `ENCRYPTED_KEYS_WORKER_TOKEN`. A worker that cannot reach the backend keeps sending from such mailboxes until its cached token expires, about an hour
 - The link and the enrollment list are properties of the instance, not of a workspace, so they are not part of a [workspace export](/guides/workspace-export-import/). Reconnect after moving a workspace to a new instance
-- `INSTANCE_NAME` sets the name shown on the approval page; the hostname is used when unset
+- `INSTANCE_NAME` sets the name shown on the approval page; the hostname is used when unset. The name follows the workspace [naming rules](/api/error-codes/#name-refusals), so one that reads as a web address (a hostname, for example) shows as "Self-hosted instance"
 
 ## Related guides
 

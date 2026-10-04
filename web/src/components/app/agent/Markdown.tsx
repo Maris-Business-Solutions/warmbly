@@ -40,8 +40,9 @@ function inline(
         } else {
             const label = m[4];
             const url = m[5];
-            const internal = url.startsWith("/");
-            if (!internal && !/^https?:\/\//.test(url)) {
+            // "//host" and "/\host" are other origins, not app paths.
+            const internal = /^\/(?![/\\])/.test(url);
+            if (!internal && !/^(?:https?:\/\/|mailto:)/i.test(url)) {
                 out.push(label);
             } else {
                 out.push(

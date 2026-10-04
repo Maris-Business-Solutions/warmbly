@@ -27,7 +27,10 @@ export default function SlackLinkPage() {
             setLinked(await confirm.mutateAsync(code));
         } catch (err) {
             const e = err as AppError;
-            if (e.status === 403) {
+            if (e.code === "slack_link_email_mismatch") {
+                toast.error("Your Slack email must match your Warmbly email");
+                void preview.refetch();
+            } else if (e.status === 403) {
                 toast.error("You are not a member of that workspace");
             } else if (e.status === 404 || e.code === "slack_link_invalid") {
                 toast.error("This link has expired. Ask for a new one in Slack.");
@@ -47,7 +50,14 @@ export default function SlackLinkPage() {
             />
         );
     } else if (linked) {
-        body = <Linked link={linked} orgName={preview.data?.organization_name} />;
+        body = (
+            <Linked
+                link={linked}
+                orgName={preview.data?.organization_name}
+                slackName={preview.data?.slack_user_name || linked.slack_user_id}
+                teamName={preview.data?.slack_team_name}
+            />
+        );
     } else if (preview.isPending) {
         body = (
             <div className="py-16 flex justify-center">
@@ -82,9 +92,20 @@ export default function SlackLinkPage() {
                 <div className="flex flex-col sm:flex-row items-stretch gap-2">
                     <Side
                         label="Slack"
-                        title={p.slack_team_name || "Slack workspace"}
-                        sub={<span className="font-mono">{p.slack_user_id}</span>}
-                        glyph={<ProviderGlyph provider="slack" name="Slack" size={7} />}
+                        title={p.slack_user_name || p.slack_user_id}
+                        sub={p.slack_team_name || "Slack workspace"}
+                        glyph={
+                            p.slack_user_avatar ? (
+                                <img
+                                    src={p.slack_user_avatar}
+                                    alt=""
+                                    referrerPolicy="no-referrer"
+                                    className="size-7 rounded-md object-cover shrink-0"
+                                />
+                            ) : (
+                                <ProviderGlyph provider="slack" name="Slack" size={7} />
+                            )
+                        }
                     />
                     <div className="flex items-center justify-center text-slate-300 shrink-0 rotate-90 sm:rotate-0">
                         <ArrowRightIcon className="w-4 h-4" />
@@ -112,6 +133,17 @@ export default function SlackLinkPage() {
                     </div>
                 )}
 
+                {p.is_member && !p.email_matches && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2 text-[11.5px] text-amber-900 leading-relaxed">
+                        <TriangleAlertIcon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-500" />
+                        <span>
+                            This Slack account's email is not the address you sign in to Warmbly with, and the two
+                            have to match. Sign in to Warmbly with the email your Slack profile uses. If they already
+                            match, ask a Warmbly admin to reconnect Slack so Warmbly can read Slack email addresses.
+                        </span>
+                    </div>
+                )}
+
                 <div className="flex items-center justify-between gap-3">
                     <span className="text-[11px] text-slate-400">
                         Expires {new Date(p.expires_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
@@ -119,7 +151,7 @@ export default function SlackLinkPage() {
                     <button
                         type="button"
                         onClick={() => void onConfirm()}
-                        disabled={!p.is_member || confirm.isPending}
+                        disabled={!p.is_member || !p.email_matches || confirm.isPending}
                         className="h-8 px-3.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {confirm.isPending && <Loader2Icon className="w-3.5 h-3.5 animate-spin" />}
@@ -166,7 +198,17 @@ function Side({ label, title, sub, glyph }: { label: string; title: string; sub:
     );
 }
 
-function Linked({ link, orgName }: { link: SlackUserLink; orgName?: string }) {
+function Linked({
+    link,
+    orgName,
+    slackName,
+    teamName,
+}: {
+    link: SlackUserLink;
+    orgName?: string;
+    slackName: string;
+    teamName?: string;
+}) {
     return (
         <div className="space-y-4 text-center">
             <div className="mx-auto size-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -174,6 +216,10 @@ function Linked({ link, orgName }: { link: SlackUserLink; orgName?: string }) {
             </div>
             <div className="space-y-1">
                 <h1 className="text-[15px] font-semibold text-slate-900">Your Slack account is linked</h1>
+                <p className="text-[12px] text-slate-700">
+                    Linked <span className="font-medium">{slackName}</span>
+                    {teamName ? ` in ${teamName}` : ""}
+                </p>
                 <p className="text-[12px] text-slate-500 leading-relaxed">
                     {orgName ? `Ask Warmbly anything about ${orgName} from Slack.` : "Ask Warmbly anything from Slack."}{" "}
                     The app has sent you a confirmation there.

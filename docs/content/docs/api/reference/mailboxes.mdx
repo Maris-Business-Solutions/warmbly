@@ -589,7 +589,7 @@ The address may be supplied in the JSON body or as the `email` query param; the 
 
 `GET /emails/:id/warmup/ban-status`
 
-Returns whether a mailbox is blocked from the shared warmup pool, why, and whether the owner can appeal. Powers the dashboard ban banner.
+Returns whether a mailbox of the caller's workspace is blocked from the shared warmup pool, why, and whether it can be appealed. Powers the dashboard ban banner. A mailbox outside the workspace answers `404`.
 
 Auth: **Scope** `READ_EMAILS` · **Org permission** `view_campaigns`
 
@@ -618,7 +618,7 @@ Auth: **Scope** `READ_EMAILS` · **Org permission** `view_campaigns`
 
 `POST /emails/:id/warmup/appeal`
 
-Lets the mailbox owner appeal a warmup ban with a reason.
+Appeals a warmup ban on a mailbox of the caller's workspace, with a reason. Any member with `manage_emails` can appeal, not only the member who connected the mailbox. A mailbox outside the workspace answers `404`.
 
 Auth: **Scope** `WRITE_EMAILS` · **Org permission** `manage_emails`
 
@@ -630,7 +630,7 @@ Auth: **Scope** `WRITE_EMAILS` · **Org permission** `manage_emails`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `reason` | string | no | The owner's explanation for the appeal. |
+| `reason` | string | no | The explanation for the appeal. |
 
 ```json
 {

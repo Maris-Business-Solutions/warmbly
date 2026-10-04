@@ -119,6 +119,7 @@ func (s *tokenService) refusedRefresh(ctx context.Context, sessionID, userID uui
 		if xerr := s.evictRevoked(ctx, sessionID, userID, time.Now()); xerr != nil {
 			errs.CaptureException(xerr)
 		}
+		s.notifyRevoked(ctx, userID)
 	}
 	return errx.ErrToken
 }

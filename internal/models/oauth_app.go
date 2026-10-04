@@ -140,6 +140,8 @@ type OAuthAccessGrant struct {
 	RevokedAt        *time.Time `json:"revoked_at,omitempty"`
 	LastUsedAt       *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
+	// Holder is the granting member's current membership, read with the token.
+	Holder *OrganizationMember `json:"-"`
 }
 
 // OAuthAuthorizedApp is one row in a user's "apps you've authorized" list (a
@@ -149,6 +151,20 @@ type OAuthAuthorizedApp struct {
 	Name          string     `json:"name"`
 	LogoURL       string     `json:"logo_url"`
 	WebsiteURL    string     `json:"website_url"`
+	Scopes        uint64     `json:"scopes"`
+	AuthorizedAt  time.Time  `json:"authorized_at"`
+	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
+}
+
+// OAuthMemberAuthorization is one member's live authorization of an app, as a workspace admin sees it.
+type OAuthMemberAuthorization struct {
+	ApplicationID uuid.UUID  `json:"application_id"`
+	Name          string     `json:"name"`
+	LogoURL       string     `json:"logo_url"`
+	WebsiteURL    string     `json:"website_url"`
+	UserID        uuid.UUID  `json:"user_id"`
+	UserEmail     string     `json:"user_email"`
+	UserName      string     `json:"user_name"`
 	Scopes        uint64     `json:"scopes"`
 	AuthorizedAt  time.Time  `json:"authorized_at"`
 	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`

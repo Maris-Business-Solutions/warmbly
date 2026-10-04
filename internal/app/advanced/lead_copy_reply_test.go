@@ -125,8 +125,8 @@ func TestUnsubscribeLinkOptsOutTheLeadsCopies(t *testing.T) {
 		{"link", func(s *service, org, campaign, lead uuid.UUID) *errx.Error {
 			return s.UnsubscribeFromLink(context.Background(), org, campaign, lead, "one_click")
 		}, []string{"task-contact@example.test", "jonas@acme.test"}},
-		{"sequence action", func(s *service, _, campaign, lead uuid.UUID) *errx.Error {
-			return s.Unsubscribe(context.Background(), campaign, lead)
+		{"sequence action", func(s *service, org, campaign, lead uuid.UUID) *errx.Error {
+			return s.Unsubscribe(context.Background(), org, campaign, lead)
 		}, []string{"task-contact@example.test"}},
 	} {
 		svc, _, adv, _ := newCopyReplyService(t)

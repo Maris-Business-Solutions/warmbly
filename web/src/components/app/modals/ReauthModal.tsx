@@ -20,6 +20,7 @@ import reauth from "@/lib/api/client/auth/reauth";
 interface ReauthDetail {
     resolve: () => void;
     reject: () => void;
+    ack?: () => void;
 }
 
 export default function ReauthModal() {
@@ -35,7 +36,9 @@ export default function ReauthModal() {
             setCode("");
             setError("");
             setBusy(false);
-            setPending((e as CustomEvent<ReauthDetail>).detail);
+            const detail = (e as CustomEvent<ReauthDetail>).detail;
+            detail.ack?.();
+            setPending(detail);
         };
         window.addEventListener("reauth-required", handler);
         return () => window.removeEventListener("reauth-required", handler);
@@ -65,6 +68,8 @@ export default function ReauthModal() {
                     (err as { message?: string }).message ??
                         "This account has nothing to confirm with yet. Turn on two-factor authentication under Settings > Security.",
                 );
+            } else if (code === "reauth_limited") {
+                setError((err as { message?: string }).message ?? "Too many attempts. Try again later.");
             } else {
                 // Otherwise one message: which factor matched is not something
                 // to spell out to whoever is sitting at the keyboard.

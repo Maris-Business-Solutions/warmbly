@@ -195,7 +195,9 @@ func (r *poolLinkRepository) CreateInstance(ctx context.Context, inst *models.Po
 }
 
 func (r *poolLinkRepository) GetInstanceByTokenHash(ctx context.Context, tokenHash string) (*models.PoolLinkInstance, error) {
-	query := `SELECT ` + poolLinkInstanceColumns + ` FROM pool_link_instances WHERE token_hash = $1 AND revoked_at IS NULL`
+	// A link stops working once the member who approved it is banned from signing in.
+	query := `SELECT ` + poolLinkInstanceColumns + ` FROM pool_link_instances WHERE token_hash = $1 AND revoked_at IS NULL
+		AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = pool_link_instances.created_by AND (u.ban_scope & 1) <> 0)`
 	i, err := scanPoolLinkInstance(r.db.QueryRow(ctx, query, tokenHash))
 	if err != nil {
 		db.CaptureError(err, query, nil, "queryrow")

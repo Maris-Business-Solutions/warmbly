@@ -20,6 +20,8 @@ export function createTester(body: {
     /** Joins an existing workspace instead of minting one. Requires role_id. */
     organization_id?: string;
     role_id?: string;
+    /** Days the password works, 1 to 90. Defaults to 30. */
+    password_days?: number;
 }): Promise<CreatedTester> {
     return Request({ method: "POST", url: "/admin/testers", authorization: true, data: body });
 }
@@ -29,6 +31,6 @@ export function listOrganizationRoles(orgID: string): Promise<{ data: AdminOrgRo
     return Request({ method: "GET", url: `/admin/organizations/${orgID}/roles`, authorization: true });
 }
 
-export function revokeTester(id: string): Promise<{ revoked: boolean }> {
+export function revokeTester(id: string): Promise<{ revoked: boolean; password_cleared: boolean }> {
     return Request({ method: "DELETE", url: `/admin/testers/${id}`, authorization: true });
 }

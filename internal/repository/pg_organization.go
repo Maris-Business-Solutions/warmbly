@@ -62,7 +62,8 @@ type OrganizationRepository interface {
 
 	// Invitations
 	CreateInvitation(ctx context.Context, inv *models.OrganizationInvitation) error
-	GetInvitationByToken(ctx context.Context, token string) (*models.OrganizationInvitation, error)
+	GetInvitationByToken(ctx context.Context, tokenHash string) (*models.OrganizationInvitation, error)
+	SetInvitationLinkToken(ctx context.Context, orgID, invitationID uuid.UUID, linkTokenHash string) (bool, error)
 	GetInvitationByID(ctx context.Context, id uuid.UUID) (*models.OrganizationInvitation, error)
 	GetInvitationByEmail(ctx context.Context, orgID uuid.UUID, email string) (*models.OrganizationInvitation, error)
 	GetPendingInvitations(ctx context.Context, orgID uuid.UUID) ([]models.OrganizationInvitation, error)
@@ -394,6 +395,7 @@ func (r *organizationRepository) CreateInvitation(ctx context.Context, inv *mode
 			permissions = EXCLUDED.permissions,
 			invited_by = EXCLUDED.invited_by,
 			token = EXCLUDED.token,
+			link_token_hash = NULL,
 			expires_at = EXCLUDED.expires_at
 	`
 	_, err := r.db.Exec(ctx, query,
@@ -403,7 +405,17 @@ func (r *organizationRepository) CreateInvitation(ctx context.Context, inv *mode
 	return err
 }
 
-// GetInvitationByToken retrieves an invitation by token
+// SetInvitationLinkToken replaces the digest of an invitation's copied-link token.
+func (r *organizationRepository) SetInvitationLinkToken(ctx context.Context, orgID, invitationID uuid.UUID, linkTokenHash string) (bool, error) {
+	tag, err := r.db.Exec(ctx, `UPDATE organization_invitations SET link_token_hash = $3 WHERE organization_id = $1 AND id = $2`,
+		orgID, invitationID, linkTokenHash)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// GetInvitationByToken retrieves an invitation by the digest of its emailed or copied-link token.
 func (r *organizationRepository) GetInvitationByToken(ctx context.Context, token string) (*models.OrganizationInvitation, error) {
 	query := `
 		SELECT
@@ -412,7 +424,7 @@ func (r *organizationRepository) GetInvitationByToken(ctx context.Context, token
 			o.deletion_scheduled_at, o.deletion_scheduled_for
 		FROM organization_invitations i
 		JOIN organizations o ON o.id = i.organization_id
-		WHERE i.token = $1
+		WHERE i.token = $1 OR i.link_token_hash = $1
 	`
 	row := r.db.QueryRow(ctx, query, token)
 	var inv models.OrganizationInvitation

@@ -309,7 +309,7 @@ Self-service session management for the signed-in user. Revoking by id can only 
 
 `POST /auth/logout`
 
-Revokes the current session. Returns `204 No Content`.
+Revokes the current session and closes the user's open realtime connections. Returns `204 No Content`.
 
 Auth: Session only (not available to API keys).
 
@@ -317,7 +317,7 @@ Auth: Session only (not available to API keys).
 
 `POST /auth/logout-all`
 
-Revokes every session for the user. Returns `204 No Content`.
+Revokes every session for the user, this one included, and closes their open realtime connections. A revoked session can no longer be refreshed. Returns `204 No Content`.
 
 Auth: Session only (not available to API keys).
 
@@ -729,6 +729,8 @@ Auth: Session only (not available to API keys).
 
 Generates a TOTP secret and the `otpauth://` provisioning URI (returned once). The client renders the URI as a QR code; the remaining fields spell out the same parameters for manual entry.
 
+Requires a recent confirmation (`POST /auth/reauth`), like confirming enrollment below; without one it answers `403 reauth_required`. An account with neither a password nor 2FA cannot confirm, so it is accepted instead from a session signed in within the last five minutes, and an older session answers `400 reauth_no_factor`.
+
 Auth: Session only (not available to API keys).
 
 #### Response
@@ -749,7 +751,7 @@ Auth: Session only (not available to API keys).
 
 `POST /auth/2fa/enroll/confirm`
 
-Verifies a TOTP code, enables 2FA, and returns the one-time recovery codes (shown once). A code that does not match answers `400` with code `two_fa_invalid_code`.
+Verifies a TOTP code, enables 2FA, and returns the one-time recovery codes (shown once). A code that does not match answers `400` with code `two_fa_invalid_code`. Needs the same recent confirmation as beginning enrollment.
 
 Auth: Session only (not available to API keys).
 
@@ -1463,7 +1465,7 @@ Auth: Session only (not available to API keys). **Org permission** `manage_team`
 
 `GET /organization/invitations/:id/link`
 
-Returns the shareable accept token for a pending invitation so a team manager can copy a real accept link.
+Mints a shareable accept token for a pending invitation so a team manager can copy a real accept link. Invitation tokens are stored only as digests, so each call issues a new link token and the previously copied link stops working; the emailed link keeps working alongside it.
 
 Auth: Session only (not available to API keys). **Org permission** `manage_team`.
 

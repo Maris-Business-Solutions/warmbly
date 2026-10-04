@@ -30,6 +30,7 @@ import type { SSOLinkChallenge } from "@/lib/api/models/auth/LoginResult";
 import beginSSO from "@/lib/api/client/auth/beginSSO";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
+import safeNext from "@/lib/helper/safeNext";
 import { captureException } from "@/lib/observability";
 import { isEmpty, readAcquisition } from "@/lib/acquisition";
 import type Token from "@/lib/api/models/auth/Token";
@@ -312,8 +313,7 @@ export default function LoginPage() {
         // home. Powers the /invite link: sign in, then bounce back to accept.
         const params = new URLSearchParams(location.search);
         const next = params.get("next");
-        const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/app/emails";
-        navigate(safeNext);
+        navigate(safeNext(next, "/app/emails"));
     }, [navigate, queryClient, location.search]);
 
     // Conditional UI: surface passkeys inside the email field's native autofill

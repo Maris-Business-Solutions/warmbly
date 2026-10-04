@@ -347,6 +347,124 @@ func TestRouteChannel(t *testing.T) {
 	}
 }
 
+func TestSlackLinkEmailMatches(t *testing.T) {
+	cases := []struct {
+		slack, user string
+		want        bool
+	}{
+		{"ada@example.com", "ada@example.com", true},
+		{" Ada@Example.com ", "ada@example.COM", true},
+		{"", "ada@example.com", false},
+		{"ada@example.com", "", false},
+		{"", "", false},
+		{"ada", "ada", false},
+		{"ada@example.com", "eve@example.com", false},
+	}
+	for _, tc := range cases {
+		if got := models.SlackLinkEmailMatches(tc.slack, tc.user); got != tc.want {
+			t.Errorf("SlackLinkEmailMatches(%q, %q) = %v, want %v", tc.slack, tc.user, got, tc.want)
+		}
+	}
+}
+
+func TestProfileFrom(t *testing.T) {
+	yes, no := true, false
+	u := &slackUser{ID: "U1"}
+	u.Profile.DisplayName = "Ada"
+	u.Profile.RealName = "Ada Lovelace"
+	u.Profile.Email = " ada@example.com "
+	u.Profile.Image72 = "https://avatars.slack-edge.com/ada_72.png"
+	if p := profileFrom(u); p.Name != "Ada" || p.Email != "ada@example.com" || p.Avatar != u.Profile.Image72 {
+		t.Fatalf("got %+v", p)
+	}
+
+	u.IsEmailConfirmed = &yes
+	if profileFrom(u).Email == "" {
+		t.Fatal("a confirmed email must be kept")
+	}
+	u.IsEmailConfirmed = &no
+	if profileFrom(u).Email != "" {
+		t.Fatal("an unconfirmed email must be dropped")
+	}
+
+	u.Profile.DisplayName = "visit evil.example now"
+	if got := profileFrom(u).Name; got != "Ada Lovelace" {
+		t.Fatalf("a name carrying a hostname must fall back to the real name, got %q", got)
+	}
+	u.Profile.Image72 = "http://avatars.example/ada.png"
+	if profileFrom(u).Avatar != "" {
+		t.Fatal("a non-https avatar must be dropped")
+	}
+
+	u.IsBot = true
+	if p := profileFrom(u); p != (linkProfile{}) {
+		t.Fatalf("a bot must yield nothing, got %+v", p)
+	}
+	if p := profileFrom(nil); p != (linkProfile{}) {
+		t.Fatal("no user must yield nothing")
+	}
+}
+
+type statusRepo struct {
+	repository.SlackRepository
+	mine  models.SlackUserLink
+	links []models.SlackUserLink
+}
+
+func (r statusRepo) GetLinkForUser(context.Context, uuid.UUID, uuid.UUID) (*models.SlackUserLink, error) {
+	l := r.mine
+	return &l, nil
+}
+
+func (r statusRepo) ListLinks(context.Context, uuid.UUID) ([]models.SlackUserLink, error) {
+	return r.links, nil
+}
+
+type statusInteg struct {
+	Integrations
+	conn models.IntegrationConnection
+}
+
+func (i statusInteg) SlackConnection(context.Context, uuid.UUID) (*models.IntegrationConnection, error) {
+	c := i.conn
+	return &c, nil
+}
+
+func (i statusInteg) SlackOAuthConfigured() bool { return true }
+
+func TestStatusAccess(t *testing.T) {
+	orgID, userID := uuid.New(), uuid.New()
+	mine := models.SlackUserLink{ID: uuid.New(), UserID: userID}
+	other := models.SlackUserLink{ID: uuid.New(), UserID: uuid.New()}
+	conn := models.IntegrationConnection{ID: uuid.New(), OrganizationID: orgID, Provider: models.IntegrationSlack, GrantedScopes: []string{"chat:write"}}
+	s := &Service{
+		Notifier:      &Notifier{integ: statusInteg{conn: conn}, repo: statusRepo{mine: mine, links: []models.SlackUserLink{mine, other}}},
+		signingSecret: "secret",
+	}
+	ctx := context.Background()
+
+	own, xerr := s.Status(ctx, orgID, userID, StatusOwnLink)
+	if xerr != nil {
+		t.Fatal(xerr)
+	}
+	if !own.AppConfigured || !own.InteractiveConfigured || own.MyLink == nil || own.MyLink.ID != mine.ID {
+		t.Fatalf("own-link status must carry readiness and the caller's link, got %+v", own)
+	}
+	if own.Connection != nil || len(own.MissingScopes) != 0 || len(own.Links) != 0 || !reflect.DeepEqual(own.Settings, models.SlackSettings{}) {
+		t.Fatalf("own-link status must not describe the workspace connection, got %+v", own)
+	}
+
+	ws, _ := s.Status(ctx, orgID, userID, StatusWorkspace)
+	if ws.Connection == nil || len(ws.MissingScopes) == 0 || len(ws.Links) != 0 {
+		t.Fatalf("workspace status must carry the connection but no other links, got %+v", ws)
+	}
+
+	full, _ := s.Status(ctx, orgID, userID, StatusManage)
+	if full.Connection == nil || len(full.Links) != 2 {
+		t.Fatalf("manage status must list every link, got %+v", full)
+	}
+}
+
 // fakeSlackRepo stores link codes nowhere, so a test with APP_URL set runs too.
 type fakeSlackRepo struct {
 	repository.SlackRepository

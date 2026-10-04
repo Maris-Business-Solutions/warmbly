@@ -744,8 +744,18 @@ func (s *Service) refreshContact(ctx context.Context, o *org, contactID uuid.UUI
 	return nil
 }
 
-// refreshObject pulls one record HubSpot told us changed.
-func (s *Service) refreshObject(ctx context.Context, o *org, objectType, ext string, deleted bool) error {
+// gone reports a read HubSpot answered with "not found" or an archived record.
+func gone(obj *Object, err error) bool {
+	if err != nil {
+		ae, ok := AsAPIError(err)
+		return ok && ae.NotFound()
+	}
+	return obj != nil && obj.Archived
+}
+
+// refreshObject pulls one record HubSpot told us changed. A mirror is deleted
+// only when HubSpot itself answers that the record is gone.
+func (s *Service) refreshObject(ctx context.Context, o *org, objectType, ext string) error {
 	switch objectType {
 	case "contact":
 		rec, err := s.d.Repo.GetContactRecordByExternal(ctx, o.ID, provider, ext)
@@ -754,14 +764,11 @@ func (s *Service) refreshObject(ctx context.Context, o *org, objectType, ext str
 		}
 		return s.refreshContact(ctx, o, rec.ContactID, ext)
 	case "deal":
-		if deleted {
+		d, err := o.Client.GetObject(ctx, "deals", ext, dealProps, []string{"contacts"})
+		if gone(d, err) {
 			return s.d.Repo.DeleteMirrored(ctx, o.ID, provider, models.CRMObjectDeal, ext)
 		}
-		d, err := o.Client.GetObject(ctx, "deals", ext, dealProps, []string{"contacts"})
 		if err != nil {
-			if ae, ok := AsAPIError(err); ok && ae.NotFound() {
-				return s.d.Repo.DeleteMirrored(ctx, o.ID, provider, models.CRMObjectDeal, ext)
-			}
 			return err
 		}
 		if len(o.Config.DealPipelines) > 0 && !slices.Contains(o.Config.DealPipelines, d.Prop("pipeline")) {
@@ -783,14 +790,11 @@ func (s *Service) refreshObject(ctx context.Context, o *org, objectType, ext str
 		s.notify(ctx, o.ID, contactIDString(contactID), "deal")
 		return err
 	case "task":
-		if deleted {
+		t, err := o.Client.GetObject(ctx, "tasks", ext, taskProps, []string{"contacts", "deals"})
+		if gone(t, err) {
 			return s.d.Repo.DeleteMirrored(ctx, o.ID, provider, models.CRMObjectTask, ext)
 		}
-		t, err := o.Client.GetObject(ctx, "tasks", ext, taskProps, []string{"contacts", "deals"})
 		if err != nil {
-			if ae, ok := AsAPIError(err); ok && ae.NotFound() {
-				return s.d.Repo.DeleteMirrored(ctx, o.ID, provider, models.CRMObjectTask, ext)
-			}
 			return err
 		}
 		known, err := s.d.Repo.GetLinkByExternal(ctx, o.ID, provider, models.CRMObjectTask, ext)

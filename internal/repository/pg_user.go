@@ -43,7 +43,12 @@ type UserRepository interface {
 	// CreateExemptUser creates an account and its login-code exemption in one
 	// transaction, so a failure cannot leave an account that holds no
 	// exemption and therefore appears in no list.
-	CreateExemptUser(ctx context.Context, email *mail.Address, passwordHash, reason string, by *uuid.UUID) (*models.User, error)
+	// The password stops working at passwordExpiresAt.
+	CreateExemptUser(ctx context.Context, email *mail.Address, passwordHash, reason string, by *uuid.UUID, passwordExpiresAt time.Time) (*models.User, error)
+
+	// RevokeTester clears the exemption and, on an account whose password was
+	// handed out with an expiry, the password too. It reports whether it did.
+	RevokeTester(ctx context.Context, id uuid.UUID) (passwordCleared bool, err error)
 
 	// DeleteOrphanExemptUser undoes a tester creation whose workspace step
 	// failed. The predicate is the safety: it only matches an account that is
@@ -89,6 +94,9 @@ func NewUserRepostory(db *db.DB, kms kms.Provider) UserRepository {
 
 // ErrUserEmailTaken is CreateUser's answer when the address already belongs to an account.
 var ErrUserEmailTaken = errors.New("an account with this email address already exists")
+
+// ErrUserNotFound is returned when the account a write names does not exist.
+var ErrUserNotFound = errors.New("no such account")
 
 func (r *userRepository) CreateUser(ctx context.Context, email *mail.Address, passwordHash string) (*models.User, error) {
 	id := uuid.New()
@@ -337,7 +345,7 @@ func (r *userRepository) SetLoginCodeExempt(ctx context.Context, id uuid.UUID, e
 // likely to have been forgotten is the one that has been there longest.
 func (r *userRepository) ListLoginCodeExempt(ctx context.Context) ([]models.LoginCodeExemption, error) {
 	rows, err := r.DB.Query(ctx, `
-		SELECT id, email, login_code_exempt_reason, login_code_exempt_at
+		SELECT id, email, login_code_exempt_reason, login_code_exempt_at, password_expires_at
 		FROM users
 		WHERE login_code_exempt
 		ORDER BY login_code_exempt_at NULLS FIRST`)
@@ -349,7 +357,7 @@ func (r *userRepository) ListLoginCodeExempt(ctx context.Context) ([]models.Logi
 	out := []models.LoginCodeExemption{}
 	for rows.Next() {
 		var e models.LoginCodeExemption
-		if err := rows.Scan(&e.UserID, &e.Email, &e.Reason, &e.GrantedAt); err != nil {
+		if err := rows.Scan(&e.UserID, &e.Email, &e.Reason, &e.GrantedAt, &e.PasswordExpiresAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -362,7 +370,7 @@ func (r *userRepository) ListLoginCodeExempt(ctx context.Context) ([]models.Logi
 // Creating them separately meant a failure between the two left an account
 // with no exemption: invisible to the tester list, un-retryable because the
 // address was taken, and reachable by whoever held the password.
-func (r *userRepository) CreateExemptUser(ctx context.Context, email *mail.Address, passwordHash, reason string, by *uuid.UUID) (*models.User, error) {
+func (r *userRepository) CreateExemptUser(ctx context.Context, email *mail.Address, passwordHash, reason string, by *uuid.UUID, passwordExpiresAt time.Time) (*models.User, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -393,14 +401,38 @@ func (r *userRepository) CreateExemptUser(ctx context.Context, email *mail.Addre
 		SET login_code_exempt = true,
 		    login_code_exempt_reason = $2,
 		    login_code_exempt_by = $3,
-		    login_code_exempt_at = NOW()
-		WHERE id = $1`, created.ID, reason, by); eerr != nil {
+		    login_code_exempt_at = NOW(),
+		    password_expires_at = $4
+		WHERE id = $1`, created.ID, reason, by, passwordExpiresAt); eerr != nil {
 		return nil, eerr
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return created, nil
+}
+
+// RevokeTester ends a tester's exemption and its handed-out password in one
+// write. An account exempted without an expiring password keeps its password.
+func (r *userRepository) RevokeTester(ctx context.Context, id uuid.UUID) (bool, error) {
+	var cleared bool
+	err := r.DB.QueryRow(ctx, `
+		UPDATE users u
+		SET login_code_exempt = false,
+		    login_code_exempt_reason = NULL,
+		    login_code_exempt_by = NULL,
+		    login_code_exempt_at = NULL,
+		    password_hash = CASE WHEN old.tester THEN NULL ELSE u.password_hash END,
+		    password_changed_at = CASE WHEN old.tester THEN now() ELSE u.password_changed_at END,
+		    password_expires_at = NULL,
+		    updated_at = now()
+		FROM (SELECT id, password_expires_at IS NOT NULL AS tester FROM users WHERE id = $1 FOR UPDATE) old
+		WHERE u.id = old.id
+		RETURNING old.tester`, id).Scan(&cleared)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrUserNotFound
+	}
+	return cleared, err
 }
 
 // DeleteOrphanExemptUser removes a half-created tester.

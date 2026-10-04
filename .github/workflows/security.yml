@@ -4,11 +4,9 @@
 # dependency manifests change on main; a finding fails the run, which is the
 # signal to bump the dependency in its own PR.
 #
-# govulncheck is the one that matters most and was missing. Trivy does not
-# evaluate the Go standard library at all, so a toolchain carrying a critical
-# net/http advisory scanned clean. govulncheck covers the stdlib and proves
-# reachability through the call graph, which is also what lets a finding be
-# justified rather than merely bumped.
+# govulncheck covers the Go standard library, which Trivy does not, and traces
+# each finding through the call graph. Each gate fails on what a version bump
+# can fix; a finding with no fix yet is listed for review instead.
 name: Security
 
 on:
@@ -24,6 +22,8 @@ on:
       - "**/package-lock.json"
       - "**/Cargo.lock"
       - "realtime/mix.lock"
+      - "scripts/govulncheck-gate.sh"
+      - "scripts/hex-audit-gate.sh"
 
 permissions:
   contents: read
@@ -40,12 +40,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # The default build has no Kafka backend, so the Avro codec behind that
-      # build tag is never compiled and never scanned. Both are checked.
+      # Fails on a called vulnerability with a fixed version. Both builds are
+      # checked, since the Kafka codec sits behind a build tag.
       - name: Run govulncheck
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-          go run golang.org/x/vuln/cmd/govulncheck@latest -tags kafka ./...
+          ./scripts/govulncheck-gate.sh ./...
+          ./scripts/govulncheck-gate.sh -tags kafka ./...
 
   trivy:
     name: Dependency Scan
@@ -53,10 +53,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ignore-unfixed is deliberately NOT set. An advisory with no upstream fix
-      # is exactly the case that needs a human decision (upgrade, work around,
-      # or write down why it is not reachable); hiding it meant the scan was
-      # green while four such advisories were live.
+      # ignore-unfixed is deliberately not set: an advisory with no upstream
+      # fix still needs a recorded decision.
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -94,3 +92,21 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: tracking
+
+  elixir:
+    name: Elixir Dependencies
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: realtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+      - name: Install dependencies
+        run: mix deps.get
+      # Fails on a retired dependency or a flagged one with a newer release.
+      - name: Audit realtime
+        run: ../scripts/hex-audit-gate.sh

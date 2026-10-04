@@ -620,7 +620,10 @@ function WebhookToolsBlock({
                     </p>
                     {secret ? (
                         <div className="flex items-center gap-1.5">
-                            <code className="flex-1 min-w-0 truncate rounded-md border border-slate-200 bg-slate-50 px-2 h-7 inline-flex items-center text-[11px] font-mono text-slate-700">
+                            <code
+                                className="flex-1 min-w-0 truncate rounded-md border border-slate-200 bg-slate-50 px-2 h-7 inline-flex items-center text-[11px] font-mono text-slate-700"
+                                data-ph-mask=""
+                            >
                                 {secret}
                             </code>
                             <button

@@ -24,7 +24,7 @@ func (h *Handler) AdminFleetCapacity(c *gin.Context) {
 	}
 	rows, err := h.AdminFleetRepo.Capacity(c.Request.Context())
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})
@@ -58,7 +58,7 @@ func (h *Handler) AdminFleetDecisions(c *gin.Context) {
 	}
 	rows, err := h.AdminFleetRepo.Decisions(c.Request.Context(), c.Query("kind"), workerID, limit)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})
@@ -74,7 +74,7 @@ func (h *Handler) AdminFleetDedicated(c *gin.Context) {
 	}
 	rows, err := h.AdminFleetRepo.DedicatedAssignments(c.Request.Context())
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})
@@ -103,7 +103,7 @@ func (h *Handler) AdminFleetReleaseIsolatedEgress(c *gin.Context) {
 
 	assignment, err := h.WorkerRepo.GetActiveDedicatedAssignment(ctx, orgID)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if assignment == nil {

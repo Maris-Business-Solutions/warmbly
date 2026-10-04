@@ -104,6 +104,8 @@ The manifest asks for these bot scopes and nothing else. There are no user scope
 | `im:write` | Open a DM to send link buttons, link confirmations, and personal notifications |
 | `mpim:history` | Read a group DM thread's earlier messages when the bot is mentioned in one |
 | `reactions:write` | React to a message it is working on (👀) and mark it done (✅) |
+| `users:read` | Show the name and picture of the Slack account a link button links |
+| `users:read.email` | Read that account's email, which has to match the Warmbly account confirming the link |
 
 An install made before the app asked for a scope keeps working with what it has. The dashboard lists the missing scopes and offers **Reconnect**, and the features that need them stay off until then.
 

@@ -45,6 +45,14 @@ defmodule Realtime.Auth do
   end
 
   @doc """
+  True for a credential that outlives a session (API key or OAuth token).
+  """
+  def long_lived?(token) when is_binary(token),
+    do: OAuthToken.is_oauth_token?(token) or ApiKey.is_api_key?(token)
+
+  def long_lived?(_), do: false
+
+  @doc """
   Verify a JWT token.
   """
   def verify_jwt(token) do
@@ -103,6 +111,7 @@ defmodule Realtime.Auth do
   Map error reasons to Discord-style error codes.
   """
   def error_code(:missing_token), do: 4003
+  def error_code(:credential_in_query), do: 4003
   def error_code(:invalid_signature), do: 4004
   def error_code(:verification_failed), do: 4004
   def error_code(:verification_error), do: 4004
@@ -128,6 +137,10 @@ defmodule Realtime.Auth do
   Map error reasons to human-readable messages.
   """
   def error_message(:missing_token), do: "Not authenticated"
+
+  def error_message(:credential_in_query),
+    do: "Send API keys and OAuth tokens in the x-warmbly-token header, not the URL"
+
   def error_message(:invalid_signature), do: "Authentication failed"
   def error_message(:verification_failed), do: "Authentication failed"
   def error_message(:verification_error), do: "Authentication failed"

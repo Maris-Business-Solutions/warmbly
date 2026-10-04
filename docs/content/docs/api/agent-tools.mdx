@@ -9,7 +9,7 @@ The rules are identical to MCP: every tool is gated by its own permission bits, 
 
 - **List**: `GET https://api.warmbly.com/v1/ai/tools`
 - **Execute**: `POST https://api.warmbly.com/v1/ai/tools/{name}/call`
-- **Auth**: an API key or OAuth access token as a bearer header, or a dashboard JWT. For keys, each tool checks its own scope from the [permissions](/api/permissions/) table; for JWT members, the matching organization permission.
+- **Auth**: an API key or OAuth access token as a bearer header, or a dashboard JWT. JWT members need the **Use AI** permission, or both endpoints answer `403`. Each tool checks its own scope from the [permissions](/api/permissions/) table; for JWT members, the matching organization permission.
 
 ## List the tools
 
@@ -73,7 +73,7 @@ curl -s -X POST "https://api.warmbly.com/v1/ai/tools/list_threads/call" \
 
 `result` is the tool's output, embedded as JSON. Feed it back to the model as the tool-call result and continue the loop.
 
-Errors use the standard envelope with a stable `code`: an unknown tool is `404 not_found`, a tool your credential lacks the scope for is `403 forbidden`, a malformed argument body is `400 bad_request`, and a tool-level failure (a validation message, a missing record) is `422 unprocessable` with the tool's own message, which is meant for the model to read and react to.
+Errors use the standard envelope with a stable `code`: an unknown tool is `404 not_found`, a tool your credential lacks the scope for is `403 forbidden`, a malformed argument body is `400 bad_request`, and a tool-level failure (a validation message, a missing record) is `422 unprocessable` with the tool's own message, which is meant for the model to read and react to. A failure on the server's side is `500 internal_error` with a request id and no detail.
 
 This is a side-effectful POST, so `Idempotency-Key` is honored like everywhere else in the API; per-key rate limits and usage logging apply.
 

@@ -76,6 +76,9 @@ func (h *Handler) TwoFAEnrollStart(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if !h.allowEnrollment(c, uid) {
+		return
+	}
 	res, xerr := h.TwoFAService.EnrollStart(c.Request.Context(), uid)
 	if xerr != nil {
 		errx.JSON(c, xerr)
@@ -88,6 +91,9 @@ func (h *Handler) TwoFAEnrollStart(c *gin.Context) {
 func (h *Handler) TwoFAEnrollConfirm(c *gin.Context) {
 	uid, ok := notifActor(c)
 	if !ok {
+		return
+	}
+	if !h.allowEnrollment(c, uid) {
 		return
 	}
 	var body struct {

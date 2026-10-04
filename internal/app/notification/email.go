@@ -173,7 +173,7 @@ func (s *service) sendGroupEmail(ctx context.Context, rows []models.Notification
 		return
 	}
 	first := kept[0]
-	html, gerr := templates.GenerateNotificationHTML(first.Title, first.Body, absoluteLink(first.Link), "")
+	html, gerr := templates.GenerateNotificationHTML(first.Title, emailBody(first), absoluteLink(first.Link), "")
 	if gerr != nil {
 		_ = s.repo.RequeueEmails(ctx, ids, emailRetryDelay, emailMaxAttempts)
 		return
@@ -215,12 +215,12 @@ func (s *service) sendUserEmail(ctx context.Context, userID uuid.UUID, rows []mo
 	if len(rows) == 1 {
 		n := rows[0]
 		subject = n.Title
-		html, gerr = templates.GenerateNotificationHTML(n.Title, n.Body, absoluteLink(n.Link), "")
+		html, gerr = templates.GenerateNotificationHTML(n.Title, emailBody(n), absoluteLink(n.Link), "")
 	} else {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].CreatedAt.Before(rows[j].CreatedAt) })
 		items := make([]templates.DigestItem, 0, len(rows))
 		for _, n := range rows {
-			items = append(items, templates.DigestItem{Title: n.Title, Body: n.Body, URL: absoluteLink(n.Link)})
+			items = append(items, templates.DigestItem{Title: n.Title, Body: emailBody(n), URL: absoluteLink(n.Link)})
 		}
 		subject = fmt.Sprintf("%d updates in your Warmbly workspace", len(rows))
 		html, gerr = templates.GenerateDigestHTML(len(rows), items)
@@ -248,6 +248,16 @@ func notifIDs(rows []models.Notification) []uuid.UUID {
 		ids = append(ids, n.ID)
 	}
 	return ids
+}
+
+// emailBody keeps text an outside sender wrote, such as a reply's subject, out
+// of mail Warmbly sends; the in-app feed still shows it.
+func emailBody(n models.Notification) string {
+	switch n.Category {
+	case models.NotifInboundReply, models.NotifInboundOOO:
+		return "Open the conversation in your inbox to read it."
+	}
+	return n.Body
 }
 
 // absoluteLink turns a dashboard-relative link into a clickable URL.

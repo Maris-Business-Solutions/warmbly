@@ -155,7 +155,7 @@ A worker running on another host writes to its own disk. Once you scale workers 
 
 ### Keys and secrets
 
-Five secrets are generated: `AUTH_SECRET`, `INTERNAL_API_TOKEN`, `SECRET_KEY_BASE`, `KMS_LOCAL_MASTER_KEY` and `CREDENTIALS_ENCRYPTION_KEY`. They are written 0600, `APP_ENV` is set to `prod`, and no published default is ever reachable through this path.
+Seven secrets are generated: `AUTH_SECRET`, `INTERNAL_API_TOKEN`, `NODE_BROKER_TOKEN`, `UPDATER_TOKEN`, `SECRET_KEY_BASE`, `KMS_LOCAL_MASTER_KEY` and `CREDENTIALS_ENCRYPTION_KEY`. `INTERNAL_API_TOKEN` is what the tracking and forms services present, `NODE_BROKER_TOKEN` is what workers and consumers present, and `UPDATER_TOKEN` is what the backend presents to the updater, so none of the three opens what another guards. A re-run adopts the ones already in `.env` and adds a missing `UPDATER_TOKEN`; it never adds a `NODE_BROKER_TOKEN` to an existing install, because nodes already joined to it hold only the shared token. They are written 0600, `APP_ENV` is set to `prod`, and no published default is ever reachable through this path.
 
 The last two are unrecoverable. Every mailbox credential and every per-organization key is sealed with them, so a database backup that does not travel with them restores an instance whose mailboxes authenticate against nothing. The wizard prints both, writes them to `keys-backup.txt` next to the install, and waits until you type that you have a copy somewhere else.
 

@@ -258,6 +258,9 @@ func (s *service) exportRow(
 // openSecret returns the plaintext behind one stored value, using whichever
 // key domain sealed it.
 func (s *service) openSecret(ctx context.Context, sc SecretColumn, stored string, orgCipher *cipher.Cipher) (string, error) {
+	if sc.PlaintextPrefix != "" && strings.HasPrefix(stored, sc.PlaintextPrefix) {
+		return stored, nil
+	}
 	switch sc.Domain {
 	case KeyDomainInstance:
 		if s.creds == nil {

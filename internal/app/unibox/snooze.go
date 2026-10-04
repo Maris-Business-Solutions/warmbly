@@ -13,7 +13,7 @@ import (
 
 // Snooze takes a set of conversations so the list's selection bar is one call.
 // A single thread is the one-element case.
-func (s *uniboxService) Snooze(ctx context.Context, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, *errx.Error) {
+func (s *uniboxService) Snooze(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, *errx.Error) {
 	threadIDs = nonEmpty(threadIDs)
 	if len(threadIDs) == 0 {
 		return nil, errx.New(errx.BadRequest, "thread_id is required")
@@ -32,7 +32,7 @@ func (s *uniboxService) Snooze(ctx context.Context, userID uuid.UUID, threadIDs 
 		return nil, errx.New(errx.BadRequest, "snoozed_until is too far in the future (max 90 days)")
 	}
 
-	rows, err := s.uniboxRepository.UpsertSnoozes(ctx, userID, threadIDs, until.UTC())
+	rows, err := s.uniboxRepository.UpsertSnoozes(ctx, orgID, userID, threadIDs, until.UTC())
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()
@@ -40,7 +40,7 @@ func (s *uniboxService) Snooze(ctx context.Context, userID uuid.UUID, threadIDs 
 	return rows, nil
 }
 
-func (s *uniboxService) Unsnooze(ctx context.Context, userID uuid.UUID, threadIDs []string) *errx.Error {
+func (s *uniboxService) Unsnooze(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string) *errx.Error {
 	threadIDs = nonEmpty(threadIDs)
 	if len(threadIDs) == 0 {
 		return errx.New(errx.BadRequest, "thread_id is required")
@@ -48,7 +48,7 @@ func (s *uniboxService) Unsnooze(ctx context.Context, userID uuid.UUID, threadID
 	if len(threadIDs) > SnoozeMaxThreads {
 		return errx.ErrSeenMax
 	}
-	if err := s.uniboxRepository.DeleteSnoozes(ctx, userID, threadIDs); err != nil {
+	if err := s.uniboxRepository.DeleteSnoozes(ctx, orgID, userID, threadIDs); err != nil {
 		errs.CaptureException(err)
 		return errx.InternalError()
 	}
@@ -67,8 +67,8 @@ func nonEmpty(in []string) []string {
 	return out
 }
 
-func (s *uniboxService) ListSnoozes(ctx context.Context, userID uuid.UUID) ([]models.UniboxSnooze, *errx.Error) {
-	rows, err := s.uniboxRepository.ListSnoozes(ctx, userID)
+func (s *uniboxService) ListSnoozes(ctx context.Context, orgID, userID uuid.UUID) ([]models.UniboxSnooze, *errx.Error) {
+	rows, err := s.uniboxRepository.ListSnoozes(ctx, orgID, userID)
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()

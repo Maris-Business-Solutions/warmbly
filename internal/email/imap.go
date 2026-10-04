@@ -48,6 +48,7 @@ func VerifyImap(ctx context.Context, host string, port int, user, pass, security
 	// it, validation rejects mailboxes the worker would go on to sync fine.
 	tlsConf := &tls.Config{
 		ServerName:         host,
+		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: netbind.InsecureTLS(),
 	}
 

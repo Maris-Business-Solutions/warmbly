@@ -15,7 +15,7 @@ In the **Invite teammates** box, paste or type addresses into **Emails**, separa
 
 Warmbly sends one invitation per address and reports results as "Invited 2 · 1 failed". Invalid addresses are skipped and called out. The chips clear when the batch finishes.
 
-**Pending invitations** shows the email, role, and expiry for each unaccepted invite, with two actions on the right of the row: copy the invite link (to share directly instead of waiting on email) and cancel the invitation. There is no resend button. To give somebody a fresh link, invite the same address again: that replaces the invitation in place with a new token and a reset expiry, and the previously copied link stops working.
+**Pending invitations** shows the email, role, and expiry for each unaccepted invite, with two actions on the right of the row: copy the invite link (to share directly instead of waiting on email) and cancel the invitation. There is no resend button. To give somebody a fresh link, invite the same address again: that replaces the invitation in place with a new token and a reset expiry, and the previously emailed and copied links stop working. Copying the link again also issues a new link, so only the most recently copied link works; the emailed link is unaffected.
 
 <Callout type="info" title="Roles are not permanent">
 The invite-time role can be changed inline from the roster later, so it is fine to start people narrow and widen access afterward.
@@ -58,18 +58,20 @@ Roles are workspace data. Every workspace starts with three seeded roles that ar
 | | View / manage contacts | Read contacts, segments, labels / create, edit, delete |
 | | Manage sequences | Edit step content and spacing |
 | | View analytics | Deliverability and engagement reports |
-| | Use integrations | Push contacts and deals to connected tools |
+| | Use integrations | Push contacts and deals to connected tools, view and test automations |
 | | Use AI | Remie and AI drafting, spending shared credits |
 | **People** | Manage team | Invite, remove, re-role members |
 | | Transfer ownership | Hand ownership to another member |
 | **Sending** | Manage mailboxes | Connect, disconnect, configure senders |
 | | Send campaigns | Start, pause, resume |
 | | Use unified inbox | Read and reply from the shared inbox |
-| **Workspace** | Manage settings | Workspace-wide settings |
+| **Workspace** | Manage settings | Workspace-wide settings, connecting integrations, building automations |
 | | Manage billing | Checkout, invoices, plan changes and cancellation |
 | | Manage API keys | Create and revoke workspace keys |
 
 How the seeded roles map: **Viewer** holds only the two view permissions plus analytics. **Manager** adds everything operational (manage campaigns, contacts, sequences, mailboxes, send, unibox, integrations, AI). **Admin** adds team, settings, billing, and API keys. **Owner** is Admin plus ownership transfer.
+
+A role also bounds what its members hand to software. An API key a member creates, and an app a member authorizes over OAuth, only gets the [API permissions their role covers](/api/permissions/#what-a-role-can-delegate), and an app's access shrinks with the member's role if it changes later. Members with **Manage API keys** or **Manage settings** can see every member's authorized apps under **Settings > OAuth apps > Authorized apps** and revoke any of them.
 
 ## Custom roles
 
@@ -78,7 +80,7 @@ On **Roles & access**, click **New role**: a name (up to 50 characters, and only
 Five rules keep this safe:
 
 - **Editing a role updates everyone assigned to it immediately.** The editor shows how many members are affected before you save.
-- **You can only grant permissions you hold**, so nobody can mint a role stronger than their own.
+- **You can only grant or take away permissions you hold**, so nobody can mint a role stronger than their own. Changing a role's permissions, deleting a role, re-roling a member and removing a member all need every permission involved, old and new; the owner holds them all.
 - **Ownership transfer can never be part of a custom role.**
 - **Members can hold several roles**, and their effective access is the union of all of them. A member left with no roles keeps membership but has no permissions.
 - Up to 25 roles per workspace, including the seeded ones.

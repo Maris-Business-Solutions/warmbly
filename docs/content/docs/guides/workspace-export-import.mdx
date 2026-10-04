@@ -55,6 +55,8 @@ Warmbly does not keep it on either instance. If you lose it, the credentials ins
 
 Leave the option off and the credential fields travel empty. Everything else imports normally, and each mailbox arrives marked for reconnection: open it on the destination and sign in again, exactly like connecting it the first time.
 
+Webhook signing secrets follow the same rule, including the one an [OAuth app](/api/oauth/#receiving-events-as-an-app-webhooks) signs its deliveries with. Without the option, rotate the app's webhook secret on the destination before relying on its deliveries.
+
 ## Importing
 
 Choose the archive file, enter its passphrase if it has one, and select **Check this archive**. Nothing is written yet. Warmbly reads the file and reports:
@@ -71,7 +73,11 @@ Then pick the groups to apply, decide what happens to rows that already exist, a
 
 **Keep what is here** is the default: the archive only adds rows the destination does not already have. This is the right choice for an empty destination workspace, and the safe one for a workspace already in use.
 
-**Replace with the archive** overwrites matching rows with the archive's versions. Use it when you are re-running an import to pick up changes made on the source since the last one. It cannot be undone.
+**Replace with the archive** overwrites matching rows in the destination workspace with the archive's versions. Use it when you are re-running an import to pick up changes made on the source since the last one. It cannot be undone.
+
+### Records of another workspace
+
+An import only writes the destination workspace's own records, and everything it brings in points only at that workspace's data. Records keep their identifiers across a move, so an archive holding records that already belong to another workspace on the same instance (for example, one exported from a workspace that still lives there) is refused as a whole and nothing is written. The archive check reports this before you confirm. Import such an archive into the workspace it was exported from, or into a workspace on another instance.
 
 ### How people are matched
 
@@ -102,6 +108,8 @@ Some things belong to an instance rather than to a workspace, so they are not ap
 | Failure and delivery counters | A webhook endpoint's failure streak and auto-disable state, and whether a notification's email already went out, describe what happened on the source. They start fresh, so an endpoint is not pre-disabled on the new instance and a notification is not re-sent |
 | Sends still in flight | A campaign step handed to a worker on the source has no worker on the destination to report back, so it arrives queued and is sent there instead of waiting forever. Steps already sent keep their history |
 | An invalid workspace name | An archive's workspace name is applied only when it passes the same [naming rules](/api/error-codes/#name-refusals) as a rename. Otherwise the destination keeps its own |
+| Invalid form settings | Each form passes the same checks as an edit. A redirect address that is not an `http` or `https` URL is cleared, a design the editor would refuse resets to the default, and an embed domain that is not a domain is dropped. A published form that lost an embed domain arrives as a draft, so review its domains and publish it again |
+| Webhook endpoints the destination refuses | An endpoint whose address the destination would not accept as a new one (not `https`, or not a public host) arrives disabled. Fix its address and enable it again |
 | Personal list layouts | Which columns each member shows on the contacts list and how they sort it, and how they arrange the unibox scope rail (Favorites, row order, hidden rows), belongs to the person, not the workspace. Everyone starts from the default view on the new instance and sets it up again |
 | Salesforce links and activity | Which Salesforce record each contact is, the activity waiting to be logged and its recent results, and how far the pull loop read. The destination links contacts again by address on its first sync, and activity already logged is in Salesforce. Saved list view and Campaign imports do travel, with the records each one already brought in |
 | Send plan snapshots | A campaign's precomputed "today's sending plan" is worked out from the campaign, its leads, its mailboxes and the instance's own limits, which all travel. The destination works it out again in the background, so a plan for today is current where the campaign now lives rather than a copy of what the source instance expected |
@@ -112,7 +120,7 @@ An import runs as one transaction. If anything fails, nothing lands and the work
 ## After a move
 
 - **Reconnect any mailbox that needs it.** Mailboxes without credentials show as needing a reconnect in the mailbox list.
-- **Point your tracking domain at the new instance.** Click links already delivered keep resolving as long as the domain follows.
+- **Point your tracking domain at the new instance.** Click links already delivered keep resolving as long as the domain follows. Tracking domains on mailboxes and campaigns arrive unverified: the destination re-checks mailbox ones hourly, and a campaign's override is verified again from the campaign's settings.
 - **Keep the old instance's image host reachable for a while, or re-place the images.** The image library and its files travel, but mail already sent carries the old instance's address inside each `<img src>`, so those images keep loading from there. Bodies you edit after the move pick up the new address.
 - **Check your inbox vendor connections.** Each vendor's API key is sealed with the workspace's own key, so it travels like a mailbox password: in an export with credentials it is re-sealed for the destination and keeps working. Exported without credentials, the connection arrives without its key; edit it and enter the key again.
 - **Make admin grants again.** A [Google Workspace or Microsoft 365 grant](/guides/mailbox-import/#connect-a-whole-google-workspace-domain) does not travel: it is recorded only after the workspace proves the domain or organization on the instance it runs on, and an archive proves nothing. The mailboxes it connected do travel, but arrive without a grant, so they cannot send or sync until it is made again. On the destination, make the grant again (for Google, the destination's client ID in the Admin console and the proof of the domain; for Microsoft 365, a Global Administrator's consent), then pick those users in the grant's directory, or import a file of their addresses. Each one relinks the mailbox that arrived, with its history and settings, instead of adding a second one.
@@ -137,7 +145,7 @@ A few things belong to the instance rather than the workspace and are left out o
 
 [Contact imports](/guides/contacts-crm/#importing) do not travel, finished or running, for the same reason: an import is work the source instance is doing. The contacts it created are ordinary contacts and move with the Contacts group, and the saved column mappings come with them. Let a running import finish before exporting, or the rows it has not reached are not in the archive.
 
-A [community directory](/guides/integrations/#community-apps) listing does not travel. The OAuth app itself moves with the archive, but its listing is a publication on the source instance, featured or hidden by its team. Publish it again on the destination, where it starts as link only and is featured or not by that instance's team. An operator's suspension of an app, and a block on building apps, belong to the source instance too: the app arrives unsuspended and the destination's operators decide for themselves.
+A [community directory](/guides/integrations/#community-apps) listing does not travel. The OAuth app itself moves with the archive, but its listing is a publication on the source instance, featured or hidden by its team. Publish it again on the destination, where it starts as link only and is featured or not by that instance's team. An app suspended on the source arrives suspended, and so does every app imported into a workspace whose members may not build apps on the destination; the destination's operators decide whether to lift it. An import never clears a suspension the destination already applied. Each app passes the same checks as registering it: a name that breaks the [naming rules](/api/error-codes/#name-refusals) becomes "Imported app", and a website, redirect URI or webhook address the destination would refuse is dropped. Its logo arrives empty, so upload it again.
 
 [Slack](/guides/slack/) account links, the record of which Slack thread belongs to which assistant conversation, and which Slack thread mirrors which inbox conversation in the [inbox channel](/guides/slack/#inbox-in-slack) do not travel. They name the Slack install on the source instance, so members link again after Slack is reconnected on the destination, and inbox conversations start new Slack threads there. The assistant conversations themselves move with the Assistant group.
 

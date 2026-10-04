@@ -93,6 +93,9 @@ func (h *Handler) GetComposeCandidates(c *gin.Context) {
 		errx.Handle(c, xerr)
 		return
 	}
+	if allowed := restrictedMailboxes(c); len(allowed) > 0 {
+		candidates = compose.OnlyAllowed(candidates, allowed)
+	}
 
 	out := make([]composeCandidateResponse, len(candidates))
 	var recommendedID *uuid.UUID
@@ -202,6 +205,10 @@ func (h *Handler) UniboxCompose(c *gin.Context) {
 			errx.Handle(c, errx.ErrUuid)
 			return
 		}
+		if xerr := mailboxAllowed(c, id); xerr != nil {
+			errx.Handle(c, xerr)
+			return
+		}
 		accountID = &id
 	}
 
@@ -217,7 +224,7 @@ func (h *Handler) UniboxCompose(c *gin.Context) {
 		}
 	}
 
-	candidate, auto, xerr := h.ComposeService.Resolve(c.Request.Context(), userID, *orgID, accountID, tagID, bareAddress(req.To[0]))
+	candidate, auto, xerr := h.ComposeService.ResolveWithin(c.Request.Context(), userID, *orgID, accountID, tagID, bareAddress(req.To[0]), restrictedMailboxes(c))
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return

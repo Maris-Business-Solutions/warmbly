@@ -627,8 +627,7 @@ type EmailOnboardingState struct {
 	// server-side, and is never sent to the browser: the point of PKCE is that
 	// only the party that started the flow can finish it, so an authorization
 	// code intercepted anywhere between the provider and this backend is not
-	// redeemable. Empty for a state written before PKCE was added, which the
-	// exchange tolerates so an in-flight consent still lands.
+	// redeemable. A state without one is refused.
 	CodeVerifier string `json:"code_verifier,omitempty"`
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/observability/errs"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -42,7 +43,7 @@ func (h *Handler) InternalSyncOwnConversation(c *gin.Context) {
 	}
 	own, err := h.EmailSyncState.IsOwnConversation(c.Request.Context(), userID, emailID, ids, c.Query("thread_id"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"own": own})
@@ -83,7 +84,7 @@ func (h *Handler) InternalSyncFolderMessages(c *gin.Context) {
 	}
 	messages, err := h.EmailSyncState.ListFolderMessages(c.Request.Context(), userID, emailID, folderPath, uint32(uidValidity))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": messages})

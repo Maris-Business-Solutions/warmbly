@@ -8,7 +8,7 @@ import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { CheckIcon, CloudIcon, ExternalLinkIcon, Loader2Icon, RefreshCwIcon, SparklesIcon } from "lucide-react";
-import { usePermission } from "@/hooks/usePermission";
+import { useInstanceAdmin, usePermission } from "@/hooks/usePermission";
 import { useConfirm } from "@/hooks/context/confirm";
 import { NoAccess } from "@/components/layout/NoAccess";
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
@@ -25,12 +25,26 @@ import LinkedInstances from "./LinkedInstances";
 export default function WarmblyCloudSettingsPage() {
     const canManage = usePermission("MANAGE_SETTINGS");
     const authConfig = useAuthConfig();
+    const instanceAdmin = useInstanceAdmin();
     if (!canManage) return <NoAccess feature="Warmbly Cloud" permissionLabel="Manage settings" />;
     if (authConfig.data && !authConfig.data.self_hosted) {
         return (
             <SectionShell title="Linked instances" description="Self-hosted Warmbly instances that warm their mailboxes in this workspace's pool.">
                 <Section eyebrow="Instances" description="Each instance enrolls its own mailboxes. Unlinking removes them from the pool.">
                     <LinkedInstances />
+                </Section>
+            </SectionShell>
+        );
+    }
+    if (!instanceAdmin.allowed) {
+        return (
+            <SectionShell title="Warmbly Cloud" description="Warm your mailboxes in the Warmbly pool while everything else stays on this server.">
+                <Section eyebrow="Connection">
+                    <p className="text-[12.5px] text-slate-500 leading-relaxed">
+                        {instanceAdmin.holdsAdmin
+                            ? "The link covers the whole instance, so managing it needs a session with two-factor authentication. Turn on 2FA or add a passkey under Settings > Security, then sign in again."
+                            : "The link covers the whole instance, so an administrator of this instance manages it and the mailboxes it warms."}
+                    </p>
                 </Section>
             </SectionShell>
         );

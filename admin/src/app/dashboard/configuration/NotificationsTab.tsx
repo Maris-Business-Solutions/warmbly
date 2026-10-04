@@ -376,6 +376,7 @@ export function NotificationsTab({ onDirtyChange }: NotificationsTabProps) {
                                                 id={`secret-${ch.id}`}
                                                 value={ch.secret ?? ""}
                                                 placeholder="Optional"
+                                                data-ph-mask=""
                                                 onChange={(e) => update(ch.id, { secret: e.target.value })}
                                             />
                                             <p className="text-xs text-muted-foreground">

@@ -101,11 +101,14 @@ func (s *tokenService) ReissueSession(ctx context.Context, userID uuid.UUID, cur
 		mfaVerified = current.MFAVerified
 	}
 
-	if err := s.RevokeOtherSessions(ctx, userID, uuid.Nil); err != nil {
-		return nil, err
+	err := s.revokeOthers(ctx, userID, uuid.Nil)
+	var tok *models.Token
+	if err == nil {
+		tok, err = s.generateSession(ctx, userID, "", ipaddr, userAgent, provider, orgID, mfaVerified)
 	}
-
-	return s.generateSession(ctx, userID, "", ipaddr, userAgent, provider, orgID, mfaVerified)
+	// After the new session exists, so the caller's socket reconnects with it.
+	s.notifyRevoked(ctx, userID)
+	return tok, err
 }
 
 func (s *tokenService) generateSession(ctx context.Context, userID uuid.UUID, email, ipaddr, userAgent, authProvider string, orgID *uuid.UUID, mfaVerified bool) (*models.Token, *errx.Error) {
@@ -179,6 +182,8 @@ func (s *tokenService) generateSession(ctx context.Context, userID uuid.UUID, em
 	issuedAt := time.Now()
 	session.LastRefreshedAt = issuedAt
 	session.CreatedAt = issuedAt
+	// A session is minted only by a completed sign-in, which is itself a fresh confirmation.
+	session.ReauthAt = &issuedAt
 
 	accessTokenExpiresAt := issuedAt.Add(AccessTokenLifeTime)
 	accessNonce, err := crypt.Nonce()

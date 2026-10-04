@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/observability/errs"
 
 	"github.com/warmbly/warmbly/internal/models"
@@ -397,16 +398,16 @@ func (s *service) CancelBatch(ctx context.Context, jobID uuid.UUID) error {
 		return err
 	}
 	if job == nil {
-		return fmt.Errorf("generation job not found")
+		return errx.New(errx.NotFound, "generation job not found")
 	}
 	if job.Mode != models.WarmupGenerationModeBatch || job.BatchID == "" {
-		return fmt.Errorf("job is not a batch job")
+		return errx.New(errx.BadRequest, "job is not a batch job")
 	}
 	if job.Status == "completed" || job.Status == "failed" {
-		return fmt.Errorf("job already finished")
+		return errx.New(errx.BadRequest, "job already finished")
 	}
 	if job.BatchStatus == "cancelling" {
-		return fmt.Errorf("cancellation already requested")
+		return errx.New(errx.BadRequest, "cancellation already requested")
 	}
 
 	if err := s.gen.CancelBatch(ctx, job.BatchID); err != nil {

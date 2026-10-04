@@ -89,13 +89,28 @@ func (s *tokenService) RevokeSessionByID(ctx context.Context, userID, sessionID,
 	if err := s.deleteSession(ctx, sessionID); err != nil {
 		return err
 	}
+	s.notifyRevoked(ctx, userID)
 
 	return nil
 }
 
 // RevokeOtherSessions ends every active session except the caller's current
-// one ("sign out everywhere else").
+// one ("sign out everywhere else"). uuid.Nil ends all of them.
 func (s *tokenService) RevokeOtherSessions(ctx context.Context, userID, currentSessionID uuid.UUID) *errx.Error {
+	err := s.revokeOthers(ctx, userID, currentSessionID)
+	s.notifyRevoked(ctx, userID)
+	return err
+}
+
+// notifyRevoked closes the user's open websockets; each reconnects only with a
+// ticket minted from a session that is still live.
+func (s *tokenService) notifyRevoked(ctx context.Context, userID uuid.UUID) {
+	if s.revocations != nil {
+		s.revocations.PublishSessionsRevoked(ctx, userID)
+	}
+}
+
+func (s *tokenService) revokeOthers(ctx context.Context, userID, currentSessionID uuid.UUID) *errx.Error {
 	ids, err := s.tokenRepository.ListOtherActiveSessionIDs(ctx, userID, currentSessionID)
 	if err != nil {
 		return err

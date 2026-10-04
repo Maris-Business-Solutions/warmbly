@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/mailhost"
 )
@@ -230,6 +231,16 @@ func (r *advancedOutreachRepository) CreateABVariant(ctx context.Context, campai
 	weight := req.Weight
 	if weight <= 0 {
 		weight = 100
+	}
+	if req.SequenceID != nil {
+		var ok bool
+		if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM sequences WHERE id = $1 AND campaign_id = $2)`,
+			*req.SequenceID, campaignID).Scan(&ok); err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errx.New(errx.BadRequest, "step_id is not a step of this campaign")
+		}
 	}
 	query := `
 		INSERT INTO campaign_ab_variants (

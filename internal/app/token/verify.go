@@ -68,23 +68,13 @@ func (s *tokenService) ValidateAccessToken(ctx context.Context, accessToken stri
 }
 
 // VerifyTokenFor is VerifyToken plus the check that the token was minted for
-// this flow.
-//
-// A token with no purpose is treated as an access token: tokens issued before
-// the claim existed are still inside their 12-hour window during a deploy, and
-// refusing them would sign everybody out. Every other flow demands its purpose
-// explicitly, so that leniency cannot be used to spend a reset or challenge
-// token as a session.
+// this flow. A token with no purpose verifies for none.
 func (s *tokenService) VerifyTokenFor(purpose, tokenStr string) (*TokenClaims, *errx.Error) {
 	claims, err := s.VerifyToken(tokenStr)
 	if err != nil {
 		return nil, err
 	}
-	got := claims.Purpose
-	if got == "" {
-		got = PurposeAccess
-	}
-	if got != purpose {
+	if claims.Purpose == "" || claims.Purpose != purpose {
 		return nil, errx.ErrToken
 	}
 	return claims, nil

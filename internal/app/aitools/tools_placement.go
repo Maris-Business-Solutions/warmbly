@@ -364,6 +364,10 @@ func (p placementTools) get(ctx context.Context, inv Invocation, args json.RawMe
 }
 
 func (p placementTools) run(ctx context.Context, inv Invocation, args json.RawMessage) (string, error) {
+	// Same reason as runBatch: the key's mailbox limits are applied by the REST endpoint.
+	if inv.IsAPIKey {
+		return "", errors.New("start a placement test with POST /placement/tests, which applies this key's mailbox limits")
+	}
 	in, err := decodeArgs[struct {
 		SenderAccountID string   `json:"sender_account_id"`
 		CampaignID      string   `json:"campaign_id"`

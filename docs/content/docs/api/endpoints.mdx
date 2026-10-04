@@ -356,33 +356,35 @@ Reads are an analytics read of the workspace's sending posture. Applying or undo
 | POST | `/advisor/recommendations/:id/snooze` | `READ_ANALYTICS` |
 | POST | `/advisor/recommendations/:id/dismiss` | `READ_ANALYTICS` |
 | POST | `/advisor/recommendations/:id/feedback` | `READ_ANALYTICS` |
-| POST | `/advisor/recommendations/:id/apply` | permission of the underlying change |
-| POST | `/advisor/recommendations/:id/undo` | permission of the underlying change |
+| POST | `/advisor/recommendations/:id/apply` | `READ_ANALYTICS`, plus the permission of the underlying change |
+| POST | `/advisor/recommendations/:id/undo` | `READ_ANALYTICS`, plus the permission of the underlying change |
 
-Changing Advisor settings (`PATCH /advisor/settings`) is JWT only, alongside the rest of organization settings. Silencing checks for a whole workspace is governance, and no read scope should be able to do it. The same applies to `POST /advisor/recommendations/:id/agent-fix`, which is JWT only and needs `USE_AI`: it acts as a named member and spends credits, and no API scope should let a key rewrite a workspace's campaigns unattended.
+Apply and undo run the fix under the key's own scopes, and a key limited to certain mailboxes can only apply or undo a fix for one of them (`403` otherwise). Changing Advisor settings (`PATCH /advisor/settings`) is JWT only, alongside the rest of organization settings. Silencing checks for a whole workspace is governance, and no read scope should be able to do it. The same applies to `POST /advisor/recommendations/:id/agent-fix`, which is JWT only and needs `USE_AI`: it acts as a named member and spends credits, and no API scope should let a key rewrite a workspace's campaigns unattended.
 
 ### API key self-service
 
 | Method | Path | API Permission |
 |--------|------|----------------|
 | GET | `/api-keys` | `API_KEYS` |
-| POST | `/api-keys` | `API_KEYS`, JWT only |
+| POST | `/api-keys` | `API_KEYS`, not OAuth tokens |
 | GET | `/api-keys/permissions` | `API_KEYS` |
 | GET | `/api-keys/:id` | `API_KEYS` |
-| PATCH | `/api-keys/:id` | `API_KEYS` |
-| DELETE | `/api-keys/:id` | `API_KEYS` |
-| DELETE | `/api-keys/:id/permanent` | `API_KEYS` |
+| PATCH | `/api-keys/:id` | `API_KEYS`, not OAuth tokens |
+| DELETE | `/api-keys/:id` | `API_KEYS`, not OAuth tokens |
+| DELETE | `/api-keys/:id/permanent` | `API_KEYS`, not OAuth tokens |
 | DELETE | `/api-keys/self` | none |
 
 `DELETE /api-keys/:id/permanent` deletes a key that has already been revoked or has expired, taking its usage logs with it. A key that could still authenticate gets a `409`, because revoking is what records that a credential was ended and why. See [Ending a key](/api/authentication/).
 
-`POST /api-keys` requires a recent confirmation (`POST /auth/reauth`) when called from a signed-in session, because a key outlives the session that made it and a stolen browser token should not be able to leave one behind. An API key or OAuth token calling it is unaffected: it has no session and no second factor to present, it was itself minted from a confirmed session, and the `API_KEYS` scope is the explicit grant that governs it. Automation and the CLI keep working.
+`POST /api-keys` requires a recent confirmation (`POST /auth/reauth`) when called from a signed-in session, because a key outlives the session that made it and a stolen browser token should not be able to leave one behind. An API key calling it is unaffected: it has no session and no second factor to present, it was itself minted from a confirmed session, and the `API_KEYS` scope is the explicit grant that governs it. Automation and the CLI keep working.
+
+Creating, editing, revoking and deleting keys is for a signed-in member or an API key; an OAuth app token gets `403` `oauth_token_not_allowed`. A new or edited key stays within its creator: a member cannot give it a permission their role does not cover, and an API key cannot give it a permission, mailbox or IP address the calling key does not have (`403` `api_key_permissions_exceed_caller`). See [what a role can delegate](/api/permissions/#what-a-role-can-delegate). `GET /api-keys/permissions` reports the caller's bound as `grantable`.
 
 `DELETE /api-keys/self` revokes the key the request was made with, and is the one route here that needs no scope. A credential must always be able to end itself: requiring `API_KEYS` to sign out would leave a read-only key on a laptop someone is handing back live, which is what [`warmbly auth logout`](/api/cli/) promises to prevent. A JWT caller gets a `400`: there is no key in that request to end, only a session, which `POST /auth/logout` ends.
 
 ### OAuth apps
 
-Registering and managing the OAuth apps your workspace owns. The flow itself (authorize, token, revoke) is listed under JWT only and Public below.
+Registering and managing the OAuth apps your workspace owns. The flow itself (authorize, token, revoke) is listed under JWT only and Public below. Every route here, and `POST /oauth/application-logo`, refuses an OAuth app token with `403` `oauth_token_not_allowed`.
 
 | Method | Path | API Permission |
 |--------|------|----------------|
@@ -423,7 +425,8 @@ The `listing` routes publish an app to the [community directory](/api/oauth/#pub
 | GET | `/webhooks/:id/deliveries` | `WEBHOOKS` |
 | POST | `/webhooks/deliveries/:deliveryId/redeliver` | `WEBHOOKS` |
 | GET | `/webhooks/throttle-drops` | `WEBHOOKS` |
-| GET/POST/DELETE | `/integrations/*` (except `/integrations/slack/*`, which is [JWT only](#slack)) | `INTEGRATIONS` |
+| GET/POST/DELETE | `/integrations/*` (except `/integrations/slack/*`, which is [JWT only](#slack), and `/integrations/bookings`) | `INTEGRATIONS` |
+| GET | `/integrations/bookings` | `READ_CONTACTS` |
 | GET/PUT | `/integrations/salesforce/:id/settings` | `INTEGRATIONS` |
 | GET | `/integrations/salesforce/:id/overview`, `/metadata`, `/users`, `/list-views`, `/campaigns`, `/activity` | `INTEGRATIONS` |
 | POST | `/integrations/salesforce/:id/import/preview` | `INTEGRATIONS` |
@@ -435,6 +438,8 @@ The `listing` routes publish an app to the [community directory](/api/oauth/#pub
 | DELETE | `/contacts/:id/salesforce/links/:linkId` | `INTEGRATIONS` |
 | GET/POST/PATCH/DELETE | `/automations[/:id]` | `INTEGRATIONS` |
 | PATCH | `/automations/:id/layout` | `INTEGRATIONS` |
+
+A signed-in member needs `manage_settings` to create, edit, enable or delete an automation, because a flow runs as the workspace; `use_integrations` is enough to list, open, test and read the run history.
 | GET/POST/PATCH/DELETE | `/warmup/routing[/:id]` | `WARMUP_ROUTING` |
 
 ### Retry safety
@@ -495,15 +500,25 @@ These changes require the session to have confirmed the account holder within th
 | Action | Route |
 |--------|-------|
 | Create an API key | `POST /api-keys` |
+| Approve an app on the OAuth consent screen | `POST /oauth/authorize` |
+| Approve a CLI sign-in | `POST /auth/cli/codes/:code/approve` |
 | Add a passkey | `POST /auth/passkey/register/begin`, `/finish` |
 | Remove a passkey | `DELETE /auth/passkey/credentials/:id` |
+| Turn on two-factor authentication | `POST /auth/2fa/enroll/start`, `/confirm` (see below for accounts with no password) |
 | Transfer a workspace | `POST /organization/transfer-ownership` |
+| Invite a member or change a member's role | `POST /organization/members/invite`, `PATCH /organization/members/:id` |
+| Export or import a whole workspace | `POST /organization/current/export`, `POST /organization/current/import` |
 | Schedule a workspace or account for deletion | `POST /organization/current/danger-zone/delete`, `POST /me/danger-zone/delete` |
+| Approve a self-hosted instance's warmup pool link | `POST /pool-link/codes/:code/approve` |
+| Reveal or rotate a signing secret | `POST /webhooks/:id/rotate-secret`, `GET /integrations/connections/:id/webhook-secret`, `POST /oauth/applications/:id/rotate-secret`, `GET /oauth/applications/:id/webhook-secret`, `POST /oauth/applications/:id/webhook-secret/rotate` |
 | Record, use or remove an admin grant over a whole domain | `POST /emails/grants/google/finish`, `POST /emails/grants/microsoft/finish`, `POST /emails/grants/:id/connect`, `DELETE /emails/grants/:id` |
+| Admin panel: issue a fleet join token, grant admin permissions, export or import any workspace | `POST /admin/fleet/join-token`, `POST /admin/admins/:userId/grant`, `POST /admin/organizations/:id/exports`, `POST /admin/organizations/:id/imports` |
 
-Each either hands out a credential that outlives the session that created it, cannot be reversed by the person it was done to, or reaches a whole domain's mail. Without a confirmation they answer `403` with code `reauth_required`; confirm with `POST /auth/reauth` (password or a current two-factor code) and retry. See [error codes](/api/error-codes/#confirmation-required).
+Each either hands out a credential that outlives the session that created it, reveals a secret, changes who can get in, cannot be reversed by the person it was done to, or reaches a whole domain's mail. Without a confirmation they answer `403` with code `reauth_required`; confirm with `POST /auth/reauth` (password or a current two-factor code) and retry. See [error codes](/api/error-codes/#confirmation-required).
 
 This applies to session callers. An API key or OAuth token has no session to confirm and is not the threat here, so it passes straight through to the route's permission gate.
+
+A completed sign-in counts as a confirmation for the first five minutes of the session. An account with neither a password nor two-factor authentication has nothing else to confirm with, so after those five minutes `POST /auth/reauth` answers it `400` with code `reauth_no_factor` and it signs in again. Once 2FA is on, it confirms with an authenticator code like any other account.
 
 `GET /auth/config` gained two fields: `invites_required` (boolean, true when an invitation token is needed to create an account) and `docs_url` (string, the deployment's link to the accounts and access documentation, for a client to surface next to a refusal).
 
@@ -571,8 +586,9 @@ Alongside them, `api_url` is this API's own public base (for a copyable example 
   None of these takes an `Idempotency-Key`; the retry behavior of each is stated above. Changes to vendor connections, grants and redirects publish `AUDIT_CREATED` with `entity_type` `mailbox_vendor`, `mailbox_grant` or `domain_redirect`. Error codes are under [mailbox source refusals](/api/error-codes/#mailbox-source-refusals)
 - `POST /emails/onboarding/oauth/reauth/:id`, `PUT /emails/onboarding/smtp-imap/:id` (reconnect an existing mailbox after a credential change; JWT permission `MANAGE_EMAILS`)
 - `POST /emails/onboarding/app-password/:id` (JWT permission `MANAGE_EMAILS`): move a mailbox off per-mailbox Google sign-in onto Gmail's IMAP and SMTP with `app_password`, a 16-letter Google app password (spaces are ignored). The password is checked against Gmail's servers before anything is stored, with the same refusals as an SMTP/IMAP connect; on success the mailbox becomes `smtp_imap` in place, keeps its imported mail, campaigns and warmup, and answers `200` with the mailbox. `409` `mailbox_not_google_signin` for any other mailbox, including one already switched, so a repeat changes nothing and takes no `Idempotency-Key`; `400` `app_password_invalid` when the value is not 16 letters. Publishes `AUDIT_CREATED` with `entity_type` `email_account`
-- `GET /oauth/authorize/details`, `POST /oauth/authorize` (the consent flow: a human approves a third-party app)
+- `GET /oauth/authorize/details`, `POST /oauth/authorize` (the consent flow: a human approves a third-party app, and the grant carries only the scopes the member's role covers). `POST /oauth/authorize` requires a recent confirmation (`POST /auth/reauth`), like creating an API key
 - `GET /oauth/authorized-apps`, `DELETE /oauth/authorized-apps/:id` (apps the user has authorized)
+- `GET /oauth/workspace-authorizations`, `DELETE /oauth/workspace-authorizations/:id/members/:userId` (every member's authorized apps, and revoking one; JWT permission `MANAGE_API_KEYS` or `MANAGE_SETTINGS`). A revoke succeeds when there is nothing to revoke and publishes `AUDIT_CREATED` with `entity_type` `oauth_authorization`
 - `POST /getaway` (websocket bootstrap)
 - `GET /realtime/info`
 - `GET /me/danger-zone`, `POST /me/danger-zone/delete`, `DELETE /me/danger-zone/delete`
@@ -581,8 +597,8 @@ Alongside them, `api_url` is this API's own public base (for a copyable example 
 - All of `/organization/*` (create, switch, members, invitations, transfer ownership, avatar, danger zone)
 - `GET /website-tracking/settings`, `PATCH /website-tracking/settings`, `POST /website-tracking/settings/rotate-key` (the [website tracking](/guides/website-tracking/) snippet's consent mode, location precision, allowed hosts and retention; JWT permission `MANAGE_SETTINGS`. The rotate is bodyless and safe to repeat, each call issues a new key)
 - All of `/subscription/*` (checkout, portal, cancel, change-plan, preview-change, enterprise-inquiry, discounts, referrals, etc.)
-- All of `/auth/cli/*` except the two handshake routes below (`GET /auth/cli/codes/:code`, `POST /auth/cli/codes/:code/approve`, `POST /auth/cli/codes/:code/deny`: the browser half of `warmbly auth login`, where a signed-in member reviews the code a CLI is showing and authorizes it. Approving mints an ordinary API key, so it requires the `MANAGE_API_KEYS` organization permission and is session-only: an API key must not be able to mint another one this way)
-- All of `/pool-link/*` and `/cloud-link/*` (the self-hosted warmup pool link: approving an instance's code, listing and unlinking instances, reading the pool plan's price and opening its checkout, and on a self-hosted instance the connect flow and mailbox enrollment). `POST /pool-link/codes` and `POST /pool-link/poll` are public and per-IP rate limited: they are the device-code handshake an instance uses before it has a token, and `/pool-link/instance/*` accepts only an instance token. `/pool-link/instance/oauth/*`, `/pool-link/instance/mailboxes/:id/token`, `/pool-link/instance/workspace-mailboxes` and `/pool-link/instance/mailboxes/adopt` are the cloud-managed mailbox surface (Google and Microsoft sign-in on Warmbly's OAuth apps, brokered access tokens); their instance-side counterparts are `/cloud-link/oauth/*` and `/cloud-link/workspace-mailboxes/*`. `/pool-link/instance/redirects` (list), and `GET`, `PUT`, `DELETE` and `POST .../verify` on `/pool-link/instance/redirects/:domain`, are the root redirects Warmbly Cloud serves for the calling instance; the instance drives them through `PUT /emails/domains/:domain/redirect` with `served_by: "cloud"`, and `GET /pool-link/instance` carries `redirects` (`available`, `host`, `limit`, `used`)
+- All of `/auth/cli/*` except the two handshake routes below (`GET /auth/cli/codes/:code`, `POST /auth/cli/codes/:code/approve`, `POST /auth/cli/codes/:code/deny`: the browser half of `warmbly auth login`, where a signed-in member reviews the code a CLI is showing and authorizes it. Approving mints an ordinary API key, so it requires the `MANAGE_API_KEYS` organization permission and a fresh authentication, is session-only (an API key must not be able to mint another one this way), and caps the key to the scopes the approver's role allows. `GET /auth/cli/codes/:code?organization_id=` adds `granted_scopes` and `granted_scope_names`: what approving into that workspace would grant)
+- All of `/pool-link/*` and `/cloud-link/*` (the self-hosted warmup pool link: approving an instance's code, listing and unlinking instances, reading the pool plan's price and opening its checkout, and on a self-hosted instance the connect flow and mailbox enrollment). `/cloud-link/*` exists only on a self-hosted instance. The link belongs to the whole instance, so linking and unlinking it (`/connect`, `/connect/poll`, `DELETE /cloud-link`) and the linked cloud workspace's mailboxes (`/workspace-mailboxes`, `.../adopt`) take a platform admin holding `manage_settings` whose session presented a second factor (`admin_mfa_required` otherwise). Reading the link and putting a workspace's own mailboxes on it (`GET /cloud-link`, `/mailboxes`, enroll, pause, resume and the Google and Microsoft sign-in under `/oauth/*`) take the workspace's `MANAGE_EMAILS`. `POST /pool-link/codes` and `POST /pool-link/poll` are public and per-IP rate limited: they are the device-code handshake an instance uses before it has a token, and `/pool-link/instance/*` accepts only an instance token. `/pool-link/instance/oauth/*`, `/pool-link/instance/mailboxes/:id/token`, `/pool-link/instance/workspace-mailboxes` and `/pool-link/instance/mailboxes/adopt` are the cloud-managed mailbox surface (Google and Microsoft sign-in on Warmbly's OAuth apps, brokered access tokens); their instance-side counterparts are `/cloud-link/oauth/*` and `/cloud-link/workspace-mailboxes/*`. `/pool-link/instance/redirects` (list), and `GET`, `PUT`, `DELETE` and `POST .../verify` on `/pool-link/instance/redirects/:domain`, are the root redirects Warmbly Cloud serves for the calling instance; the instance drives them through `PUT /emails/domains/:domain/redirect` with `served_by: "cloud"`, and `GET /pool-link/instance` carries `redirects` (`available`, `host`, `limit`, `used`)
 - All of `/admin/*`
 
 `POST /subscription/checkout`, `POST /subscription/portal`, `POST /subscription/cancel`, `POST /subscription/change-plan` and `GET /subscription/preview-change` require the `MANAGE_BILLING` organization permission; reading the subscription, its limits, trial and features needs only membership. `POST /subscription/portal` requires an existing Stripe billing customer. A workspace without one receives `400` with code `bad_request` and a message to complete checkout first; free and operator-granted plans alone do not create a billing customer.
@@ -622,10 +638,16 @@ Remie, the dashboard AI assistant, is JWT only: sessions are private to the memb
 | GET | `/ai/sessions/:id/messages` | organization member (use AI) |
 | POST | `/ai/sessions/:id/messages` | organization member (use AI, SSE) |
 | POST | `/ai/sessions/:id/approve` | organization member (use AI, SSE) |
+| GET | `/ai/tool-policies` | `manage_settings` |
+| DELETE | `/ai/tool-policies/:tool` | `manage_settings` |
+
+`POST /ai/sessions/:id/approve` takes `{"decision": "approve" | "deny" | "always_allow", "tool_call_id": "..."}`. `tool_call_id` is required and must be the call the session is waiting on (the `tool_call_id` of its `approval_required` event, or `pending.tool_call_id` from `GET /ai/sessions/:id/messages`); any other answers `409` `approval_not_pending`, and so does a second decision on the same call. `always_allow` saves a workspace policy only for a member with `manage_settings` and only for a tool that may be always allowed; otherwise it approves this one call. The `approval_required` event and `pending` carry `arguments` (every argument as indented JSON with sorted keys, capped at 16 KiB, with `arguments_truncated`), `preview` for a send (`from`, `to`, `subject`, `body`, `body_html`), and `always_allow_offered`.
+
+`GET /ai/tool-policies` lists the tools the assistant runs without asking (`tool_name`, `created_by`, `created_by_name`, `created_at`); `DELETE /ai/tool-policies/:tool` revokes one. Both audit as `ai_tool_policy`.
 
 ### AI skills
 
-Org playbooks the AI features follow (see the [AI skills](/guides/ai-skills/) guide). Gated on `manage_settings` for JWT callers, or the `AI_AGENT` scope for API keys.
+Org playbooks the AI features follow (see the [AI skills](/guides/ai-skills/) guide). Gated on `manage_settings` for JWT callers, or the `AI_AGENT` scope for API keys. Creating, editing or deleting one with an API key also needs the member who created the key to hold `manage_settings`.
 
 | Method | Path | Permission |
 |--------|------|------------|
@@ -636,12 +658,12 @@ Org playbooks the AI features follow (see the [AI skills](/guides/ai-skills/) gu
 
 ### Agent tools (REST)
 
-The AI tool registry over plain HTTP for function-calling agents that do not speak MCP (see [Agent tools](/api/agent-tools/)). Like the advisor apply path and the MCP endpoint, there is no route-level scope on purpose: each tool enforces its own permission, the list reflects only what the caller may use, and send-class tools are never exposed.
+The AI tool registry over plain HTTP for function-calling agents that do not speak MCP (see [Agent tools](/api/agent-tools/)). Like the MCP endpoint, it needs `AI_AGENT` (or `use_ai` for JWT callers); each tool then enforces its own permission, the list reflects only what the caller may use, and send-class tools are never exposed.
 
-| Method | Path | API Permission |
-|--------|------|----------------|
-| GET | `/ai/tools` | permission of each listed tool |
-| POST | `/ai/tools/:name/call` | permission of the tool being called |
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/ai/tools` | `use_ai` / `AI_AGENT`, then the permission of each listed tool |
+| POST | `/ai/tools/:name/call` | `use_ai` / `AI_AGENT`, then the permission of the tool being called |
 
 ### Connected MCP servers
 
@@ -661,11 +683,11 @@ The [Slack](/guides/slack/) panel's routes. They are session-only: linking binds
 
 | Method | Path | JWT permission |
 |--------|------|----------------|
-| GET | `/integrations/slack/status` | organization member. `links` (every member's link) is filled only for `manage_settings`; `my_link` is always the caller's own |
+| GET | `/integrations/slack/status` | organization member. `app_configured`, `interactive_configured` and `my_link` (always the caller's own) for everyone; `connection`, `settings` and `missing_scopes` only for `manage_settings` or `use_integrations` (otherwise absent, `{}` and `[]`); `links` (every member's link) only for `manage_settings` |
 | GET | `/integrations/slack/channels` | `manage_settings` or `use_integrations`. Public channels and the private channels the bot is in, filtered by `q`, at most 200, as `data` plus `pagination` |
 | PUT | `/integrations/slack/settings` | `manage_settings`. Default `channel`, per-category `routes`, `assistant_disabled`, `assistant_dm_only`, `inbox_channel` (a channel id from the list; empty turns the [inbox channel](/guides/slack/#inbox-in-slack) off) and `inbox_scope` (`replies`, the default, or `all`). The inbox channel must be one the bot can see and not a Slack Connect channel, else `400`. Idempotent: the whole settings object is replaced |
-| GET | `/integrations/slack/link/:code` | signed in, any workspace. Previews the link a bot button carries: `organization_id`, `organization_name`, `is_member`, `slack_team_id`, `slack_team_name`, `slack_user_id` and `expires_at`. An unknown or expired code is `404` `slack_link_invalid` |
-| POST | `/integrations/slack/link` | signed in, member of the code's workspace (else `403` `forbidden`). `code` from the bot's button; answers `201` with the link and replaces any earlier link of that Slack account. The code is single-use, so a repeat is refused with `404` `slack_link_invalid` |
+| GET | `/integrations/slack/link/:code` | signed in, any workspace. Previews the link a bot button carries: `organization_id`, `organization_name`, `is_member`, `slack_team_id`, `slack_team_name`, `slack_user_id`, `slack_user_name` and `slack_user_avatar` (as Slack reports them now; either may be empty), `email_matches` (the Slack account's email is the caller's Warmbly email) and `expires_at`. An unknown or expired code is `404` `slack_link_invalid` |
+| POST | `/integrations/slack/link` | signed in, member of the code's workspace (else `403` `forbidden`), whose Warmbly email is the email on the code's Slack account (else `403` `slack_link_email_mismatch`, and the code stays usable). `code` from the bot's button; answers `201` with the link and replaces any earlier link of that Slack account. The code is single-use, so a repeat is refused with `404` `slack_link_invalid` |
 | PATCH | `/integrations/slack/link` | organization member, own link. `dm_notifications`. `404` `slack_not_linked` when the caller has no link in this workspace |
 | DELETE | `/integrations/slack/link` | organization member, own link. Answers `204`, also when there was no link, so a repeat is safe |
 | DELETE | `/integrations/slack/links/:id` | `manage_settings`. Removes any member's link. Answers `204` |
@@ -674,7 +696,7 @@ The two `/integrations/slack/link` routes that take a code do not need a workspa
 
 ## MCP server
 
-`POST /v1/mcp` exposes the tool registry over the [Model Context Protocol](/api/mcp/) streamable-HTTP transport. It accepts an API key or an OAuth 2.1 access token (an unauthenticated request gets the RFC 9728 discovery challenge). Each tool is gated by its scope, `tools/list` reflects only what the credential allows, and send-class tools are never exposed. Per-key rate limits apply.
+`POST /v1/mcp` exposes the tool registry over the [Model Context Protocol](/api/mcp/) streamable-HTTP transport. It accepts an API key or an OAuth 2.1 access token holding `AI_AGENT` (an unauthenticated request gets the RFC 9728 discovery challenge). Each tool is gated by its scope, `tools/list` reflects only what the credential allows, and send-class tools are never exposed. Per-key rate limits apply.
 
 ## Public
 
@@ -682,7 +704,7 @@ The two `/integrations/slack/link` routes that take a code do not need a workspa
 - `POST /auth/cli/code`, `POST /auth/cli/poll` (the [CLI](/api/cli/) device-code handshake, per-IP rate limited. Public by necessity: the CLI has no credential until the flow completes. `POST /auth/cli/code` returns `device_code`, `user_code`, `verification_uri`, `verification_uri_complete`, `expires_in` and `interval`; polling returns `{"status":"pending"}` until a member decides, then `{"status":"approved"}` carrying the minted key exactly once, or `{"status":"denied"}`. An unknown or expired `device_code` is a `404`, so a poller cannot probe for live handshakes)
 - `POST /webhook/stripe` (Stripe signature)
 - `POST /api/v1/integrations/hubspot/webhooks` (HubSpot app webhooks, verified with the `X-HubSpot-Signature-v3` signature over the app's client secret and refused when older than five minutes. A delivery only makes the next read of the named record come sooner; see [HubSpot](/guides/hubspot/#self-hosting))
-- `POST /api/v1/integrations/hubspot/app/card`, `/app/enroll`, `/app/pause` (the Warmbly card on HubSpot contact records) and `POST /api/v1/integrations/hubspot/actions/enroll`, `/actions/campaigns` (the "Add to Warmbly campaign" workflow action). HubSpot signs each request with the app's client secret; the portal it names selects the workspace in HubSpot mode. See [working from inside HubSpot](/guides/hubspot/#working-from-inside-hubspot)
+- `POST /api/v1/integrations/hubspot/app/card`, `/app/enroll`, `/app/pause` (the Warmbly card on HubSpot contact records) and `POST /api/v1/integrations/hubspot/actions/enroll`, `/actions/campaigns` (the "Add to Warmbly campaign" workflow action). HubSpot signs each request with the app's client secret (`X-HubSpot-Signature-v3`, over the public backend URL). The card routes take the portal and HubSpot user from the query values HubSpot appends, exactly one of each, and act as that user's matched member with its permissions; the webhook and workflow action routes refuse a request carrying those values. The portal selects the one workspace in HubSpot mode with a live connection to it. See [working from inside HubSpot](/guides/hubspot/#working-from-inside-hubspot)
 - `POST /webhook/campaign`, `/webhook/email`, `/webhook/user-email` (Google OIDC token from Cloud Tasks)
 - `GET /addresses/google/callback`, `GET /addresses/outlook/callback` (OAuth bouncer pages)
 - `POST /oauth/token`, `POST /oauth/revoke` (OAuth token endpoints, authenticated by the client's id and secret, or PKCE for public clients)

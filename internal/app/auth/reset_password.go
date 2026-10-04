@@ -239,14 +239,21 @@ func (s *authService) ChangePassword(ctx context.Context, userID uuid.UUID, curr
 		return nil, errx.New(errx.BadRequest, "this account signs in without a password")
 	}
 
+	// The current password spends the account's re-authentication budget,
+	// charged before the comparison.
+	if !s.ReserveReauthAttempt(ctx, userID) {
+		return nil, errx.ErrAuthLimit
+	}
 	ok, verr := argon2.Verify(data.CurrentPassword, hash)
 	if verr != nil {
+		s.ReleaseReauthAttempt(ctx, userID)
 		errs.CaptureException(verr)
 		return nil, errx.InternalError()
 	}
 	if !ok {
 		return nil, errx.ErrCredentials
 	}
+	s.ClearReauthFailures(ctx, userID)
 
 	if perr := crypt.PasswordError(data.NewPassword); perr != nil {
 		return nil, perr

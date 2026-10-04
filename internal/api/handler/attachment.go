@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -172,8 +173,9 @@ func (h *Handler) UploadCampaignAttachment(c *gin.Context) {
 		return
 	}
 	body := buf.Bytes()
-	mimeType := fh.Header.Get("Content-Type")
-	if mimeType == "" {
+	// Only the bare media type is kept: it is written into the part's headers at send.
+	mimeType, _, err := mime.ParseMediaType(fh.Header.Get("Content-Type"))
+	if err != nil {
 		mimeType = http.DetectContentType(body)
 	}
 

@@ -72,3 +72,15 @@ export function logout(): Promise<void> {
         authorization: true,
     });
 }
+
+// Re-proves the operator behind the session; the changes gated on a recent
+// confirmation (join tokens, admin grants, workspace archives) wait for it.
+export function reauth(input: { password?: string; code?: string }): Promise<{ valid_for_seconds: number }> {
+    return Request<{ valid_for_seconds: number }>({
+        method: "POST",
+        url: "/v1/auth/reauth",
+        data: input,
+        authorization: true,
+        skipReauthPrompt: true,
+    });
+}

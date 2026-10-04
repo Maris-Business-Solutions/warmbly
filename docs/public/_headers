@@ -1,0 +1,11 @@
+# Security response headers for the docs site on Cloudflare Pages.
+#
+# The CSP sets only framing, plugin, base and form directives, so search and
+# analytics scripts keep loading without a fetch allowlist to maintain.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains

@@ -14,6 +14,17 @@ export function useCLIAuthCode(code: string) {
     });
 }
 
+// What approving into organizationId would grant, capped to the member's role there.
+export function useCLIAuthGrant(code: string, organizationId: string, enabled: boolean) {
+    return useQuery({
+        queryKey: [...CLI_AUTH_KEY, "grant", code, organizationId],
+        queryFn: () => describeCLIAuthCode(code, organizationId),
+        enabled: enabled && code.length === 9 && !!organizationId,
+        retry: false,
+        staleTime: 0,
+    });
+}
+
 export function useApproveCLIAuthCode() {
     const qc = useQueryClient();
     return useMutation({

@@ -85,13 +85,13 @@ func (s *authService) SSOLinkConfirm(ctx context.Context, data *SSOLinkData, ipa
 	if pend == nil || pend.Nonce != claims.Nonce || pend.UserID != claims.UserID {
 		return nil, errx.ErrSSOLinkExpired
 	}
-	// A spent address budget is refused before a try is charged, so it costs
-	// the challenge nothing; a try is charged before the check, so concurrent
-	// guesses cannot share one.
-	if s.loginFailureExceeded(ctx, pend.Email) {
+	// Both budgets are charged before the check, so concurrent guesses cannot
+	// share one; a spent address budget costs the challenge nothing.
+	if !s.reserveLoginAttempt(ctx, pend.Email) {
 		return nil, errx.ErrAuthLimit
 	}
 	if !s.reserveSSOLinkAttempt(ctx, claims.SessionID, time.Until(claims.ExpiresAt.Time)) {
+		s.releaseLoginAttempt(ctx, pend.Email)
 		s.deleteSSOLinkPending(ctx, claims.SessionID)
 		return nil, errx.ErrSSOLinkExpired
 	}
@@ -99,9 +99,9 @@ func (s *authService) SSOLinkConfirm(ctx context.Context, data *SSOLinkData, ipa
 	uid, cerr := s.authRepository.IsValidCredentials(ctx, pend.Email, data.Password)
 	if cerr != nil || uid != pend.UserID {
 		if cerr == nil || errors.Is(cerr, errx.ErrCredentials) {
-			s.recordLoginFailure(ctx, pend.Email)
 			return nil, errx.ErrCredentials
 		}
+		s.releaseLoginAttempt(ctx, pend.Email)
 		return nil, cerr
 	}
 	s.clearLoginFailures(ctx, pend.Email)
@@ -157,21 +157,9 @@ func (s *authService) identityUnclaimed(ctx context.Context, userID uuid.UUID, i
 }
 
 // reserveSSOLinkAttempt charges one password attempt to the challenge and
-// reports whether it is still within AuthAttempts. Fails open on a cache
-// error, like the other budgets: it is a brake, not the lock.
+// reports whether it is still within AuthAttempts.
 func (s *authService) reserveSSOLinkAttempt(ctx context.Context, sessionID uuid.UUID, ttl time.Duration) bool {
-	key := getSSOLinkTriesKey(sessionID)
-	count, err := s.cache.Incr(ctx, key).Result()
-	if err != nil {
-		errs.CaptureException(err)
-		return true
-	}
-	if count == 1 && ttl > 0 {
-		if err := s.cache.Expire(ctx, key, ttl).Err(); err != nil {
-			errs.CaptureException(err)
-		}
-	}
-	return count <= AuthAttempts
+	return s.reserveAttempt(ctx, getSSOLinkTriesKey(sessionID), AuthAttempts, ttl)
 }
 
 func (s *authService) saveSSOLinkPending(ctx context.Context, sessionID uuid.UUID, pending *models.SSOLinkPending, ttl time.Duration) *errx.Error {

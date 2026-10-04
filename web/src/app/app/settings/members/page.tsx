@@ -92,13 +92,33 @@ export default function MembersSettingsPage() {
         });
     }
     async function copyInviteLink(invitationId: string) {
+        // Each copy mints a new link and retires the last, so the write starts inside the click:
+        // ClipboardItem takes the pending URL, which keeps Safari's user gesture.
+        const pending = getInvitationLink(invitationId).then(
+            ({ token }) => `${window.location.origin}/invite?token=${encodeURIComponent(token)}`,
+        );
+        let url = "";
         try {
-            const { token } = await getInvitationLink(invitationId);
-            const url = `${window.location.origin}/invite?token=${encodeURIComponent(token)}`;
-            await navigator.clipboard.writeText(url);
-            toast.success("Invite link copied");
+            if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        "text/plain": pending.then((u) => {
+                            url = u;
+                            return new Blob([u], { type: "text/plain" });
+                        }),
+                    }),
+                ]);
+            } else {
+                url = await pending;
+                await navigator.clipboard.writeText(url);
+            }
+            toast.success("Invite link copied. Links you copied before no longer work.");
         } catch (e) {
-            toast.error(buildError(e as AppError));
+            if (url) {
+                toast.error(`Could not copy. The new invite link is ${url}`, { duration: 60000 });
+            } else {
+                toast.error(buildError(e as AppError));
+            }
         }
     }
     async function changeRoles(memberId: string, roleIds: string[]) {

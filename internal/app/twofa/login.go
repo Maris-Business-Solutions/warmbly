@@ -55,32 +55,39 @@ func (s *service) VerifyLogin(ctx context.Context, pendingToken, code, ipaddr, u
 	if pend == nil || pend.Nonce != claims.Nonce || pend.UserID != claims.UserID {
 		return nil, errx.New(errx.BadRequest, "Invalid or expired session")
 	}
-	if pend.Tries >= maxTries {
+	// Every budget is charged before the code is compared, so parallel guesses
+	// cannot share a slot. The account budget spans every challenge it is sent.
+	if !s.reserveAttempt(ctx, pendingTriesKey(claims.SessionID), maxTries, pendingTTL) {
 		s.deletePending(ctx, claims.SessionID)
 		return nil, errx.New(errx.BadRequest, "Too many attempts, please sign in again")
 	}
-	if !s.ipAllowed(ctx, ipaddr) {
+	if !s.ipAllowed(ctx, ipaddr) || !s.reserveAttempt(ctx, userTriesKey(claims.UserID), userLimit, userWindow) {
+		s.releaseAttempt(ctx, pendingTriesKey(claims.SessionID))
 		return nil, errx.New(errx.BadRequest, "Too many attempts, try again later")
 	}
 
 	row, err := s.repo.Get(ctx, claims.UserID)
 	if err != nil {
+		s.releaseAttempt(ctx, userTriesKey(claims.UserID))
+		s.releaseAttempt(ctx, pendingTriesKey(claims.SessionID))
 		return nil, errx.InternalError()
 	}
 	if row == nil || !row.Enabled {
+		s.releaseAttempt(ctx, userTriesKey(claims.UserID))
 		s.deletePending(ctx, claims.SessionID)
 		return nil, errx.New(errx.BadRequest, "2FA is not enabled")
 	}
 
 	if !s.validCode(ctx, claims.UserID, row, code) {
-		pend.Tries++
-		_ = s.savePending(ctx, claims.SessionID, pend, pendingTTL)
 		return nil, ErrInvalidCode()
 	}
+	_ = s.cache.Del(ctx, userTriesKey(claims.UserID)).Err()
 
-	// Single-use: delete the pending record BEFORE minting (delete-then-mint
-	// closes a double-spend race).
-	s.deletePending(ctx, claims.SessionID)
+	// Single-use: only the request that deletes the pending record mints a
+	// session (delete-then-mint closes a double-spend race).
+	if !s.deletePending(ctx, claims.SessionID) {
+		return nil, errx.New(errx.BadRequest, "Invalid or expired session")
+	}
 	// A carried identity links only here, once both factors have passed.
 	if pend.LinkIdentity != nil {
 		if s.linker == nil {

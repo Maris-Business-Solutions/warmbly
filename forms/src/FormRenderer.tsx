@@ -169,10 +169,7 @@ export function FormRenderer({
                 });
                 postSubmitted(def.public_id);
                 track("form_submitted", def.public_id);
-                if (res.redirect_url) {
-                    redirect(res.redirect_url);
-                    return;
-                }
+                if (res.redirect_url && redirect(res.redirect_url)) return;
                 setDone(res.message || "Thanks!");
             } catch (e) {
                 if (e instanceof StalePageError) {

@@ -21,10 +21,10 @@
 // run in.
 //
 // Everything the SDK can observe is on: autocapture, pageviews and pageleaves,
-// heatmaps, rage and dead clicks, web vitals, network timing, session replay
-// with console logs, surveys and exceptions. The only thing masked is what a
-// password field holds, which is never ours to see. The privacy page on the
-// marketing site describes exactly this and has to change with it.
+// heatmaps, rage and dead clicks, web vitals, network timing, session replay,
+// surveys and exceptions. Replay masks password fields, one-time codes and any
+// secret the page reveals (data-ph-mask). The privacy page on the marketing
+// site describes exactly this and has to change with it.
 import type { CaptureResult, PostHog, Properties } from "posthog-js";
 import {
     POSTHOG_ERROR_TRACKING,
@@ -74,6 +74,9 @@ export function loadPostHog(): Promise<PostHog | null> {
                 // Plain `true` would report one pageview per session.
                 capture_pageview: "history_change",
                 capture_pageleave: true,
+                // Sign-in sessions, invitation and setup tokens and pairing codes travel in the URL.
+                mask_personal_data_properties: true,
+                custom_personal_data_properties: ["token", "session", "agent_session", "code", "invite", "next"],
                 capture_dead_clicks: true,
                 capture_heatmaps: true,
                 rageclick: true,
@@ -84,11 +87,13 @@ export function loadPostHog(): Promise<PostHog | null> {
                     // API secret. They do not cover the one-time codes, which
                     // are plain inputs so the browser will autofill them from
                     // SMS and mail, nor a secret the page has already revealed
-                    // as text. Those carry data-ph-mask / .ph-mask and are
-                    // named here.
+                    // as text. Those carry data-ph-mask / .ph-mask: text is
+                    // masked, and an input is blocked, since text masking
+                    // never reaches an input's value.
                     maskAllInputs: false,
                     maskInputOptions: { password: true },
-                    maskTextSelector: "[data-ph-mask], .ph-mask, [data-otp-input], input[autocomplete='one-time-code']",
+                    maskTextSelector: "[data-ph-mask], .ph-mask",
+                    blockSelector: "input[data-ph-mask], textarea[data-ph-mask], [data-ph-mask] input, [data-ph-mask] textarea, [data-input-otp], input[autocomplete='one-time-code']",
                 },
                 // Console output is replayed alongside the session, so anything
                 // printed is retained. Off: it is not worth one careless log of

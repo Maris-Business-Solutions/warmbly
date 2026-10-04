@@ -96,6 +96,7 @@ func (c *Config) LoadAuthConfig(ctx context.Context) (*AuthConfig, error) {
 	}
 
 	turnstileSecret := c.GetSecretOptional(ctx, "TURNSTILE_SECRET", "turnstile/secret", "")
+	SetTurnstileSecretResolved(turnstileSecret != "")
 	turnstileBypass := c.GetSecretOptional(ctx, "TURNSTILE_BYPASS_TOKEN", "turnstile/bypass_token", "")
 
 	// 2FA sealing key. Optional: falls back to AUTH_SECRET so existing

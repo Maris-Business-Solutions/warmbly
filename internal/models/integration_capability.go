@@ -94,6 +94,12 @@ func warmblyContactFields() []FieldDef {
 	}
 }
 
+// ProviderSupportsAction reports whether action runs on a connection of provider.
+func ProviderSupportsAction(provider IntegrationProvider, action IntegrationAction) bool {
+	c := CapabilityFor(provider)
+	return c != nil && c.Action(action) != nil
+}
+
 // CapabilityFor returns the descriptor for a provider, or nil if the provider
 // has no configurable capability surface.
 func CapabilityFor(provider IntegrationProvider) *ProviderCapability {

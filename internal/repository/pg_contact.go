@@ -452,13 +452,14 @@ func (r *contactRepository) Add(ctx context.Context, userID string, orgID uuid.U
 		}
 		campaignLinks = append(campaignLinks, added...)
 		// A hand-picked add ends a manual removal, as the bulk add does.
-		if _, err := tx.Exec(ctx, `DELETE FROM campaign_lead_removals WHERE contact_id = $1 AND campaign_id = ANY($2)`, ncontacts[i].ID, cids); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM campaign_lead_removals WHERE contact_id = $1 AND campaign_id = ANY($2)
+			AND campaign_id IN (SELECT id FROM campaigns WHERE organization_id = $3)`, ncontacts[i].ID, cids, orgID); err != nil {
 			db.CaptureError(err, "", nil, "campaign_lead_removals clear")
 			return nil, errx.InternalError()
 		}
 		// It also claims a lead a linked segment had enrolled, so detaching
 		// that segment later does not withdraw somebody's hand-picked lead.
-		if _, err := tx.Exec(ctx, claimLeadsManualSQL, cids, []uuid.UUID{ncontacts[i].ID}); err != nil {
+		if _, err := tx.Exec(ctx, claimLeadsManualSQL, cids, []uuid.UUID{ncontacts[i].ID}, orgID); err != nil {
 			db.CaptureError(err, "", nil, "campaign_leads claim")
 			return nil, errx.InternalError()
 		}
@@ -2912,7 +2913,7 @@ func (r *contactRepository) BulkUpdate(ctx context.Context, userID string, orgID
 		}
 		// Claims leads a linked segment had enrolled, so detaching that
 		// segment later leaves hand-picked leads alone.
-		if _, err := tx.Exec(ctx, claimLeadsManualSQL, data.AddCampaigns, data.Contacts); err != nil {
+		if _, err := tx.Exec(ctx, claimLeadsManualSQL, data.AddCampaigns, data.Contacts, orgID); err != nil {
 			db.CaptureError(err, "", nil, "campaign_leads claim")
 			return nil, errx.InternalError()
 		}

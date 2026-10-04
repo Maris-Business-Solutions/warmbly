@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
 )
 
@@ -18,8 +19,10 @@ func (d Deps) registerSkillTools(r *Registry) {
 		InputSchema: objectSchema(map[string]any{
 			"name": strProp("The playbook name, exactly as listed."),
 		}, "name"),
-		Risk:    generation.RiskRead,
-		Handler: d.loadSkill,
+		Risk:            generation.RiskRead,
+		RequiredOrgPerm: models.PermUseAI,
+		RequiredAPIPerm: models.APIPermAIAgent,
+		Handler:         d.loadSkill,
 	})
 }
 

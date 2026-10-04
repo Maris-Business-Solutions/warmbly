@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +42,9 @@ type OrgTransferRepository interface {
 	// part of this import, and asking the catalog means a constraint added
 	// later is covered without a code change.
 	ForeignKeyRefs(ctx context.Context, table string) (map[string]string, error)
+	// ForeignKeys lists the table's foreign keys with their column pairs, so a
+	// composite key is checked as one reference.
+	ForeignKeys(ctx context.Context, table string) ([]ForeignKey, error)
 
 	// ---- export ----
 
@@ -54,8 +59,17 @@ type OrgTransferRepository interface {
 	// CountExisting reports how many of the supplied primary-key values are
 	// already present, for the preflight report.
 	CountExisting(ctx context.Context, table string, pk []string, rows []json.RawMessage) (int64, error)
-	// InsertBatch writes rows into table, honouring the conflict strategy.
-	InsertBatch(ctx context.Context, tx pgx.Tx, table string, cols []string, rows []json.RawMessage, conflict models.OrgImportConflict, pk []string) (int64, error)
+	// CountForeignRows counts rows whose primary key is already held by a row
+	// outside owner, or whose reference resolves to a row outside its
+	// target's owner. Every owner is a WHERE fragment with $1 the organization
+	// id. tx may be nil outside an import.
+	CountForeignRows(ctx context.Context, tx pgx.Tx, table, owner string, pk []string, refs []TenantReference, orgID uuid.UUID, rows []json.RawMessage) (int64, error)
+	// InsertBatch writes rows into table, honouring the conflict strategy. An
+	// overwrite only updates an existing row that owner selects for orgID.
+	InsertBatch(ctx context.Context, tx pgx.Tx, table string, cols []string, rows []json.RawMessage, conflict models.OrgImportConflict, pk []string, owner string, orgID uuid.UUID) (int64, error)
+	// DeveloperBlocked reports an operator's block on building apps for this
+	// workspace or person.
+	DeveloperBlocked(ctx context.Context, tx pgx.Tx, orgID, userID uuid.UUID) (bool, error)
 	// MergeOrganization applies the archive's organization row onto an
 	// existing workspace, restricted to cols.
 	MergeOrganization(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, cols []string, row json.RawMessage) error
@@ -109,6 +123,20 @@ type ColumnInfo struct {
 
 // Writable reports whether the column accepts a supplied value.
 func (c ColumnInfo) Writable() bool { return !c.IsGenerated && !c.IsIdentity }
+
+// ForeignKey is one declared foreign key; Columns[i] references RefColumns[i].
+type ForeignKey struct {
+	Columns    []string
+	RefTable   string
+	RefColumns []string
+}
+
+// TenantReference is a foreign key whose target rows belong to an
+// organization, with the WHERE fragment ($1 the organization id) selecting them.
+type TenantReference struct {
+	ForeignKey
+	RefOwner string
+}
 
 type orgTransferRepository struct {
 	DB *db.DB
@@ -227,6 +255,40 @@ func (r *orgTransferRepository) ForeignKeyRefs(ctx context.Context, table string
 	return out, rows.Err()
 }
 
+func (r *orgTransferRepository) ForeignKeys(ctx context.Context, table string) ([]ForeignKey, error) {
+	rows, err := r.DB.Query(ctx, `
+		SELECT rc.relname,
+		       ARRAY(SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY k(num, ord)
+		               JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.num
+		              ORDER BY k.ord),
+		       ARRAY(SELECT a.attname::text FROM unnest(con.confkey) WITH ORDINALITY k(num, ord)
+		               JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.num
+		              ORDER BY k.ord)
+		  FROM pg_constraint con
+		  JOIN pg_class c      ON c.oid = con.conrelid
+		  JOIN pg_namespace n  ON n.oid = c.relnamespace
+		  JOIN pg_class rc     ON rc.oid = con.confrelid
+		 WHERE con.contype = 'f'
+		   AND n.nspname = 'public'
+		   AND c.relname = $1
+		 ORDER BY con.conname
+	`, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ForeignKey
+	for rows.Next() {
+		var fk ForeignKey
+		if err := rows.Scan(&fk.RefTable, &fk.Columns, &fk.RefColumns); err != nil {
+			return nil, err
+		}
+		out = append(out, fk)
+	}
+	return out, rows.Err()
+}
+
 // ---------- export ----------
 
 // StreamScoped reads a table with to_jsonb so every column type is rendered by
@@ -328,6 +390,72 @@ func (r *orgTransferRepository) CountExisting(ctx context.Context, table string,
 	return n, nil
 }
 
+func (r *orgTransferRepository) CountForeignRows(
+	ctx context.Context,
+	tx pgx.Tx,
+	table, owner string,
+	pk []string,
+	refs []TenantReference,
+	orgID uuid.UUID,
+	rows []json.RawMessage,
+) (int64, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	// Each owner names its table's columns unqualified, so it sits alone in a
+	// subquery's FROM and resolves against that row, never the archive row.
+	var checks []string
+	if len(pk) > 0 && owner != "" {
+		checks = append(checks, `EXISTS (SELECT 1 FROM public.`+quoteIdent(table)+` AS existing
+		        WHERE `+pairClause("existing", pk, "archive_row", pk)+` AND (`+owner+`) IS NOT TRUE)`)
+	}
+	for _, ref := range refs {
+		if len(ref.Columns) == 0 || len(ref.Columns) != len(ref.RefColumns) || ref.RefOwner == "" {
+			continue
+		}
+		checks = append(checks, `EXISTS (SELECT 1 FROM public.`+quoteIdent(ref.RefTable)+` AS target
+		        WHERE `+pairClause("target", ref.RefColumns, "archive_row", ref.Columns)+` AND (`+ref.RefOwner+`) IS NOT TRUE)`)
+	}
+	if len(checks) == 0 {
+		return 0, nil
+	}
+	payload, err := json.Marshal(rows)
+	if err != nil {
+		return 0, err
+	}
+	q := `SELECT count(*)
+	        FROM jsonb_populate_recordset(NULL::public.` + quoteIdent(table) + `, $2::jsonb) AS archive_row
+	       WHERE ` + strings.Join(checks, ` OR `)
+	var row pgx.Row
+	if tx != nil {
+		row = tx.QueryRow(ctx, q, orgID, payload)
+	} else {
+		row = r.DB.QueryRow(ctx, q, orgID, payload)
+	}
+	var n int64
+	if err := row.Scan(&n); err != nil {
+		return 0, fmt.Errorf("check ownership of %s: %w", table, err)
+	}
+	return n, nil
+}
+
+// pairClause builds `l.a = r.x AND ...`; a NULL on either side matches nothing.
+func pairClause(left string, leftCols []string, right string, rightCols []string) string {
+	parts := make([]string, len(leftCols))
+	for i := range leftCols {
+		parts[i] = left + "." + quoteIdent(leftCols[i]) + " = " + right + "." + quoteIdent(rightCols[i])
+	}
+	return strings.Join(parts, " AND ")
+}
+
+// orgParam is an owner fragment's organization placeholder, never the start of $10.
+var orgParam = regexp.MustCompile(`\$1\b`)
+
+// bindOrgParam renumbers an owner fragment's $1 to $n.
+func bindOrgParam(fragment string, n int) string {
+	return orgParam.ReplaceAllLiteralString(fragment, "$"+strconv.Itoa(n))
+}
+
 // matchClause builds `e.a IS NOT DISTINCT FROM c.a AND ...` for a key.
 func matchClause(pk []string) string {
 	parts := make([]string, len(pk))
@@ -345,6 +473,8 @@ func (r *orgTransferRepository) InsertBatch(
 	rows []json.RawMessage,
 	conflict models.OrgImportConflict,
 	pk []string,
+	owner string,
+	orgID uuid.UUID,
 ) (int64, error) {
 	if len(rows) == 0 || len(cols) == 0 {
 		return 0, nil
@@ -354,8 +484,9 @@ func (r *orgTransferRepository) InsertBatch(
 		return 0, err
 	}
 
+	args := []any{payload}
 	quoted := quoteIdents(cols)
-	q := `INSERT INTO public.` + quoteIdent(table) + ` (` + quoted + `)
+	q := `INSERT INTO public.` + quoteIdent(table) + ` AS dest (` + quoted + `)
 	      SELECT ` + quoted + `
 	        FROM jsonb_populate_recordset(NULL::public.` + quoteIdent(table) + `, $1::jsonb)`
 
@@ -377,6 +508,12 @@ func (r *orgTransferRepository) InsertBatch(
 			q += ` ON CONFLICT DO NOTHING`
 		} else {
 			q += ` ON CONFLICT (` + quoteIdents(pk) + `) DO UPDATE SET ` + strings.Join(sets, ", ")
+			if owner != "" {
+				// The owner sits in its own FROM, since here an unqualified column is ambiguous with EXCLUDED.
+				q += ` WHERE EXISTS (SELECT 1 FROM public.` + quoteIdent(table) + ` AS owned
+				        WHERE ` + pairClause("owned", pk, "dest", pk) + ` AND (` + bindOrgParam(owner, 2) + `))`
+				args = append(args, orgID)
+			}
 		}
 	default:
 		// Untargeted, so it covers every unique constraint on the table, not
@@ -385,11 +522,21 @@ func (r *orgTransferRepository) InsertBatch(
 		q += ` ON CONFLICT DO NOTHING`
 	}
 
-	tag, err := tx.Exec(ctx, q, payload)
+	tag, err := tx.Exec(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("insert into %s: %w", table, err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+func (r *orgTransferRepository) DeveloperBlocked(ctx context.Context, tx pgx.Tx, orgID, userID uuid.UUID) (bool, error) {
+	var blocked bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+		  SELECT 1 FROM oauth_developer_blocks
+		   WHERE organization_id = $1 OR (user_id = $2 AND $2 <> '00000000-0000-0000-0000-000000000000'::uuid)
+		)`, orgID, userID).Scan(&blocked)
+	return blocked, err
 }
 
 func (r *orgTransferRepository) MergeOrganization(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, cols []string, row json.RawMessage) error {

@@ -133,6 +133,9 @@ const (
 	// AI skill (org playbook) create/update/delete.
 	AuditEntityAISkill AuditEntityType = "ai_skill"
 
+	// Workspace "always allow" policy for one assistant tool, set or revoked.
+	AuditEntityAIToolPolicy AuditEntityType = "ai_tool_policy"
+
 	// Connected MCP server (external tools) connect/update/disconnect.
 	AuditEntityMCPServer AuditEntityType = "mcp_server"
 
@@ -153,6 +156,8 @@ const (
 	// Operator moderation of an OAuth app, and a block on who may register them.
 	AuditEntityOAuthApplication    AuditEntityType = "oauth_application"
 	AuditEntityOAuthDeveloperBlock AuditEntityType = "oauth_developer_block"
+	// A member's authorization of an OAuth app, revoked by a workspace admin.
+	AuditEntityOAuthAuthorization AuditEntityType = "oauth_authorization"
 
 	// Inbox placement: a test or batch started or cancelled, and a campaign's
 	// scheduled test set up, changed or removed.

@@ -61,10 +61,30 @@ describe("EmailBody remote content", () => {
         expect(loadButton()).not.toBeInTheDocument();
     });
 
-    it("leaves previews of the user's own drafts alone", () => {
+    it("loads remote images in previews of the user's own drafts, still without scripts", () => {
         const { container } = render(<EmailBody html={TRACKED} />);
-        expect(srcDoc(container)).not.toContain("Content-Security-Policy");
+        const out = srcDoc(container);
+        expect(out).toContain("img-src data: https:");
+        expect(out).toContain("script-src 'none'");
+        expect(out).toContain("base-uri 'none'");
         expect(loadButton()).not.toBeInTheDocument();
+    });
+
+    it("drops link targets that are not http(s), mailto or tel", () => {
+        const html =
+            `<a id="js" href=" JaVa&#x09;script:alert(1)">x</a><a id="data" href="data:text/html,x">x</a>` +
+            `<a id="web" href="https://example.com/">x</a><a id="mail" href="mailto:a@example.com">x</a>` +
+            `<svg><a id="svg" xlink:href="javascript:alert(1)"><text>x</text></a></svg>`;
+        for (const blockRemote of [false, true]) {
+            const { container, unmount } = render(<EmailBody html={html} blockRemote={blockRemote} />);
+            const parsed = new DOMParser().parseFromString(srcDoc(container), "text/html");
+            expect(parsed.getElementById("js")?.hasAttribute("href")).toBe(false);
+            expect(parsed.getElementById("data")?.hasAttribute("href")).toBe(false);
+            expect(parsed.getElementById("svg")?.hasAttribute("xlink:href")).toBe(false);
+            expect(parsed.getElementById("web")?.getAttribute("href")).toBe("https://example.com/");
+            expect(parsed.getElementById("mail")?.getAttribute("href")).toBe("mailto:a@example.com");
+            unmount();
+        }
     });
 });
 

@@ -4,6 +4,7 @@ package cloudlink
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -30,20 +31,27 @@ var (
 	ErrNoCredentialKey = errx.NewWithIdentifier(errx.Conflict, "cloud_link_no_key", "This instance has no CREDENTIALS_ENCRYPTION_KEY, so it cannot store the Warmbly Cloud token. Set one and restart before connecting.")
 )
 
+// devMode is APP_ENV dev or unset, the only place a loopback cloud is reachable.
+func devMode() bool {
+	env := strings.TrimSpace(os.Getenv("APP_ENV"))
+	return env == "" || strings.EqualFold(env, "dev")
+}
+
 // cloudURLAllowed requires TLS: the token and mailbox passwords travel on
-// this URL. Loopback is exempt for local development.
-func cloudURLAllowed(u string) bool {
-	if strings.HasPrefix(u, "https://") {
-		return true
-	}
-	if !strings.HasPrefix(u, "http://") {
+// this URL. Plain-HTTP loopback is accepted only in development.
+func cloudURLAllowed(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return false
 	}
-	host := strings.TrimPrefix(u, "http://")
-	if i := strings.IndexAny(host, ":/"); i >= 0 {
-		host = host[:i]
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		host := u.Hostname()
+		return devMode() && (host == "localhost" || host == "127.0.0.1" || host == "::1")
 	}
-	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
+	return false
 }
 
 // CloudURL is where the instance links to: WARMBLY_CLOUD_URL or the hosted API.

@@ -74,6 +74,7 @@ func (d Deps) registerAutomationTools(r *Registry) {
 			"enabled":       boolProp("true to enable, false to disable."),
 		}, "automation_id", "enabled"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		RequiredOrgPerm: models.PermManageSettings,
 		RequiredAPIPerm: models.APIPermIntegrations,
 		Handler:         d.setAutomationEnabled,

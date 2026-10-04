@@ -25,6 +25,7 @@ func TestTokenPurposeIsEnforced(t *testing.T) {
 		PurposeRegistration,
 		PurposePasswordReset,
 		PurposeTwoFAPending,
+		PurposeSSOLink,
 	}
 
 	for _, minted := range purposes {
@@ -48,26 +49,20 @@ func TestTokenPurposeIsEnforced(t *testing.T) {
 	}
 }
 
-// Tokens issued before the purpose claim existed are still inside their window
-// during a deploy, so they read as access tokens rather than signing everyone
-// out. They must not satisfy any other purpose.
-func TestLegacyTokenIsAccessOnly(t *testing.T) {
+// A token with no purpose claim verifies for no flow at all.
+func TestTokenWithoutPurposeIsRefused(t *testing.T) {
 	s := &tokenService{AuthSecret: "test-secret-at-least-32-characters-long"}
 	now := time.Now()
 
-	legacy, err := s.GenerateTokenFor("", uuid.New(), uuid.New(), "", "nonce", now, now.Add(time.Minute))
+	bare, err := s.GenerateTokenFor("", uuid.New(), uuid.New(), "", "nonce", now, now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("mint: %v", err)
 	}
 
-	if _, xerr := s.VerifyTokenFor(PurposeAccess, legacy); xerr != nil {
-		t.Errorf("a token with no purpose should still work as an access token: %v", xerr)
-	}
-	if _, xerr := s.VerifyTokenFor(PurposeWebSocket, legacy); xerr == nil {
-		t.Error("a token with no purpose must not open a websocket")
-	}
-	if _, xerr := s.VerifyTokenFor(PurposePasswordReset, legacy); xerr == nil {
-		t.Error("a token with no purpose must not pass as a password reset")
+	for _, p := range []string{PurposeAccess, PurposeRefresh, PurposeWebSocket, PurposePasswordReset, PurposeSSOLink} {
+		if _, xerr := s.VerifyTokenFor(p, bare); xerr == nil {
+			t.Errorf("a token with no purpose must not pass as %s", p)
+		}
 	}
 }
 

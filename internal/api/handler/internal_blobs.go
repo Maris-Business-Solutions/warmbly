@@ -15,8 +15,8 @@ import (
 // then talks to the store directly, so message bodies and attachments never
 // pass through the backend and it pays no bandwidth for a mailbox sync.
 //
-// Auth is middleware.InternalAuthMiddleware, the same INTERNAL_API_TOKEN every
-// other internal route uses.
+// Auth is middleware.NodeBrokerAuthMiddleware, the node token every other
+// node-only internal route uses.
 //
 //	POST /api/v1/internal/blobs/presign
 //	  body {"op":"get|put|head|delete","key":"...","content_type":"..."}

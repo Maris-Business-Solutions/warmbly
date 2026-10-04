@@ -27,7 +27,7 @@ import (
 // for the app's own workspace.
 
 const (
-	appLogoPrefix  = "oauth-app-logos/"
+	appLogoPrefix  = oauth.AppLogoPrefix
 	appLogoMinSide = 32
 	// ErrCodeInvalidLogo is the response code for a logo URL this instance did not issue.
 	ErrCodeInvalidLogo = "invalid_logo"
@@ -115,17 +115,8 @@ func checkAppLogo(ctx context.Context, store storage.Store, orgID uuid.UUID, log
 	if !ok || store == nil {
 		return refuse
 	}
-	base := pu.PublicURL("")
-	if !strings.HasPrefix(logoURL, base) {
-		return refuse
-	}
-	key := strings.TrimPrefix(logoURL, base)
-	wantPrefix := appLogoPrefix + orgID.String() + "/"
-	if !strings.HasPrefix(key, wantPrefix) || strings.Contains(key, "..") || pu.PublicURL(key) != logoURL {
-		return refuse
-	}
-	name := strings.TrimPrefix(key, wantPrefix)
-	if strings.Contains(name, "/") || !(strings.HasSuffix(name, ".png") || strings.HasSuffix(name, ".jpg")) {
+	key, ok := oauth.IssuedLogoKey(pu, orgID, logoURL)
+	if !ok {
 		return refuse
 	}
 	r, err := store.Get(ctx, key)
@@ -137,6 +128,23 @@ func checkAppLogo(ctx context.Context, store storage.Store, orgID uuid.UUID, log
 	}
 	_ = r.Close()
 	return nil
+}
+
+// hostedAppLogo reports whether logoURL is an app logo this instance stored, read without a fetch.
+func hostedAppLogo(store storage.Store, logoURL string) bool {
+	pu, ok := store.(storage.PublicURLer)
+	if !ok || store == nil || logoURL == "" {
+		return false
+	}
+	base := pu.PublicURL("")
+	if !strings.HasPrefix(logoURL, base) {
+		return false
+	}
+	key := strings.TrimPrefix(logoURL, base)
+	if !strings.HasPrefix(key, appLogoPrefix) || strings.Contains(key, "..") || pu.PublicURL(key) != logoURL {
+		return false
+	}
+	return strings.HasSuffix(key, ".png") || strings.HasSuffix(key, ".jpg")
 }
 
 // appLogoTarget resolves the workspace and the app it owns for a logo change.

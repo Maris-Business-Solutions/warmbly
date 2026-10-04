@@ -10,22 +10,16 @@ import (
 // only point back at this instance's dashboard.
 //
 // Stripe redirects the customer to whatever success_url, cancel_url or
-// return_url the session was created with, so accepting the value verbatim
-// made every billing endpoint an open redirect laundered through
-// checkout.stripe.com, which is about as trustworthy a hop as a phishing link
-// can get. Every shipped client already sends a same-origin path, so pinning
-// the origin here changes nothing a real client does.
-//
-// A path is kept, so "which page did you come from" still works. Anything else
-// falls back to the dashboard root.
+// return_url the session was created with, so the origin is always this
+// instance's own. A path is kept, so "which page did you come from" still
+// works. Anything else falls back to the dashboard root.
 func billingReturnURL(raw, fallbackPath string) string {
 	base := strings.TrimRight(config.AppBaseURL(), "/")
 	raw = strings.TrimSpace(raw)
 
 	// A deployment that never configured its own address has no origin to pin
 	// to, and a relative fallback is not a URL Stripe will accept: returning one
-	// would take checkout out entirely. Hand back what the caller sent, which is
-	// the behaviour before this function existed.
+	// would take checkout out entirely. Hand back what the caller sent.
 	if base == "" {
 		return raw
 	}

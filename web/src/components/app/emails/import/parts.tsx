@@ -147,7 +147,7 @@ export function SecretInput({
 }) {
     const [shown, setShown] = React.useState(false);
     return (
-        <div className="relative min-w-0">
+        <div className="relative min-w-0" data-ph-mask="">
             <TextInput
                 value={value}
                 onChange={onChange}

@@ -9,7 +9,7 @@ import (
 // more than a record: the data-key decrypt broker and the blob presigner.
 //
 // CASA 6.7.1 asks that access to server-side secrets be logged or monitored,
-// and these were the two that were silent. They are also the two where a
+// and these two log every access. They are also the two where a
 // refusal is the clearest probe signal the instance produces: a node asks for
 // keys it owns and prefixes it uses, so a rejected key or a decrypt that fails
 // is either a misconfigured node or somebody holding the internal token and

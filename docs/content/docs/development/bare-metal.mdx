@@ -562,7 +562,7 @@ sudo cp deploy/systemd/warmbly-worker.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now warmbly-worker
 ```
 
-The rendered file already carries this node's `WORKER_ID`, so its placement row and its node row are the same machine. Issue the token with `warmblyctl fleet join-token`; it is consumed on first use and the response carries the decryption material, so do this over HTTPS only. Before enrolling anything, set `API_PUBLIC_URL`, `NATS_URL` and `REDIS` on the backend to addresses the remote host can reach, and open those ports to it: the rendered file inherits the backend's own values, and `127.0.0.1` does not resolve to your control plane from another machine.
+The rendered file already carries this node's `WORKER_ID`, so its placement row and its node row are the same machine. Issue the token with `warmblyctl fleet join-token`; it works for any number of machines until it expires (seven days by default, `--ttl` up to 30 days) or another is issued, and the response carries the decryption material, so do this over HTTPS only. Before enrolling anything, set `API_PUBLIC_URL`, `NATS_URL` and `REDIS` on the backend to addresses the remote host can reach, and open those ports to it: the rendered file inherits the backend's own values, and `127.0.0.1` does not resolve to your control plane from another machine.
 
 Opening NATS and Redis to another machine means they stop being protected by the loopback bind, so give both a credential and TLS first. For NATS, extend `/etc/nats.conf` and restart it:
 

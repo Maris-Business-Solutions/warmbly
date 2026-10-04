@@ -78,10 +78,14 @@ func (h *Handler) FinishEmailOAuth(c *gin.Context) {
 	if reauthed {
 		action, status = models.AuditActionUpdate, http.StatusOK
 	}
-	h.auditOrg(c, action, models.AuditEntityEmailAccount, &acc.ID, nil, map[string]string{
-		"provider": acc.Provider,
-		"email":    acc.Email,
-	})
+	// The flow's organization is the one the state was minted for, which the
+	// session may have switched away from since.
+	if acc.OrganizationID != nil {
+		h.auditInOrg(c, *acc.OrganizationID, action, models.AuditEntityEmailAccount, &acc.ID, nil, map[string]string{
+			"provider": acc.Provider,
+			"email":    acc.Email,
+		})
+	}
 
 	c.JSON(status, acc)
 }

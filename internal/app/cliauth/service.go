@@ -27,6 +27,8 @@ import (
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/crypt"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -36,6 +38,7 @@ var (
 	ErrBadRequest     = errx.NewWithIdentifier(errx.BadRequest, "cli_auth_request", "device_code is required.")
 	ErrBadScopes      = errx.NewWithIdentifier(errx.BadRequest, "cli_auth_scopes", "The requested scopes include bits this instance does not grant.")
 	ErrForbidden      = errx.NewWithIdentifier(errx.Forbidden, "cli_auth_forbidden", "Managing API keys is required to authorize a CLI in this workspace.")
+	ErrNoGrantable    = errx.NewWithIdentifier(errx.Forbidden, "cli_auth_scopes_role", "Your role in this workspace allows none of the scopes this CLI asked for.")
 )
 
 type Service interface {
@@ -45,7 +48,9 @@ type Service interface {
 	PollCode(ctx context.Context, deviceCode string) (*models.CLIAuthPollResponse, *errx.Error)
 	// DescribeCode is what the approving member sees before deciding.
 	DescribeCode(ctx context.Context, userCode string) (*models.CLIAuthCode, *errx.Error)
-	// ApproveCode mints the key into the named workspace.
+	// GrantableScopes is the part of requested a member's role in orgID lets them grant.
+	GrantableScopes(ctx context.Context, orgID, userID uuid.UUID, requested uint64) (uint64, *errx.Error)
+	// ApproveCode mints the key into the named workspace, capped to the approver's role.
 	ApproveCode(ctx context.Context, userCode string, orgID, userID uuid.UUID) (*models.CLIAuthCode, *errx.Error)
 	DenyCode(ctx context.Context, userCode string) *errx.Error
 }
@@ -73,18 +78,11 @@ func NewService(
 const userCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 func randomUserCode() (string, error) {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
+	s, err := crypt.RandomString(userCodeAlphabet, 8)
+	if err != nil {
 		return "", err
 	}
-	out := make([]byte, 0, 9)
-	for i, v := range b {
-		if i == 4 {
-			out = append(out, '-')
-		}
-		out = append(out, userCodeAlphabet[int(v)%len(userCodeAlphabet)])
-	}
-	return string(out), nil
+	return s[:4] + "-" + s[4:], nil
 }
 
 func randomDeviceCode() (string, error) {
@@ -113,19 +111,19 @@ func NormalizeUserCode(raw string) string {
 }
 
 func clip(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if len(s) > n {
-		return s[:n]
+	r := []rune(strings.TrimSpace(s))
+	if len(r) > n {
+		return string(r[:n])
 	}
-	return s
+	return string(r)
 }
 
 func (s *service) StartCode(ctx context.Context, req models.CLIAuthStartRequest) (*models.CLIAuthStartResponse, *errx.Error) {
-	req.ClientName = clip(req.ClientName, 60)
-	if req.ClientName == "" {
-		req.ClientName = "Warmbly CLI"
-	}
-	req.Hostname = clip(req.Hostname, 80)
+	// Both are shown on the approval screen, so they follow the naming rules.
+	req.ClientName = displayname.CleanOr(req.ClientName, displayname.Workspace, "Warmbly CLI")
+	// The machine's own label is enough to tell keys apart and is never a link.
+	machine, _, _ := strings.Cut(strings.TrimSpace(req.Hostname), ".")
+	req.Hostname = displayname.CleanOr(machine, displayname.Workspace, "")
 	req.CLIVersion = clip(req.CLIVersion, 40)
 
 	// An unknown bit would grant a scope the approval screen never showed.
@@ -240,6 +238,13 @@ func (s *service) ApproveCode(ctx context.Context, userCode string, orgID, userI
 	if !allowed {
 		return nil, ErrForbidden
 	}
+	scopes, xerr := s.GrantableScopes(ctx, orgID, userID, code.Scopes)
+	if xerr != nil {
+		return nil, xerr
+	}
+	if scopes == 0 {
+		return nil, ErrNoGrantable
+	}
 
 	// The key is named for the machine that asked, so Settings > API keys shows
 	// which laptop a key belongs to and revoking the right one is possible.
@@ -251,13 +256,13 @@ func (s *service) ApproveCode(ctx context.Context, userCode string, orgID, userI
 	created, xerr := s.keys.Create(ctx, orgID, userID, &models.CreateAPIKey{
 		Name:        clip(name, 255),
 		Description: &desc,
-		Permissions: code.Scopes,
+		Permissions: scopes,
 	})
 	if xerr != nil {
 		return nil, xerr
 	}
 
-	ok, err := s.repo.ApproveCode(ctx, userCode, orgID, userID, created.ID, created.Secret)
+	ok, err := s.repo.ApproveCode(ctx, userCode, orgID, userID, created.ID, created.Secret, scopes)
 	if err != nil {
 		return nil, errx.InternalError()
 	}
@@ -269,9 +274,21 @@ func (s *service) ApproveCode(ctx context.Context, userCode string, orgID, userI
 	}
 
 	code.Status = models.CLIAuthCodeApproved
+	code.Scopes, code.ScopeNames = scopes, models.APIScopeNames(scopes)
 	code.OrganizationID = &orgID
 	code.APIKeyID = &created.ID
 	return code, nil
+}
+
+func (s *service) GrantableScopes(ctx context.Context, orgID, userID uuid.UUID, requested uint64) (uint64, *errx.Error) {
+	member, xerr := s.orgs.GetMembership(ctx, orgID, userID)
+	if xerr != nil {
+		return 0, xerr
+	}
+	if member == nil {
+		return 0, ErrForbidden
+	}
+	return requested & models.APIPermissionsFor(member), nil
 }
 
 func (s *service) DenyCode(ctx context.Context, userCode string) *errx.Error {

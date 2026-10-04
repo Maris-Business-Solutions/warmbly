@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/warmbly/warmbly/internal/events"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -146,7 +147,14 @@ func (s *emailSender) Send(ctx context.Context, taskID uuid.UUID, msg EmailMessa
 	// pairs mailboxes by their own addresses and verifies its token against
 	// them, so sending warmup as an alias would break the pairing it is
 	// meant to prove.
-	if !msg.IsWarmup {
+	if msg.IsWarmup {
+		// Warmup reaches other workspaces' inboxes, so a name unsafe to show gives way to the address's.
+		// Never empty: the worker reads empty as "use the cached name".
+		params.FromName = displayname.DisplayableOr(account.Name, displayname.FromEmail(account.Email))
+		if params.FromName == "" {
+			params.FromName = account.Email
+		}
+	} else {
 		params.FromEmail = strings.TrimSpace(account.SendAsEmail)
 		// Warmup replies are read back in the sending mailbox, so only
 		// campaign and unibox mail points replies elsewhere.

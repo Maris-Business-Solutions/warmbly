@@ -9,12 +9,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/encryptedkeys"
 )
 
 // Internal endpoints used by workers to fetch/store encrypted DEKs without
-// connecting to Postgres directly. Auth via middleware.InternalAuthMiddleware
-// (static bearer token in INTERNAL_API_TOKEN env var, both sides).
+// connecting to Postgres directly. Auth via middleware.NodeBrokerAuthMiddleware
+// (NODE_BROKER_TOKEN, falling back to INTERNAL_API_TOKEN).
 //
 // Wire format mirrors what encryptedkeys.HTTPStore expects:
 //
@@ -49,7 +50,7 @@ func (h *Handler) InternalGetDEK(c *gin.Context) {
 	}
 	v, err := h.EncryptedKeys.Get(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if v == "" {
@@ -85,7 +86,7 @@ func (h *Handler) InternalPutDEK(c *gin.Context) {
 	case errors.Is(err, encryptedkeys.ErrAlreadyExists):
 		c.Status(http.StatusConflict)
 	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 	}
 }
 

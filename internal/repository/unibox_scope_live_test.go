@@ -304,10 +304,10 @@ func TestLiveUniboxScopeSnoozeTakesASet(t *testing.T) {
 	f.scopedMessage(t, repo, "thread-a", "them@example.com", models.FolderInbox, now)
 	f.scopedMessage(t, repo, "thread-b", "them@example.com", models.FolderInbox, now)
 	t.Cleanup(func() {
-		_ = repo.DeleteSnoozes(context.Background(), f.user, []string{"thread-a", "thread-b"})
+		_ = repo.DeleteSnoozes(context.Background(), f.org, f.user, []string{"thread-a", "thread-b"})
 	})
 
-	rows, err := repo.UpsertSnoozes(ctx, f.user, []string{"thread-a", "thread-b"}, now.Add(time.Hour))
+	rows, err := repo.UpsertSnoozes(ctx, f.org, f.user, []string{"thread-a", "thread-b"}, now.Add(time.Hour))
 	if err != nil {
 		t.Fatalf("UpsertSnoozes: %v", err)
 	}
@@ -324,11 +324,11 @@ func TestLiveUniboxScopeSnoozeTakesASet(t *testing.T) {
 	}
 
 	// A second pass over the same set moves the time instead of erroring.
-	if _, err := repo.UpsertSnoozes(ctx, f.user, []string{"thread-a", "thread-b"}, now.Add(2*time.Hour)); err != nil {
+	if _, err := repo.UpsertSnoozes(ctx, f.org, f.user, []string{"thread-a", "thread-b"}, now.Add(2*time.Hour)); err != nil {
 		t.Fatalf("UpsertSnoozes again: %v", err)
 	}
 
-	if err := repo.DeleteSnoozes(ctx, f.user, []string{"thread-a", "thread-b"}); err != nil {
+	if err := repo.DeleteSnoozes(ctx, f.org, f.user, []string{"thread-a", "thread-b"}); err != nil {
 		t.Fatalf("DeleteSnoozes: %v", err)
 	}
 	back, err := repo.Search(ctx, f.org, &models.MailSearchParams{PageSize: 50})

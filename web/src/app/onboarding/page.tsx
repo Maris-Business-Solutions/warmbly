@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
+import { useInstanceAdmin } from "@/hooks/usePermission";
 import CloudLinkCard from "@/components/app/cloud/CloudLinkCard";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
@@ -167,8 +168,11 @@ export default function OnboardingPage() {
 
     const authConfig = useAuthConfig();
     const selfHosted = authConfig.data?.self_hosted === true;
-    const STEPS = useMemo(() => (selfHosted ? [...BASE_STEPS, CLOUD_STEP] : BASE_STEPS), [selfHosted]);
-    const cloudStep = selfHosted ? STEPS.length - 1 : -1;
+    // Linking is instance-wide, so only an instance admin who can complete it sees the step.
+    const instanceAdmin = useInstanceAdmin();
+    const canLink = selfHosted && instanceAdmin.allowed;
+    const STEPS = useMemo(() => (canLink ? [...BASE_STEPS, CLOUD_STEP] : BASE_STEPS), [canLink]);
+    const cloudStep = canLink ? STEPS.length - 1 : -1;
     const [cloudLinked, setCloudLinked] = useState(false);
     const [cloudOrg, setCloudOrg] = useState("");
     const [cloudStart, setCloudStart] = useState(0);

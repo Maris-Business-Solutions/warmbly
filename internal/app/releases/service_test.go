@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/warmbly/warmbly/internal/models"
 )
@@ -22,8 +23,8 @@ func (m *memSettings) SetRelease(_ context.Context, s *models.FleetReleaseState)
 	return nil
 }
 
-func (m *memSettings) GetJoinTokenHash(context.Context) (string, error) { return "", nil }
-func (m *memSettings) SetJoinTokenHash(context.Context, string) error   { return nil }
+func (m *memSettings) GetJoinToken(context.Context) (string, *time.Time, error) { return "", nil, nil }
+func (m *memSettings) SetJoinToken(context.Context, string, time.Time) error    { return nil }
 
 type githubStub struct{}
 

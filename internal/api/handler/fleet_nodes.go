@@ -83,6 +83,8 @@ func (h *Handler) FleetJoin(c *gin.Context) {
 			// Distinct from a wrong token on purpose: this is a setup problem,
 			// and telling the operator so saves a long hunt.
 			errx.JSON(c, errx.New(errx.BadRequest, "this instance has no join token yet; issue one from Fleet settings or with `warmblyctl fleet join-token`"))
+		case fleetnode.ErrJoinTokenExpired:
+			errx.JSON(c, errx.New(errx.Unauthorized, "join token has expired; issue a fresh one"))
 		default:
 			errx.JSON(c, errx.New(errx.Unauthorized, "join token is not valid"))
 		}
@@ -141,8 +143,8 @@ func (h *Handler) FleetJoin(c *gin.Context) {
 }
 
 // FleetHeartbeat records a beat and answers with the version the node should
-// be running. Authenticated with INTERNAL_API_TOKEN, the same shared secret
-// the node already needs to read encrypted keys.
+// be running. Authenticated with the node token (NODE_BROKER_TOKEN, falling
+// back to INTERNAL_API_TOKEN), the one the node reads encrypted keys with.
 func (h *Handler) FleetHeartbeat(c *gin.Context) {
 	if h.FleetNodes == nil {
 		c.Status(http.StatusNoContent)
@@ -376,19 +378,19 @@ func renderNodeEnv(nodeID uuid.UUID, role models.NodeRole, region string) string
 	fmt.Fprintf(&b, "WARMBLY_BACKEND_URL=%s\n", backend)
 	fmt.Fprintf(&b, "ENCRYPTED_KEYS_PROVIDER=%s\n", keysProvider)
 	fmt.Fprintf(&b, "ENCRYPTED_KEYS_BACKEND_URL=%s\n", backend)
-	fmt.Fprintf(&b, "ENCRYPTED_KEYS_WORKER_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
-	fmt.Fprintf(&b, "INTERNAL_API_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
+	// A node calls only the node-only internal routes. With a separate
+	// NODE_BROKER_TOKEN it is sent that alone and never the edge services' token.
+	if v := os.Getenv("NODE_BROKER_TOKEN"); v != "" {
+		fmt.Fprintf(&b, "ENCRYPTED_KEYS_WORKER_TOKEN=%s\n", v)
+		fmt.Fprintf(&b, "NODE_BROKER_TOKEN=%s\n", v)
+	} else {
+		fmt.Fprintf(&b, "ENCRYPTED_KEYS_WORKER_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
+		fmt.Fprintf(&b, "INTERNAL_API_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
+	}
 
 	kmsProvider, blobProvider := nodeProviders()
 	fmt.Fprintf(&b, "KMS_PROVIDER=%s\n", kmsProvider)
 	fmt.Fprintf(&b, "BLOB_PROVIDER=%s\n", blobProvider)
-
-	// The credential for the two endpoints that open a key and sign a blob
-	// operation. Sent only when the instance issues a separate one; otherwise
-	// the node falls back to the internal token it already has.
-	if v := os.Getenv("NODE_BROKER_TOKEN"); v != "" {
-		fmt.Fprintf(&b, "NODE_BROKER_TOKEN=%s\n", v)
-	}
 
 	keys := nodeEnvKeys
 	if role == models.NodeRoleConsumer {
@@ -418,7 +420,7 @@ func (h *Handler) AdminFleetNodes(c *gin.Context) {
 	}
 	nodes, err := h.FleetNodes.List(c.Request.Context(), role)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Role < nodes[j].Role })
@@ -432,15 +434,16 @@ func (h *Handler) AdminFleetIssueJoinToken(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.NotImplemented, "fleet enrolment is not available on this instance"))
 		return
 	}
-	token, err := h.FleetNodes.IssueJoinToken(c.Request.Context())
+	token, expiresAt, err := h.FleetNodes.IssueJoinToken(c.Request.Context(), fleetnode.DefaultJoinTokenTTL)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
-	h.audit(c, "fleet_join_token_issued", models.AuditEntityWorker, nil, nil)
+	h.audit(c, "fleet_join_token_issued", models.AuditEntityWorker, nil, map[string]string{"expires_at": expiresAt.Format(time.RFC3339)})
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"note":  "Shown once. Issuing a new token revokes this one; nodes already enrolled are unaffected.",
+		"token":      token,
+		"expires_at": expiresAt,
+		"note":       "Shown once. It joins any number of machines until it expires; issuing a new token revokes this one. Nodes already enrolled are unaffected.",
 	})
 }
 
@@ -454,7 +457,7 @@ type setTagsBody struct {
 func (h *Handler) AdminListWorkerTags(c *gin.Context) {
 	tags, err := h.WorkerRepo.ListAllWorkerTags(c.Request.Context())
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": tags})
@@ -487,7 +490,7 @@ func (h *Handler) AdminSetWorkerTags(c *gin.Context) {
 		tags = append(tags, t)
 	}
 	if err := h.WorkerRepo.SetWorkerTags(c.Request.Context(), id, tags); err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, models.AuditActionUpdate, models.AuditEntityWorker, &id, map[string]string{
@@ -538,7 +541,7 @@ func (h *Handler) AdminFleetReserveWorker(c *gin.Context) {
 	ctx := c.Request.Context()
 	w, err := h.WorkerRepo.GetWorkerDetail(ctx, id)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if w == nil {
@@ -583,7 +586,7 @@ func (h *Handler) AdminFleetDeleteNode(c *gin.Context) {
 		return
 	}
 	if err := h.FleetNodeRepo.Delete(c.Request.Context(), id); err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, models.AuditActionDelete, models.AuditEntityWorker, &id, nil)
@@ -623,21 +626,21 @@ func (h *Handler) AdminFleetPatchNode(c *gin.Context) {
 	changed := map[string]string{}
 	if body.Name != nil {
 		if err := h.FleetNodeRepo.SetName(ctx, id, *body.Name); err != nil {
-			errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
 			return
 		}
 		changed["name"] = *body.Name
 	}
 	if body.Notes != nil {
 		if err := h.FleetNodeRepo.SetNotes(ctx, id, *body.Notes); err != nil {
-			errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
 			return
 		}
 		changed["notes"] = *body.Notes
 	}
 	if body.PinnedVersion != nil {
 		if err := h.FleetNodeRepo.SetPinnedVersion(ctx, id, *body.PinnedVersion); err != nil {
-			errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
 			return
 		}
 		changed["pinned_version"] = *body.PinnedVersion
@@ -650,7 +653,7 @@ func (h *Handler) AdminFleetPatchNode(c *gin.Context) {
 	h.audit(c, models.AuditActionUpdate, models.AuditEntityWorker, &id, changed)
 	node, err := h.FleetNodes.Get(ctx, id)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, node)
@@ -665,7 +668,7 @@ func (h *Handler) AdminFleetRelease(c *gin.Context) {
 	}
 	state, err := h.FleetSettingsRepo.GetRelease(c.Request.Context())
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if state == nil {
@@ -696,7 +699,7 @@ func (h *Handler) AdminFleetSetRelease(c *gin.Context) {
 	ctx := c.Request.Context()
 	state, err := h.FleetSettingsRepo.GetRelease(ctx)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if state == nil {
@@ -722,7 +725,7 @@ func (h *Handler) AdminFleetSetRelease(c *gin.Context) {
 	}
 
 	if err := h.FleetSettingsRepo.SetRelease(ctx, state); err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, "fleet_release_set", models.AuditEntityWorker, nil, map[string]string{

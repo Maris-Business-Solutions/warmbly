@@ -335,7 +335,7 @@ func (s *service) UpdateEndpoint(ctx context.Context, orgID, endpointID uuid.UUI
 		return nil, err
 	}
 	if existing == nil {
-		return nil, fmt.Errorf("webhook endpoint not found")
+		return nil, repository.ErrWebhookEndpointNotFound
 	}
 	if err := s.enforceAppDomain(ctx, existing.OAuthApplicationID, rawURL); err != nil {
 		return nil, err
@@ -395,7 +395,7 @@ func (s *service) VerifyEndpoint(ctx context.Context, orgID, endpointID uuid.UUI
 		return err
 	}
 	if endpoint == nil {
-		return fmt.Errorf("webhook endpoint not found")
+		return repository.ErrWebhookEndpointNotFound
 	}
 	token, err := generateChallenge()
 	if err != nil {
@@ -434,7 +434,7 @@ func (s *service) Redeliver(ctx context.Context, orgID, deliveryID uuid.UUID) er
 		return err
 	}
 	if d == nil {
-		return fmt.Errorf("webhook delivery not found")
+		return repository.ErrWebhookDeliveryNotFound
 	}
 	return s.repo.RedeliverDelivery(ctx, orgID, deliveryID)
 }
@@ -487,10 +487,10 @@ func (s *service) enforceAppDomain(ctx context.Context, appID *uuid.UUID, rawURL
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("invalid url: %w", err)
+		return invalidInput("invalid url: %v", err)
 	}
 	if !whdomain.HostAllowed(u.Hostname(), domains) {
-		return fmt.Errorf("webhook URL host %q is not in this app's allowed webhook domains", u.Hostname())
+		return invalidInput("webhook URL host %q is not in this app's allowed webhook domains", u.Hostname())
 	}
 	return nil
 }
@@ -560,26 +560,26 @@ func ValidateOutboundURL(raw string) error {
 func validateURL(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return fmt.Errorf("url is required")
+		return invalidInput("url is required")
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid url: %w", err)
+		return invalidInput("invalid url: %v", err)
 	}
 	allowUnsafe := strings.EqualFold(os.Getenv("WARMBLY_ALLOW_UNSAFE_WEBHOOK_URLS"), "true")
 	if u.Scheme != "https" && !(allowUnsafe && u.Scheme == "http") {
-		return fmt.Errorf("url scheme must be https")
+		return invalidInput("url scheme must be https")
 	}
 	if u.Host == "" {
-		return fmt.Errorf("url must have a host")
+		return invalidInput("url must have a host")
 	}
 	// Reject userinfo (user:pass@host) — a classic URL-parser-confusion SSRF
 	// bypass and never legitimate on a webhook endpoint.
 	if u.User != nil {
-		return fmt.Errorf("url must not contain credentials")
+		return invalidInput("url must not contain credentials")
 	}
 	if !allowUnsafe && isPrivateWebhookHost(u.Hostname()) {
-		return fmt.Errorf("url host must be publicly routable")
+		return invalidInput("url host must be publicly routable")
 	}
 	return nil
 }
@@ -599,7 +599,7 @@ func isPrivateWebhookHost(host string) bool {
 func validateEventTypes(eventTypes []string) error {
 	for _, t := range eventTypes {
 		if !models.IsValidWebhookEventType(t) {
-			return fmt.Errorf("unknown event type: %s", t)
+			return invalidInput("unknown event type: %s", t)
 		}
 	}
 	return nil
@@ -946,4 +946,13 @@ func withoutPrivateKeys(data any) any {
 		}
 	}
 	return out
+}
+
+// InvalidInputError is a refusal the caller can correct; its message is written for them.
+type InvalidInputError struct{ msg string }
+
+func (e *InvalidInputError) Error() string { return e.msg }
+
+func invalidInput(format string, args ...any) error {
+	return &InvalidInputError{msg: fmt.Sprintf(format, args...)}
 }

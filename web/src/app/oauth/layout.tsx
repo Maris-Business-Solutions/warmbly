@@ -5,6 +5,7 @@
 
 import { Navigate, Outlet } from "react-router-dom";
 
+import ReauthModal from "@/components/app/modals/ReauthModal";
 import getToken from "@/lib/helper/getToken";
 
 export default function OAuthLayout() {
@@ -16,6 +17,8 @@ export default function OAuthLayout() {
     return (
         <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-4">
             <Outlet />
+            {/* Approving an app needs a recent sign-in; the API client opens this prompt and retries. */}
+            <ReauthModal />
         </div>
     );
 }

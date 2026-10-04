@@ -628,7 +628,7 @@ Creating an import is not deduplicated by request: a retried create saves a seco
 
 Returns up to 50 recent booked meetings. For the full Meetings page list with filters and pagination, use `GET /meetings`.
 
-Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
+Auth: **Scope** `READ_CONTACTS` · **Org permission** `view_contacts`.
 
 ### Response
 
@@ -685,7 +685,7 @@ Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_setti
 
 Creates a new automation flow: a trigger event plus a graph of condition and action nodes.
 
-Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`.
 
 ### Request body
 
@@ -776,7 +776,7 @@ Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_setti
 
 Replaces an automation's name, enabled state, trigger, filter, and graph. The body shape matches the create payload.
 
-Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`.
 
 | Parameter | In | Type | Description |
 |-----------|-----|------|-------------|
@@ -816,7 +816,7 @@ Same fields as [create an automation](#create-an-automation).
 
 Removes an automation. Returns `409 Conflict` when the automation is still referenced by campaign steps.
 
-Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`.
 
 | Parameter | In | Type | Description |
 |-----------|-----|------|-------------|

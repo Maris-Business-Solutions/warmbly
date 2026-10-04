@@ -577,11 +577,19 @@ func (r *emailRepository) CountDomainMailboxes(ctx context.Context, orgID uuid.U
 }
 
 func (r *emailRepository) SetDomainTracking(ctx context.Context, orgID uuid.UUID, domain, host string, verified bool, verifiedAt *time.Time) (int, *errx.Error) {
+	if held, xerr := trackingDomainHeldElsewhere(ctx, r.DB, orgID, host); xerr != nil {
+		return 0, xerr
+	} else if held {
+		return 0, errx.ErrTrackingDomainTaken
+	}
 	query := `
 		UPDATE email_accounts
 		SET tracking_domain = $3, tracking_domain_verified = $4, tracking_domain_verified_at = $5, updated_at = now()
 		WHERE organization_id = $1 AND lower(split_part(email, '@', 2)) = lower($2)`
 	tag, err := r.DB.Exec(ctx, query, orgID, domain, host, verified, verifiedAt)
+	if isTrackingDomainTaken(err) {
+		return 0, errx.ErrTrackingDomainTaken
+	}
 	if err != nil {
 		db.CaptureError(err, query, nil, "exec")
 		return 0, errx.InternalError()
@@ -1316,6 +1324,9 @@ func (r *emailRepository) Update(ctx context.Context, orgID, emailAccountID stri
 		if !validate.EmailName(udata.Name) {
 			return nil, errx.ErrEmailName
 		}
+		if xerr := validate.MailboxNameShown(*udata.Name); xerr != nil {
+			return nil, xerr
+		}
 		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", "name", argPos))
 		args = append(args, *udata.Name)
 		argPos++
@@ -1681,6 +1692,11 @@ func (r *emailRepository) BulkUpdateTags(ctx context.Context, orgID string, emai
 // route already admits any member holding manage_emails, so filtering on the
 // user who happened to connect it turned that permission into a 404.
 func (r *emailRepository) UpdateTrackingDomain(ctx context.Context, orgID, emailAccountID, domain string, verified bool, verifiedAt *time.Time) *errx.Error {
+	if held, xerr := trackingDomainHeldElsewhere(ctx, r.DB, orgID, domain); xerr != nil {
+		return xerr
+	} else if held {
+		return errx.ErrTrackingDomainTaken
+	}
 	query := `
 		UPDATE email_accounts
 		SET tracking_domain = $1, tracking_domain_verified = $2, tracking_domain_verified_at = $3
@@ -1700,6 +1716,9 @@ func (r *emailRepository) UpdateTrackingDomain(ctx context.Context, orgID, email
 		query,
 		params...,
 	)
+	if isTrackingDomainTaken(err) {
+		return errx.ErrTrackingDomainTaken
+	}
 	if err != nil {
 		db.CaptureError(err, query, params, "exec")
 		return errx.InternalError()
@@ -1758,6 +1777,9 @@ func (r *emailRepository) SetTrackingDomainVerified(ctx context.Context, emailAc
 
 	params := []any{verified, verifiedAt, emailAccountID}
 	if _, err := r.DB.Exec(ctx, query, params...); err != nil {
+		if isTrackingDomainTaken(err) {
+			return errx.ErrTrackingDomainTaken
+		}
 		db.CaptureError(err, query, params, "exec")
 		return errx.InternalError()
 	}

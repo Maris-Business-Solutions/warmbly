@@ -23,6 +23,30 @@ export interface PendingAgentTool {
     tool_name: string;
     risk: string;
     args_summary?: string;
+    // Every argument as indented JSON with sorted keys, capped server-side.
+    arguments?: string;
+    arguments_truncated?: boolean;
+    preview?: AgentSendPreview | null;
+    // Only a member who manages settings is offered "Always allow", never for tools that always ask.
+    always_allow_offered?: boolean;
+}
+
+// The resolved shape of a send awaiting approval.
+export interface AgentSendPreview {
+    from: string;
+    to: string[];
+    subject: string;
+    body: string;
+    body_html?: string;
+}
+
+// A workspace "always allow" policy for one assistant tool.
+export interface AIToolPolicy {
+    tool_name: string;
+    decision: string;
+    created_by?: string;
+    created_by_name?: string;
+    created_at: string;
 }
 
 export interface AgentSessionsPage {
@@ -66,6 +90,7 @@ export interface AgentStreamEvent {
         | "tool_start"
         | "tool_result"
         | "approval_required"
+        | "tool_secret"
         | "iteration"
         | "error"
         | "done";
@@ -86,4 +111,10 @@ export interface AgentStreamEvent {
     entity_type?: string;
     entity_id?: string;
     open_url?: string;
+    arguments?: string;
+    arguments_truncated?: boolean;
+    preview?: AgentSendPreview | null;
+    always_allow_offered?: boolean;
+    // tool_secret: values shown once to the member, never stored.
+    secrets?: Record<string, string>;
 }

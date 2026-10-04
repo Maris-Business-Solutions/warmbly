@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 // Provider selection helpers. These centralize the env-var switches and their
@@ -74,10 +75,22 @@ func CaptchaProvider() string {
 	if v := os.Getenv("CAPTCHA_PROVIDER"); v != "" {
 		return v
 	}
-	if os.Getenv("TURNSTILE_SECRET") == "" {
+	if !TurnstileSecretConfigured() {
 		return "none"
 	}
 	return "turnstile"
+}
+
+// turnstileSecretResolved is set when the auth config resolved a secret from
+// any source, including a secret store the environment does not show.
+var turnstileSecretResolved atomic.Bool
+
+// SetTurnstileSecretResolved records whether the auth config resolved a secret.
+func SetTurnstileSecretResolved(ok bool) { turnstileSecretResolved.Store(ok) }
+
+// TurnstileSecretConfigured reports whether a Turnstile secret is available.
+func TurnstileSecretConfigured() bool {
+	return os.Getenv("TURNSTILE_SECRET") != "" || turnstileSecretResolved.Load()
 }
 
 // AWSNeeded reports whether any AWS-backed provider is selected, so a fully

@@ -2,7 +2,8 @@ defmodule RealtimeWeb.UserSocket do
   @moduledoc """
   WebSocket handler with authentication and connection management.
 
-  Supports both JWT tokens and API keys (prefixed with `wmbly_`).
+  Accepts the dashboard's ws ticket in the `token` query parameter, and API
+  keys (`wmbly_`) or OAuth tokens (`wmat_`) in the `x-warmbly-token` header.
   Implements Discord-style error codes for rejection reasons.
   Rate limits are based on user's subscription tier.
   """
@@ -24,8 +25,54 @@ defmodule RealtimeWeb.UserSocket do
   channel("org:*", RealtimeWeb.OrgChannel)
   channel("admin:*", RealtimeWeb.AdminChannel)
 
+  # API keys and OAuth tokens belong in this header; the query string, which
+  # proxies record, is a deprecated fallback for them kept for existing clients.
+  @credential_header "x-warmbly-token"
+
   @impl true
-  def connect(%{"token" => token}, socket, connect_info) do
+  def connect(params, socket, connect_info) do
+    case credential(params, connect_info) do
+      {:ok, token} -> authenticate(token, socket, connect_info)
+      {:error, reason} -> reject(reason)
+    end
+  end
+
+  @doc false
+  def credential(params, connect_info) do
+    header = header_credential(connect_info)
+    query = Map.get(params, "token")
+
+    cond do
+      present?(header) ->
+        {:ok, header}
+
+      present?(query) and Auth.long_lived?(query) ->
+        Logger.info(
+          "Socket credential in the query string; send it in the x-warmbly-token header"
+        )
+
+        {:ok, query}
+
+      present?(query) ->
+        {:ok, query}
+
+      true ->
+        {:error, :missing_token}
+    end
+  end
+
+  defp header_credential(%{x_headers: headers}) when is_list(headers) do
+    Enum.find_value(headers, fn
+      {@credential_header, value} -> String.trim(value)
+      _ -> nil
+    end)
+  end
+
+  defp header_credential(_), do: nil
+
+  defp present?(value), do: is_binary(value) and value != ""
+
+  defp authenticate(token, socket, connect_info) do
     ip = get_ip(connect_info)
 
     with {:ok, user_id, auth_type} <- Auth.verify_token(token, ip: ip),
@@ -51,10 +98,6 @@ defmodule RealtimeWeb.UserSocket do
       {:error, reason} ->
         reject(reason)
     end
-  end
-
-  def connect(_params, _socket, _connect_info) do
-    reject(:missing_token)
   end
 
   # Build the structured rejection returned from connect/2.

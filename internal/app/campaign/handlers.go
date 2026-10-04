@@ -1020,6 +1020,9 @@ func (s *campaignService) VerifyCampaignTrackingDomain(ctx context.Context, orgI
 	}
 
 	if err := s.campaignRepository.SetCampaignTrackingDomainVerified(ctx, cID, status.TrackingDomainVerified, status.TrackingDomainVerifiedAt); err != nil {
+		if errors.Is(err, repository.ErrTrackingDomainTaken) {
+			return nil, errx.ErrTrackingDomainTaken
+		}
 		return nil, errx.InternalError()
 	}
 	return status, nil

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/singleflight"
 
@@ -726,6 +727,9 @@ func (s *service) CreateEventSubscription(ctx context.Context, orgID, connID uui
 	if !models.IsValidWebhookEventType(eventType) {
 		return nil, fmt.Errorf("unknown event type: %s", eventType)
 	}
+	if !models.ProviderSupportsAction(conn.Provider, action) {
+		return nil, ErrActionProviderMismatch
+	}
 	// SSRF guard for action configs that carry an outbound URL.
 	if err := validateOutboundConfigURLs(config); err != nil {
 		return nil, err
@@ -950,6 +954,9 @@ func (s *service) validateAutomationGraph(ctx context.Context, orgID uuid.UUID, 
 			if conn == nil {
 				return errors.New("an action node references an unknown integration")
 			}
+			if !models.ProviderSupportsAction(conn.Provider, n.Action) {
+				return ErrActionProviderMismatch
+			}
 			cfg := map[string]any{}
 			if len(n.Config) > 0 {
 				_ = json.Unmarshal(n.Config, &cfg)
@@ -1153,13 +1160,14 @@ func (s *service) seal(ctx context.Context, orgID uuid.UUID, plaintext string) (
 		return "", nil
 	}
 	if s.cipher == nil {
-		return "", errors.New("cipher service unavailable")
+		return "", lowerLayer(errors.New("cipher service unavailable"))
 	}
 	c, err := s.cipher.Cipher(ctx, orgID)
 	if err != nil {
-		return "", err
+		return "", lowerLayer(err)
 	}
-	return c.Encrypt(ctx, plaintext)
+	out, err := c.Encrypt(ctx, plaintext)
+	return out, lowerLayer(err)
 }
 
 func (s *service) open(ctx context.Context, orgID uuid.UUID, ciphertext string) (string, error) {
@@ -1167,13 +1175,14 @@ func (s *service) open(ctx context.Context, orgID uuid.UUID, ciphertext string) 
 		return "", nil
 	}
 	if s.cipher == nil {
-		return "", errors.New("cipher service unavailable")
+		return "", lowerLayer(errors.New("cipher service unavailable"))
 	}
 	c, err := s.cipher.Cipher(ctx, orgID)
 	if err != nil {
-		return "", err
+		return "", lowerLayer(err)
 	}
-	return c.Decrypt(ctx, ciphertext)
+	out, err := c.Decrypt(ctx, ciphertext)
+	return out, lowerLayer(err)
 }
 
 func (s *service) sealConfig(ctx context.Context, orgID uuid.UUID, config map[string]any) ([]byte, error) {
@@ -1222,7 +1231,8 @@ func (s *service) accessTokenFor(ctx context.Context, sec *repository.Connection
 // API host when the provider has one per org.
 func (s *service) accessToken(ctx context.Context, sec *repository.ConnectionSecrets, force bool) (token, instanceURL string, err error) {
 	orgID := sec.Conn.OrganizationID
-	instanceURL = configString(sec.Conn.DisplayFields, "instance_url")
+	// Display fields can arrive through an import, so the host is re-checked on every read.
+	instanceURL, _ = SalesforceInstanceURL(configString(sec.Conn.DisplayFields, "instance_url"))
 
 	access, err := s.open(ctx, orgID, sec.AccessTokenEnc)
 	if err != nil {
@@ -1434,38 +1444,95 @@ func generateSigningSecret() (string, error) {
 	return "whsec_" + hex.EncodeToString(buf), nil
 }
 
+// signingSecretField is the sealed-config key of an automation connection's outbound HMAC secret.
+const signingSecretField = "signing_secret"
+
 // WebhookSigningSecret returns the connection's outbound-webhook HMAC secret,
-// generating + persisting one (into the non-secret config_capabilities, matching
-// how customer-webhook signing secrets are stored) on first request.
+// generating one on first request. It is kept in the connection's sealed config.
 func (s *service) WebhookSigningSecret(ctx context.Context, orgID, connID uuid.UUID) (string, error) {
-	conn, err := s.repo.GetConnectionByID(ctx, orgID, connID)
+	sec, err := s.repo.GetConnectionSecrets(ctx, connID)
 	if err != nil {
 		return "", err
 	}
-	if conn == nil {
+	if sec == nil || sec.Conn.OrganizationID != orgID {
 		return "", fmt.Errorf("connection not found")
 	}
-	cc := map[string]any{}
-	if len(conn.ConfigCapabilities) > 0 {
-		_ = json.Unmarshal(conn.ConfigCapabilities, &cc)
+	cfg, err := s.openConfig(ctx, sec)
+	if err != nil {
+		return "", err
 	}
-	if existing, ok := cc[models.ConfigCapabilitiesSigningSecret].(string); ok && existing != "" {
+	if existing := s.signingSecretFor(ctx, sec, cfg); existing != "" {
 		return existing, nil
 	}
 	secret, err := generateSigningSecret()
 	if err != nil {
 		return "", err
 	}
-	cc[models.ConfigCapabilitiesSigningSecret] = secret
-	raw, _ := json.Marshal(cc)
-	dir := conn.SyncDirection
-	if dir == "" {
-		dir = "push"
+	cfg[signingSecretField] = secret
+	sealed, err := s.sealConfig(ctx, orgID, cfg)
+	if err != nil {
+		return "", err
 	}
-	if err := s.repo.UpdateConnectionConfig(ctx, orgID, connID, raw, dir); err != nil {
+	if err := s.repo.SetSigningSecretConfig(ctx, orgID, connID, sealed); err != nil {
 		return "", err
 	}
 	return secret, nil
+}
+
+// signingSecretFor reads the signing secret from the opened config, moving one
+// still held in config_capabilities into it (best effort; the value is used either way).
+func (s *service) signingSecretFor(ctx context.Context, sec *repository.ConnectionSecrets, cfg map[string]any) string {
+	if v := stringFromMap(cfg, signingSecretField); v != "" {
+		return v
+	}
+	legacy := configString(sec.Conn.ConfigCapabilities, models.ConfigCapabilitiesSigningSecret)
+	if legacy == "" {
+		return ""
+	}
+	next := make(map[string]any, len(cfg)+1)
+	for k, v := range cfg {
+		next[k] = v
+	}
+	next[signingSecretField] = legacy
+	if sealed, err := s.sealConfig(ctx, sec.Conn.OrganizationID, next); err == nil {
+		if err := s.repo.SetSigningSecretConfig(ctx, sec.Conn.OrganizationID, sec.Conn.ID, sealed); err != nil {
+			log.Warn().Err(err).Str("connection_id", sec.Conn.ID.String()).Msg("integration: sealing signing secret failed")
+		}
+	}
+	return legacy
+}
+
+// StartSigningSecretMigration seals every signing secret still held in
+// config_capabilities, in one paced pass per process.
+func (s *service) StartSigningSecretMigration(ctx context.Context) {
+	var cursor uuid.UUID
+	for {
+		ids, err := s.repo.ListPlaintextSigningSecrets(ctx, cursor, 100)
+		if err != nil {
+			log.Warn().Err(err).Msg("integration: listing signing secrets to seal failed")
+			return
+		}
+		if len(ids) == 0 {
+			return
+		}
+		for _, id := range ids {
+			cursor = id
+			sec, err := s.repo.GetConnectionSecrets(ctx, id)
+			if err != nil || sec == nil {
+				continue
+			}
+			cfg, err := s.openConfig(ctx, sec)
+			if err != nil {
+				continue
+			}
+			_ = s.signingSecretFor(ctx, sec, cfg)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 // SendTestEvent fires a synthetic event through the connection's notify/webhook

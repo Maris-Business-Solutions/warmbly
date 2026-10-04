@@ -3,7 +3,7 @@
   "info": {
     "title": "Warmbly Realtime Gateway",
     "version": "1.0.0",
-    "description": "Resumable WebSocket gateway for live organization events. The socket speaks the Phoenix channel protocol (serializer 1.0.0). Authenticate with an API key (REALTIME_SUBSCRIBE permission) or a short-lived JWT passed as the `token` query parameter. Events carry a monotonic per-organization `seq`; reconnecting clients resume by replaying the gap. See the human guide at https://docs.warmbly.com/api/realtime/.",
+    "description": "Resumable WebSocket gateway for live organization events. The socket speaks the Phoenix channel protocol (serializer 1.0.0). Authenticate with an API key (REALTIME_SUBSCRIBE permission) or OAuth access token in the `X-Warmbly-Token` handshake header, or with a short-lived connection JWT passed as the `token` query parameter. Events carry a monotonic per-organization `seq`; reconnecting clients resume by replaying the gap. See the human guide at https://docs.warmbly.com/api/realtime/.",
     "contact": { "name": "Warmbly", "url": "https://docs.warmbly.com" },
     "license": { "name": "Proprietary", "url": "https://warmbly.com" }
   },
@@ -13,8 +13,8 @@
       "host": "realtime.warmbly.com",
       "pathname": "/socket/websocket",
       "protocol": "wss",
-      "description": "Production gateway. Connect with ?vsn=1.0.0&token=<TOKEN>.",
-      "security": [{ "$ref": "#/components/securitySchemes/token" }]
+      "description": "Production gateway. Connect with ?vsn=1.0.0, sending an API key or OAuth token in the X-Warmbly-Token header (or a connection JWT as &token=<JWT>).",
+      "security": [{ "$ref": "#/components/securitySchemes/header" }, { "$ref": "#/components/securitySchemes/token" }]
     }
   },
   "channels": {
@@ -71,11 +71,17 @@
   },
   "components": {
     "securitySchemes": {
+      "header": {
+        "type": "httpApiKey",
+        "in": "header",
+        "name": "X-Warmbly-Token",
+        "description": "An API key with the REALTIME_SUBSCRIBE permission, or an OAuth access token with the realtime scope. Refused in the query string."
+      },
       "token": {
         "type": "httpApiKey",
         "in": "query",
         "name": "token",
-        "description": "An API key with the REALTIME_SUBSCRIBE permission, or a short-lived connection JWT, passed as the `token` query parameter on the socket URL."
+        "description": "A short-lived (10-minute) connection JWT minted for a signed-in session. The only credential accepted in the query string."
       }
     },
     "messages": {

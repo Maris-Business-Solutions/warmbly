@@ -36,7 +36,7 @@ Add the server with just its URL, and the client runs the OAuth flow on first us
 ```
 
 <Callout type="info" title="What you are approving">
-The consent screen shows exactly which scopes the client is asking for. Sending real mail is never one of them: `SEND_CAMPAIGNS` and API-key management are excluded from OAuth-connected MCP clients by design, and the assistant only ever drafts. You can revoke a connected client at any time from your dashboard under connected apps.
+The consent screen shows exactly which scopes the client will get: the ones it asks for that your role in the workspace covers, so a connected client never does more than you could yourself. Sending real mail is never one of them: `SEND_CAMPAIGNS` and API-key management are excluded from OAuth-connected MCP clients by design, and the assistant only ever drafts. You can revoke a connected client at any time from your dashboard under connected apps.
 </Callout>
 
 ## Connect with an API key
@@ -48,7 +48,7 @@ Authorization: Bearer wmbly_...
 ```
 
 <Callout type="info" title="Scope your key">
-Create a dedicated API key for each MCP client and grant it only the scopes it needs (see [Permissions](/api/permissions/)). The `AI_AGENT` scope is a convenient way to grant assistant-style access; combine it with the read/write scopes for the data you want the client to reach.
+Create a dedicated API key for each MCP client and grant it only the scopes it needs (see [Permissions](/api/permissions/)). Grant the read/write scopes for the data you want the client to reach, and `AI_AGENT` if it should search the web or read your playbooks.
 </Callout>
 
 ### Claude Code
@@ -91,7 +91,7 @@ Add to `.cursor/mcp.json`:
 
 ## What is exposed
 
-The server exposes exactly the tools your credential is allowed to use, whether that credential is an OAuth token or an API key. A credential with only read scopes sees only the read tools; one with write scopes sees those too, so an MCP client acts with precisely the permissions you granted, and nothing more.
+The server exposes exactly the tools your credential is allowed to use, whether that credential is an OAuth token or an API key. Each tool checks its own scope, and an OAuth token or API key also needs its member to hold the matching organization permission today. A credential with only read scopes sees only the read tools; one with write scopes sees those too, so an MCP client acts with precisely the permissions you granted, and nothing more.
 
 This is a subset of what the in-product assistant can do. Two categories are dashboard-only and never reachable by an API key or OAuth token: sending email (`send_reply`, `compose_email`), and workspace governance (team, workspace settings, and billing). Those routes are session-only and have no API scope to grant, so they never appear over MCP.
 
@@ -157,12 +157,14 @@ Every tool is gated by its API permission. `tools/list` returns only the tools y
 | `list_api_keys` / `create_api_key` / `update_api_key` / `revoke_api_key` | Manage API keys | `API_KEYS` |
 | `list_webhooks` / `list_webhook_deliveries` | Read webhook endpoints and deliveries | `WEBHOOKS` |
 | `create_webhook` / `update_webhook` / `delete_webhook` / `rotate_webhook_secret` / `verify_webhook` | Manage webhook endpoints | `WEBHOOKS` |
-| `search_web` / `fetch_url` | Search and read public pages | any |
-| `load_skill` | Read one of your playbooks | any |
+| `search_web` / `fetch_url` | Search and read public pages | `AI_AGENT` |
+| `load_skill` | Read one of your playbooks | `AI_AGENT` |
 
 Two form surfaces are deliberately absent: brand-asset uploads (logo, cover, background) are multipart images with dimension and MIME limits that a tool call cannot express, and the custom forms domain is workspace-wide branding behind a DNS check, so it lives in settings rather than in a tool.
 
-Rate limits apply to MCP calls exactly as they do to the rest of the API (per-key for API keys, per-user for OAuth tokens). `SEND_CAMPAIGNS` appears in the table because `set_campaign_status` needs it, but that tool is still withheld from MCP: no send-class tool is ever exposed over the MCP transport regardless of scope.
+Rate limits apply to MCP calls exactly as they do to the rest of the API (per-key for API keys, per-user for OAuth tokens). `SEND_CAMPAIGNS` appears in the table because `set_campaign_status` and the placement tools need it. A self-registered MCP client is never granted it, so only an API key or app that holds the scope can start or stop a campaign over MCP. Tools that send a message to a recipient (`send_reply`, `compose_email`) are never exposed over the MCP transport regardless of scope.
+
+Tools that return a secret (`create_webhook` and `rotate_webhook_secret`) return it to the MCP client that called them, which is the caller asking for it. The in-product assistant never sees these values.
 
 ## How OAuth discovery works
 

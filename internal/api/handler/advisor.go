@@ -2,14 +2,14 @@
 // Advisor to stop suggesting something.
 //
 // Reads are gated on view_analytics (JWT) / READ_ANALYTICS (API key), because
-// a finding is a read of the org's sending posture. Applying a fix carries no
-// gate of its own: the fix runs through the AI tool registry, which enforces
-// the permission the underlying change actually requires. A member who can see
-// that a mailbox's cap is too high but cannot edit mailboxes gets a clear 403
-// on apply rather than a hidden card.
+// a finding is a read of the org's sending posture. Applying a fix takes the
+// same gate, then runs through the AI tool registry as the caller (a member
+// under their org permissions, a key under its own mask and mailbox
+// allowlist), which enforces the permission the underlying change requires.
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,6 +19,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/advisor"
+	"github.com/warmbly/warmbly/internal/app/aitools"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -134,6 +135,54 @@ func (h *Handler) RefreshAdvisor(c *gin.Context) {
 	c.JSON(http.StatusOK, summary)
 }
 
+// advisorFixInvocation is the identity a one-click fix runs as. A key with a
+// mailbox allowlist may only apply or undo a fix touching mailboxes on it.
+func (h *Handler) advisorFixInvocation(c *gin.Context, id uuid.UUID) (aitools.Invocation, *errx.Error) {
+	inv, xerr := h.agentToolInvocation(c)
+	if xerr != nil {
+		return inv, xerr
+	}
+	if len(middleware.GetAPIKeyAllowedEmailAccounts(c)) == 0 {
+		return inv, nil
+	}
+	f, xerr := h.AdvisorService.Get(c.Request.Context(), inv.OrgID, id)
+	if xerr != nil {
+		return inv, xerr
+	}
+	for _, acc := range advisorFindingMailboxes(f) {
+		if xerr := mailboxAllowed(c, acc); xerr != nil {
+			return inv, xerr
+		}
+	}
+	return inv, nil
+}
+
+// advisorFindingMailboxes lists every mailbox a finding's fix or undo names.
+func advisorFindingMailboxes(f *models.AdvisorFinding) []uuid.UUID {
+	var out []uuid.UUID
+	if f.EntityType == "email_account" && f.EntityID != nil {
+		out = append(out, *f.EntityID)
+	}
+	fromArgs := func(raw json.RawMessage) {
+		var args struct {
+			EmailAccountID string `json:"email_account_id"`
+		}
+		if len(raw) == 0 || json.Unmarshal(raw, &args) != nil || args.EmailAccountID == "" {
+			return
+		}
+		if id, err := uuid.Parse(args.EmailAccountID); err == nil {
+			out = append(out, id)
+		}
+	}
+	if f.Action != nil {
+		fromArgs(f.Action.Args)
+		if f.Action.Undo != nil {
+			fromArgs(f.Action.Undo.Args)
+		}
+	}
+	return out
+}
+
 // ApplyAdvisorFinding — POST /advisor/recommendations/:id/apply
 //
 // Applying twice is a no-op that returns the first outcome, so a retried
@@ -143,14 +192,14 @@ func (h *Handler) ApplyAdvisorFinding(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.ServiceUnavailable, "the Advisor is not configured on this server"))
 		return
 	}
-	inv, xerr := h.jwtInvocation(c)
-	if xerr != nil {
-		errx.JSON(c, xerr)
-		return
-	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errx.JSON(c, errx.New(errx.BadRequest, "invalid recommendation id"))
+		return
+	}
+	inv, xerr := h.advisorFixInvocation(c, id)
+	if xerr != nil {
+		errx.JSON(c, xerr)
 		return
 	}
 
@@ -197,14 +246,14 @@ func (h *Handler) UndoAdvisorFinding(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.ServiceUnavailable, "the Advisor is not configured on this server"))
 		return
 	}
-	inv, xerr := h.jwtInvocation(c)
-	if xerr != nil {
-		errx.JSON(c, xerr)
-		return
-	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errx.JSON(c, errx.New(errx.BadRequest, "invalid recommendation id"))
+		return
+	}
+	inv, xerr := h.advisorFixInvocation(c, id)
+	if xerr != nil {
+		errx.JSON(c, xerr)
 		return
 	}
 

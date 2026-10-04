@@ -16,6 +16,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.5
 	github.com/aws/aws-sdk-go-v2 v1.47.0
 	github.com/aws/aws-sdk-go-v2/config v1.30.2
+	github.com/aws/aws-sdk-go-v2/credentials v1.18.2
 	github.com/aws/aws-sdk-go-v2/service/kms v1.49.4
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.0
@@ -58,6 +59,7 @@ require (
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
 	golang.org/x/oauth2 v0.36.0
+	golang.org/x/sync v0.23.0
 	golang.org/x/term v0.46.0
 	golang.org/x/text v0.42.0
 	google.golang.org/api v0.264.0
@@ -98,7 +100,6 @@ require (
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.18.2 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.3 // indirect
@@ -328,7 +329,6 @@ require (
 	golang.org/x/arch v0.19.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250210185358-939b2ce775ac // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect

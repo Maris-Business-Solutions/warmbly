@@ -64,6 +64,7 @@ func (d Deps) registerMailboxTools(r *Registry) {
 			"action":           enumProp("Warmup lifecycle action.", "start", "pause", "resume", "stop"),
 		}, "email_account_id", "action"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		RequiredOrgPerm: models.PermManageEmails,
 		RequiredAPIPerm: models.APIPermWriteEmails,
 		Handler:         d.setMailboxWarmup,
@@ -77,6 +78,7 @@ func (d Deps) registerMailboxTools(r *Registry) {
 			"hold":             boolProp("true holds the mailbox out of campaigns, false puts it back."),
 		}, "email_account_id", "hold"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		RequiredOrgPerm: models.PermManageEmails,
 		RequiredAPIPerm: models.APIPermWriteEmails,
 		Handler:         d.setMailboxSendHold,
@@ -143,7 +145,7 @@ func (d Deps) getMailbox(ctx context.Context, inv Invocation, args json.RawMessa
 	if _, err := parseUUIDArg(in.EmailAccountID); err != nil {
 		return "", err
 	}
-	mb, xerr := d.Emails.Get(ctx, inv.UserID.String(), in.EmailAccountID)
+	mb, xerr := d.Emails.Get(ctx, inv.OrgID.String(), in.EmailAccountID)
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
@@ -309,7 +311,7 @@ func (d Deps) getWarmupBanStatus(ctx context.Context, inv Invocation, args json.
 	if err != nil {
 		return "", err
 	}
-	status, xerr := d.Warmup.GetBanStatus(ctx, inv.UserID, aid)
+	status, xerr := d.Warmup.GetBanStatus(ctx, inv.OrgID, aid)
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
@@ -334,7 +336,7 @@ func (d Deps) submitWarmupAppeal(ctx context.Context, inv Invocation, args json.
 	if in.Reason == "" {
 		return "", ErrInvalidArgs
 	}
-	appealID, xerr := d.Warmup.SubmitAppeal(ctx, inv.UserID, aid, in.Reason)
+	appealID, xerr := d.Warmup.SubmitAppeal(ctx, inv.OrgID, inv.UserID, aid, in.Reason)
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}

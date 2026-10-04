@@ -298,7 +298,13 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	if xerr := h.OrganizationService.RemoveMember(c.Request.Context(), *orgID, memberUserID); xerr != nil {
+	actorID, err := middleware.GetUserUUID(c)
+	if err != nil {
+		errx.JSON(c, errx.ErrUser)
+		return
+	}
+
+	if xerr := h.OrganizationService.RemoveMember(c.Request.Context(), *orgID, actorID, memberUserID); xerr != nil {
 		errx.JSON(c, xerr)
 		return
 	}
