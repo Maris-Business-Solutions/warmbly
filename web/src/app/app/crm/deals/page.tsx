@@ -64,15 +64,16 @@ import { Link } from "react-router-dom";
 import useCrmProvider from "@/hooks/useCrmProvider";
 import useMembers from "@/lib/api/hooks/app/organizations/useMembers";
 import type OrganizationMember from "@/lib/api/models/app/organizations/OrganizationMember";
-import { HubSpotMark, HubSpotSyncedAt, OpenInHubSpot } from "@/components/app/crm/HubSpot";
-import { HUBSPOT_SETTINGS_PATH, HubSpotHeaderStatus, HubSpotOwnerMappingLink } from "@/components/app/crm/hubspotCrm";
-import { crmErrorMessage, useHubSpotOwnerIndex } from "@/components/app/crm/hubspotUtils";
+import { CRM_INFO, type CrmInfo, CrmMark, CrmSyncedAt, OpenInCrm } from "@/components/app/crm/crmProviders";
+import { CrmHeaderStatus, CrmOwnerMappingLink } from "@/components/app/crm/crmMode";
+import { crmErrorMessage, useCrmOwnerIndex } from "@/components/app/crm/crmModeUtils";
 import { cn } from "@/lib/utils";
 
-// HubSpot mode for the board and dialog: who owns a deal, and whether to show
-// HubSpot links. Native mode leaves it at the default.
-const DealsCrmContext = React.createContext<{ isHubSpot: boolean; memberByUser: Map<string, OrganizationMember> }>({
-    isHubSpot: false,
+// Provider mode for the board and dialog: who owns a deal, and whether to show
+// links into the connected CRM. Native mode leaves it at the default.
+const DealsCrmContext = React.createContext<{ isExternal: boolean; crm: CrmInfo; memberByUser: Map<string, OrganizationMember> }>({
+    isExternal: false,
+    crm: CRM_INFO.hubspot,
     memberByUser: new Map(),
 });
 
@@ -84,13 +85,13 @@ const STATUS_LABEL = {
 
 export default function DealsPage() {
     const pipelines = usePipelines();
-    const { isHubSpot } = useCrmProvider();
+    const { isExternal, crm } = useCrmProvider();
     const { data: members } = useMembers();
     const crmCtx = React.useMemo(() => {
         const m = new Map<string, OrganizationMember>();
         for (const mem of members ?? []) m.set(mem.user_id, mem);
-        return { isHubSpot, memberByUser: m };
-    }, [isHubSpot, members]);
+        return { isExternal, crm, memberByUser: m };
+    }, [isExternal, crm, members]);
     // Memoised so it's a stable dependency for the effect + memos below
     // (a fresh `?? []` each render would re-fire them every time).
     const list = React.useMemo(() => pipelines.data ?? [], [pipelines.data]);
@@ -199,15 +200,15 @@ export default function DealsPage() {
                 eyebrow="Deals"
                 subtitle={
                     list.length === 0
-                        ? isHubSpot
-                            ? "Waiting for your HubSpot pipelines."
+                        ? isExternal
+                            ? `Waiting for your ${crm.name} pipelines.`
                             : "Create a pipeline first to start tracking deals."
                         : view === "board"
                           ? (currentPipeline?.name ?? "—")
                           : "Every deal, across all pipelines"
                 }
             >
-                {isHubSpot && <HubSpotHeaderStatus />}
+                {isExternal && <CrmHeaderStatus />}
                 {list.length > 0 && (
                     <>
                         <ViewToggle view={view} onChange={setView} />
@@ -237,7 +238,7 @@ export default function DealsPage() {
                 </PageBody>
             ) : list.length === 0 ? (
                 <PageBody className="px-5 py-5">
-                    {isHubSpot ? <HubSpotNoPipelinesYet /> : <NoPipelinesYet />}
+                    {isExternal ? <ProviderNoPipelinesYet /> : <NoPipelinesYet />}
                 </PageBody>
             ) : view === "table" ? (
                 <DealsTable pipelines={list} onOpenDeal={(d) => setEditing(d)} />
@@ -270,7 +271,7 @@ export default function DealsPage() {
                     </SectionBar>
                     <PageBody className="px-5 py-5">
                         {!currentPipeline || stages.length === 0 ? (
-                            <NoStagesYet hubspot={isHubSpot} />
+                            <NoStagesYet provider={isExternal ? crm.name : undefined} />
                         ) : (
                             <Board
                                 pipelineId={pipelineId}
@@ -503,7 +504,7 @@ function DealCard({
     onDragLive?: (dealId: string, on: boolean) => void;
 }) {
     const status = STATUS_LABEL[deal.status];
-    const { isHubSpot, memberByUser } = React.useContext(DealsCrmContext);
+    const { isExternal, crm, memberByUser } = React.useContext(DealsCrmContext);
     return (
         <div
             draggable
@@ -530,10 +531,10 @@ function DealCard({
                         {status.label}
                     </span>
                 )}
-                {isHubSpot && (
-                    <OpenInHubSpot
+                {isExternal && (
+                    <OpenInCrm
                         external={deal.external}
-                        label="Open deal in HubSpot"
+                        label={`Open deal in ${crm.name}`}
                         compact
                         className="-my-1 -mr-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
                     />
@@ -560,7 +561,7 @@ function DealCard({
                         {fmtDate(deal.expected_close_date)}
                     </span>
                 )}
-                {isHubSpot && (deal.assigned_to || deal.external?.owner_name) && (
+                {isExternal && (deal.assigned_to || deal.external?.owner_name) && (
                     <span className={deal.expected_close_date ? "shrink-0" : "ml-auto shrink-0"}>
                         <DealOwner
                             deal={deal}
@@ -669,40 +670,40 @@ function NoPipelinesYet() {
     );
 }
 
-function HubSpotNoPipelinesYet() {
-    const { needsReconnect } = useCrmProvider();
+function ProviderNoPipelinesYet() {
+    const { needsReconnect, crm } = useCrmProvider();
     return (
         <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/40 p-8 text-center">
             <div className="mx-auto size-9 rounded-md bg-white border border-slate-200 flex items-center justify-center mb-3">
                 {needsReconnect ? (
-                    <HubSpotMark className="w-4 h-4" />
+                    <CrmMark provider={crm.id} className="w-4 h-4" />
                 ) : (
                     <Loader2Icon className="w-4 h-4 text-slate-400 animate-spin" />
                 )}
             </div>
             <h3 className="text-[13px] font-semibold text-slate-900 mb-1">
-                {needsReconnect ? "Reconnect HubSpot to sync deals" : "Fetching your HubSpot pipelines..."}
+                {needsReconnect ? `Reconnect ${crm.name} to sync deals` : `Fetching your ${crm.name} pipelines...`}
             </h3>
             <p className="text-[12px] text-slate-500 max-w-md mx-auto mb-4 leading-relaxed">
-                Deals live in HubSpot pipelines. They show up here as soon as the first sync finishes.
+                Deals live in {crm.name} pipelines. They show up here as soon as the first sync finishes.
             </p>
             <Link
-                to={HUBSPOT_SETTINGS_PATH}
+                to={crm.settingsPath}
                 className="h-7 px-3 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors"
             >
-                <HubSpotMark className="w-3 h-3" />
-                HubSpot settings
+                <CrmMark provider={crm.id} className="w-3 h-3" />
+                {crm.name} settings
             </Link>
         </div>
     );
 }
 
-function NoStagesYet({ hubspot = false }: { hubspot?: boolean }) {
+function NoStagesYet({ provider }: { provider?: string }) {
     return (
         <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/40 p-6 text-center">
             <p className="text-[12px] text-slate-600 leading-relaxed">
-                {hubspot
-                    ? "This pipeline has no deal stages yet. Add them in HubSpot and they sync here."
+                {provider
+                    ? `This pipeline has no deal stages yet. Add them in ${provider} and they sync here.`
                     : "This pipeline has no stages yet. Add at least one in the Pipelines tab."}
             </p>
         </div>
@@ -739,9 +740,9 @@ function DealDialog({
     const [status, setStatus] = React.useState<"open" | "won" | "lost">("open");
     const [contactEmail, setContactEmail] = React.useState("");
 
-    // HubSpot mode: the deal owner is written to HubSpot, so it is only sent
-    // when changed (a HubSpot owner who is not a member must not be cleared).
-    const { isHubSpot, memberByUser } = React.useContext(DealsCrmContext);
+    // Provider mode: the deal owner is written to the CRM, so it is only sent
+    // when changed (an owner there who is not a member must not be cleared).
+    const { isExternal, crm, memberByUser } = React.useContext(DealsCrmContext);
     const [ownerId, setOwnerId] = React.useState("");
     const [ownerTouched, setOwnerTouched] = React.useState(false);
     const [saveError, setSaveError] = React.useState<{ message: string; code?: string } | null>(null);
@@ -796,14 +797,14 @@ function DealDialog({
         if (closeDate) data.expected_close_date = new Date(closeDate).toISOString();
         if (editing) data.status = status;
 
-        // HubSpot answers in sentences worth reading, so they stay in the dialog.
-        if (isHubSpot) {
+        // The CRM answers in sentences worth reading, so they stay in the dialog.
+        if (isExternal) {
             if (ownerTouched && ownerId) data.assigned_to = ownerId;
             setSaveError(null);
             try {
                 if (editing) await update.mutateAsync({ id: editing.id, data });
                 else await create.mutateAsync(data);
-                toast.success(editing ? "Deal saved to HubSpot" : "Deal created in HubSpot");
+                toast.success(editing ? `Deal saved to ${crm.name}` : `Deal created in ${crm.name}`);
                 onClose();
             } catch (e) {
                 setSaveError({ message: crmErrorMessage(e), code: (e as AppError)?.code });
@@ -831,18 +832,20 @@ function DealDialog({
         }
     }
 
-    // In HubSpot, won and lost are closed deal stages: picking one sets the other.
+    // In HubSpot, won and lost are closed deal stages: picking one sets the
+    // other. Pipedrive keeps the stage and marks the deal won or lost.
+    const stagesClose = isExternal && crm.wonLostAreStages;
     const wonStage = stages.find((s) => s.closed && s.won);
     const lostStage = stages.find((s) => s.closed && !s.won);
     function pickStage(id: string) {
         setStageId(id);
-        if (!isHubSpot) return;
+        if (!stagesClose) return;
         const st = stages.find((s) => s.id === id);
         setStatus(st?.closed ? (st.won ? "won" : "lost") : "open");
     }
     function pickStatus(next: "open" | "won" | "lost") {
         setStatus(next);
-        if (!isHubSpot) return;
+        if (!stagesClose) return;
         if (next === "won" && wonStage) setStageId(wonStage.id);
         else if (next === "lost" && lostStage) setStageId(lostStage.id);
         else if (next === "open" && stages.find((s) => s.id === stageId)?.closed) {
@@ -911,8 +914,8 @@ function DealDialog({
                                     <TrashIcon className="w-3 h-3" />
                                 </button>
                             )}
-                            {isHubSpot && editing?.external?.url && (
-                                <OpenInHubSpot external={editing.external} label="Open in HubSpot" compact className="ml-auto" />
+                            {isExternal && editing?.external?.url && (
+                                <OpenInCrm external={editing.external} compact className="ml-auto" />
                             )}
                             <button
                                 type="button"
@@ -920,7 +923,7 @@ function DealDialog({
                                 aria-label="Close"
                                 className={cn(
                                     "size-7 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center justify-center transition-colors",
-                                    !(isHubSpot && editing?.external?.url) && "ml-auto",
+                                    !(isExternal && editing?.external?.url) && "ml-auto",
                                 )}
                             >
                                 <XIcon className="w-3.5 h-3.5" />
@@ -928,12 +931,12 @@ function DealDialog({
                         </div>
 
                         <div className="px-4 py-4 space-y-3 min-h-0 overflow-y-auto">
-                            {isHubSpot && (
+                            {isExternal && (
                                 <div className="flex items-center gap-1.5 text-[11.5px] text-slate-500">
-                                    <HubSpotMark className="w-3 h-3" />
-                                    <span>{editing ? "Changes save to this deal in HubSpot." : "This deal is created in HubSpot."}</span>
+                                    <CrmMark provider={crm.id} className="w-3 h-3" />
+                                    <span>{editing ? `Changes save to this deal in ${crm.name}.` : `This deal is created in ${crm.name}.`}</span>
                                     {editing?.external?.synced_at && (
-                                        <HubSpotSyncedAt at={editing.external.synced_at} className="ml-auto hidden sm:inline-flex" />
+                                        <CrmSyncedAt at={editing.external.synced_at} provider={crm.id} className="ml-auto hidden sm:inline-flex" />
                                     )}
                                 </div>
                             )}
@@ -943,7 +946,7 @@ function DealDialog({
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <div>
-                                    <Label>{isHubSpot ? "Deal stage" : "Stage"}</Label>
+                                    <Label>{isExternal ? "Deal stage" : "Stage"}</Label>
                                     <StagePill stages={stages} value={stageId} onChange={pickStage} />
                                 </div>
                                 {editing && (
@@ -968,7 +971,7 @@ function DealDialog({
                                     </div>
                                 )}
                             </div>
-                            {isHubSpot && editing && (
+                            {stagesClose && editing && (
                                 <p className="-mt-1 text-[11px] leading-relaxed text-slate-500">
                                     {wonStage || lostStage
                                         ? `In HubSpot, won and lost are deal stages. Won moves the deal to "${wonStage?.name ?? "Closed won"}", lost to "${lostStage?.name ?? "Closed lost"}".`
@@ -977,7 +980,7 @@ function DealDialog({
                             )}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                 <div className="sm:col-span-2">
-                                    <Label>{isHubSpot ? "Amount" : "Value"}</Label>
+                                    <Label>{isExternal ? crm.words.amount : "Value"}</Label>
                                     <TextInput value={value} onChange={setValue} placeholder="12000" className="w-full" />
                                 </div>
                                 <div>
@@ -987,7 +990,7 @@ function DealDialog({
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <div>
-                                    <Label>{isHubSpot ? "Close date" : "Expected close"}</Label>
+                                    <Label>{isExternal ? crm.words.closeDate : "Expected close"}</Label>
                                     <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Pick a date" className="w-full" />
                                 </div>
                                 <div>
@@ -995,7 +998,7 @@ function DealDialog({
                                     <TextInput value={contactEmail} onChange={setContactEmail} disabled placeholder="—" className="w-full" />
                                 </div>
                             </div>
-                            {isHubSpot && (
+                            {isExternal && (
                                 <div>
                                     <Label>Deal owner</Label>
                                     <DealOwnerPicker
@@ -1016,8 +1019,8 @@ function DealDialog({
                                     {(saveError.code === "crm_reauth_required" || saveError.code === "crm_owner_unmapped") && (
                                         <>
                                             {" "}
-                                            <Link to={HUBSPOT_SETTINGS_PATH} className="font-medium underline underline-offset-2 hover:text-red-900">
-                                                Open HubSpot settings
+                                            <Link to={crm.settingsPath} className="font-medium underline underline-offset-2 hover:text-red-900">
+                                                Open {crm.name} settings
                                             </Link>
                                         </>
                                     )}
@@ -1052,8 +1055,8 @@ function DealDialog({
     );
 }
 
-// Deal owner for HubSpot mode: members only, and only those HubSpot knows as
-// owners. Members without a HubSpot owner are shown but cannot be picked.
+// Deal owner for provider mode: members only, and only those the CRM knows as
+// owners. Members without one are shown but cannot be picked.
 function DealOwnerPicker({
     value,
     externalOwner,
@@ -1066,7 +1069,8 @@ function DealOwnerPicker({
     onChange: (userId: string) => void;
 }) {
     const [open, setOpen] = React.useState(false);
-    const { isMapped } = useHubSpotOwnerIndex();
+    const { isMapped } = useCrmOwnerIndex();
+    const { crm } = useCrmProvider();
     const members = [...memberByUser.values()];
     const cur = value ? memberByUser.get(value) : undefined;
     const label = (m?: OrganizationMember) => m?.name?.trim() || m?.email?.trim() || "Member";
@@ -1086,7 +1090,7 @@ function DealOwnerPicker({
                         <span className="truncate">Member {value.slice(0, 6)}</span>
                     ) : externalOwner ? (
                         <span className="truncate">
-                            {externalOwner} <span className="text-slate-400">(HubSpot owner)</span>
+                            {externalOwner} <span className="text-slate-400">({crm.name} {crm.words.owner})</span>
                         </span>
                     ) : (
                         <span className="text-slate-400">No owner</span>
@@ -1108,7 +1112,7 @@ function DealOwnerPicker({
                                 disabled={!mapped}
                                 trailing={
                                     mapped ? undefined : (
-                                        <span className="text-[10px] text-slate-400">Not in HubSpot</span>
+                                        <span className="text-[10px] text-slate-400">Not in {crm.name}</span>
                                     )
                                 }
                             >
@@ -1119,7 +1123,7 @@ function DealOwnerPicker({
                 )}
                 {anyUnmapped && (
                     <div className="mt-1 border-t border-slate-100">
-                        <HubSpotOwnerMappingLink onNavigate={() => setOpen(false)} />
+                        <CrmOwnerMappingLink onNavigate={() => setOpen(false)} />
                     </div>
                 )}
             </PopoverMenuContent>

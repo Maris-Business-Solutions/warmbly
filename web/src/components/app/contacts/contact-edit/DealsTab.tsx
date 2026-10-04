@@ -1,5 +1,5 @@
 // Deals tab: the contact's deals, with stage moves and a quick add. In
-// HubSpot mode these are HubSpot's deals and every change is written there.
+// provider mode these are the CRM's deals and every change is written there.
 
 import React from "react";
 import { Link } from "react-router-dom";
@@ -9,9 +9,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { NumberInput, TextInput } from "@/components/ui/field";
 import { PopoverMenu, PopoverMenuContent, PopoverMenuItem, PopoverMenuTrigger } from "@/components/ui/popover-menu";
 import DealStagePicker from "@/components/app/crm/DealStagePicker";
-import { HubSpotBadge, HubSpotSyncedAt, OpenInHubSpot } from "@/components/app/crm/HubSpot";
-import { externalOwnerName } from "@/components/app/crm/hubspotUtils";
-import { crmErrorMessage, latestSyncedAt } from "@/components/app/crm/hubspotUtils";
+import { CrmBadge, CrmSyncedAt, OpenInCrm } from "@/components/app/crm/crmProviders";
+import { externalOwnerName } from "@/components/app/crm/crmModeUtils";
+import { crmErrorMessage, latestSyncedAt } from "@/components/app/crm/crmModeUtils";
 import useCrmProvider from "@/hooks/useCrmProvider";
 import useContactDeals from "@/lib/api/hooks/app/contacts/useContactDeals";
 import useCreateDeal from "@/lib/api/hooks/app/crm/deals/useCreateDeal";
@@ -29,7 +29,7 @@ const DEAL_STATUS: Record<Deal["status"], { label: string; cls: string; dot: str
 };
 
 export default function DealsTab({ contactId, defaultName }: { contactId: string; defaultName: string }) {
-    const { isHubSpot } = useCrmProvider();
+    const { isExternal, crm } = useCrmProvider();
     const deals = useContactDeals(contactId);
     const pipelines = usePipelines();
     const update = useUpdateDeal();
@@ -43,13 +43,13 @@ export default function DealsTab({ contactId, defaultName }: { contactId: string
         },
         [pipelines.data],
     );
-    const syncedAt = isHubSpot ? latestSyncedAt(list) : undefined;
+    const syncedAt = isExternal ? latestSyncedAt(list) : undefined;
     const openValue = list.filter((d) => d.status === "open").reduce((n, d) => n + (d.value ?? 0), 0);
 
     async function moveDeal(deal: Deal, stageId: string) {
         try {
             await toast.promise(update.mutateAsync({ id: deal.id, data: { stage_id: stageId } as DealWrite }), {
-                loading: isHubSpot ? "Moving in HubSpot…" : "Moving…",
+                loading: isExternal ? `Moving in ${crm.name}…` : "Moving…",
                 success: "Moved",
                 error: (e: unknown) => crmErrorMessage(e),
             });
@@ -62,7 +62,7 @@ export default function DealsTab({ contactId, defaultName }: { contactId: string
         <div className="space-y-3">
             <div className="flex items-center gap-2">
                 <h2 className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500">Deals</h2>
-                {isHubSpot && <HubSpotBadge />}
+                {isExternal && <CrmBadge provider={crm.id} />}
                 {list.length > 0 && (
                     <span className="text-[10.5px] text-slate-400 tabular-nums">
                         {list.length}
@@ -100,7 +100,7 @@ export default function DealsTab({ contactId, defaultName }: { contactId: string
                         <NewDealForm
                             contactId={contactId}
                             defaultName={defaultName}
-                            hubspot={isHubSpot}
+                            external={isExternal}
                             onDone={() => setAdding(false)}
                         />
                     </motion.div>
@@ -121,18 +121,18 @@ export default function DealsTab({ contactId, defaultName }: { contactId: string
                 <div className="rounded-md border border-dashed border-slate-200 px-3 py-8 text-center">
                     <CircleDollarSignIcon className="w-4 h-4 text-slate-300 mx-auto mb-1.5" />
                     <p className="text-[11.5px] text-slate-500">
-                        {isHubSpot ? "No deals for this contact in HubSpot." : "No deals for this contact yet."}
+                        {isExternal ? `No deals for this contact in ${crm.name}.` : "No deals for this contact yet."}
                     </p>
                 </div>
             ) : (
                 <div className="space-y-1.5">
                     {list.map((d) => (
-                        <DealRow key={d.id} deal={d} stages={stagesOf(d.pipeline_id)} hubspot={isHubSpot} onMove={moveDeal} />
+                        <DealRow key={d.id} deal={d} stages={stagesOf(d.pipeline_id)} external={isExternal} onMove={moveDeal} />
                     ))}
                 </div>
             )}
 
-            {syncedAt && <HubSpotSyncedAt at={syncedAt} />}
+            {syncedAt && <CrmSyncedAt provider={crm.id} at={syncedAt} />}
         </div>
     );
 }
@@ -140,14 +140,15 @@ export default function DealsTab({ contactId, defaultName }: { contactId: string
 function DealRow({
     deal,
     stages,
-    hubspot,
+    external,
     onMove,
 }: {
     deal: Deal;
     stages: Stage[];
-    hubspot: boolean;
+    external: boolean;
     onMove: (deal: Deal, stageId: string) => void;
 }) {
+    const { crm } = useCrmProvider();
     const st = DEAL_STATUS[deal.status] ?? DEAL_STATUS.open;
     const canMove = deal.status === "open" && stages.length > 0;
     const owner = externalOwnerName(deal.external);
@@ -162,7 +163,7 @@ function DealRow({
                         {money(deal.value, deal.currency)}
                     </span>
                 )}
-                {hubspot && <OpenInHubSpot external={deal.external} compact label="Open deal in HubSpot" />}
+                {external && <OpenInCrm external={deal.external} compact label={`Open deal in ${crm.name}`} />}
             </div>
             <div className="mt-1 flex items-center gap-2 min-w-0 flex-wrap">
                 <span className={`inline-flex items-center gap-1 text-[11px] ${st.cls}`}>
@@ -228,14 +229,15 @@ function StageMenu({ stages, value, onChange }: { stages: Stage[]; value?: strin
 function NewDealForm({
     contactId,
     defaultName,
-    hubspot,
+    external,
     onDone,
 }: {
     contactId: string;
     defaultName: string;
-    hubspot: boolean;
+    external: boolean;
     onDone: () => void;
 }) {
+    const { crm } = useCrmProvider();
     const pipelines = usePipelines();
     const create = useCreateDeal();
     const [name, setName] = React.useState(defaultName);
@@ -265,7 +267,7 @@ function NewDealForm({
         if (value > 0) data.value = value;
         try {
             await toast.promise(create.mutateAsync(data), {
-                loading: hubspot ? "Creating in HubSpot…" : "Creating deal…",
+                loading: external ? `Creating in ${crm.name}…` : "Creating deal…",
                 success: "Deal created",
                 error: (e: unknown) => crmErrorMessage(e),
             });
@@ -294,7 +296,7 @@ function NewDealForm({
             />
             <div className="flex items-center gap-2">
                 <span className="text-[11px] text-slate-400">
-                    {hubspot ? "Created in HubSpot and linked to this contact." : "Linked to this contact."}
+                    {external ? `Created in ${crm.name} and linked to this contact.` : "Linked to this contact."}
                 </span>
                 <button
                     type="button"

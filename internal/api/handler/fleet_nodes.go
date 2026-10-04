@@ -301,10 +301,13 @@ var nodeEnvKeys = []string{
 
 // consumerEnvKeys reach a consumer and never a worker. A consumer runs the
 // integration actions, refreshes their OAuth tokens and drains the CRM outbox,
-// so it reads the integration client credentials (integration.NewOAuthManager)
-// and APP_URL (the "Open in Warmbly" link written to HubSpot).
+// so it reads the integration client credentials (integration.NewOAuthManager),
+// APP_URL (the "Open in Warmbly" link written to the CRM) and the backend's
+// public URL (where it registers Pipedrive's webhooks).
 var consumerEnvKeys = []string{
 	"APP_URL",
+	"BACKEND_PUBLIC_URL",
+	"API_PUBLIC_URL",
 	"HUBSPOT_OAUTH_CLIENT_ID",
 	"HUBSPOT_OAUTH_CLIENT_SECRET",
 	"SLACK_OAUTH_CLIENT_ID",

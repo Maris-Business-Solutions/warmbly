@@ -44,6 +44,7 @@ import OAuthLayout from './app/oauth/layout';
 import OAuthConsentPage from './app/oauth/authorize/page';
 import IntegrationsPage from './app/app/integrations/page';
 import HubSpotPage from './app/app/integrations/hubspot/page';
+import PipedrivePage from './app/app/integrations/pipedrive/page';
 import SalesforcePage from './app/app/integrations/salesforce/[id]/page';
 import AutomationsPage from './app/app/automations/page';
 import AutomationBuilderPage from './app/app/automations/[id]/page';
@@ -391,6 +392,10 @@ const router = createBrowserRouter([
           {
             path: "integrations/hubspot",
             element: <HubSpotPage />,
+          },
+          {
+            path: "integrations/pipedrive",
+            element: <PipedrivePage />,
           },
           {
             path: "integrations/salesforce/:id",

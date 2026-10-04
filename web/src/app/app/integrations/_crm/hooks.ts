@@ -14,11 +14,13 @@ import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
 import usePipelines from "@/lib/api/hooks/app/crm/pipelines/usePipelines";
 import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 
+import { usePageCrm } from "./context";
 import { errMessage } from "./shared";
 
-// The HubSpot OAuth popup: a first connect, or a reconnect that grants the
+// The provider's OAuth popup: a first connect, or a reconnect that grants the
 // permissions CRM mode needs.
-export function useHubSpotOAuth() {
+export function useCrmOAuth() {
+    const crm = usePageCrm();
     const queryClient = useQueryClient();
     const start = useStartIntegrationOAuth();
     const finish = useFinishIntegrationOAuth();
@@ -28,18 +30,18 @@ export function useHubSpotOAuth() {
     const connect = React.useCallback(async (): Promise<IntegrationConnection | null> => {
         setBusy(true);
         try {
-            const { url } = await start.mutateAsync({ provider: "hubspot" });
+            const { url } = await start.mutateAsync({ provider: crm.id });
             const { code, state } = await openOAuthPopup(url);
             const conn = await finish.mutateAsync({ code, state });
-            toast.success("HubSpot connected");
+            toast.success(`${crm.name} connected`);
             return conn;
         } catch (err) {
-            toast.error(errMessage(err, "Could not connect HubSpot"));
+            toast.error(errMessage(err, `Could not connect ${crm.name}`));
             return null;
         } finally {
             setBusy(false);
         }
-    }, [start, finish]);
+    }, [start, finish, crm]);
 
     const reconnect = React.useCallback(
         async (connectionId: string): Promise<boolean> => {
@@ -49,16 +51,16 @@ export function useHubSpotOAuth() {
                 const { code, state } = await openOAuthPopup(url);
                 await finish.mutateAsync({ code, state });
                 await queryClient.invalidateQueries({ queryKey: ["crm"] });
-                toast.success("HubSpot reconnected");
+                toast.success(`${crm.name} reconnected`);
                 return true;
             } catch (err) {
-                toast.error(errMessage(err, "Could not reconnect HubSpot"));
+                toast.error(errMessage(err, `Could not reconnect ${crm.name}`));
                 return false;
             } finally {
                 setBusy(false);
             }
         },
-        [reauth, finish, queryClient],
+        [reauth, finish, queryClient, crm],
     );
 
     return { connect, reconnect, busy };
@@ -104,10 +106,11 @@ export function useLeaveGuard(dirty: boolean, message: string) {
     }, []);
 }
 
-// HubSpot pipelines mirrored into Warmbly; everything else is Warmbly's own.
-export function useHubSpotPipelines(): { pipelines: Pipeline[]; loading: boolean } {
+// The page's CRM pipelines mirrored into Warmbly; the rest are Warmbly's own.
+export function useProviderPipelines(): { pipelines: Pipeline[]; loading: boolean } {
+    const crm = usePageCrm();
     const q = usePipelines();
     const all = q.data ?? [];
-    const mirrored = all.filter((p) => p.external?.provider === "hubspot");
+    const mirrored = all.filter((p) => p.external?.provider === crm.id);
     return { pipelines: mirrored.length ? mirrored : all, loading: q.isLoading };
 }

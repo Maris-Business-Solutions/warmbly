@@ -120,8 +120,8 @@ import {
 } from "@/components/ui/popover-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import useCrmProvider from "@/hooks/useCrmProvider";
-import { HubSpotMark } from "@/components/app/crm/HubSpot";
-import HubSpotImportDialog from "./import/HubSpotImportDialog";
+import { CrmMark } from "@/components/app/crm/crmProviders";
+import CrmImportDialog from "./import/CrmImportDialog";
 
 type SubFilter = "all" | "subscribed" | "unsubscribed";
 
@@ -177,11 +177,11 @@ export default function ContactsTable({
     const [importStep, setImportStep] = React.useState<ImportStep | undefined>(
         () => (params.get("importStep") as ImportStep) ?? undefined,
     );
-    // HubSpot mode adds a list import; its draft continues in the same wizard.
-    const { isHubSpot } = useCrmProvider();
-    const [hubspotImportOpen, setHubspotImportOpen] = React.useState(false);
+    // Provider mode adds a list import; its draft continues in the same wizard.
+    const { isExternal, crm } = useCrmProvider();
+    const [crmImportOpen, setCrmImportOpen] = React.useState(false);
     const continueImport = React.useCallback((id: string, step: ImportStep) => {
-        setHubspotImportOpen(false);
+        setCrmImportOpen(false);
         setImportId(id);
         setImportStep(step);
         setImportOpen(true);
@@ -215,7 +215,7 @@ export default function ContactsTable({
         );
     }, [setParams]);
 
-    // ?contact=<id> opens that contact's drawer (HubSpot's "Open in Warmbly" links here).
+    // ?contact=<id> opens that contact's drawer (the CRM's "Open in Warmbly" links here).
     const deepContact = params.get("contact");
     React.useEffect(() => {
         if (deepContact) openContact(deepContact);
@@ -415,10 +415,10 @@ export default function ContactsTable({
                 (c) =>
                     PUSHABLE_PROVIDERS.includes(c.provider) &&
                     (c.status === "connected" || c.status === "degraded") &&
-                    // In HubSpot mode contacts sync to HubSpot on their own.
-                    !(isHubSpot && c.provider === "hubspot"),
+                    // In provider mode contacts sync to that CRM on their own.
+                    !(isExternal && c.provider === crm.id),
             ),
-        [connectionsQuery.data, isHubSpot],
+        [connectionsQuery.data, isExternal, crm.id],
     );
 
     async function pushToCRM(connectionId: string, providerLabel: string) {
@@ -835,13 +835,13 @@ export default function ContactsTable({
                     >
                         Import
                     </TopbarAction>
-                    {isHubSpot && (
+                    {isExternal && (
                         <TopbarAction
                             variant="ghost"
-                            icon={<HubSpotMark className="w-3 h-3" />}
-                            onClick={() => setHubspotImportOpen(true)}
+                            icon={<CrmMark provider={crm.id} className="w-3 h-3" />}
+                            onClick={() => setCrmImportOpen(true)}
                         >
-                            From HubSpot
+                            From {crm.name}
                         </TopbarAction>
                     )}
                     <TopbarAction
@@ -960,10 +960,10 @@ export default function ContactsTable({
                     initialStep={importStep}
                     onRoute={routeImport}
                 />
-                {isHubSpot && (
-                    <HubSpotImportDialog
-                        open={hubspotImportOpen}
-                        onClose={() => setHubspotImportOpen(false)}
+                {isExternal && (
+                    <CrmImportDialog
+                        open={crmImportOpen}
+                        onClose={() => setCrmImportOpen(false)}
                         onContinue={continueImport}
                         target={current_campaign ? `Adding to ${current_campaign.name}` : undefined}
                     />
@@ -1027,13 +1027,13 @@ export default function ContactsTable({
                     >
                         Import
                     </TopbarAction>
-                    {isHubSpot && (
+                    {isExternal && (
                         <TopbarAction
                             variant="ghost"
-                            icon={<HubSpotMark className="w-3 h-3" />}
-                            onClick={() => setHubspotImportOpen(true)}
+                            icon={<CrmMark provider={crm.id} className="w-3 h-3" />}
+                            onClick={() => setCrmImportOpen(true)}
                         >
-                            Import from HubSpot
+                            Import from {crm.name}
                         </TopbarAction>
                     )}
                     <TopbarAction
@@ -1063,12 +1063,12 @@ export default function ContactsTable({
                             <PopoverMenuItem onSelect={() => setImportOpen(true)}>
                                 Import
                             </PopoverMenuItem>
-                            {isHubSpot && (
+                            {isExternal && (
                                 <PopoverMenuItem
-                                    icon={<HubSpotMark className="w-3.5 h-3.5" />}
-                                    onSelect={() => setHubspotImportOpen(true)}
+                                    icon={<CrmMark provider={crm.id} className="w-3.5 h-3.5" />}
+                                    onSelect={() => setCrmImportOpen(true)}
                                 >
-                                    Import from HubSpot
+                                    Import from {crm.name}
                                 </PopoverMenuItem>
                             )}
                             <PopoverMenuItem onSelect={() => setSyncOpen(true)}>
@@ -1207,10 +1207,10 @@ export default function ContactsTable({
                 initialStep={importStep}
                 onRoute={routeImport}
             />
-            {isHubSpot && (
-                <HubSpotImportDialog
-                    open={hubspotImportOpen}
-                    onClose={() => setHubspotImportOpen(false)}
+            {isExternal && (
+                <CrmImportDialog
+                    open={crmImportOpen}
+                    onClose={() => setCrmImportOpen(false)}
                     onContinue={continueImport}
                     target={segment ? `Adding to ${segment.name}` : undefined}
                 />

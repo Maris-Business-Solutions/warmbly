@@ -62,6 +62,9 @@ import {
     withQuery,
 } from "./_components/store/model";
 
+// Providers with their own home page instead of the generic drawers.
+const CRM_HOMES = new Set<string>(["hubspot", "pipedrive"]);
+
 type Route =
     | { kind: "home" }
     | { kind: "all" }
@@ -184,10 +187,10 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
         navigate(path);
     }
 
-    // HubSpot has its own home (connect, CRM setup and settings), so every way
-    // into it leads there rather than to the generic drawers.
+    // HubSpot and Pipedrive have their own home (connect, CRM setup and
+    // settings), so every way into them leads there, not to the generic drawers.
     function manage(c: IntegrationConnection) {
-        if (c.provider === "hubspot") go(`${STORE_BASE}/hubspot`);
+        if (CRM_HOMES.has(c.provider)) go(`${STORE_BASE}/${c.provider}`);
         else setManageTarget(c);
     }
 
@@ -201,8 +204,8 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
             openItem(item);
             return;
         }
-        if (item.entry.provider === "hubspot") {
-            go(`${STORE_BASE}/hubspot`);
+        if (CRM_HOMES.has(item.entry.provider)) {
+            go(`${STORE_BASE}/${item.entry.provider}`);
             return;
         }
         const existing = connByProvider[item.entry.provider];
@@ -476,8 +479,8 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                         onSetup={(conn) => {
                             if (conn.inbound_webhook_url) {
                                 setInboundUrl({ provider: conn.provider, url: conn.inbound_webhook_url });
-                            } else if (conn.provider === "hubspot") {
-                                go(`${STORE_BASE}/hubspot`);
+                            } else if (CRM_HOMES.has(conn.provider)) {
+                                go(`${STORE_BASE}/${conn.provider}`);
                             } else if (conn.provider === "salesforce") {
                                 // Setup continues on the Salesforce page: rules, mapping, imports.
                                 go(`${STORE_BASE}/salesforce/${conn.id}`);
@@ -488,16 +491,19 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                     />
                 )}
             </AnimatePresence>
-            {manageTarget && (
-                <ConnectionDetail
-                    connection={manageTarget}
-                    entry={entryByProvider[manageTarget.provider]}
-                    onClose={() => {
-                        setManageTarget(null);
-                        void connectionsQuery.refetch();
-                    }}
-                />
-            )}
+            <AnimatePresence>
+                {manageTarget && (
+                    <ConnectionDetail
+                        key={manageTarget.id}
+                        connection={manageTarget}
+                        entry={entryByProvider[manageTarget.provider]}
+                        onClose={() => {
+                            setManageTarget(null);
+                            void connectionsQuery.refetch();
+                        }}
+                    />
+                )}
+            </AnimatePresence>
             {inboundUrl && (
                 <InboundUrlDialog provider={inboundUrl.provider} url={inboundUrl.url} onClose={() => setInboundUrl(null)} />
             )}

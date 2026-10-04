@@ -200,9 +200,12 @@ type Service interface {
 	AccessToken(ctx context.Context, orgID, connID uuid.UUID) (string, *models.IntegrationConnection, error)
 	// MarkConnectionHealth records a provider call's outcome on the connection.
 	MarkConnectionHealth(ctx context.Context, connID uuid.UUID, status models.IntegrationStatus, health models.IntegrationHealth, detail string)
-	// SetCRMModeCheck reports whether a workspace runs its CRM on HubSpot, so
-	// the legacy HubSpot action steps aside.
-	SetCRMModeCheck(check func(ctx context.Context, orgID uuid.UUID) bool)
+	// MergeConnectionDisplay overlays non-secret facts (a Pipedrive company
+	// domain) onto a connection's display fields.
+	MergeConnectionDisplay(ctx context.Context, connID uuid.UUID, patch map[string]any) error
+	// SetCRMModeCheck reports which CRM a workspace runs on, so the legacy
+	// upsert action of that provider steps aside.
+	SetCRMModeCheck(check func(ctx context.Context, orgID uuid.UUID) models.CRMProvider)
 	// ProviderAccess returns a usable OAuth access token for an org-owned
 	// connection, refreshing first when force is set or the token is expiring.
 	ProviderAccess(ctx context.Context, orgID, connID uuid.UUID, force bool) (*ProviderAccess, error)
@@ -238,7 +241,7 @@ type SlackInstallHook interface {
 
 type service struct {
 	refresh    singleflight.Group
-	crmMode    func(ctx context.Context, orgID uuid.UUID) bool
+	crmMode    func(ctx context.Context, orgID uuid.UUID) models.CRMProvider
 	repo       repository.IntegrationRepository
 	cipher     cipher.CipherService
 	oauth      *OAuthManager
@@ -573,6 +576,15 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 	}
 	if account.UIDomain != "" {
 		display["ui_domain"] = account.UIDomain
+	}
+	if account.APIDomain != "" {
+		display["api_domain"] = account.APIDomain
+	}
+	if account.CompanyID != "" {
+		display["company_id"] = account.CompanyID
+	}
+	if account.CompanyDomain != "" {
+		display["company_domain"] = account.CompanyDomain
 	}
 	if st.Provider == models.IntegrationSalesforce {
 		if loginHost == "" {
@@ -1371,8 +1383,12 @@ type tokenResult struct {
 	conn  *models.IntegrationConnection
 }
 
-func (s *service) SetCRMModeCheck(check func(ctx context.Context, orgID uuid.UUID) bool) {
+func (s *service) SetCRMModeCheck(check func(ctx context.Context, orgID uuid.UUID) models.CRMProvider) {
 	s.crmMode = check
+}
+
+func (s *service) MergeConnectionDisplay(ctx context.Context, connID uuid.UUID, patch map[string]any) error {
+	return s.repo.MergeDisplayFields(ctx, connID, patch)
 }
 
 func (s *service) MarkConnectionHealth(ctx context.Context, connID uuid.UUID, status models.IntegrationStatus, health models.IntegrationHealth, detail string) {

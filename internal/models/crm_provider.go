@@ -12,9 +12,15 @@ import (
 type CRMProvider string
 
 const (
-	CRMProviderNative  CRMProvider = "native"
-	CRMProviderHubSpot CRMProvider = "hubspot"
+	CRMProviderNative    CRMProvider = "native"
+	CRMProviderHubSpot   CRMProvider = "hubspot"
+	CRMProviderPipedrive CRMProvider = "pipedrive"
 )
+
+// External reports a provider other than Warmbly's own CRM.
+func (p CRMProvider) External() bool {
+	return p == CRMProviderHubSpot || p == CRMProviderPipedrive
+}
 
 // CRM object types a provider record can mirror (crm_external_links.object_type).
 const (
@@ -62,6 +68,8 @@ type CRMReplyOutcome struct {
 	// LifecycleStage is written to the contact's lifecycle stage ("" leaves it).
 	LifecycleStage string `json:"lifecycle_stage"`
 	CreateDeal     bool   `json:"create_deal"`
+	// CreateLead adds the person to Pipedrive's Leads Inbox (Pipedrive only).
+	CreateLead bool `json:"create_lead,omitempty"`
 	// DealPipelineID and DealStageID are local (mirrored) ids.
 	DealPipelineID *uuid.UUID `json:"deal_pipeline_id,omitempty"`
 	DealStageID    *uuid.UUID `json:"deal_stage_id,omitempty"`
@@ -107,6 +115,17 @@ type CRMProviderConfig struct {
 	// a provider property; FieldDirection says which side wins per field.
 	FieldMap       map[string]string `json:"field_map"`
 	FieldDirection map[string]string `json:"field_direction"`
+	// For is the provider these choices were made for ("" is HubSpot, the
+	// only one before Pipedrive), so a switch never reads another's ids.
+	For CRMProvider `json:"for,omitempty"`
+}
+
+// BelongsTo reports whether the choices were made for provider p.
+func (c *CRMProviderConfig) BelongsTo(p CRMProvider) bool {
+	if c.For == "" {
+		return p == CRMProviderHubSpot
+	}
+	return c.For == p
 }
 
 // Field directions for CRMProviderConfig.FieldDirection.
@@ -115,6 +134,37 @@ const (
 	CRMFieldPull = "pull" // the provider writes Warmbly
 	CRMFieldBoth = "both" // the most recent change wins
 )
+
+// DefaultCRMProviderConfigFor is the zero-question setup for one provider.
+// Pipedrive has no lifecycle stages: its person labels stand in for them, and
+// their ids are only known once connected, so they are seeded at the switch.
+func DefaultCRMProviderConfigFor(p CRMProvider) CRMProviderConfig {
+	if p != CRMProviderPipedrive {
+		return DefaultCRMProviderConfig()
+	}
+	return CRMProviderConfig{
+		Activity: CRMActivityLog{
+			Sent: true, Replies: true, Bounces: true, Unsubscribes: true, Meetings: true,
+		},
+		CreateContacts:  true,
+		CreateCompanies: true,
+		WriteProperties: true,
+		ExitRules:       CRMExitRules{DealCreated: true, LifecycleStages: []string{}, OptedOut: true},
+		Guards:          CRMEnrollmentGuards{SkipLifecycleStages: []string{}, SkipOpenDeals: true, SkipOptedOut: true},
+		FieldMap: map[string]string{
+			"first_name": "first_name",
+			"last_name":  "last_name",
+			"company":    "org_name",
+			"phone":      "phone",
+		},
+		FieldDirection: map[string]string{
+			"first_name": CRMFieldBoth,
+			"last_name":  CRMFieldBoth,
+			"company":    CRMFieldBoth,
+			"phone":      CRMFieldBoth,
+		},
+	}
+}
 
 // DefaultCRMProviderConfig is the zero-question setup.
 func DefaultCRMProviderConfig() CRMProviderConfig {

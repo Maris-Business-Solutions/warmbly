@@ -1,4 +1,4 @@
-// What is waiting to reach HubSpot, what failed and why, and when each pull
+// What is waiting to reach the CRM, what failed and why, and when each pull
 // last ran. CRM_SYNCED keeps it live.
 
 import type { ReactNode } from "react";
@@ -10,18 +10,33 @@ import { useDiscardCrmSync, useRetryCrmSync } from "@/lib/api/hooks/app/crm/prov
 import useCrmSyncHealth from "@/lib/api/hooks/app/crm/provider/useCrmSyncHealth";
 import { cn } from "@/lib/utils";
 
+import { type CrmInfo } from "@/components/app/crm/crmProviders";
+
+import { usePageCrm } from "./context";
 import { Card, SubLabel } from "./editors";
 import { errMessage, humanize, plural, timeAgo } from "./shared";
 
-const COUNTS = [
-    ["contacts", "Contacts linked"],
-    ["deals", "Deals"],
-    ["tasks", "Tasks"],
-    ["pipelines", "Pipelines"],
-    ["owners", "Owners"],
-] as const;
+function counts(crm: CrmInfo) {
+    const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+    return [
+        ["contacts", `${cap(crm.words.contacts)} linked`],
+        ["deals", "Deals"],
+        ["tasks", cap(crm.words.tasks)],
+        ["pipelines", "Pipelines"],
+        ["owners", cap(crm.words.owners)],
+    ] as const;
+}
+
+// What each pull row is called, where the object name alone would not say.
+const CURSOR_LABELS: Record<string, string> = {
+    webhooks: "Instant updates",
+    fields: "Warmbly fields",
+    persons: "People",
+};
 
 export default function SyncHealthCard({ canManage }: { canManage: boolean }) {
+    const crm = usePageCrm();
+    const COUNTS = counts(crm);
     const health = useCrmSyncHealth();
     const retry = useRetryCrmSync();
     const discard = useDiscardCrmSync();
@@ -40,8 +55,8 @@ export default function SyncHealthCard({ canManage }: { canManage: boolean }) {
     function discardIds(ids: string[], count: number) {
         confirm.show(
             ids.length === 0
-                ? `Discard ${plural(count, "failed change")}? They will not be sent to HubSpot.`
-                : "Discard this change? It will not be sent to HubSpot.",
+                ? `Discard ${plural(count, "failed change")}? They will not be sent to ${crm.name}.`
+                : `Discard this change? It will not be sent to ${crm.name}.`,
             async () => {
                 try {
                     await discard.mutateAsync(ids);
@@ -56,7 +71,7 @@ export default function SyncHealthCard({ canManage }: { canManage: boolean }) {
     return (
         <Card
             title="Sync health"
-            description="Warmbly sends its changes to HubSpot as they happen and pulls HubSpot's changes back on its own."
+            description={`Warmbly sends its changes to ${crm.name} as they happen and pulls ${crm.name}'s changes back on its own.`}
             actions={
                 canManage && failures.length > 0 ? (
                     <>
@@ -112,11 +127,11 @@ export default function SyncHealthCard({ canManage }: { canManage: boolean }) {
 
                     {cursors.length > 0 && (
                         <div className="space-y-1.5">
-                            <SubLabel>Pulled from HubSpot</SubLabel>
+                            <SubLabel>Pulled from {crm.name}</SubLabel>
                             <div className="rounded-md border border-slate-200 divide-y divide-slate-100">
                                 {cursors.map((c) => (
                                     <div key={c.object_type} className="px-3 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px]">
-                                        <span className="text-slate-800 w-24 shrink-0">{humanize(c.object_type)}</span>
+                                        <span className="text-slate-800 w-28 shrink-0">{CURSOR_LABELS[c.object_type] ?? humanize(c.object_type)}</span>
                                         <span className="text-slate-500 tabular-nums">{c.last_run_at ? timeAgo(c.last_run_at) : "not yet"}</span>
                                         {c.last_error && (
                                             <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-[11px] text-rose-600 truncate" title={c.last_error}>
@@ -131,7 +146,7 @@ export default function SyncHealthCard({ canManage }: { canManage: boolean }) {
 
                     {failures.length > 0 ? (
                         <div className="space-y-1.5">
-                            <SubLabel>Did not reach HubSpot</SubLabel>
+                            <SubLabel>Did not reach {crm.name}</SubLabel>
                             <div className="rounded-md border border-rose-200 divide-y divide-rose-100">
                                 {failures.map((f) => (
                                     <div key={f.id} className="px-3 py-2 flex flex-col sm:flex-row sm:items-start gap-2">
@@ -172,7 +187,7 @@ export default function SyncHealthCard({ canManage }: { canManage: boolean }) {
                     ) : (
                         <p className="text-[12px] text-emerald-700 inline-flex items-center gap-1.5">
                             <CheckCircle2Icon className="w-3.5 h-3.5" />
-                            Nothing failed. Everything Warmbly changed is in HubSpot.
+                            Nothing failed. Everything Warmbly changed is in {crm.name}.
                         </p>
                     )}
                 </>

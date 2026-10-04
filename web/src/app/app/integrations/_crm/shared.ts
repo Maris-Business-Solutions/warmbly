@@ -1,3 +1,4 @@
+import type { ExternalCrm } from "@/components/app/crm/crmProviders";
 import type {
     CRMFieldDirection,
     CRMOption,
@@ -13,23 +14,50 @@ export interface PickerOption {
 }
 
 // The server's defaults, used until settings load and to fill gaps in old rows.
-export const DEFAULT_CONFIG: CRMProviderConfig = {
-    activity: { sent: true, replies: true, bounces: true, unsubscribes: true, meetings: true, opens: false, clicks: false },
-    create_contacts: true,
-    create_companies: true,
-    write_properties: true,
-    positive_reply: { lead_status: "IN_PROGRESS", lifecycle_stage: "", create_deal: false },
-    exit_rules: { deal_created: true, lifecycle_stages: ["opportunity", "customer"], opted_out: true },
-    guards: { skip_lifecycle_stages: ["customer", "evangelist"], skip_open_deals: true, skip_other_owners: false, skip_opted_out: true },
-    deal_pipelines: [],
-    display_properties: [],
-    field_map: { first_name: "firstname", last_name: "lastname", company: "company", phone: "phone" },
-    field_direction: {},
+const DEFAULT_CONFIGS: Record<ExternalCrm, CRMProviderConfig> = {
+    hubspot: {
+        activity: { sent: true, replies: true, bounces: true, unsubscribes: true, meetings: true, opens: false, clicks: false },
+        create_contacts: true,
+        create_companies: true,
+        write_properties: true,
+        positive_reply: { lead_status: "IN_PROGRESS", lifecycle_stage: "", create_deal: false },
+        exit_rules: { deal_created: true, lifecycle_stages: ["opportunity", "customer"], opted_out: true },
+        guards: { skip_lifecycle_stages: ["customer", "evangelist"], skip_open_deals: true, skip_other_owners: false, skip_opted_out: true },
+        deal_pipelines: [],
+        display_properties: [],
+        field_map: { first_name: "firstname", last_name: "lastname", company: "company", phone: "phone" },
+        field_direction: {},
+    },
+    // Pipedrive's label ids are only known once connected; the server seeds
+    // them from the company's own labels at the switch.
+    pipedrive: {
+        activity: { sent: true, replies: true, bounces: true, unsubscribes: true, meetings: true, opens: false, clicks: false },
+        create_contacts: true,
+        create_companies: true,
+        write_properties: true,
+        positive_reply: { lead_status: "", lifecycle_stage: "", create_deal: false, create_lead: false },
+        exit_rules: { deal_created: true, lifecycle_stages: [], opted_out: true },
+        guards: { skip_lifecycle_stages: [], skip_open_deals: true, skip_other_owners: false, skip_opted_out: true },
+        deal_pipelines: [],
+        display_properties: [],
+        field_map: { first_name: "first_name", last_name: "last_name", company: "org_name", phone: "phone" },
+        field_direction: {},
+    },
 };
 
+export function defaultConfig(provider: ExternalCrm): CRMProviderConfig {
+    return structuredClone(DEFAULT_CONFIGS[provider]);
+}
+
+// The stored choices when they were made for this provider, else its defaults.
+export function configFor(provider: ExternalCrm, c?: Partial<CRMProviderConfig> | null): CRMProviderConfig {
+    const owner = c?.for || "hubspot";
+    return normalizeConfig(owner === provider ? c : null, provider);
+}
+
 // Go marshals empty slices and maps as null; the editors want real values.
-export function normalizeConfig(c?: Partial<CRMProviderConfig> | null): CRMProviderConfig {
-    const d = DEFAULT_CONFIG;
+export function normalizeConfig(c?: Partial<CRMProviderConfig> | null, provider: ExternalCrm = "hubspot"): CRMProviderConfig {
+    const d = DEFAULT_CONFIGS[provider];
     if (!c) return structuredClone(d);
     return {
         activity: { ...d.activity, ...(c.activity ?? {}) },
@@ -51,6 +79,7 @@ export function normalizeConfig(c?: Partial<CRMProviderConfig> | null): CRMProvi
         display_properties: c.display_properties ?? [],
         field_map: c.field_map ?? {},
         field_direction: c.field_direction ?? {},
+        for: c.for,
     };
 }
 
@@ -66,7 +95,7 @@ const BASE_FIELDS: Record<string, string> = {
     phone: "Phone",
 };
 
-// The Warmbly contact fields a HubSpot property can map to (email is the match key).
+// The Warmbly contact fields a CRM property can map to (email is the match key).
 export const MAPPABLE_FIELDS = ["first_name", "last_name", "company", "phone"];
 
 export function warmblyFieldLabel(key: string): string {
@@ -74,11 +103,13 @@ export function warmblyFieldLabel(key: string): string {
     return BASE_FIELDS[key] ?? key;
 }
 
-export const DIRECTION_OPTIONS: { value: CRMFieldDirection; label: string; hint: string }[] = [
-    { value: "both", label: "Most recent", hint: "Two-way. The latest edit on either side wins." },
-    { value: "push", label: "Warmbly wins", hint: "Warmbly writes to HubSpot and ignores HubSpot edits." },
-    { value: "pull", label: "HubSpot wins", hint: "HubSpot writes to Warmbly and Warmbly never overwrites it." },
-];
+export function directionOptions(name: string): { value: CRMFieldDirection; label: string; hint: string }[] {
+    return [
+        { value: "both", label: "Most recent", hint: "Two-way. The latest edit on either side wins." },
+        { value: "push", label: "Warmbly wins", hint: `Warmbly writes to ${name} and ignores ${name} edits.` },
+        { value: "pull", label: `${name} wins`, hint: `${name} writes to Warmbly and Warmbly never overwrites it.` },
+    ];
+}
 
 export function humanize(value: string): string {
     if (!value) return "";
@@ -90,8 +121,8 @@ export function optionLabel(options: CRMOption[] | undefined, value: string): st
     return options?.find((o) => o.value === value)?.label ?? humanize(value);
 }
 
-// Lifecycle stage pickers keep stored values the portal no longer lists, so
-// nothing disappears silently.
+// Lifecycle stage and label pickers keep stored values the CRM no longer
+// lists, so nothing disappears silently.
 export function withStoredValues(options: CRMOption[] | undefined, stored: string[]): PickerOption[] {
     const out: PickerOption[] = (options ?? []).map((o) => ({ value: o.value, label: o.label }));
     for (const v of stored) if (!out.some((o) => o.value === v)) out.push({ value: v, label: humanize(v) });
