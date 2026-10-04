@@ -309,7 +309,7 @@ func (d Deps) getWarmupBanStatus(ctx context.Context, inv Invocation, args json.
 	if err != nil {
 		return "", err
 	}
-	status, xerr := d.Warmup.GetBanStatus(ctx, inv.UserID, aid)
+	status, xerr := d.Warmup.GetBanStatus(ctx, inv.OrgID, aid)
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
@@ -334,7 +334,7 @@ func (d Deps) submitWarmupAppeal(ctx context.Context, inv Invocation, args json.
 	if in.Reason == "" {
 		return "", ErrInvalidArgs
 	}
-	appealID, xerr := d.Warmup.SubmitAppeal(ctx, inv.UserID, aid, in.Reason)
+	appealID, xerr := d.Warmup.SubmitAppeal(ctx, inv.OrgID, inv.UserID, aid, in.Reason)
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
