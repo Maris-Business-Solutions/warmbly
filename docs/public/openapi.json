@@ -30580,7 +30580,7 @@
           },
           "stale": {
             "type": "boolean",
-            "description": "True when the snapshot has been outrun by an edit, a start or stop, or a new budget day and a refreshed plan is already being computed. Always false for a plan computed on the request."
+            "description": "True when the snapshot has been outrun by an edit, a start or stop, or a new budget day, or has grown older than the snapshot's maximum age even though nothing changed, and a refreshed plan is already being computed. Always false for a plan computed on the request."
           },
           "configured_ceiling": {
             "type": "integer",
