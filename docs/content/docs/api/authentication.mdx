@@ -105,6 +105,8 @@ API keys authenticate your own scripts. If you are building an app that other pe
 
 Each API key has a permissions bitmask that controls its capabilities. See the [Permissions Reference](/api/permissions/) for a complete list.
 
+A key acts for the member who created it. Every route checks the key's bits and that member's current role in the workspace, so a key never does more than its creator could do in the dashboard today: if the creator's role loses a permission, the key loses it too. When the creator leaves the workspace, the key stops working and answers `401` with code `api_key_holder_left`; create a new key from a current member.
+
 ### Permission categories
 
 | Category | Description |

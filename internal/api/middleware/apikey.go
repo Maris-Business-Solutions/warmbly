@@ -140,6 +140,23 @@ func (h *Handler) validateAPIKey(c *gin.Context, rawKey string) {
 	c.Set(UserIDKey, key.UserID.String())
 	c.Set(OrganizationIDKey, key.OrganizationID)
 
+	// A key acts for the member who created it: it ends with their membership and never exceeds their current role.
+	if h.OrganizationService != nil {
+		member, xerr := h.OrganizationService.GetMembership(c.Request.Context(), key.OrganizationID, key.UserID)
+		if xerr != nil {
+			errx.JSON(c, xerr)
+			c.Abort()
+			return
+		}
+		if member == nil || member.AcceptedAt == nil {
+			errx.JSON(c, errx.NewWithIdentifier(errx.Unauthorized, "api_key_holder_left",
+				"The member who created this API key is no longer in this workspace. Create a new key."))
+			c.Abort()
+			return
+		}
+		c.Set(SessionMemberKey, member)
+	}
+
 	// UpdateLastUsed is itself fire-and-forget; also remembers the caller
 	// IP so the dashboard can show "last called from".
 	h.APIKeyService.UpdateLastUsed(c.Request.Context(), key.ID, c.ClientIP())
@@ -220,9 +237,9 @@ func GetAuthMember(c *gin.Context) *models.OrganizationMember {
 	return nil
 }
 
-// oauthMemberAllows reports whether an OAuth caller's member holds any of perms; other callers pass.
+// oauthMemberAllows reports whether the member behind an API key or OAuth token holds any of perms; sessions pass.
 func (h *Handler) oauthMemberAllows(c *gin.Context, perms ...models.OrganizationPermission) (bool, *errx.Error) {
-	if c.GetString(AuthTypeKey) != AuthTypeOAuth || h.OrganizationService == nil {
+	if !bitmaskAuth(c.GetString(AuthTypeKey)) || h.OrganizationService == nil {
 		return true, nil
 	}
 	userID, err := GetUserUUID(c)

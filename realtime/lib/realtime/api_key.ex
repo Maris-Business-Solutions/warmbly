@@ -62,10 +62,13 @@ defmodule Realtime.ApiKey do
     end
   end
 
-  # Uncached, so a revoked key or a holder banned from signing in stops at once.
+  # Uncached, so a revoked key, a banned holder or one who left the workspace stops at once.
   @live_query """
   SELECT 1 FROM api_keys k JOIN users u ON u.id = k.user_id
   WHERE k.id = $1 AND k.status = 'active' AND (u.ban_scope & 1) = 0
+    AND EXISTS (SELECT 1 FROM organization_members m
+                WHERE m.organization_id = k.organization_id AND m.user_id = k.user_id
+                  AND m.accepted_at IS NOT NULL)
   """
 
   defp check_live(%{id: id}) do

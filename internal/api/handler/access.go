@@ -48,7 +48,7 @@ func (h *Handler) hasAccess(c *gin.Context, orgPerm models.OrganizationPermissio
 
 // bindOAuthMember holds an OAuth caller's tools to its member's permissions as well as its scopes.
 func bindOAuthMember(c *gin.Context, inv *aitools.Invocation) {
-	if middleware.GetAuthType(c) != middleware.AuthTypeOAuth {
+	if t := middleware.GetAuthType(c); t != middleware.AuthTypeOAuth && t != middleware.AuthTypeAPIKey {
 		return
 	}
 	inv.ActsForMember = true
