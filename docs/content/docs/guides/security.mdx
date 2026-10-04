@@ -43,6 +43,8 @@ At sign-in, the code submits automatically once six digits are in. Without your 
 
 Each code works once. An authenticator code stays valid for about a minute so a slow connection still works, but once it has signed you in, that same code is spent and cannot be used again.
 
+Wrong codes are limited three ways: five per sign-in attempt, after which you sign in again from the start; twenty per network address in fifteen minutes; and ten per account in fifteen minutes, however many times the password is entered in between. A correct code clears the account count.
+
 **Turn off** asks for a current code or a recovery code first, then an explicit confirmation. With 2FA off you are protected only by your password plus the emailed code, your recovery codes stop working, and setting it up again issues a fresh secret and new recovery codes.
 
 ## Passkeys
@@ -90,7 +92,7 @@ A password has to be between 8 and 128 characters, and it is checked against a l
 
 There is no rule about mixing upper case, digits and symbols. A long passphrase you can remember beats a short one with a symbol bolted on, which is what current guidance from NIST and the NCSC both say. The dashboard shows a strength meter as you type.
 
-Repeated wrong passwords are counted per account, not just per device, so guessing one account from many addresses does not buy an attacker more attempts. After ten failures the account stops accepting password attempts for an hour. Signing in correctly clears the count.
+Repeated wrong passwords are counted per account, not just per device, so guessing one account from many addresses does not buy an attacker more attempts. After fifty failures in an hour the account stops accepting password attempts until the hour is up. Signing in correctly or completing a password reset clears the count. The current password asked for when you change it, and the password you confirm a sensitive change with, share a separate budget of the same size.
 
 ## Names
 

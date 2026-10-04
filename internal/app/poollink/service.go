@@ -21,6 +21,7 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/cache"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/crypt"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -130,18 +131,11 @@ func (s *service) WireScheduler(w WarmupScheduler) { s.scheduler = w }
 const userCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 func randomUserCode() (string, error) {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
+	s, err := crypt.RandomString(userCodeAlphabet, 8)
+	if err != nil {
 		return "", err
 	}
-	out := make([]byte, 0, 9)
-	for i, v := range b {
-		if i == 4 {
-			out = append(out, '-')
-		}
-		out = append(out, userCodeAlphabet[int(v)%len(userCodeAlphabet)])
-	}
-	return string(out), nil
+	return s[:4] + "-" + s[4:], nil
 }
 
 func randomToken(prefix string) (string, error) {

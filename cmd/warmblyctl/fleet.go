@@ -20,7 +20,7 @@ import (
 func fleetUsage(w *os.File) {
 	fmt.Fprint(w, `Manage the machines running Warmbly.
 
-  warmblyctl fleet join-token          Issue a join token. Shown once.
+  warmblyctl fleet join-token          Issue a join token (--ttl, default 168h). Shown once.
   warmblyctl fleet list                Every node: role, version, liveness, usage.
   warmblyctl fleet show <node-id>      One node in full.
   warmblyctl fleet remove <node-id>    Forget a node. Its mailboxes re-place themselves.
@@ -80,6 +80,7 @@ func fleetDeps(ctx context.Context) (*conn, repository.FleetNodeRepository, repo
 
 func runFleetJoinToken(ctx context.Context, args []string) error {
 	fs := newFlagSet("fleet join-token")
+	ttl := fs.Duration("ttl", fleetnode.DefaultJoinTokenTTL, "how long the token can join machines, at most 720h")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -92,12 +93,15 @@ func runFleetJoinToken(ctx context.Context, args []string) error {
 	}
 	defer c.close()
 
-	token, err := svc.IssueJoinToken(ctx)
+	if *ttl <= 0 {
+		return fmt.Errorf("--ttl must be greater than zero")
+	}
+	token, expiresAt, err := svc.IssueJoinToken(ctx, *ttl)
 	if err != nil {
 		return err
 	}
 	fmt.Println(token)
-	fmt.Fprintln(os.Stderr, "\nShown once. Issuing another token revokes this one; nodes already joined are unaffected.")
+	fmt.Fprintf(os.Stderr, "\nShown once. It joins any number of machines until %s. Issuing another token revokes this one; nodes already joined are unaffected.\n", expiresAt.Format(time.RFC3339))
 	return nil
 }
 

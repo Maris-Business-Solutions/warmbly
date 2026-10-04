@@ -83,6 +83,8 @@ func (h *Handler) FleetJoin(c *gin.Context) {
 			// Distinct from a wrong token on purpose: this is a setup problem,
 			// and telling the operator so saves a long hunt.
 			errx.JSON(c, errx.New(errx.BadRequest, "this instance has no join token yet; issue one from Fleet settings or with `warmblyctl fleet join-token`"))
+		case fleetnode.ErrJoinTokenExpired:
+			errx.JSON(c, errx.New(errx.Unauthorized, "join token has expired; issue a fresh one"))
 		default:
 			errx.JSON(c, errx.New(errx.Unauthorized, "join token is not valid"))
 		}
@@ -432,15 +434,16 @@ func (h *Handler) AdminFleetIssueJoinToken(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.NotImplemented, "fleet enrolment is not available on this instance"))
 		return
 	}
-	token, err := h.FleetNodes.IssueJoinToken(c.Request.Context())
+	token, expiresAt, err := h.FleetNodes.IssueJoinToken(c.Request.Context(), fleetnode.DefaultJoinTokenTTL)
 	if err != nil {
 		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
 		return
 	}
-	h.audit(c, "fleet_join_token_issued", models.AuditEntityWorker, nil, nil)
+	h.audit(c, "fleet_join_token_issued", models.AuditEntityWorker, nil, map[string]string{"expires_at": expiresAt.Format(time.RFC3339)})
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"note":  "Shown once. Issuing a new token revokes this one; nodes already enrolled are unaffected.",
+		"token":      token,
+		"expires_at": expiresAt,
+		"note":       "Shown once. It joins any number of machines until it expires; issuing a new token revokes this one. Nodes already enrolled are unaffected.",
 	})
 }
 

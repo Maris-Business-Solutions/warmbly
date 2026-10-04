@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/models"
@@ -27,7 +28,11 @@ var (
 	// setup problem, not an attack.
 	ErrNoJoinToken = errors.New("no join token has been issued for this instance")
 	ErrBadToken    = errors.New("join token is not valid")
-	ErrBadRole     = errors.New("unknown node role")
+	// ErrJoinTokenExpired is the right token past its expiry.
+	ErrJoinTokenExpired = errors.New("join token has expired")
+	// ErrJoinTokenTTL is a requested lifetime above MaxJoinTokenTTL.
+	ErrJoinTokenTTL = errors.New("a join token can be valid for at most 30 days")
+	ErrBadRole      = errors.New("unknown node role")
 	// ErrRoleChanged is a node claiming an id that is already registered under
 	// the other role. Silently accepting it would leave a worker's mailboxes
 	// assigned to a machine that has stopped doing worker work.
@@ -85,27 +90,43 @@ func (s *Service) withVariant(version string) string {
 	return version + s.variant
 }
 
-// IssueJoinToken mints a new instance join token, stores only its hash, and
-// returns the plaintext. The caller must show it once: it cannot be recovered.
+const (
+	// DefaultJoinTokenTTL is how long a join token works when none is asked for.
+	DefaultJoinTokenTTL = 7 * 24 * time.Hour
+	// MaxJoinTokenTTL bounds how long any join token may work.
+	MaxJoinTokenTTL = 30 * 24 * time.Hour
+)
+
+// IssueJoinToken mints a new instance join token, stores only its hash and
+// expiry, and returns the plaintext. The caller must show it once: it cannot
+// be recovered.
 //
-// Issuing replaces any previous token, which is also how you revoke one.
-// Existing nodes are unaffected — they are already enrolled, and the token
-// only gates joining.
-func (s *Service) IssueJoinToken(ctx context.Context) (string, error) {
+// The token joins any number of machines until it expires. Issuing replaces
+// any previous token, which is also how you revoke one. Existing nodes are
+// unaffected: they are already enrolled, and the token only gates joining.
+func (s *Service) IssueJoinToken(ctx context.Context, ttl time.Duration) (string, time.Time, error) {
+	if ttl <= 0 {
+		ttl = DefaultJoinTokenTTL
+	}
+	if ttl > MaxJoinTokenTTL {
+		return "", time.Time{}, ErrJoinTokenTTL
+	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
-	if err := s.settings.SetJoinTokenHash(ctx, crypt.SHA256(token)); err != nil {
-		return "", err
+	expiresAt := time.Now().Add(ttl).UTC().Truncate(time.Second)
+	if err := s.settings.SetJoinToken(ctx, crypt.SHA256(token), expiresAt); err != nil {
+		return "", time.Time{}, err
 	}
-	return token, nil
+	return token, expiresAt, nil
 }
 
-// VerifyJoinToken checks a presented token in constant time.
+// VerifyJoinToken checks a presented token in constant time, then its expiry.
+// A token stored without an expiry is refused as expired.
 func (s *Service) VerifyJoinToken(ctx context.Context, token string) error {
-	want, err := s.settings.GetJoinTokenHash(ctx)
+	want, expiresAt, err := s.settings.GetJoinToken(ctx)
 	if err != nil {
 		return err
 	}
@@ -115,6 +136,9 @@ func (s *Service) VerifyJoinToken(ctx context.Context, token string) error {
 	got := crypt.SHA256(strings.TrimSpace(token))
 	if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
 		return ErrBadToken
+	}
+	if expiresAt == nil || !time.Now().Before(*expiresAt) {
+		return ErrJoinTokenExpired
 	}
 	return nil
 }

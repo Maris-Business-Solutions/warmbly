@@ -119,7 +119,7 @@ func checkTrustedProxiesUnset(ctx context.Context, d Deps, in Input) *Finding {
 }
 
 func checkCaptchaMisconfigured(ctx context.Context, d Deps, in Input) *Finding {
-	if config.CaptchaProvider() != "turnstile" || env("TURNSTILE_SECRET") != "" {
+	if config.CaptchaProvider() != "turnstile" || config.TurnstileSecretConfigured() {
 		return nil
 	}
 	return result(CategorySecurity, SeverityError, "Captcha cannot verify",

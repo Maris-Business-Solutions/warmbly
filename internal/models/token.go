@@ -48,7 +48,6 @@ type SSOLinkPending struct {
 type TwoFAPending struct {
 	UserID uuid.UUID `json:"user_id"`
 	Nonce  string    `json:"nonce"`
-	Tries  int       `json:"tries"`
 	// LinkIdentity is attached to the account only once the code passes, so a
 	// federated sign-in on a 2FA account links after both factors, not one.
 	LinkIdentity *UserIdentity `json:"link_identity,omitempty"`
@@ -116,7 +115,6 @@ type AuthSession struct {
 
 type LoginSession struct {
 	CodeHash string `json:"code_hash"`
-	Tries    int    `json:"tries"`
 	Nonce    string `json:"nonce"`
 	// AnomalyReason carries the verdict that CAUSED this challenge, so the
 	// completed sign-in is recorded as the anomaly it was. Recomputing it at
@@ -129,7 +127,6 @@ type LoginSession struct {
 type RegistrationSession struct {
 	PasswordHash string `json:"password_hash"`
 	CodeHash     string `json:"code_hash"`
-	Tries        int    `json:"tries"`
 	Nonce        string `json:"nonce"`
 	// ReferralCode is the optional referral code captured at RegistrationStart,
 	// applied for attribution once the account + org are created at confirm.

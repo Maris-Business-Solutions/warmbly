@@ -35,12 +35,15 @@ func NewAuthRepostory(db *db.DB) AuthRepository {
 	}
 }
 
+// livePasswordHash reads an expired password as no password at all.
+const livePasswordHash = `CASE WHEN password_expires_at <= now() THEN NULL ELSE password_hash END`
+
 func (r *authRepository) IsValidCredentials(ctx context.Context, email, password string) (uuid.UUID, *errx.Error) {
 	var id uuid.UUID
 	var pw *string
 
 	query := `
-		SELECT id, password_hash
+		SELECT id, ` + livePasswordHash + `
 		FROM users
 		WHERE email = $1
 	`
@@ -128,10 +131,10 @@ func (r *authRepository) ExternalLogin(ctx context.Context, email string) (*mode
 }
 
 // GetPasswordHash returns the stored argon2 hash for a user (empty when the
-// account is OAuth-only / passwordless).
+// account is OAuth-only / passwordless or its password has expired).
 func (r *authRepository) GetPasswordHash(ctx context.Context, userID uuid.UUID) (string, *errx.Error) {
 	var hash *string
-	err := r.DB.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&hash)
+	err := r.DB.QueryRow(ctx, `SELECT `+livePasswordHash+` FROM users WHERE id = $1`, userID).Scan(&hash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", errx.ErrNotFound

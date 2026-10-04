@@ -118,6 +118,8 @@ func (s *Service) createOwner(ctx context.Context, address string) error {
 			return fmt.Errorf("bootstrap: hashing the password: %w", herr)
 		}
 		hash = hashed
+	} else if herr := argon2.CheckParams(hash); herr != nil {
+		return fmt.Errorf("bootstrap: WARMBLY_BOOTSTRAP_PASSWORD_HASH is refused (%v); generate one with `warmblyctl hash-password`", herr)
 	}
 
 	u, uerr := s.users.CreateUser(ctx, parsed, hash)

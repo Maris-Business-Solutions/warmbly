@@ -51,9 +51,10 @@ export function listFleetNodes(role?: NodeRole): Promise<{ data: FleetNode[] }> 
     });
 }
 
-// The token is returned once and never again: only its hash is stored. Issuing
-// a new one revokes the previous token; nodes already enrolled are unaffected.
-export function issueJoinToken(): Promise<{ token: string; note: string }> {
+// The token is returned once and never again: only its hash is stored. It joins
+// any number of machines until expires_at; issuing a new one revokes the
+// previous token. Nodes already enrolled are unaffected.
+export function issueJoinToken(): Promise<{ token: string; expires_at: string; note: string }> {
     return Request({
         method: "POST",
         url: "/admin/fleet/join-token",

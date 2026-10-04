@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/warmbly/warmbly/internal/infrastructure/db"
@@ -18,10 +19,11 @@ type FleetSettingsRepository interface {
 	GetRelease(ctx context.Context) (*models.FleetReleaseState, error)
 	SetRelease(ctx context.Context, state *models.FleetReleaseState) error
 
-	// GetJoinTokenHash returns "" when no token has been issued yet, which
-	// callers must treat as "nothing may join" rather than "anything may".
-	GetJoinTokenHash(ctx context.Context) (string, error)
-	SetJoinTokenHash(ctx context.Context, hash string) error
+	// GetJoinToken returns "" when no token has been issued yet, which callers
+	// must treat as "nothing may join" rather than "anything may". A nil
+	// expiry is a token issued before tokens carried one.
+	GetJoinToken(ctx context.Context) (hash string, expiresAt *time.Time, err error)
+	SetJoinToken(ctx context.Context, hash string, expiresAt time.Time) error
 }
 
 type fleetSettingsRepository struct {
@@ -71,21 +73,22 @@ func (r *fleetSettingsRepository) SetRelease(ctx context.Context, state *models.
 }
 
 type joinTokenValue struct {
-	Hash string `json:"hash"`
+	Hash      string     `json:"hash"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
-func (r *fleetSettingsRepository) GetJoinTokenHash(ctx context.Context) (string, error) {
+func (r *fleetSettingsRepository) GetJoinToken(ctx context.Context) (string, *time.Time, error) {
 	raw, err := r.getRaw(ctx, models.FleetSettingsKeyJoinToken)
 	if err != nil || raw == nil {
-		return "", err
+		return "", nil, err
 	}
 	var v joinTokenValue
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return v.Hash, nil
+	return v.Hash, v.ExpiresAt, nil
 }
 
-func (r *fleetSettingsRepository) SetJoinTokenHash(ctx context.Context, hash string) error {
-	return r.setRaw(ctx, models.FleetSettingsKeyJoinToken, joinTokenValue{Hash: hash})
+func (r *fleetSettingsRepository) SetJoinToken(ctx context.Context, hash string, expiresAt time.Time) error {
+	return r.setRaw(ctx, models.FleetSettingsKeyJoinToken, joinTokenValue{Hash: hash, ExpiresAt: &expiresAt})
 }

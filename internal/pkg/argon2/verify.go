@@ -83,3 +83,20 @@ func DecodeHash(hash string) (params *Params, salt, key []byte, err error) {
 
 	return params, salt, key, nil
 }
+
+// ErrWeakParams is a well-formed hash whose cost parameters are below Hash's own.
+var ErrWeakParams = errors.New("argon2id: parameters are below m=65536, t=3, p=2 with a 16-byte salt and 32-byte key")
+
+// CheckParams refuses a hash that is malformed or cheaper to compute than one
+// Hash would produce.
+func CheckParams(hash string) error {
+	p, _, _, err := DecodeHash(hash)
+	if err != nil {
+		return err
+	}
+	if p.Memory < memory || p.Iterations < iterations || p.Parallelism < parallelism ||
+		p.SaltLength < saltLength || p.KeyLength < keyLength {
+		return ErrWeakParams
+	}
+	return nil
+}

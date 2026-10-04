@@ -104,13 +104,11 @@ func Run(
 	// directly, so this route is only exercised under BLOB_PROVIDER=filesystem.
 	r.GET("/public/*key", h.ServePublicObject)
 
-	// Public worker enrollment. The one-time enrollment token is the
-	// credential; successful exchange returns a dotenv file for the installer
-	// and consumes the token.
 	// Joining the fleet. The script is public (it does nothing without a
 	// token); the enrolment endpoint is the only one reachable with the join
 	// token rather than an operator session, because the machine running it
-	// has no credentials yet.
+	// has no credentials yet. The token joins any number of machines until it
+	// expires or is replaced by a newly issued one.
 	r.GET("/join.sh", h.ServeJoinScript)
 	r.POST("/api/v1/fleet/join", m.PublicIPRateLimitMiddleware(), h.FleetJoin)
 
@@ -302,7 +300,7 @@ func Run(
 	// the invite token in the query is the capability. Registered on /v1 (the
 	// versioned client baseURL) outside any auth group; the bare alias at the top
 	// of this file stays for non-versioned callers.
-	v1.GET("/invitations/lookup", h.PreviewInvitation)
+	v1.GET("/invitations/lookup", m.PublicIPRateLimitMiddleware(), h.PreviewInvitation)
 
 	// Pool link handshake for self-hosted instances: unauthenticated by
 	// nature (the instance has no token yet), so it shares the per-IP budget.

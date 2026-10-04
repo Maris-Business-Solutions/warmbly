@@ -68,4 +68,6 @@ type LoginCodeExemption struct {
 	Email     string     `json:"email"`
 	Reason    *string    `json:"reason,omitempty"`
 	GrantedAt *time.Time `json:"granted_at,omitempty"`
+	// PasswordExpiresAt is set on a tester whose password was handed out.
+	PasswordExpiresAt *time.Time `json:"password_expires_at,omitempty"`
 }
