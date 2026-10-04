@@ -60,6 +60,9 @@ config :logger, :console,
 # Use Jason for JSON parsing
 config :phoenix, :json_library, Jason
 
+# Socket connect params are logged; any key containing these is shown as [FILTERED].
+config :phoenix, :filter_parameters, ["password", "token", "secret", "key"]
+
 # Sentry configuration. Uses a Finch HTTP client instead of the default
 # hackney one (hackney was dropped to clear CVE-2026-47071).
 config :sentry,

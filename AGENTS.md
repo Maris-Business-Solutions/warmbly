@@ -361,7 +361,7 @@ Web conventions:
 
 ### Developer WebSocket
 
-API keys with the `REALTIME_SUBSCRIBE` permission (bit 11) can connect to the same socket. Connection spam is bounded by per-user concurrent-connection caps (plan-based, default 10), per-IP (50), a global cap, join rate limits, and per-key IP restrictions. Documented in `docs/content/docs/api/realtime.mdx` — keep that page in sync with channel/limit changes.
+API keys with the `REALTIME_SUBSCRIBE` permission (bit 11) can connect to the same socket, presenting the key (or a `wmat_` OAuth token) in the `x-warmbly-token` header; the query string carries only the 10-minute ws ticket. Connection spam is bounded by per-user concurrent-connection caps (plan-based, default 10), per-IP (50), a global cap, join rate limits, and per-key IP restrictions. Documented in `docs/content/docs/api/realtime.mdx` — keep that page in sync with channel/limit changes.
 
 ## System Shape
 

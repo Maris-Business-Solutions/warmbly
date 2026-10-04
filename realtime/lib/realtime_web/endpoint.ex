@@ -19,7 +19,9 @@ defmodule RealtimeWeb.Endpoint do
       # Client frames are small (joins, presence, live cursor/select/patch);
       # without a cap cowboy accepts unbounded frames, which compress makes
       # cheap to send and the org fan-out makes expensive to receive.
-      max_frame_size: 65_536
+      max_frame_size: 65_536,
+      # x_headers carries the API key / OAuth token header; peer_data the client IP.
+      connect_info: [:peer_data, :x_headers]
     ],
     longpoll: false
   )
