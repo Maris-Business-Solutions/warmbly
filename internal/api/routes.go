@@ -155,22 +155,24 @@ func Run(
 	// calls. It takes NODE_BROKER_TOKEN, which falls back to
 	// INTERNAL_API_TOKEN, so the internet-facing tracking and forms services
 	// never need a credential that opens a key or enrols a node.
+	broker := r.Group("/api/v1/internal")
+	broker.Use(m.NodeBrokerAuthMiddleware())
 	node := r.Group("/api/v1/internal")
-	node.Use(m.NodeBrokerAuthMiddleware())
+	node.Use(m.NodeAuthMiddleware())
 	{
 		// Opens a sealed data key for a node running KMS_PROVIDER=brokered, so
 		// a machine you own needs no cloud credential of its own.
-		node.POST("/dek/decrypt", h.InternalDecryptDEK)
+		broker.POST("/dek/decrypt", h.InternalDecryptDEK)
 
 		// Signs one blob operation for a node running BLOB_PROVIDER=brokered.
 		// The node then transfers directly against the object store, so bodies
 		// and attachments never pass through here.
-		node.POST("/blobs/presign", h.InternalPresignBlob)
+		broker.POST("/blobs/presign", h.InternalPresignBlob)
 
 		// Mints a live provider access token for a mailbox Warmbly Cloud
 		// manages, which is worth more than any record the rest of the
 		// internal API moves.
-		node.GET("/cloud-link/token/:id", h.InternalCloudLinkToken)
+		broker.GET("/cloud-link/token/:id", h.InternalCloudLinkToken)
 
 		node.GET("/dek/:orgID", h.InternalGetDEK)
 		node.PUT("/dek/:orgID", h.InternalPutDEK)

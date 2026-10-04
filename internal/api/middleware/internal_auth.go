@@ -73,7 +73,23 @@ func loadBrokerToken() {
 
 func nodeBrokerAuth(c *gin.Context) {
 	brokerTokenOnce.Do(loadBrokerToken)
-	if len(brokerToken) == 0 {
+	checkNodeToken(c, brokerToken, nil)
+}
+
+// NodeAuthMiddleware guards node-only routes on NODE_BROKER_TOKEN; NODE_ACCEPT_INTERNAL_TOKEN=true also admits INTERNAL_API_TOKEN while older nodes upgrade.
+func (h *Handler) NodeAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		brokerTokenOnce.Do(loadBrokerToken)
+		var legacy []byte
+		if os.Getenv("NODE_ACCEPT_INTERNAL_TOKEN") == "true" {
+			legacy = []byte(os.Getenv("INTERNAL_API_TOKEN"))
+		}
+		checkNodeToken(c, brokerToken, legacy)
+	}
+}
+
+func checkNodeToken(c *gin.Context, token, legacy []byte) {
+	if len(token) == 0 {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "internal auth not configured"})
 		return
 	}
@@ -83,7 +99,11 @@ func nodeBrokerAuth(c *gin.Context) {
 		return
 	}
 	provided := []byte(strings.TrimPrefix(header, "Bearer "))
-	if subtle.ConstantTimeCompare(provided, brokerToken) != 1 {
+	ok := subtle.ConstantTimeCompare(provided, token) == 1
+	if !ok && len(legacy) > 0 {
+		ok = subtle.ConstantTimeCompare(provided, legacy) == 1
+	}
+	if !ok {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid bearer token"})
 		return
 	}
