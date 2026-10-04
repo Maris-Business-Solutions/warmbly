@@ -168,6 +168,14 @@ func (h *Handler) CreateCampaign(c *gin.Context) {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
+	if xerr := sendersAllowed(c, data.Senders); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	if xerr := poolStrategyAllowed(c, explicitOrDefault(data.SenderStrategy), len(data.EmailTagIDs) > 0); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
 
 	resp, err := h.CampaignService.Create(c.Request.Context(), userIDStr, orgID, &data)
 	if err != nil {
@@ -280,6 +288,10 @@ func (h *Handler) UpdateCampaign(c *gin.Context) {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
+	if xerr := poolStrategyAllowed(c, data.SenderStrategy, data.EmailTags != nil); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
 
 	resp, err := h.CampaignService.Update(c.Request.Context(), orgID.String(), id, &data)
 	if err != nil {
@@ -388,6 +400,10 @@ func (h *Handler) StartCampaign(c *gin.Context) {
 		_ = c.ShouldBindJSON(&opts)
 	}
 
+	if xerr := h.campaignPoolAllowed(c, *orgID, id); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
 	if xerr := h.CampaignService.StartCampaign(c.Request.Context(), *orgID, id, opts); xerr != nil {
 		errx.JSON(c, xerr)
 		return
@@ -500,6 +516,64 @@ func (h *Handler) ListCampaignSenders(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": senders})
 }
 
+// errPoolNeedsExplicitSenders holds a mailbox-limited key to explicit sender pools, which it can check.
+var errPoolNeedsExplicitSenders = errx.NewWithIdentifier(errx.Forbidden, apiKeyMailboxLimited,
+	"This API key is limited to some mailboxes, so its campaigns must use an explicit sender list (sender_strategy \"explicit\") of those mailboxes.")
+
+// poolStrategyAllowed refuses a tag-resolved pool to a mailbox-limited key.
+func poolStrategyAllowed(c *gin.Context, strategy *string, tagsChanged bool) *errx.Error {
+	if !keyMailboxLimited(c) {
+		return nil
+	}
+	if tagsChanged || (strategy != nil && *strategy != "explicit") {
+		return errPoolNeedsExplicitSenders
+	}
+	return nil
+}
+
+// campaignPoolAllowed checks a stored campaign's pool against a mailbox-limited key before it sends.
+func (h *Handler) campaignPoolAllowed(c *gin.Context, orgID uuid.UUID, id string) *errx.Error {
+	if !keyMailboxLimited(c) {
+		return nil
+	}
+	camp, xerr := h.CampaignService.Get(c.Request.Context(), orgID.String(), id)
+	if xerr != nil {
+		return xerr
+	}
+	if camp.SenderStrategy != "explicit" {
+		return errPoolNeedsExplicitSenders
+	}
+	senders, xerr := h.CampaignService.ListCampaignSenders(c.Request.Context(), orgID, id)
+	if xerr != nil {
+		return xerr
+	}
+	for _, s := range senders {
+		if xerr := mailboxAllowed(c, s.EmailAccountID); xerr != nil {
+			return xerr
+		}
+	}
+	return nil
+}
+
+// explicitOrDefault reads a create request's strategy, which defaults to tags when absent.
+func explicitOrDefault(strategy *string) *string {
+	if strategy == nil {
+		tags := "tags"
+		return &tags
+	}
+	return strategy
+}
+
+// sendersAllowed refuses a sender pool naming a mailbox outside the caller's allowlist.
+func sendersAllowed(c *gin.Context, senders []models.CampaignSenderInput) *errx.Error {
+	for _, s := range senders {
+		if xerr := mailboxAllowed(c, s.EmailAccountID); xerr != nil {
+			return xerr
+		}
+	}
+	return nil
+}
+
 // ReplaceCampaignSenders atomically replaces a campaign's explicit sender pool.
 // PUT /campaigns/:id/senders
 func (h *Handler) ReplaceCampaignSenders(c *gin.Context) {
@@ -514,6 +588,10 @@ func (h *Handler) ReplaceCampaignSenders(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		errx.JSON(c, errx.InvalidBody(err))
+		return
+	}
+	if xerr := sendersAllowed(c, body.Senders); xerr != nil {
+		errx.JSON(c, xerr)
 		return
 	}
 

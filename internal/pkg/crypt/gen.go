@@ -27,15 +27,19 @@ func VerificationCode() (string, error) {
 const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 func RID(length int) (string, error) {
+	return RandomString(charset, length)
+}
+
+// RandomString draws length characters uniformly from alphabet.
+func RandomString(alphabet string, length int) (string, error) {
+	max := big.NewInt(int64(len(alphabet)))
 	b := make([]byte, length)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
+	for i := range b {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		b[i] = alphabet[n.Int64()]
 	}
-
-	for i := range length {
-		b[i] = charset[int(b[i])%len(charset)]
-	}
-
 	return string(b), nil
 }

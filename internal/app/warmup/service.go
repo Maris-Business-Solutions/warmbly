@@ -106,9 +106,9 @@ type Service interface {
 	WithdrawTampering(ctx context.Context, accountID uuid.UUID, messageID, kind string) (*models.WarmupParticipantHealth, *errx.Error)
 
 	// SubmitAppeal lets the mailbox owner appeal a warmup ban with a reason.
-	SubmitAppeal(ctx context.Context, userID, accountID uuid.UUID, reason string) (uuid.UUID, *errx.Error)
+	SubmitAppeal(ctx context.Context, orgID, userID, accountID uuid.UUID, reason string) (uuid.UUID, *errx.Error)
 	// GetBanStatus returns the user-facing warmup standing for a mailbox.
-	GetBanStatus(ctx context.Context, userID, accountID uuid.UUID) (*models.WarmupBanStatus, *errx.Error)
+	GetBanStatus(ctx context.Context, orgID, accountID uuid.UUID) (*models.WarmupBanStatus, *errx.Error)
 
 	// PublishHealthTransition fans a transition decided elsewhere (Warmbly
 	// Cloud, for a mailbox it warms) out to realtime and webhooks, exactly as
@@ -479,9 +479,9 @@ func plural(n int, one, many string) string {
 	return many
 }
 
-// SubmitAppeal records a user's appeal against a warmup ban. Verifies the
-// mailbox belongs to the user, is actually blocked, and has no open appeal.
-func (s *service) SubmitAppeal(ctx context.Context, userID, accountID uuid.UUID, reason string) (uuid.UUID, *errx.Error) {
+// SubmitAppeal records a member's appeal against a warmup ban. Verifies the
+// mailbox belongs to the organization, is actually blocked, and has no open appeal.
+func (s *service) SubmitAppeal(ctx context.Context, orgID, userID, accountID uuid.UUID, reason string) (uuid.UUID, *errx.Error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return uuid.Nil, errx.New(errx.BadRequest, "an appeal reason is required")
@@ -490,11 +490,8 @@ func (s *service) SubmitAppeal(ctx context.Context, userID, accountID uuid.UUID,
 		reason = reason[:2000]
 	}
 
-	if s.emailRepo != nil {
-		acc, _ := s.emailRepo.GetByID(ctx, accountID)
-		if acc == nil || acc.UserID != userID.String() {
-			return uuid.Nil, errx.New(errx.Forbidden, "this mailbox does not belong to you")
-		}
+	if xerr := s.mailboxInOrg(ctx, orgID, accountID); xerr != nil {
+		return uuid.Nil, xerr
 	}
 
 	health, _ := s.getParticipantForAnyPool(ctx, accountID)
@@ -531,13 +528,22 @@ func (s *service) SubmitAppeal(ctx context.Context, userID, accountID uuid.UUID,
 	return id, nil
 }
 
+// mailboxInOrg refuses a mailbox outside the caller's organization.
+func (s *service) mailboxInOrg(ctx context.Context, orgID, accountID uuid.UUID) *errx.Error {
+	if s.emailRepo == nil {
+		return nil
+	}
+	acc, _ := s.emailRepo.GetByID(ctx, accountID)
+	if acc == nil || acc.OrganizationID == nil || *acc.OrganizationID != orgID {
+		return errx.New(errx.NotFound, "mailbox not found")
+	}
+	return nil
+}
+
 // GetBanStatus returns the user-facing warmup standing for a mailbox.
-func (s *service) GetBanStatus(ctx context.Context, userID, accountID uuid.UUID) (*models.WarmupBanStatus, *errx.Error) {
-	if s.emailRepo != nil {
-		acc, _ := s.emailRepo.GetByID(ctx, accountID)
-		if acc == nil || acc.UserID != userID.String() {
-			return nil, errx.New(errx.Forbidden, "this mailbox does not belong to you")
-		}
+func (s *service) GetBanStatus(ctx context.Context, orgID, accountID uuid.UUID) (*models.WarmupBanStatus, *errx.Error) {
+	if xerr := s.mailboxInOrg(ctx, orgID, accountID); xerr != nil {
+		return nil, xerr
 	}
 
 	status := &models.WarmupBanStatus{

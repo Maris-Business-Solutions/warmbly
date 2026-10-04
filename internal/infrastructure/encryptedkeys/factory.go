@@ -19,7 +19,7 @@ type Deps struct {
 //	ENCRYPTED_KEYS_PROVIDER=postgres   (default; backend/consumer durable store)
 //	ENCRYPTED_KEYS_PROVIDER=http       (worker-side: calls backend over HTTPS)
 //	  ENCRYPTED_KEYS_BACKEND_URL       (required, e.g. https://api.warmbly.example.com)
-//	  ENCRYPTED_KEYS_WORKER_TOKEN      (required, bearer token)
+//	  NODE_BROKER_TOKEN, else ENCRYPTED_KEYS_WORKER_TOKEN (required, bearer token)
 //
 // fallback selects a default provider when ENCRYPTED_KEYS_PROVIDER is unset.
 // Backend processes should pass "postgres"; workers should pass "http".
@@ -36,7 +36,11 @@ func FromEnv(deps Deps, fallback string) (Store, error) {
 		return NewPostgres(deps.DB), nil
 	case "http":
 		baseURL := os.Getenv("ENCRYPTED_KEYS_BACKEND_URL")
-		token := os.Getenv("ENCRYPTED_KEYS_WORKER_TOKEN")
+		// The DEK routes are node-only, so a separate NODE_BROKER_TOKEN wins.
+		token := os.Getenv("NODE_BROKER_TOKEN")
+		if token == "" {
+			token = os.Getenv("ENCRYPTED_KEYS_WORKER_TOKEN")
+		}
 		return NewHTTP(baseURL, token)
 	default:
 		return nil, fmt.Errorf("encryptedkeys: unknown ENCRYPTED_KEYS_PROVIDER %q (want: postgres, http)", provider)

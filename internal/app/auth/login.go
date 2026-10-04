@@ -32,16 +32,17 @@ func (s *authService) LoginStart(ctx context.Context, data *AuthData, ipaddr, us
 	// this string, so it is folded once here rather than at each of them.
 	data.Email = normalizeEmail(data.Email)
 
-	// Spent budgets are refused before the hash comparison, so a guesser past
-	// the limit cannot even measure argon2's timing.
-	if s.loginFailureExceeded(ctx, data.Email) {
+	// The attempt is charged before the hash comparison, so parallel guesses
+	// cannot share one slot and a guesser past the limit cannot even measure
+	// argon2's timing.
+	if !s.reserveLoginAttempt(ctx, data.Email) {
 		return nil, errx.ErrAuthLimit
 	}
 
 	uid, err := s.authRepository.IsValidCredentials(ctx, data.Email, data.Password)
 	if err != nil {
-		if errors.Is(err, errx.ErrCredentials) {
-			s.recordLoginFailure(ctx, data.Email)
+		if !errors.Is(err, errx.ErrCredentials) {
+			s.releaseLoginAttempt(ctx, data.Email)
 		}
 		return nil, err
 	}
@@ -175,7 +176,8 @@ func (s *authService) LoginConfirm(ctx context.Context, data *ConfirmData, sessi
 		return nil, errx.ErrSession
 	}
 
-	if sess.Tries >= AuthAttempts {
+	sessKey := getLoginSessionKey(atoken.SessionID)
+	if !s.reserveCodeAttempt(ctx, sessKey, time.Until(atoken.ExpiresAt.Time)) {
 		return nil, errx.ErrCodeLimit
 	}
 
@@ -186,15 +188,14 @@ func (s *authService) LoginConfirm(ctx context.Context, data *ConfirmData, sessi
 	}
 
 	if !v {
-		sess.Tries++
-		_ = s.saveLoginSession(ctx, atoken.SessionID, sess, atoken.ExpiresAt.Time)
 		return nil, errx.ErrCode
 	}
 
-	// Consume the session on success so it cannot be re-confirmed to mint fresh
-	// 2FA pending tokens, which would reset the per-pending attempt counter.
-	// One email confirmation means exactly one challenge.
-	_ = s.cache.Del(ctx, getLoginSessionKey(atoken.SessionID)).Err()
+	// Consumed on success, and only the request that deletes it may continue,
+	// so one emailed code completes exactly one sign-in.
+	if !s.consumeCodeSession(ctx, sessKey) {
+		return nil, errx.ErrSession
+	}
 
 	return s.finishLoginWith(ctx, atoken.UserID, ipaddr, userAgent, challengeVerdict(sess))
 }

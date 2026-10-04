@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/encrypt"
 )
 
 // An omitted event filter is the documented "every non-firehose event", which
@@ -17,7 +18,11 @@ import (
 func TestLiveWebhookEndpointEmptyEventFilter(t *testing.T) {
 	_, pool := liveContactDB(t)
 	f := newSharedOrgFixture(t, pool)
-	repo := NewWebhookRepository(pool)
+	enc, err := encrypt.NewEncrypter(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewWebhookRepositorySealed(pool, enc)
 	ctx := context.Background()
 
 	endpoint := &models.WebhookEndpoint{

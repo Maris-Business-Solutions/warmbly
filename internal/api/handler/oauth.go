@@ -9,11 +9,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/oauth"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/utils/paging"
 )
 
@@ -25,7 +27,9 @@ func respondOAuthError(c *gin.Context, err error) {
 		c.JSON(oe.HTTPStatus, oe)
 		return
 	}
-	c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": err.Error()})
+	// Anything else is a server fault: the detail goes to the log, never to the client.
+	log.Error().Str("request_id", c.GetString("request_id")).Str("path", c.FullPath()).Err(err).Msg("oauth endpoint failed")
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error", "error_description": "Something went wrong.", "request_id": c.GetString("request_id")})
 }
 
 // --- Application management (JWT + org gate) --------------------------------
@@ -168,7 +172,7 @@ func (h *Handler) RotateOAuthApplicationSecret(c *gin.Context) {
 	}
 	secret, rerr := h.OAuthService.RotateSecret(c.Request.Context(), *orgID, id)
 	if rerr != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, rerr.Error()))
+		errx.JSON(c, oauthAppWriteError(rerr))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"client_secret": secret})
@@ -191,7 +195,7 @@ func (h *Handler) GetOAuthAppWebhookSecret(c *gin.Context) {
 	}
 	secret, rerr := h.OAuthService.WebhookSecret(c.Request.Context(), *orgID, id)
 	if rerr != nil {
-		errx.JSON(c, errx.New(errx.NotFound, rerr.Error()))
+		errx.JSON(c, oauthAppWriteError(rerr))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"webhook_secret": secret})
@@ -214,7 +218,7 @@ func (h *Handler) RotateOAuthAppWebhookSecret(c *gin.Context) {
 	}
 	secret, rerr := h.OAuthService.RotateWebhookSecret(c.Request.Context(), *orgID, id)
 	if rerr != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, rerr.Error()))
+		errx.JSON(c, oauthAppWriteError(rerr))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"webhook_secret": secret})
@@ -305,6 +309,11 @@ func (h *Handler) UploadOAuthAppLogo(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.BadRequest, "no organization selected"))
 		return
 	}
+	userID, _ := middleware.GetUserUUID(c)
+	if err := h.OAuthService.CheckDeveloperAccess(c.Request.Context(), *orgID, userID); err != nil {
+		errx.JSON(c, oauthAppWriteError(err))
+		return
+	}
 	raw, _, _, xerr := readAvatarUpload(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
@@ -345,11 +354,31 @@ func authorizeRequestFrom(get func(string) string) oauth.AuthorizeRequest {
 // OAuthAuthorizeDetails returns the consent info the dashboard renders before
 // asking the user to approve. Read from query params.
 func (h *Handler) OAuthAuthorizeDetails(c *gin.Context) {
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "no organization selected"))
+		return
+	}
+	member, xerr := h.callerMember(c)
+	if xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
 	req := authorizeRequestFrom(c.Query)
-	info, err := h.OAuthService.AuthorizeDetails(c.Request.Context(), req)
+	info, err := h.OAuthService.AuthorizeDetails(c.Request.Context(), models.APIPermissionsFor(member), req)
 	if err != nil {
 		respondOAuthError(c, err)
 		return
+	}
+	// Rows written before the logo rule existed are re-checked on the way out.
+	if !hostedAppLogo(h.Storage, info.LogoURL) {
+		info.LogoURL = ""
+	}
+	info.OrganizationName = "Your workspace"
+	if org, oerr := h.OrganizationService.Get(c.Request.Context(), *orgID); oerr == nil && org != nil {
+		if name := displayname.Displayable(org.Name); name != "" {
+			info.OrganizationName = name
+		}
 	}
 	c.JSON(http.StatusOK, info)
 }
@@ -389,7 +418,12 @@ func (h *Handler) OAuthAuthorize(c *gin.Context) {
 		CodeChallenge:       body.CodeChallenge,
 		CodeChallengeMethod: body.CodeChallengeMethod,
 	}
-	redirect, err := h.OAuthService.IssueAuthorizationCode(c.Request.Context(), *orgID, userID, req)
+	member, xerr := h.callerMember(c)
+	if xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	redirect, err := h.OAuthService.IssueAuthorizationCode(c.Request.Context(), *orgID, userID, models.APIPermissionsFor(member), req)
 	if err != nil {
 		respondOAuthError(c, err)
 		return
@@ -490,6 +524,51 @@ func (h *Handler) RevokeAuthorizedApp(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.Internal, "revoke failed"))
 		return
 	}
+	h.auditOrg(c, models.AuditActionRevoke, models.AuditEntityOAuthAuthorization, &appID, nil, map[string]string{"user_id": userID.String()})
+	c.JSON(http.StatusOK, gin.H{"revoked": true})
+}
+
+// ListWorkspaceAuthorizations lists every member's live app authorizations in the workspace.
+//
+// GET /oauth/workspace-authorizations
+func (h *Handler) ListWorkspaceAuthorizations(c *gin.Context) {
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "no organization selected"))
+		return
+	}
+	auths, err := h.OAuthService.ListWorkspaceAuthorizations(c.Request.Context(), *orgID)
+	if err != nil {
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"authorizations": auths})
+}
+
+// RevokeWorkspaceAuthorization ends one member's authorization of an app in the workspace.
+//
+// DELETE /oauth/workspace-authorizations/:id/members/:userId
+func (h *Handler) RevokeWorkspaceAuthorization(c *gin.Context) {
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "no organization selected"))
+		return
+	}
+	appID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "invalid id"))
+		return
+	}
+	memberID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "invalid user id"))
+		return
+	}
+	if rerr := h.OAuthService.RevokeAuthorization(c.Request.Context(), *orgID, memberID, appID); rerr != nil {
+		errx.JSON(c, errx.New(errx.Internal, rerr.Error()))
+		return
+	}
+	h.auditOrg(c, models.AuditActionRevoke, models.AuditEntityOAuthAuthorization, &appID, nil, map[string]string{"user_id": memberID.String()})
 	c.JSON(http.StatusOK, gin.H{"revoked": true})
 }
 
@@ -584,5 +663,13 @@ func oauthAppWriteError(err error) *errx.Error {
 	if errors.Is(err, oauth.ErrAppSuspended) {
 		return errx.NewWithIdentifier(errx.Conflict, "app_suspended", err.Error())
 	}
-	return errx.New(errx.BadRequest, err.Error())
+	if errors.Is(err, oauth.ErrAppNotFound) {
+		return errx.New(errx.NotFound, err.Error())
+	}
+	var invalid *oauth.ValidationError
+	if errors.As(err, &invalid) {
+		return errx.New(errx.BadRequest, invalid.Error())
+	}
+	// Logged against the request id; the caller gets the fixed sentence.
+	return errx.New(errx.Internal, err.Error())
 }

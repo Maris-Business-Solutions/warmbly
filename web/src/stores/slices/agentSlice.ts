@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand'
+import type { AgentSendPreview } from '@/lib/api/models/app/agent/Agent'
 
 // AI assistant workspace state. Multiple conversations run as tabs; each tab
 // owns its own transcript, pending approval, and run state, so a background run
@@ -16,6 +17,8 @@ export type AgentToolStep = {
   entityType?: string
   entityId?: string
   openURL?: string
+  // Secrets a step returned, shown once in this tab and never stored.
+  secrets?: Record<string, string>
 }
 
 export type AgentPending = {
@@ -23,6 +26,10 @@ export type AgentPending = {
   tool: string
   risk: string
   argsSummary?: string
+  arguments?: string
+  argumentsTruncated?: boolean
+  preview?: AgentSendPreview | null
+  alwaysAllowOffered?: boolean
 }
 
 export type AgentBlock =

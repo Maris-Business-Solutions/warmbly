@@ -11,6 +11,9 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
+// ErrResearchContactNotFound means the run's contact is not in its organization.
+var ErrResearchContactNotFound = errors.New("contact not found")
+
 // ResearchRepository persists contact research runs.
 type ResearchRepository interface {
 	// CreateRun inserts a run. If idempotencyKey is non-empty and a run already
@@ -69,12 +72,18 @@ func (r *researchRepository) CreateRun(ctx context.Context, run *models.ContactR
 	if idempotencyKey != "" {
 		keyArg = &idempotencyKey
 	}
+	// The contact must belong to the run's organization; no row means it does not.
 	out := &models.ContactResearchRun{}
 	err = scanRun(r.DB.QueryRow(ctx, `
 		INSERT INTO contact_research_runs (org_id, contact_id, requested_by, status, objective, result, idempotency_key)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		SELECT $1, c.id, $3, $4, $5, $6, $7
+		FROM contacts c
+		WHERE c.id = $2 AND c.organization_id = $1
 		RETURNING `+researchCols,
 		run.OrgID, run.ContactID, run.RequestedBy, run.Status, run.Objective, resultRaw, keyArg), out)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, ErrResearchContactNotFound
+	}
 	if err != nil {
 		return nil, false, err
 	}

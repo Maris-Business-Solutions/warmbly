@@ -55,7 +55,7 @@ func (h *Handler) AdminInFlightSends(c *gin.Context) {
 	reclaimAfter := time.Duration(config.CampaignSendReclaimAfterMinutes) * time.Minute
 	result, err := h.AdminSendsRepo.InFlight(c.Request.Context(), reclaimAfter, limit)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -77,7 +77,7 @@ func (h *Handler) AdminListDeadLetters(c *gin.Context) {
 	}
 	result, err := h.AdminSendsRepo.ListDeadLetters(c.Request.Context(), status, cursor, limit)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -99,7 +99,7 @@ func (h *Handler) AdminReplayDeadLetter(c *gin.Context) {
 	}
 	row, err := h.AdminSendsRepo.GetDeadLetter(c.Request.Context(), id)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if row == nil {
@@ -130,7 +130,7 @@ func (h *Handler) AdminRecentTaskFailures(c *gin.Context) {
 	limit := parseBoundedLimit(c.Query("limit"), 100, 500)
 	rows, err := h.AdminSendsRepo.RecentTaskFailures(c.Request.Context(), limit)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})
@@ -143,7 +143,7 @@ func (h *Handler) AdminWebhookHealth(c *gin.Context) {
 	}
 	health, err := h.AdminSendsRepo.WebhookHealth(c.Request.Context(), webhookDeliveryLease)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, health)
@@ -157,7 +157,7 @@ func (h *Handler) AdminWebhookReclaim(c *gin.Context) {
 	}
 	n, err := h.WebhookRepo.ReclaimStuckDeliveries(c.Request.Context(), webhookDeliveryLease)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, models.AuditActionUpdate, models.AuditEntityWebhook, nil, map[string]string{
@@ -179,7 +179,7 @@ func (h *Handler) AdminListOrgWebhooks(c *gin.Context) {
 	}
 	rows, err := h.AdminSendsRepo.OrgWebhooks(c.Request.Context(), orgID)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})

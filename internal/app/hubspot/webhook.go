@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,19 +40,6 @@ func (s *Service) VerifySignature(method, fullURL string, body []byte, signature
 	mac.Write([]byte(method + fullURL + string(body) + timestamp))
 	want := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(want), []byte(signature)) {
-		return ErrBadSignature
-	}
-	return nil
-}
-
-// VerifySignatureV2 checks the older X-HubSpot-Signature scheme some requests
-// still carry: hex(SHA-256(client secret + method + full URL + body)).
-func (s *Service) VerifySignatureV2(method, fullURL string, body []byte, signature string) error {
-	if s.d.ClientSecret == "" || signature == "" {
-		return ErrBadSignature
-	}
-	sum := sha256.Sum256([]byte(s.d.ClientSecret + method + fullURL + string(body)))
-	if !hmac.Equal([]byte(hex.EncodeToString(sum[:])), []byte(strings.ToLower(signature))) {
 		return ErrBadSignature
 	}
 	return nil
@@ -97,7 +83,7 @@ func (s *Service) HandleWebhook(ctx context.Context, body []byte) error {
 		if ev.ObjectID == 0 || ev.PortalID == 0 {
 			continue
 		}
-		objectType, action := ev.kind()
+		objectType, _ := ev.kind()
 		if objectType != "contact" && objectType != "deal" && objectType != "task" {
 			continue
 		}
@@ -118,7 +104,7 @@ func (s *Service) HandleWebhook(ctx context.Context, body []byte) error {
 				Provider: provider, Kind: models.CRMJobRefreshObject,
 				DedupeKey: "refresh:" + objectType + ":" + ext,
 				Subject:   "HubSpot " + objectType + " " + ext,
-				Payload:   map[string]any{"object_type": objectType, "external_id": ext, "deleted": action == "deletion"},
+				Payload:   map[string]any{"object_type": objectType, "external_id": ext},
 				// A short delay folds a burst of property changes into one read.
 				NextAttemptAt: time.Now().Add(5 * time.Second),
 			}

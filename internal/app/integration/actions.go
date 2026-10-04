@@ -108,6 +108,12 @@ func truncateRunes(s string, max int) string {
 	return string(r[:max-1]) + "…"
 }
 
+// slackEscape escapes the characters Slack reserves for links and mentions, so
+// text from a contact or a reply renders as written.
+func slackEscape(s string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+}
+
 // notifyFields turns the message's contact/subject into structured key-value
 // fields shared by the Slack and Discord cards (omitted when empty).
 func (m eventMessage) notifyFields() (contact, subject string) {
@@ -125,28 +131,28 @@ func slackPostMessage(ctx context.Context, token, channel string, msg eventMessa
 	}
 	attachment := map[string]any{
 		"color":    notifyAccentHex,
-		"fallback": msg.plainText(),
-		"title":    truncateRunes(msg.Title, 256),
+		"fallback": slackEscape(msg.plainText()),
+		"title":    slackEscape(truncateRunes(msg.Title, 256)),
 		"footer":   "Warmbly",
 		"ts":       time.Now().Unix(),
 	}
 	if msg.Custom != "" {
-		attachment["text"] = truncateRunes(msg.Custom, 3000)
+		attachment["text"] = slackEscape(truncateRunes(msg.Custom, 3000))
 	}
 	contact, subject := msg.notifyFields()
 	var fields []map[string]any
 	if contact != "" {
-		fields = append(fields, map[string]any{"title": "Contact", "value": contact, "short": true})
+		fields = append(fields, map[string]any{"title": "Contact", "value": slackEscape(contact), "short": true})
 	}
 	if subject != "" {
-		fields = append(fields, map[string]any{"title": "Subject", "value": subject, "short": true})
+		fields = append(fields, map[string]any{"title": "Subject", "value": slackEscape(subject), "short": true})
 	}
 	if len(fields) > 0 {
 		attachment["fields"] = fields
 	}
 	body, _ := json.Marshal(map[string]any{
 		"channel":     channel,
-		"text":        msg.Title,
+		"text":        slackEscape(msg.Title),
 		"attachments": []map[string]any{attachment},
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://slack.com/api/chat.postMessage", bytes.NewReader(body))
@@ -411,7 +417,7 @@ func closeUpsertLead(ctx context.Context, apiKey, email string, props map[string
 
 	// Idempotency guard: skip if a lead already has this email address.
 	searchURL := "https://api.close.com/api/v1/lead/?_fields=id&query=" +
-		url.QueryEscape("email_address:\""+email+"\"")
+		url.QueryEscape("email_address:\""+strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(email)+"\"")
 	var search struct {
 		Data []struct {
 			ID string `json:"id"`
@@ -468,81 +474,6 @@ func closeJSON(ctx context.Context, method, reqURL, apiKey string, body []byte, 
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("close %s: HTTP %d", method, resp.StatusCode)
-	}
-	if dst != nil && len(raw) > 0 {
-		return json.Unmarshal(raw, dst)
-	}
-	return nil
-}
-
-// salesforceAPIVersion is the REST API version actions target. Salesforce keeps
-// old versions live for years, so pinning one keeps request shapes stable.
-const salesforceAPIVersion = "v59.0"
-
-// salesforceUpsertContact creates or updates a Salesforce Contact keyed by email
-// using the caller-projected props. instanceURL is the connected org's API host,
-// captured at OAuth time and stored in the connection's display fields. LastName
-// is mandatory on the Contact object, so we fall back to the email when unset.
-func salesforceUpsertContact(ctx context.Context, token, instanceURL, email string, props map[string]any) error {
-	instanceURL = strings.TrimRight(strings.TrimSpace(instanceURL), "/")
-	if instanceURL == "" {
-		return fmt.Errorf("salesforce instance url unavailable; reconnect the integration")
-	}
-	if email == "" {
-		return nil
-	}
-
-	fields := map[string]any{}
-	for k, v := range props {
-		fields[k] = v
-	}
-	fields["Email"] = email
-	if strProp(fields, "LastName") == "" {
-		fields["LastName"] = email // LastName is a required Contact field.
-	}
-
-	// Find an existing contact by email (SOQL — escape embedded single quotes).
-	soql := "SELECT Id FROM Contact WHERE Email = '" + strings.ReplaceAll(email, "'", "\\'") + "' LIMIT 1"
-	queryURL := instanceURL + "/services/data/" + salesforceAPIVersion + "/query?q=" + url.QueryEscape(soql)
-	var q struct {
-		Records []struct {
-			ID string `json:"Id"`
-		} `json:"records"`
-	}
-	if err := salesforceJSON(ctx, http.MethodGet, queryURL, token, nil, &q); err != nil {
-		return err
-	}
-
-	base := instanceURL + "/services/data/" + salesforceAPIVersion + "/sobjects/Contact"
-	body, _ := json.Marshal(fields)
-	if len(q.Records) > 0 {
-		// PATCH returns 204 No Content on success.
-		return salesforceJSON(ctx, http.MethodPatch, base+"/"+q.Records[0].ID, token, body, nil)
-	}
-	return salesforceJSON(ctx, http.MethodPost, base+"/", token, body, nil)
-}
-
-func salesforceJSON(ctx context.Context, method, reqURL, token string, body []byte, dst any) error {
-	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, reader)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := actionHTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("salesforce %s: HTTP %d", method, resp.StatusCode)
 	}
 	if dst != nil && len(raw) > 0 {
 		return json.Unmarshal(raw, dst)

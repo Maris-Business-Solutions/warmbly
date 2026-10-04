@@ -285,6 +285,31 @@ func (c *Client) SetAssistantTitle(ctx context.Context, token, channel, threadTS
 	}, nil)
 }
 
+// slackUser is the part of a users.info answer the link flow reads.
+type slackUser struct {
+	ID               string `json:"id"`
+	Deleted          bool   `json:"deleted"`
+	IsBot            bool   `json:"is_bot"`
+	IsEmailConfirmed *bool  `json:"is_email_confirmed"`
+	Profile          struct {
+		DisplayName string `json:"display_name"`
+		RealName    string `json:"real_name"`
+		Email       string `json:"email"`
+		Image72     string `json:"image_72"`
+	} `json:"profile"`
+}
+
+// UserInfo reads a member's profile; the email needs users:read.email.
+func (c *Client) UserInfo(ctx context.Context, token, userID string) (*slackUser, error) {
+	var out struct {
+		User slackUser `json:"user"`
+	}
+	if err := c.callForm(ctx, token, "users.info", url.Values{"user": {userID}}, &out); err != nil {
+		return nil, err
+	}
+	return &out.User, nil
+}
+
 type authTest struct {
 	UserID string `json:"user_id"`
 	TeamID string `json:"team_id"`

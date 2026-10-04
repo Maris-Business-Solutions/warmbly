@@ -35,15 +35,25 @@ export function postSubmitted(publicId: string) {
 }
 
 // redirect escapes the iframe when possible so the thank-you page fills the
-// tab, not a 480px frame.
-export function redirect(url: string) {
+// tab, not a 480px frame. Only an absolute http(s) URL is followed; it reports
+// whether it navigated.
+export function redirect(raw: string): boolean {
+    let url: string;
+    try {
+        const target = new URL(raw);
+        if (target.protocol !== "http:" && target.protocol !== "https:") return false;
+        url = target.href;
+    } catch {
+        return false;
+    }
     try {
         if (window.top) {
             window.top.location.href = url;
-            return;
+            return true;
         }
     } catch {
         // cross-origin top blocks assignment; fall through to the frame itself
     }
     window.location.href = url;
+    return true;
 }

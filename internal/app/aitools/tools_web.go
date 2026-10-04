@@ -14,6 +14,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/warmbly/warmbly/internal/app/webhook"
+	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
 	"github.com/warmbly/warmbly/internal/pkg/safehttp"
 )
@@ -38,8 +39,10 @@ func (d Deps) registerWebTools(r *Registry) {
 			"query": strProp("The search query."),
 			"limit": intProp("Max results (1-10, default 5)."),
 		}, "query"),
-		Risk:    generation.RiskRead,
-		Handler: d.searchWeb,
+		Risk:            generation.RiskRead,
+		RequiredOrgPerm: models.PermUseAI,
+		RequiredAPIPerm: models.APIPermAIAgent,
+		Handler:         d.searchWeb,
 	})
 
 	r.Register(Tool{
@@ -48,8 +51,10 @@ func (d Deps) registerWebTools(r *Registry) {
 		InputSchema: objectSchema(map[string]any{
 			"url": strProp("The https URL to fetch."),
 		}, "url"),
-		Risk:    generation.RiskRead,
-		Handler: d.fetchURL,
+		Risk:            generation.RiskRead,
+		RequiredOrgPerm: models.PermUseAI,
+		RequiredAPIPerm: models.APIPermAIAgent,
+		Handler:         d.fetchURL,
 	})
 }
 

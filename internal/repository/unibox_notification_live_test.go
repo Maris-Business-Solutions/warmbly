@@ -30,7 +30,7 @@ func TestLiveUniboxNotificationBadgeCountsOnlyWhatInboxLists(t *testing.T) {
 	f.scopedMessage(t, repo, "thread-sent", "them@example.com", models.FolderSent, now)
 	f.scopedMessage(t, repo, "thread-draft", "them@example.com", models.FolderDrafts, now)
 	f.scopedMessage(t, repo, "thread-snoozed", "them@example.com", models.FolderInbox, now)
-	if _, err := repo.UpsertSnoozes(ctx, f.user, []string{"thread-snoozed"}, now.Add(24*time.Hour)); err != nil {
+	if _, err := repo.UpsertSnoozes(ctx, f.org, f.user, []string{"thread-snoozed"}, now.Add(24*time.Hour)); err != nil {
 		t.Fatalf("UpsertSnoozes: %v", err)
 	}
 

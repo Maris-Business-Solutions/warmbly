@@ -603,7 +603,7 @@ func (d Deps) updateContactNote(ctx context.Context, inv Invocation, args json.R
 	if in.Body == "" {
 		return "", ErrInvalidArgs
 	}
-	note, xerr := d.CRM.UpdateNote(ctx, inv.OrgID, nid, &models.UpdateContactNote{Content: &in.Body})
+	note, xerr := d.CRM.UpdateNote(ctx, inv.OrgID, nil, nid, &models.UpdateContactNote{Content: &in.Body})
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
@@ -622,7 +622,7 @@ func (d Deps) deleteContactNote(ctx context.Context, inv Invocation, args json.R
 	if err != nil {
 		return "", err
 	}
-	if xerr := d.CRM.DeleteNote(ctx, inv.OrgID, nid); xerr != nil {
+	if xerr := d.CRM.DeleteNote(ctx, inv.OrgID, nil, nid); xerr != nil {
 		return "", fromErrx(xerr)
 	}
 	d.logAudit(ctx, inv, models.AuditActionDelete, models.AuditEntityCRMNote, &nid, nil)

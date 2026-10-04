@@ -23,6 +23,8 @@ const (
 	maxTries      = 5  // per pending-session code attempts
 	ipLimit       = 20 // verify attempts per IP per window
 	ipWindow      = 15 * time.Minute
+	userLimit     = 10 // sign-in code attempts per account per window, across challenges
+	userWindow    = 15 * time.Minute
 	recoveryCount = 10
 )
 
@@ -229,8 +231,35 @@ func (s *service) getPending(ctx context.Context, sid uuid.UUID) (*models.TwoFAP
 	return &p, nil
 }
 
-func (s *service) deletePending(ctx context.Context, sid uuid.UUID) {
-	_ = s.cache.Del(ctx, pendingKey(sid)).Err()
+// deletePending drops the challenge and its try counter, reporting whether this
+// call removed the challenge.
+func (s *service) deletePending(ctx context.Context, sid uuid.UUID) bool {
+	n, err := s.cache.Del(ctx, pendingKey(sid)).Result()
+	_ = s.cache.Del(ctx, pendingTriesKey(sid)).Err()
+	return err == nil && n == 1
+}
+
+func pendingTriesKey(sid uuid.UUID) string { return pendingKey(sid) + ":tries" }
+
+// userTriesKey counts codes tried against one account across all its challenges.
+func userTriesKey(uid uuid.UUID) string { return "2fa_verify_user:" + uid.String() }
+
+// reserveAttempt charges one try before a code is compared. Fails open on a
+// cache error, like ipAllowed, so an outage cannot lock everyone out.
+func (s *service) reserveAttempt(ctx context.Context, key string, limit int64, window time.Duration) bool {
+	ok, err := s.cache.ReserveAttempt(ctx, key, limit, window)
+	if err != nil {
+		errs.CaptureException(err)
+		return true
+	}
+	return ok
+}
+
+// releaseAttempt refunds a try that compared no code.
+func (s *service) releaseAttempt(ctx context.Context, key string) {
+	if err := s.cache.ReleaseAttempt(ctx, key); err != nil {
+		errs.CaptureException(err)
+	}
 }
 
 // ipAllowed is a coarse per-IP verify limiter (RateLimitMiddleware is a no-op

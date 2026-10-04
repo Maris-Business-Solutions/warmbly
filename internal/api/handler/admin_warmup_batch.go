@@ -29,7 +29,12 @@ func (h *Handler) AdminCancelWarmupBatch(c *gin.Context) {
 			errx.JSON(c, errx.New(errx.BadRequest, "warmup AI generation is not configured (set AI_PROVIDER=openai and AI_API_KEY)"))
 			return
 		}
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		var xe *errx.Error
+		if errors.As(err, &xe) {
+			errx.JSON(c, xe)
+		} else {
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
+		}
 		return
 	}
 	h.audit(c, models.AuditActionUpdate, warmupContentEntity, &id, map[string]string{"action": "cancel_batch"})

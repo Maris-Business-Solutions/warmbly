@@ -131,3 +131,56 @@ func HasAPIPermission(permissions uint64, required uint64) bool {
 func HasAnyAPIPermission(permissions uint64, required uint64) bool {
 	return permissions&required != 0
 }
+
+// apiPermissionRoleNeeds is the member permission each API scope acts under; 0 means every member.
+var apiPermissionRoleNeeds = map[uint64]OrganizationPermission{
+	APIPermReadEmails:        PermViewCampaigns,
+	APIPermReadCampaigns:     PermViewCampaigns,
+	APIPermReadContacts:      PermViewContacts,
+	APIPermReadUnibox:        PermAccessUnibox,
+	APIPermReadAnalytics:     PermViewAnalytics,
+	APIPermWriteEmails:       PermManageEmails,
+	APIPermWriteCampaigns:    PermManageCampaigns,
+	APIPermWriteContacts:     PermManageContacts,
+	APIPermWriteUnibox:       PermAccessUnibox,
+	APIPermBulkContacts:      PermManageContacts,
+	APIPermBulkCampaigns:     PermManageCampaigns,
+	APIPermRealtimeSubscribe: 0,
+	APIPermWebhooks:          PermManageSettings,
+	APIPermAPIKeys:           PermManageAPIKeys,
+	APIPermSendCampaigns:     PermSendCampaigns,
+	APIPermReadTemplates:     PermViewCampaigns,
+	APIPermWriteTemplates:    PermManageCampaigns,
+	APIPermReadCRM:           PermViewContacts,
+	APIPermWriteCRM:          PermManageContacts,
+	APIPermReadAuditLogs:     PermViewAnalytics,
+	APIPermIntegrations:      PermUseIntegrations,
+	APIPermWarmupRouting:     PermManageSettings,
+	APIPermAIAgent:           PermUseAI,
+	APIPermAIResearch:        PermViewContacts | PermUseAI,
+}
+
+// APIPermissionsForMember is the widest API scope set a member may delegate to a key or an app.
+func APIPermissionsForMember(perms OrganizationPermission, owner bool) uint64 {
+	if owner {
+		return AllAPIPermissionsMask
+	}
+	var mask uint64
+	for bit, need := range apiPermissionRoleNeeds {
+		if perms&need == need {
+			mask |= bit
+		}
+	}
+	return mask
+}
+
+// APIPermissionsFor is APIPermissionsForMember for a loaded membership; nil holds nothing.
+func APIPermissionsFor(m *OrganizationMember) uint64 {
+	if m == nil {
+		return 0
+	}
+	return APIPermissionsForMember(m.Permissions, m.IsOwner())
+}
+
+// AppGrantableScopes is every scope a third-party app may be granted; key management stays with people.
+const AppGrantableScopes = AllAPIPermissionsMask &^ APIPermAPIKeys

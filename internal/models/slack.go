@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -115,8 +116,22 @@ type SlackChannel struct {
 // SlackLinkPreview is GET /v1/integrations/slack/link/:code, shown before the
 // member confirms.
 type SlackLinkPreview struct {
-	SlackTeamID   string    `json:"slack_team_id"`
-	SlackTeamName string    `json:"slack_team_name"`
-	SlackUserID   string    `json:"slack_user_id"`
-	ExpiresAt     time.Time `json:"expires_at"`
+	SlackTeamID   string `json:"slack_team_id"`
+	SlackTeamName string `json:"slack_team_name"`
+	SlackUserID   string `json:"slack_user_id"`
+	// SlackUserName and SlackUserAvatar describe the Slack account being
+	// linked, read from Slack when the preview is built; either may be empty.
+	SlackUserName   string `json:"slack_user_name"`
+	SlackUserAvatar string `json:"slack_user_avatar"`
+	// EmailMatches: the Slack account's email is the caller's Warmbly email,
+	// which confirming requires.
+	EmailMatches bool      `json:"email_matches"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+// SlackLinkEmailMatches reports whether a Slack profile email and a Warmbly
+// account email name the same address. An empty side never matches.
+func SlackLinkEmailMatches(slackEmail, userEmail string) bool {
+	a, b := strings.TrimSpace(slackEmail), strings.TrimSpace(userEmail)
+	return a != "" && b != "" && strings.Contains(a, "@") && strings.EqualFold(a, b)
 }

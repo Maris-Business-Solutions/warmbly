@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/warmbly/warmbly/internal/pkg/safehttp"
 )
 
 // APIVersion is the REST version every request targets.
@@ -50,8 +52,12 @@ type Client struct {
 // NewClient builds a client over a token source. onUsage, when set, receives
 // the Sforce-Limit-Info reading of every response.
 func NewClient(ts TokenSource, onUsage func(Usage)) *Client {
+	hc := safehttp.Client(30 * time.Second)
+	tr := safehttp.NewTransport()
+	tr.ResponseHeaderTimeout = 30 * time.Second // a composite write can outlast the default header wait
+	hc.Transport = tr
 	return &Client{
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    hc,
 		tokens:  ts,
 		onUsage: onUsage,
 	}
@@ -140,7 +146,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any,
 		if err != nil {
 			return err
 		}
-		if instance == "" {
+		if instance == "" || !strings.HasPrefix(path, "/") {
 			return errors.New("salesforce instance URL unknown; reconnect the integration")
 		}
 		var reader io.Reader

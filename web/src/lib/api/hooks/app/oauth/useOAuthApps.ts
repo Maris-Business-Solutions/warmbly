@@ -75,6 +75,8 @@ export function useOAuthAppWebhookSecret(id: string, enabled: boolean) {
         queryFn: () => getOAuthAppWebhookSecret(id),
         enabled,
         staleTime: 60_000,
+        // Revealing it asks for a confirmation; a retry would prompt again after a cancel.
+        retry: false,
     });
 }
 

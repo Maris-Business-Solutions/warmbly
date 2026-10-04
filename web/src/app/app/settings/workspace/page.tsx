@@ -19,6 +19,7 @@ import useCurrentOrganization from "@/lib/api/hooks/app/organizations/useCurrent
 import { usePermission } from "@/hooks/usePermission";
 import useAiMetered from "@/hooks/useAiMetered";
 import AdvisorSettingsSection from "@/components/app/advisor/AdvisorSettingsSection";
+import RemieToolPolicies from "../_components/RemieToolPolicies";
 
 // Keyed on the workspace id, which is what makes a switch re-seed the editors
 // below. Each of them takes its initial value from the org it mounted with, and
@@ -315,11 +316,12 @@ function WorkspaceSettings({ org: currentOrg }: { org: StoreOrganization | null 
             >
                 <ToggleRow
                     label="Shared history"
-                    description="Every member with the Use AI permission sees and can continue every Remie conversation in this workspace, instead of only their own. Turning it on exposes existing conversations to the whole team."
+                    description="Every member with the Use AI permission sees and can continue every Remie conversation in this workspace, instead of only their own. Results of tools a member's role cannot use stay hidden from them. Turning it on exposes existing conversations to the whole team."
                     checked={sharedHistory}
                     onChange={onToggleSharedHistory}
                     disabled={!canManageSettings}
                 />
+                <RemieToolPolicies canManage={canManageSettings} />
             </Section>
 
             <AdvisorSettingsSection canManage={canManageSettings} />

@@ -3,9 +3,35 @@ package tasks
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/warmbly/warmbly/internal/models"
 )
+
+func TestRenderTemplate_RangeOverNumberRefused(t *testing.T) {
+	tmpl := "Hi {{.FirstName}}{{range 100000000000}}x{{end}}"
+	if err := TemplateError(tmpl); err == nil {
+		t.Fatal("TemplateError accepted a range over a number")
+	}
+	done := make(chan string, 1)
+	go func() { done <- RenderTemplate(tmpl, models.Contact{FirstName: "Ann"}) }()
+	select {
+	case out := <-done:
+		if strings.Contains(out, "xx") {
+			t.Fatalf("range executed: %d bytes", len(out))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("render of a range over a number did not return")
+	}
+}
+
+func TestRenderTemplate_RangeOverMapStillRenders(t *testing.T) {
+	contact := models.Contact{FirstName: "Ann"}
+	out := RenderTemplate(`{{range $k, $v := .}}{{if eq $k "FirstName"}}{{$v}}{{end}}{{end}}`, contact)
+	if out != "Ann" {
+		t.Fatalf("got %q", out)
+	}
+}
 
 func TestRenderTemplate_BasicVariables(t *testing.T) {
 	contact := models.Contact{

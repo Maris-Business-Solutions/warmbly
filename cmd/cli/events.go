@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -112,13 +111,16 @@ func runEventsTail(ctx context.Context, f *Factory, wsURL, orgID string, intents
 	} else {
 		target += "&"
 	}
-	target += "vsn=1.0.0&token=" + url.QueryEscape(r.Token)
+	target += "vsn=1.0.0"
+	// The key goes in a header: the gateway refuses one in the URL, which proxies log.
+	header := http.Header{}
+	header.Set("X-Warmbly-Token", r.Token)
 
 	if f.Debug {
 		io.Errorf("* connecting to %s\n", endpoint)
 	}
 	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
-	conn, resp, err := dialer.DialContext(ctx, target, nil)
+	conn, resp, err := dialer.DialContext(ctx, target, header)
 	if resp != nil && resp.Body != nil {
 		// The handshake response body carries the rejection reason and nothing
 		// the stream needs; the socket itself is what stays open.

@@ -136,6 +136,10 @@ const (
 	// this internally (re-track / untrack / strip activity) to apply the new
 	// policy live; it is not forwarded to web clients.
 	EventPresencePolicyUpdated EventType = "PRESENCE_POLICY_UPDATED"
+
+	// A user's sessions were revoked (sign out, password change, ban). The
+	// realtime service closes every socket the user holds; not forwarded.
+	EventSessionsRevoked EventType = "SESSIONS_REVOKED"
 )
 
 // BaseEvent contains common fields for all events
@@ -1000,6 +1004,25 @@ func (p *StreamingPublisher) PublishPresencePolicy(ctx context.Context, orgID uu
 	}
 	if err := p.client.Publish(ctx, TopicUserEvents, event, attrs); err != nil {
 		// Best-effort: realtime is a nicety, not a requirement.
+	}
+}
+
+// PublishSessionsRevoked tells the realtime service to drop the user's sockets.
+func (p *StreamingPublisher) PublishSessionsRevoked(ctx context.Context, userID uuid.UUID) {
+	if p == nil || p.client == nil {
+		return
+	}
+	event := &BaseEvent{
+		EventType: EventSessionsRevoked,
+		UserID:    userID.String(),
+		Timestamp: time.Now(),
+	}
+	attrs := map[string]string{
+		"user_id":    userID.String(),
+		"event_type": string(EventSessionsRevoked),
+	}
+	if err := p.client.Publish(ctx, TopicUserEvents, event, attrs); err != nil {
+		// Best-effort: the sessions are already revoked, and every reconnect needs a live one.
 	}
 }
 

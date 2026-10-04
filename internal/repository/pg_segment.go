@@ -433,9 +433,12 @@ const (
 // claimLeadsManualSQL promotes leads a person chose to 'manual'. The insert
 // paths cannot do this in their own ON CONFLICT clause: DO UPDATE would put
 // rows that were already leads into RETURNING, and RETURNING is what writes
-// the "added to campaign" activity. $1 is the campaign ids, $2 the contacts.
+// the "added to campaign" activity. $1 is the campaign ids, $2 the contacts,
+// $3 the organization both must belong to.
 const claimLeadsManualSQL = `UPDATE campaign_leads SET source = 'manual'
-	WHERE campaign_id = ANY($1::uuid[]) AND contact_id = ANY($2::uuid[]) AND source <> 'manual'`
+	WHERE campaign_id = ANY($1::uuid[]) AND contact_id = ANY($2::uuid[]) AND source <> 'manual'
+	  AND campaign_id IN (SELECT id FROM campaigns WHERE organization_id = $3)
+	  AND contact_id IN (SELECT id FROM contacts WHERE organization_id = $3)`
 
 // insertSegmentLeads enrols every contact matching the precompiled segment
 // clause as a lead, logging a campaign_added activity for each row that was

@@ -45,6 +45,7 @@ export default function TestersPage() {
     const [orgQuery, setOrgQuery] = useState("");
     const [org, setOrg] = useState<AdminOrgListItem | null>(null);
     const [roleID, setRoleID] = useState("");
+    const [passwordDays, setPasswordDays] = useState(30);
     // Held in state, never refetched: the server returns it once and cannot
     // produce it again.
     const [created, setCreated] = useState<CreatedTester | null>(null);
@@ -76,6 +77,7 @@ export default function TestersPage() {
             createTester({
                 email: email.trim(),
                 reason: reason.trim(),
+                password_days: passwordDays,
                 ...(joining
                     ? { organization_id: org!.id, role_id: roleID }
                     : { org_name: orgName.trim() || undefined }),
@@ -88,6 +90,7 @@ export default function TestersPage() {
             setOrgQuery("");
             setOrg(null);
             setRoleID("");
+            setPasswordDays(30);
             qc.invalidateQueries({ queryKey: ["admin", "testers"] });
             toast.success("Tester created");
         },
@@ -96,9 +99,13 @@ export default function TestersPage() {
 
     const revoke = useMutation({
         mutationFn: (id: string) => revokeTester(id),
-        onSuccess: () => {
+        onSuccess: (r) => {
             qc.invalidateQueries({ queryKey: ["admin", "testers"] });
-            toast.success("Exemption revoked; the account now follows the instance policy");
+            toast.success(
+                r.password_cleared
+                    ? "Revoked: the password no longer works and every session is signed out"
+                    : "Exemption revoked and every session signed out; the account now follows the instance policy",
+            );
         },
         onError: (e: Error) => toast.error(e.message || "Could not revoke the exemption"),
     });
@@ -129,7 +136,8 @@ export default function TestersPage() {
                     Accounts for people outside the team. Each skips the emailed login code, because the
                     holder cannot read this instance&apos;s mail. Everything else still applies: the password,
                     the captcha and the sign-in risk assessment. A tester either gets a workspace of its own
-                    or joins one that already exists.
+                    or joins one that already exists. Its password stops working on the date you choose, and
+                    revoking it ends the password and signs out every session at once.
                 </p>
             </div>
 
@@ -148,10 +156,13 @@ export default function TestersPage() {
                             ["Sign in at", DASHBOARD_URL],
                             ["Email", created.email],
                             ["Password", created.password],
+                            ["Expires", fmt(created.password_expires_at)],
                         ].map(([k, v]) => (
                             <div key={k} className="flex items-center gap-2">
                                 <dt className="w-20 shrink-0 text-amber-800">{k}</dt>
-                                <dd className="font-mono break-all">{v}</dd>
+                                <dd className="font-mono break-all" data-ph-mask={k === "Password" ? "" : undefined}>
+                                    {v}
+                                </dd>
                                 <button
                                     type="button"
                                     onClick={() => copy(String(v))}
@@ -302,6 +313,20 @@ export default function TestersPage() {
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                     />
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        Password works for
+                        <select
+                            className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                            value={passwordDays}
+                            onChange={(e) => setPasswordDays(Number(e.target.value))}
+                        >
+                            {[7, 14, 30, 60, 90].map((d) => (
+                                <option key={d} value={d}>
+                                    {d} days
+                                </option>
+                            ))}
+                        </select>
+                    </label>
                     <Button
                         size="sm"
                         className="h-8"
@@ -339,6 +364,10 @@ export default function TestersPage() {
                                     <div className="font-medium truncate">{t.email}</div>
                                     <div className="text-muted-foreground truncate">
                                         {t.reason || "no reason recorded"} · since {fmt(t.granted_at)}
+                                        {t.password_expires_at &&
+                                            ` · password ${
+                                                new Date(t.password_expires_at) <= new Date() ? "expired" : "expires"
+                                            } ${fmt(t.password_expires_at)}`}
                                     </div>
                                 </div>
                                 {canManage && (

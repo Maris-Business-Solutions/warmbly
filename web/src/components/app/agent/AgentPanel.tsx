@@ -263,6 +263,10 @@ export default function AgentPanel() {
                               tool: tr.pending.tool_name,
                               risk: tr.pending.risk,
                               argsSummary: tr.pending.args_summary,
+                              arguments: tr.pending.arguments,
+                              argumentsTruncated: tr.pending.arguments_truncated,
+                              preview: tr.pending.preview,
+                              alwaysAllowOffered: tr.pending.always_allow_offered,
                           }
                         : null,
                     title: tr.title || t.title,
@@ -329,6 +333,10 @@ export default function AgentPanel() {
                     tool: ev.tool || "",
                     risk: ev.risk || "write",
                     argsSummary: ev.args_summary,
+                    arguments: ev.arguments,
+                    argumentsTruncated: ev.arguments_truncated,
+                    preview: ev.preview,
+                    alwaysAllowOffered: ev.always_allow_offered,
                 },
             });
             return;
@@ -494,9 +502,11 @@ export default function AgentPanel() {
             return;
         }
         if (!tab || !tab.sessionId || !tab.pending) return;
+        const toolCallId = tab.pending.toolCallId;
         useAppStore.getState().agentPatchTab(tabKey, { pending: null });
         await runStream(tabKey, `/ai/sessions/${tab.sessionId}/approve`, {
             decision,
+            tool_call_id: toolCallId,
         });
     }
 
@@ -1518,6 +1528,17 @@ function applyEvent(turn: AgentTurn, ev: AgentStreamEvent) {
                     done: false,
                 },
             });
+            break;
+        }
+        // Secrets attach to the running step; they live only in this tab.
+        case "tool_secret": {
+            for (let i = turn.blocks.length - 1; i >= 0; i--) {
+                const b = turn.blocks[i];
+                if (b.kind === "tool" && b.step.tool === ev.tool && !b.step.done) {
+                    turn.blocks[i] = { kind: "tool", step: { ...b.step, secrets: ev.secrets } };
+                    break;
+                }
+            }
             break;
         }
         case "tool_result": {

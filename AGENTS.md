@@ -213,16 +213,16 @@ Every instance that has not updated yet runs the code an attacker can read here.
 - `crypt.CheckPassword` (`internal/pkg/crypt/validation.go`) is the only gate on a new or changed password, and it refuses anything on the embedded NCSC breached list (`internal/pkg/crypt/passwords/breached.txt`). Every path that accepts a password must call it: registration, reset, change, invitation acceptance, and any future one
 - every auth-sensitive entry point is behind CAPTCHA (`internal/pkg/captcha/turnstile.go`): login, registration, password reset, confirmation
 - TOTP verification records the step it consumed (`user_totp_settings.last_used_step`) and refuses a replay of it. Any new second factor needs equivalent single-use enforcement
-- **admin routes require a session that verified a second factor.** `middleware.RequireAdminPermission` refuses `!session.MFAVerified` with `admin_mfa_required`. Never add an admin route that bypasses it
+- **admin routes require a session that verified a second factor.** `middleware.AdminMiddleware` refuses `!session.MFAVerified` with `admin_mfa_required`, and `RequireAdminPermission` then checks the admin bit. Every admin route sits behind both; never add one outside them. The instance-wide Warmbly Cloud link is gated the same way, because it belongs to the instance, not to a workspace
 - an operation that changes who can get in, or moves money or ownership, requires a fresh authentication (`middleware.RequireFreshAuth`, `POST /v1/auth/reauth`). API-key and OAuth callers pass through, because they present a credential on every call and have no session to refresh
 - a federated identity (Google, Apple, OIDC) is bound to an account by `(issuer, subject)`. The email fallback that finds an existing account on a first sign-in attaches the identity to a password account only after that password is presented (`resolveFederatedUser` parks it as `link_required`, `SSOLinkConfirm` completes it through `finishLoginAs`). Only an account with no password links on the address alone
 
 ### Sessions and tokens
 
-- **every token carries a purpose** and is verified against the one purpose its consumer accepts (`internal/app/token/config.go`: `access`, `refresh`, `ws`, `login`, `registration`, `reset`, `2fa`). A token minted for one flow must never verify in another. A new token type gets a new purpose constant, not a reused one
+- **every token carries a purpose** and is verified against the one purpose its consumer accepts (`internal/app/token/config.go`: `access`, `refresh`, `ws`, `login`, `registration`, `reset`, `2fa`, `sso_link`). A token minted for one flow must never verify in another, and one with no purpose verifies for none. A new token type gets a new purpose constant, not a reused one
 - `VerifyToken` pins the algorithm to HS256 and requires an expiry. Do not relax either, and do not add a verification path that skips `token.VerifyToken`
 - `AUTH_SECRET` has a hard floor of `config.MinAuthSecretLength` (32 bytes) and the backend refuses to boot below it. The realtime service applies the same floor to `JWT_SECRET`, which is the same value. Neither check may become a warning
-- banning a user, changing a password and revoking a session all terminate the sessions they invalidate. A new "lock this account" path must revoke too, or it locks nothing
+- banning a user, changing a password and revoking a session all terminate the sessions they invalidate, and through `RevokeOtherSessions` close the user's realtime sockets. A new "lock this account" path must revoke too, or it locks nothing
 
 ### Access control: the rule that is easiest to get wrong
 
@@ -361,7 +361,7 @@ Web conventions:
 
 ### Developer WebSocket
 
-API keys with the `REALTIME_SUBSCRIBE` permission (bit 11) can connect to the same socket. Connection spam is bounded by per-user concurrent-connection caps (plan-based, default 10), per-IP (50), a global cap, join rate limits, and per-key IP restrictions. Documented in `docs/content/docs/api/realtime.mdx` — keep that page in sync with channel/limit changes.
+API keys with the `REALTIME_SUBSCRIBE` permission (bit 11) can connect to the same socket, presenting the key (or a `wmat_` OAuth token) in the `x-warmbly-token` header; the query-string form for them is deprecated and kept only for existing clients, while the 10-minute ws ticket rides the query string. Connection spam is bounded by per-user concurrent-connection caps (plan-based, default 10), per-IP (50), a global cap, join rate limits, and per-key IP restrictions. Documented in `docs/content/docs/api/realtime.mdx` — keep that page in sync with channel/limit changes.
 
 ## System Shape
 
@@ -508,7 +508,7 @@ Design intent:
 - relational data the worker needs (encrypted DEKs, the messageId→internal-email map) is reached over the backend's internal HTTP API (`/api/v1/internal/...`), never via direct SQL
 - worker-local state should be minimal and disposable
 - **a node holds no cloud credential.** The two privileged operations it needs are brokered through the internal API: `KMS_PROVIDER=brokered` posts sealed keys to `/api/v1/internal/dek/decrypt` and `BLOB_PROVIDER=brokered` asks `/api/v1/internal/blobs/presign` to sign one operation on one key. `renderNodeEnv` translates `aws`/`s3` into these automatically when rendering a node's env, so an IAM key never reaches a machine in the fleet. Blob bytes still travel node↔store directly; only the signature comes from the control plane
-- those two routes are the one place the internal API hands out something that is worth more than a record, so they take `NODE_BROKER_TOKEN` (falling back to `INTERNAL_API_TOKEN`) rather than the token the internet-facing tracking and forms services also carry, and presign refuses any key outside `nodeKeyPrefixes`. Extend that list when a node starts touching a new prefix; a signed URL is the whole authorisation
+- every route only a node calls (those two brokers, data keys, the message map, sync lookups, worker config, the fleet heartbeat) takes `NODE_BROKER_TOKEN` (falling back to `INTERNAL_API_TOKEN`), never the token the internet-facing tracking and forms services carry; the edge token reaches only tracked links, domain redirects, page hits and forms. A new internal route goes in the group matching who calls it. Presign refuses any key outside `nodeKeyPrefixes`; extend that list when a node starts touching a new prefix, because a signed URL is the whole authorisation
 
 Current code matches that intent in `cmd/worker/main.go`: the worker boots Kafka, Redis cache, KMS, and S3 clients, and reaches DEKs + the email message map through the backend's internal API, but does not open a PostgreSQL connection.
 

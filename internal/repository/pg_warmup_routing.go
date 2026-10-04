@@ -12,6 +12,9 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
+// ErrWarmupRoutingRuleNotFound is returned when the rule is not the organization's.
+var ErrWarmupRoutingRuleNotFound = errors.New("warmup routing rule not found")
+
 // WarmupRoutingRepository persists customer-defined warmup routing rules.
 type WarmupRoutingRepository interface {
 	Create(ctx context.Context, rule *models.WarmupRoutingRule) error
@@ -80,7 +83,7 @@ func (r *warmupRoutingRepository) Update(ctx context.Context, rule *models.Warmu
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-		return errors.New("warmup routing rule not found")
+		return ErrWarmupRoutingRuleNotFound
 	}
 	return nil
 }
@@ -94,7 +97,7 @@ func (r *warmupRoutingRepository) Delete(ctx context.Context, organizationID, ru
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-		return errors.New("warmup routing rule not found")
+		return ErrWarmupRoutingRuleNotFound
 	}
 	return nil
 }

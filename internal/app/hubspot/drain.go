@@ -145,8 +145,7 @@ func (s *Service) execute(ctx context.Context, o *org, job *models.CRMSyncJob) e
 	case models.CRMJobPushContact:
 		return s.pushContactFields(ctx, o, p)
 	case models.CRMJobRefreshObject:
-		deleted, _ := p["deleted"].(bool)
-		return s.refreshObject(ctx, o, str(p, "object_type"), str(p, "external_id"), deleted)
+		return s.refreshObject(ctx, o, str(p, "object_type"), str(p, "external_id"))
 	case models.CRMJobBackfill:
 		return s.backfill(ctx, o, p)
 	default:

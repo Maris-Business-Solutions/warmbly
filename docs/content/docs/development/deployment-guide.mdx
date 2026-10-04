@@ -216,7 +216,7 @@ These are the ones that break things quietly when they drift, because each servi
 | Value | Read by | If it drifts |
 |-------|---------|--------------|
 | `AUTH_SECRET`, seen by realtime as `JWT_SECRET` | backend, realtime | The dashboard loads but never goes live: the websocket rejects every token |
-| `INTERNAL_API_TOKEN`, seen by workers as `ENCRYPTED_KEYS_WORKER_TOKEN` | backend, worker, tracking | Workers cannot fetch decryption keys and tracking cannot resolve click tickets. Both fail closed with `401` |
+| `INTERNAL_API_TOKEN`, seen by workers as `ENCRYPTED_KEYS_WORKER_TOKEN` unless `NODE_BROKER_TOKEN` is set | backend, worker, tracking, forms | Workers cannot fetch decryption keys and tracking cannot resolve click tickets. Both fail closed with `401` |
 | `KMS_LOCAL_MASTER_KEY` | backend, consumer, worker | Sealed data keys cannot be opened. Mailbox credentials stop decrypting |
 | `CREDENTIALS_ENCRYPTION_KEY` | backend, worker | Stored SMTP and IMAP passwords and OAuth tokens stop decrypting, so no mailbox can send or sync |
 | `EVENTBUS_PROVIDER` and `NATS_URL` | every service | Producers and consumers land on different buses and work silently disappears |
@@ -743,7 +743,7 @@ curl -fsSL https://api.example.com/join.sh | sh -s -- \
 
 `--role` is `worker` (sends and syncs mail) or `consumer` (processes events). `--region` is optional and only affects worker placement: a mailbox scores better on a worker near where its provider expects sign-ins.
 
-Nothing connects back to the machine, before or after. It needs no inbound port, no SSH key and no cloud account; the only credential involved is the join token, which is used once and never stored. Re-running the same command on the same machine re-joins it under the same identity, keeping its history and its mailboxes.
+Nothing connects back to the machine, before or after. It needs no inbound port, no SSH key and no cloud account; the only credential involved is the join token, which the machine uses once and never stores. A token joins any number of machines for seven days by default (`--ttl` sets up to 30 days); after that, or once you issue another, it joins nothing. Re-running the same command on the same machine re-joins it under the same identity, keeping its history and its mailboxes.
 
 The script enrols the node, writes the config the control plane hands back to `/etc/warmbly/node.env`, installs a systemd service and an update timer, and starts it. Add `--dry-run` to see what it would write without changing anything.
 

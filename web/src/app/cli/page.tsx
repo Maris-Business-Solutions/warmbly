@@ -29,7 +29,8 @@ import buildError from "@/lib/helper/buildError";
 import type Organization from "@/lib/api/models/app/organizations/Organization";
 import useOrganizations from "@/lib/api/hooks/app/organizations/useOrganizations";
 import type { CLIAuthCode } from "@/lib/api/models/app/cliauth/CLIAuth";
-import { useApproveCLIAuthCode, useCLIAuthCode, useDenyCLIAuthCode } from "@/lib/api/hooks/app/cliauth/useCLIAuth";
+import { useApproveCLIAuthCode, useCLIAuthCode, useCLIAuthGrant, useDenyCLIAuthCode } from "@/lib/api/hooks/app/cliauth/useCLIAuth";
+import ReauthModal from "@/components/app/modals/ReauthModal";
 
 const CODE_LENGTH = 8;
 
@@ -74,6 +75,7 @@ function CLIAuthInner() {
 
     const info = complete ? lookup.data : undefined;
     const step: "code" | "review" | "done" = outcome ? "done" : info ? "review" : "code";
+    const grant = useCLIAuthGrant(dashed(code), orgId, step === "review" && info?.status === "pending");
 
     const reset = () => {
         setDir(-1);
@@ -133,6 +135,8 @@ function CLIAuthInner() {
                                 <motion.div key="review" custom={dir} variants={slide} initial="enter" animate="center" exit="exit" transition={slideTransition}>
                                     <ReviewStep
                                         info={info}
+                                        granted={grant.data?.granted_scope_names}
+                                        grantLoading={grant.isLoading}
                                         orgs={orgs.data ?? []}
                                         orgsLoading={orgs.isLoading}
                                         orgId={orgId}
@@ -160,6 +164,8 @@ function CLIAuthInner() {
                     <a href="https://docs.warmbly.com/api/cli/" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">About the CLI</a>
                 </div>
             </div>
+            {/* Approving mints a lasting key, so it asks for a fresh sign-in like creating one does. */}
+            <ReauthModal />
         </div>
     );
 }
@@ -278,6 +284,8 @@ function scopeLabel(name: string): string {
 
 function ReviewStep({
     info,
+    granted,
+    grantLoading,
     orgs,
     orgsLoading,
     orgId,
@@ -289,6 +297,8 @@ function ReviewStep({
     onBack,
 }: {
     info: CLIAuthCode;
+    granted?: string[];
+    grantLoading: boolean;
     orgs: Organization[];
     orgsLoading: boolean;
     orgId: string;
@@ -300,7 +310,9 @@ function ReviewStep({
     onBack: () => void;
 }) {
     const pending = info.status === "pending";
-    const sends = info.scope_names.includes("SEND_CAMPAIGNS") || info.scope_names.includes("WRITE_UNIBOX");
+    const scopes = granted ?? [];
+    const capped = granted !== undefined && granted.length < info.scope_names.length;
+    const sends = scopes.includes("SEND_CAMPAIGNS") || scopes.includes("WRITE_UNIBOX");
 
     return (
         <div>
@@ -324,8 +336,14 @@ function ReviewStep({
                         {info.cli_version && <span className="text-slate-400">· v{info.cli_version}</span>}
                     </p>
                 </div>
-                <span className="hidden sm:inline-flex font-mono text-[13px] tracking-[0.18em] text-slate-400">{info.user_code}</span>
+                <span className="hidden sm:inline-flex font-mono text-[13px] tracking-[0.18em] text-slate-400" data-ph-mask="">
+                    {info.user_code}
+                </span>
             </div>
+            <p className="mt-2 text-[11.5px] text-slate-500 leading-relaxed">
+                The name and machine above are reported by the terminal itself and are not verified. Only continue if you just ran{" "}
+                <span className="font-mono">warmbly auth login</span> and the code matches the one it printed.
+            </p>
 
             {!pending ? (
                 <div className="mt-5">
@@ -382,14 +400,27 @@ function ReviewStep({
                         <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">
                             This terminal will be able to
                         </p>
-                        <ul className="mt-2 flex flex-wrap gap-1.5">
-                            {info.scope_names.map((s) => (
-                                <li key={s} className="h-6 px-2 rounded-md bg-slate-100 text-slate-700 text-[11.5px] inline-flex items-center">
-                                    {scopeLabel(s)}
-                                </li>
-                            ))}
-                            {info.scope_names.length === 0 && <li className="text-[12.5px] text-slate-500">Nothing. The CLI asked for no scopes.</li>}
-                        </ul>
+                        {grantLoading ? (
+                            <div className="mt-2 h-6 flex items-center text-slate-400">
+                                <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
+                            </div>
+                        ) : (
+                            <ul className="mt-2 flex flex-wrap gap-1.5">
+                                {scopes.map((s) => (
+                                    <li key={s} className="h-6 px-2 rounded-md bg-slate-100 text-slate-700 text-[11.5px] inline-flex items-center">
+                                        {scopeLabel(s)}
+                                    </li>
+                                ))}
+                                {scopes.length === 0 && (
+                                    <li className="text-[12.5px] text-slate-500">Nothing. Your role in this workspace allows none of the scopes the CLI asked for.</li>
+                                )}
+                            </ul>
+                        )}
+                        {capped && (
+                            <p className="mt-2 text-[11.5px] text-slate-500 leading-relaxed">
+                                The CLI asked for {info.scope_names.length} scopes. The key only gets the {scopes.length} your role in this workspace allows.
+                            </p>
+                        )}
                     </div>
 
                     {sends && (
@@ -415,7 +446,7 @@ function ReviewStep({
                         <button
                             type="button"
                             onClick={onApprove}
-                            disabled={!orgId || busy}
+                            disabled={!orgId || busy || grantLoading || scopes.length === 0}
                             className="flex-1 h-10 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[13.5px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-60"
                         >
                             {approving ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <CheckIcon className="w-4 h-4" />}

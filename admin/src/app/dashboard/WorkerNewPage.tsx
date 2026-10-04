@@ -53,6 +53,7 @@ export default function WorkerNewPage() {
     const [role, setRole] = useState<NodeRole>("worker");
     const [region, setRegion] = useState("");
     const [token, setToken] = useState<string | null>(null);
+    const [expiresAt, setExpiresAt] = useState<string | null>(null);
 
     const origin = instanceOrigin();
 
@@ -60,6 +61,7 @@ export default function WorkerNewPage() {
         mutationFn: issueJoinToken,
         onSuccess: (res) => {
             setToken(res.token);
+            setExpiresAt(res.expires_at);
             toast.success("Join token issued");
         },
         onError: (e: Error) => toast.error(e.message || "Could not issue a token"),
@@ -176,7 +178,10 @@ export default function WorkerNewPage() {
                     )}
 
                     <div className="relative">
-                        <pre className="overflow-x-auto rounded-md border bg-muted/40 p-3 pr-24 font-mono text-[12px] leading-relaxed">
+                        <pre
+                            className="overflow-x-auto rounded-md border bg-muted/40 p-3 pr-24 font-mono text-[12px] leading-relaxed"
+                            data-ph-mask=""
+                        >
                             {command}
                         </pre>
                         <div className="absolute right-2 top-2">
@@ -186,13 +191,14 @@ export default function WorkerNewPage() {
 
                     {token ? (
                         <p className="text-xs text-amber-700">
-                            This token is shown once and is not recoverable. Issuing another one
-                            revokes it; machines that already joined are unaffected.
+                            This token is shown once and is not recoverable. It joins any number of
+                            machines until {expiresAt ? new Date(expiresAt).toLocaleString() : "it expires"}.
+                            Issuing another one revokes it; machines that already joined are unaffected.
                         </p>
                     ) : (
                         <p className="text-xs text-muted-foreground">
                             Issue a token to fill in the command. One token can add as many
-                            machines as you like until you replace it.
+                            machines as you like for seven days, or until you replace it.
                         </p>
                     )}
                 </CardContent>

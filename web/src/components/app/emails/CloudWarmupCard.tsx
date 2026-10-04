@@ -24,7 +24,7 @@ export default function CloudWarmupCard({ mailboxId, email, provider }: { mailbo
     const confirm = useConfirm();
     const busy = enroll.isPending || unenroll.isPending || lifecycle.isPending;
 
-    if (!pool.selfHosted) return null;
+    if (!pool.manageable) return null;
 
     const run = async (fn: () => Promise<unknown>, ok: string) => {
         try {

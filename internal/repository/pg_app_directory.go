@@ -13,6 +13,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 )
 
 // ErrAppListingSlugTaken is returned when another listing already holds the slug.
@@ -129,7 +130,7 @@ func (r *appDirectoryRepository) Unfeature(ctx context.Context, orgID, appID uui
 // alone: not the publisher's, and old enough not to be made for the purpose.
 var qualifiedInstallsSQL = `SELECT count(DISTINCT g.organization_id) FROM oauth_access_grants g
 	JOIN organizations og ON og.id = g.organization_id
-	WHERE g.application_id = a.id AND g.revoked_at IS NULL AND g.organization_id <> l.organization_id
+	WHERE g.application_id = a.id AND g.revoked_at IS NULL AND (g.refresh_expires_at IS NULL OR g.refresh_expires_at > now()) AND g.organization_id <> l.organization_id
 		AND og.created_at <= now() - make_interval(days => ` + strconv.Itoa(config.AppDirectoryInstallOrgMinAgeDays) + `)`
 
 // communityAppCTE reads every reachable listing of an active app as the
@@ -140,10 +141,10 @@ var communityAppCTE = `
 		SELECT l.application_id, l.slug, a.name, l.tagline, l.description, l.category, a.logo_url, a.website_url,
 			l.install_url, l.support_url, l.privacy_url, COALESCE(o.name, '') AS developer, a.scopes, l.status,
 			(SELECT count(DISTINCT g.organization_id) FROM oauth_access_grants g
-				WHERE g.application_id = a.id AND g.revoked_at IS NULL)::int AS installs,
+				WHERE g.application_id = a.id AND g.revoked_at IS NULL AND (g.refresh_expires_at IS NULL OR g.refresh_expires_at > now()))::int AS installs,
 			(` + qualifiedInstallsSQL + `)::int AS qualified_installs,
 			EXISTS (SELECT 1 FROM oauth_access_grants g
-				WHERE g.application_id = a.id AND g.organization_id = $1 AND g.revoked_at IS NULL) AS installed,
+				WHERE g.application_id = a.id AND g.organization_id = $1 AND g.revoked_at IS NULL AND (g.refresh_expires_at IS NULL OR g.refresh_expires_at > now())) AS installed,
 			l.created_at
 		FROM app_directory_listings l
 		JOIN oauth_applications a ON a.id = l.application_id
@@ -165,6 +166,8 @@ func scanCommunityApp(row pgx.Row) (*models.CommunityApp, error) {
 		&app.Installs, &app.Installed, &app.PublishedAt); err != nil {
 		return nil, err
 	}
+	// Shown to every workspace; empty lets the directory say "Community developer".
+	app.Developer = displayname.Displayable(app.Developer)
 	app.Scopes = uint64(scopes)
 	app.Permissions = models.PermissionsIn(app.Scopes)
 	app.Status = models.AppListingStatus(status)
@@ -216,7 +219,7 @@ var adminAppListingSelect = `
 	LEFT JOIN organizations o ON o.id = l.organization_id
 	LEFT JOIN users u ON u.id = l.status_by
 	CROSS JOIN LATERAL (SELECT count(DISTINCT g.organization_id)::int AS installs FROM oauth_access_grants g
-		WHERE g.application_id = a.id AND g.revoked_at IS NULL) x`
+		WHERE g.application_id = a.id AND g.revoked_at IS NULL AND (g.refresh_expires_at IS NULL OR g.refresh_expires_at > now())) x`
 
 func scanAdminAppListing(row pgx.Row) (*models.AdminAppListing, error) {
 	var out models.AdminAppListing

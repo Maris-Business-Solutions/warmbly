@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/app/auth"
+	"github.com/warmbly/warmbly/internal/app/token"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
@@ -301,7 +302,8 @@ func issueResetLink(ctx context.Context, c *conn, u *models.User, ttl time.Durat
 	issuedAt := time.Now()
 	expiresAt := issuedAt.Add(ttl)
 
-	tok, terr := c.tokenService(secret).GenerateToken(u.ID, sessionID, u.Email, nonce, issuedAt, expiresAt)
+	// The reset flow accepts only a token minted for its own purpose.
+	tok, terr := c.tokenService(secret).GenerateTokenFor(token.PurposePasswordReset, u.ID, sessionID, u.Email, nonce, issuedAt, expiresAt)
 	if terr != nil {
 		return fmt.Errorf("signing the reset token: %w", terr)
 	}

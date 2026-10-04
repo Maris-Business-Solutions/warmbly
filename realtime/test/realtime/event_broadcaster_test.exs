@@ -25,6 +25,16 @@ defmodule Realtime.EventBroadcasterTest do
     assert EventBroadcaster.removed_member(%{"event_type" => "EMAIL_SENT"}) == nil
   end
 
+  test "a session revocation disconnects the user's sockets" do
+    RealtimeWeb.Endpoint.subscribe("user_socket:#{@removed}")
+    EventBroadcaster.broadcast(%{"event_type" => "SESSIONS_REVOKED", "user_id" => @removed})
+
+    assert_receive %Phoenix.Socket.Broadcast{
+      event: "disconnect",
+      topic: "user_socket:" <> @removed
+    }
+  end
+
   test "a removal disconnects the removed user's sockets" do
     RealtimeWeb.Endpoint.subscribe("user_socket:#{@removed}")
     EventBroadcaster.broadcast(removal())

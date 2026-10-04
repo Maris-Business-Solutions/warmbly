@@ -115,6 +115,8 @@ Fields are named by their JSON key, with nested fields as a dotted path (`inner.
 | `no_organization` | The request needs a workspace and the caller has none selected. Every entitlement, limit and suppression rule is scoped to a workspace, so a write that would run unscoped is refused rather than run without those checks. API keys always carry their workspace; a dashboard session picks one at sign-in, so this normally means the session predates the workspace being chosen. Select a workspace and retry |
 | `lead_cc_limit` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) was given more than `2` contacts |
 | `lead_cc_self` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named the lead itself as a copy |
+| `invalid_recipient` | `POST /emails/:id/send`, `POST /unibox/reply` or `POST /unibox/compose` was given a `to`, `cc` or `bcc` entry that is not exactly one email address (`ana@example.com` or `Ana <ana@example.com>`), or no `to` address at all. Put each address in its own entry |
+| `invalid_message_id` | `POST /emails/:id/send` or `POST /unibox/reply` was given an `in_reply_to` entry that is not one Message-ID: printable characters with no spaces or line breaks, with or without the surrounding `<` and `>` |
 
 #### Password refusals
 
@@ -138,11 +140,11 @@ A password must be 8 to 128 characters. There is no composition rule, but it is 
 
 | `code` | Status | Meaning |
 |--------|--------|---------|
-| `invalid_name` | 400 | A first name, last name, workspace name, company name or OAuth app name broke the naming rules. The `message` names the field and the rule |
+| `invalid_name` | 400 | A first name, last name, workspace name, company name, OAuth app name or mailbox display name broke the naming rules. The `message` names the field and the rule |
 
 Names are shown to other people, including in invitation and notification emails, so they carry plain text only. The same rules apply to the dashboard, the API, the setup page and `warmblyctl`:
 
-- a first or last name is at most 50 characters and contains a letter; a workspace or company name is at most 64 characters and contains a letter or a number
+- a first or last name is at most 50 characters and contains a letter; a workspace or company name is at most 64 characters and contains a letter or a number; a mailbox display name keeps its own 2 to 100 character bound
 - no links, web addresses or email addresses: nothing with `@`, `//`, `www.` or a scheme such as `https:`, no hostname such as `example.com`, and no IP address. Full-width and ideographic dots count as dots
 - no control characters, invisible formatting characters (zero-width and bidirectional overrides), `<`, `>`, `` ` `` or `\`, and no more than three stacked combining marks
 - leading and trailing spaces are trimmed and runs of spaces become one, and that is the form stored
@@ -216,7 +218,12 @@ The [inbox vendor](/guides/mailbox-import/#import-from-an-inbox-vendor) routes (
 | `domain_redirect_limit` | 409 | Warmbly Cloud already serves 200 redirects for this linked instance |
 | `pool_link_redirect_not_found` | 404 | On Warmbly Cloud's linked-instance API: Cloud serves no redirect for this domain for the calling instance |
 | `pool_link_cleartext_mailbox` | 422 | Enrolling a mailbox in [Warmbly Cloud](/guides/warmbly-cloud/), or updating its credential there: SMTP or IMAP uses security `none`. Cloud reaches the mail server over the internet and needs TLS or STARTTLS on both legs. Switch the mailbox to TLS, or keep warming it on the instance |
+| `pool_link_instance_url` | 422 | Starting a Google or Microsoft sign-in through [Warmbly Cloud](/guides/warmbly-cloud/#google-and-microsoft-mailboxes-sign-in-through-warmbly-cloud) from an instance that registered no address of its own when it was linked, so Cloud has nowhere to return the sign-in to. Set `APP_URL` on the instance, disconnect it and link it again |
+| `pool_link_return_url` | 400 | The same sign-in named a return address that is not on the instance's registered address (same scheme and host) |
+| `pool_link_oauth_browser` | 400 | The brokered sign-in was not continued from the Warmbly Cloud page that started it, or returned to a different browser. Nothing was connected. Start again from the instance |
+| `cli_auth_scopes_role` | 403 | Approving a [CLI sign-in](/api/cli/#scopes): your role in the chosen workspace allows none of the scopes the CLI asked for. Pick another workspace, or ask for narrower scopes with `--scopes` |
 | `sending_domain_bulk_invalid` | 400 | A bulk setup named no domain, more than 100, neither a `tracking_label` nor a `redirect_url`, a `tracking_label` that is not one DNS label, or a `served_by` other than `instance` or `cloud` |
+| `tracking_domain_taken` | 409 | Another workspace on this instance has already verified this tracking domain, on a mailbox or as a campaign's override. Returned when saving or verifying a mailbox's tracking domain, applying one to a sending domain (including bulk setup), and verifying a campaign's override. Nothing changes |
 | `tracking_host_not_configured` | 400 | This instance has no tracking host (`TRACKING_DOMAIN`), so it cannot serve a tracking domain or a redirect |
 
 ```json
@@ -290,6 +297,17 @@ A `400` without one of these codes is a malformed request: an unknown `panel` or
 | `listing_hidden` | 409 | The instance's operators hid this listing, so `DELETE /oauth/applications/{id}/listing` cannot remove it. The hide note is on the listing |
 | `app_suspended` | 409 | The instance's operators suspended this app. It cannot be edited or given a new logo until it is unsuspended |
 
+#### Credential management refusals
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `oauth_token_not_allowed` | 403 | An OAuth app token called a route that manages credentials: creating, editing, revoking or deleting API keys, or anything under `/oauth/applications` and `/oauth/application-logo`. Use the dashboard or an API key |
+| `api_key_permissions_exceed_caller` | 403 | `POST /api-keys` or `PATCH /api-keys/{id}` would give a key more than its creator has: a permission the member's role does not cover, or, for an API key caller, a permission, mailbox or IP address the calling key does not have (a mailbox- or IP-limited key can only manage keys limited to a subset of its own). See [what a role can delegate](/api/permissions/#what-a-role-can-delegate) |
+| `api_key_holder_left` | 401 | The member who created this API key is no longer in the workspace, so the key no longer works. Create a new key from a current member |
+| `api_key_mailbox_limited` | 403 | An API key limited to some mailboxes called a surface that acts across the workspace: `/ai/tools` or `/mcp`, a campaign sender pool resolved from mailbox tags, or starting a campaign whose pool is not an explicit list of the key's mailboxes. See [email account restrictions](/api/authentication/#email-account-restrictions) |
+
+The OAuth consent and token endpoints answer in the [RFC 6749](https://www.rfc-editor.org/rfc/rfc6749#section-5.2) shape (`error`, `error_description`) instead. `access_denied` from `GET /oauth/authorize/details` or `POST /oauth/authorize` means the approving member's role covers none of the requested scopes. `invalid_grant` on a refresh means the token is unknown, expired, revoked, was already used (which also revokes the grant), or its member no longer holds any of its scopes. A failure inside the server is `500` `server_error` with a fixed description and a `request_id`.
+
 #### CRM provider refusals
 
 Returned by the CRM endpoints while a workspace runs its CRM on [HubSpot](/guides/hubspot/). A change is written to HubSpot before it is saved in Warmbly, so each of these means nothing was changed on either side.
@@ -330,6 +348,12 @@ The [Salesforce](/guides/salesforce/) endpoints answer with their own codes. Whe
 | `salesforce_reconnect_required` | 409 | The Salesforce session ended (a revoked app, a password reset, a deactivated user). Reconnect the integration |
 | `import_running` | 409 | `POST /integrations/salesforce/:id/import-sources/:sourceId/run` while that import is already running |
 | `salesforce_rate_limited` | 429 | The Salesforce org has used its API requests for today |
+
+#### Automation refusals
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `action_provider_mismatch` | 400 | `POST /automations`, `PATCH /automations/:id` or `POST /integrations/connections/:id/events` paired an action with a connection whose provider does not run it, such as a Slack message on a HubSpot connection. Each action runs only on the integration it belongs to; the provider's actions are listed under `capability.actions` in `GET /integrations/catalog` |
 
 ### 401 Unauthorized
 
@@ -451,13 +475,14 @@ Signup and invitation refusals carry their own `code`, so a client can branch on
 | `code` | Status | Meaning |
 |--------|--------|---------|
 | `reauth_required` | 403 | The action needs a proof of identity newer than the session. Confirm with `POST /v1/auth/reauth`, then retry |
-| `reauth_no_factor` | 400 | The account has neither a password nor two-factor authentication, so there is nothing to confirm with. Enrol one first |
+| `reauth_limited` | 400 | Too many failed confirmations for this account within the hour. Wait, or sign out and sign in again: a sign-in counts as a confirmation for five minutes |
+| `reauth_no_factor` | 400 | The account has neither a password nor two-factor authentication, so there is nothing to confirm with. A sign-in counts as a confirmation for five minutes, so sign out and sign in again, then repeat the action; turning on two-factor authentication gives the account a way to confirm without signing in again |
 | `admin_mfa_required` | 403 | An admin route was reached by a session that did not present a second factor. Turn on 2FA or add a passkey, then sign in again |
 | `passkey_user_verification_required` | 400 | A passkey sign-in came from an authenticator that did not verify the user with a PIN or biometric. Set a PIN on the security key, or sign in another way |
 | `two_fa_invalid_code` | 400 | The authenticator or recovery code did not match. Wait for a fresh code and try again; the login challenge allows five attempts per pending session |
 | `password_changed_sign_in_again` | 409 | `POST /auth/me/password` stored the new password but could not issue the calling device a new session. Every earlier token is invalid; discard them and sign in again with the new password |
 
-`reauth_required` guards the changes that hand out a durable credential, cannot be undone, or reach a whole domain's mail: creating an API key, adding or removing a passkey, transferring a workspace, scheduling a workspace or account for deletion, and recording, using or removing an admin grant (`POST /emails/grants/google/finish`, `/microsoft/finish`, `/:id/connect`, `DELETE /emails/grants/:id`). Confirm with a password or a current two-factor code:
+`reauth_required` guards the changes that hand out a durable credential, reveal a signing secret, change who can get in, cannot be undone, or reach a whole domain's mail. The full list is under [actions that need a recent confirmation](/api/endpoints/#actions-that-need-a-recent-confirmation). Confirm with a password or a current two-factor code:
 
 ```bash
 curl -X POST "https://api.warmbly.com/v1/auth/reauth" \
@@ -470,7 +495,9 @@ curl -X POST "https://api.warmbly.com/v1/auth/reauth" \
 { "valid_for_seconds": 300 }
 ```
 
-The confirmation is recorded on the session and lasts for the window returned, so a run of related changes only asks once. API keys and OAuth tokens have no session to confirm, so these routes are reachable only with a signed-in session; that is deliberate for key creation, which otherwise lets one leaked key mint more.
+The confirmation is recorded on the session and lasts for the window returned, so a run of related changes only asks once.
+
+Turning on two-factor authentication (`POST /auth/2fa/enroll/start` and `/confirm`) is guarded too, since a confirmed authenticator is itself a way to confirm. An account with a password confirms as above. An account with neither a password nor 2FA (created through Google, Apple or single sign-on) has nothing to confirm with, so like every confirmed action it is allowed for five minutes after a sign-in; an older session gets `reauth_no_factor` and the fix is to sign out and sign in again. API keys and OAuth tokens have no session to confirm, so these routes are reachable only with a signed-in session; that is deliberate for key creation, which otherwise lets one leaked key mint more.
 
 ```json
 {
@@ -480,6 +507,23 @@ The confirmation is recorded on the session and lasts for the window returned, s
   "request_id": "4bbbd1b2-8f86-47dd-8a7f-9476501ad20e"
 }
 ```
+
+#### `slack_link_email_mismatch`
+
+A `403` whose `code` is `slack_link_email_mismatch` comes from `POST /integrations/slack/link`. Confirming a [Slack link](/guides/slack/#link-your-slack-account) needs the email on the Slack account's profile to be the signed-in user's Warmbly email, compared without regard to case. Warmbly reads the Slack email when the link is confirmed, and a Slack connection that does not share member emails (one made before Warmbly asked for `users:read.email`) never matches. The code stays usable, so the same button works once the emails match. `GET /integrations/slack/link/:code` reports the same check ahead of time as `email_matches`.
+
+```json
+{
+  "error": "Forbidden",
+  "message": "Your Slack account's email address must be the one you sign in to Warmbly with. Sign in with that address, or ask a Warmbly admin to reconnect Slack if Slack is not sharing your email.",
+  "code": "slack_link_email_mismatch",
+  "request_id": "4bbbd1b2-8f86-47dd-8a7f-9476501ad20e"
+}
+```
+
+**How to fix:**
+- Sign in to Warmbly with the address on your Slack profile, then confirm again
+- If the addresses already match, a member with `manage_settings` reconnects Slack under **Integrations > Slack** so the connection grants `users:read` and `users:read.email`
 
 ### 404 Not Found
 
@@ -548,6 +592,7 @@ A few conflicts carry their own `code`. The mailbox import's are under [mailbox 
 | `lead_cc_has_copies` | 409 | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) names a contact that has copies of their own in the campaign |
 | `mailbox_is_seed` | 409 | Warmup was started or resumed on a placement seed inbox. See [placement test refusals](#placement-test-refusals) |
 | `mailbox_not_google_signin` | 409 | `POST /emails/onboarding/app-password/:id` on a mailbox that is not connected with per-mailbox Google sign-in. See [app password switch refusals](#app-password-switch-refusals) |
+| `approval_not_pending` | 409 | `POST /ai/sessions/:id/approve` named a tool call the conversation is not waiting on: it was already decided, in another tab or in Slack, or a newer message replaced it |
 | `mailbox_cloud_unenroll_failed` | 409 | The mailbox is linked to [Warmbly Cloud](/guides/warmbly-cloud/) and its link could not be released, so `DELETE /emails/{id}` would leave Warmbly Cloud holding its credential or its claim on it. The mailbox record remains, and restoration onto its worker is attempted |
 
 `mailbox_cloud_unenroll_failed` is a self-hosted instance losing contact with Warmbly Cloud mid-delete. Deleting an enrolled mailbox has to revoke its enrollment before the record goes, because the pool holds the mailbox's own SMTP/IMAP credentials and that record is the only thing that knows the enrollment exists. The same call releases a cloud-managed mirror before the record goes, so the mailbox returns to the cloud workspace and can be adopted again instead of staying claimed by an instance that no longer keeps it. The mailbox record remains. Warmbly attempts to restore it onto its worker immediately, and the worker reconciler may restore it later if that attempt fails. Retry the delete once the instance can reach the cloud again. Unenrolling under **Settings > Warmbly Cloud** first does not help: it makes the same call.
@@ -678,7 +723,7 @@ A `503` whose `code` is `slack_not_configured` is not transient and retrying wil
 - Create the instance's Slack app and set `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET` and `SLACK_SIGNING_SECRET` on the backend and the consumer, then restart. See [Slack app](/development/slack-app/)
 - In a client, read `app_configured` and `interactive_configured` from `GET /integrations/slack/status` and hide the Slack affordances rather than retrying
 
-Those request URLs answer `401` `unauthorized` to a request whose Slack signature does not verify. Linking a Slack account to a workspace you are not a member of is `403` `forbidden`.
+Those request URLs answer `401` `unauthorized` to a request whose Slack signature does not verify. Linking a Slack account to a workspace you are not a member of is `403` `forbidden`, and linking one whose email is not yours is `403` [`slack_link_email_mismatch`](#slack_link_email_mismatch).
 
 #### `mailbox_allowance_reached`
 

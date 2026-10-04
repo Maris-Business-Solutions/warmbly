@@ -5,6 +5,7 @@
 //   - one-flight refresh lock so concurrent requests share a single
 //     /auth/refresh round-trip when the access token expires
 //   - 401 retried once after a refresh, then bubbles a SessionExpired
+//   - reauth_required opens the confirm-it-is-you dialog, then retries once
 
 import axios, { type AxiosRequestConfig } from "axios";
 import { API_URL } from "@/lib/env";
@@ -51,6 +52,40 @@ const http = axios.create({ baseURL: API_URL });
 
 interface AuthRequestConfig extends AxiosRequestConfig {
     authorization?: boolean;
+    // Set on the reauth call itself, so a wrong code reaches the dialog.
+    skipReauthPrompt?: boolean;
+}
+
+// Long enough to find an authenticator; a missing dialog fails instead of hanging.
+const REAUTH_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
+
+// promptForReauth asks ReauthDialog (mounted in the app shell) to confirm the
+// operator, resolving on success and rejecting on cancel.
+function promptForReauth(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let timer = 0;
+        const finish = (fn: () => void) => () => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            fn();
+        };
+        timer = window.setTimeout(
+            finish(() => reject(new Error("no confirmation prompt is available here"))),
+            REAUTH_PROMPT_TIMEOUT_MS,
+        );
+        window.dispatchEvent(
+            new CustomEvent("reauth-required", {
+                detail: {
+                    resolve: finish(resolve),
+                    reject: finish(() => reject(new Error("cancelled"))),
+                    // A mounted prompt takes over; the operator may take as long as they need.
+                    ack: () => window.clearTimeout(timer),
+                },
+            }),
+        );
+    });
 }
 
 let refreshPromise: Promise<AdminToken> | null = null;
@@ -130,7 +165,18 @@ export async function Request<T>(config: AuthRequestConfig): Promise<T> {
                 clearToken();
                 throw new SessionExpiredError();
             }
-            const body = (err.response?.data ?? {}) as { error?: string; message?: string };
+            const body = (err.response?.data ?? {}) as { error?: string; message?: string; code?: string };
+            // A change that needs a fresher proof of identity: confirm, then retry once.
+            if (
+                body.code === "reauth_required" &&
+                config.authorization &&
+                !config.skipReauthPrompt &&
+                typeof window !== "undefined"
+            ) {
+                await promptForReauth();
+                const retry = await http.request<T>({ ...config, headers });
+                return retry.data;
+            }
             const failure = new APIError(
                 body.error || body.message || err.message || "Request failed",
                 status,

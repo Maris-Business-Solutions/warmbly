@@ -12,7 +12,7 @@ export const Input = ({onChange, placeholder, value, id, name}: {onChange: (e: R
 export const InputSecret = ({onChange, placeholder, value, id, name}: {onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, placeholder?: string, value?: string, id?: string, name?: string}) => {
     const [eye, setEye] = React.useState<boolean>(false);
     return <div className="relative w-full">
-        <input className="block bg-muted border-2 border-border text-foreground text-md focus:border-ring w-full pl-4 pr-15 py-3 outline-none transition-colors" type={eye ? "text":"password"} onChange={onChange} placeholder={placeholder} value={value} id={id} name={name}/>
+        <input className="block bg-muted border-2 border-border text-foreground text-md focus:border-ring w-full pl-4 pr-15 py-3 outline-none transition-colors" type={eye ? "text":"password"} data-ph-mask="" onChange={onChange} placeholder={placeholder} value={value} id={id} name={name}/>
         <div className="absolute right-3 top-[50%] -translate-y-[50%] w-9 h-8 cursor-pointer hover:bg-accent flex items-center justify-center transition-all text-muted-foreground">
             {eye ? <RiEyeLine className="w-4" onClick={() => setEye(false)}/>:<RiEyeCloseLine className="w-4" onClick={() => setEye(true)}/>}
         </div>

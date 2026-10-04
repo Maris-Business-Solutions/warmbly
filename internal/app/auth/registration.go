@@ -140,7 +140,8 @@ func (s *authService) RegistrationConfirm(ctx context.Context, data *ConfirmData
 		return nil, errx.ErrSession
 	}
 
-	if sess.Tries >= AuthAttempts {
+	sessKey := getRegistrationSessionKey(claims.SessionID)
+	if !s.reserveCodeAttempt(ctx, sessKey, time.Until(claims.ExpiresAt.Time)) {
 		return nil, errx.ErrCodeLimit
 	}
 
@@ -151,8 +152,6 @@ func (s *authService) RegistrationConfirm(ctx context.Context, data *ConfirmData
 	}
 
 	if !v {
-		sess.Tries++
-		_ = s.saveRegistrationSession(ctx, claims.SessionID, sess, claims.ExpiresAt.Time)
 		return nil, errx.ErrCode
 	}
 
@@ -160,6 +159,11 @@ func (s *authService) RegistrationConfirm(ctx context.Context, data *ConfirmData
 	// outlive a lockdown applied before the code came back.
 	if err := s.signupAllowed(ctx, claims.Email, sess.Invite); err != nil {
 		return nil, err
+	}
+
+	// Single-use: only the request that consumes the session creates the account.
+	if !s.consumeCodeSession(ctx, sessKey) {
+		return nil, errx.ErrSession
 	}
 
 	attr := SignupAttribution{ReferralCode: sess.ReferralCode, Invite: sess.Invite}

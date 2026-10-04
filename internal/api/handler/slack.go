@@ -102,7 +102,14 @@ func (h *Handler) GetSlackStatus(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.Forbidden, "not a member of this organization"))
 		return
 	}
-	st, xerr := h.SlackService.Status(c.Request.Context(), orgID, userID, member.Permissions.HasPermission(models.PermManageSettings))
+	access := slackapp.StatusOwnLink
+	switch {
+	case member.Permissions.HasPermission(models.PermManageSettings):
+		access = slackapp.StatusManage
+	case member.Permissions.HasPermission(models.PermUseIntegrations):
+		access = slackapp.StatusWorkspace
+	}
+	st, xerr := h.SlackService.Status(c.Request.Context(), orgID, userID, access)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return

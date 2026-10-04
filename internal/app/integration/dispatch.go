@@ -21,6 +21,9 @@ import (
 // the dispatcher must not overwrite that status when it sees this error.
 var errReauthRequired = errors.New("reauth required")
 
+// ErrActionProviderMismatch means the action does not run on the connection's provider.
+var ErrActionProviderMismatch = errors.New("this action does not run on the selected integration")
+
 // Dispatch fans a platform event out to every matching event subscription.
 // Targets are resolved synchronously (cheap, indexed) but the provider calls
 // run on a detached context so the caller (an API handler or consumer) never
@@ -110,6 +113,10 @@ func (s *service) runAction(ctx context.Context, target repository.DispatchTarge
 // upserts so behaviour follows the user's configuration instead of a fixed shape.
 func (s *service) execAction(ctx context.Context, target repository.DispatchTarget, data map[string]any) error {
 	sub := target.Subscription
+	// A connection's credentials only ever reach its own provider.
+	if !models.ProviderSupportsAction(target.Secrets.Conn.Provider, sub.Action) {
+		return ErrActionProviderMismatch
+	}
 	secretCfg, err := s.openConfig(ctx, &target.Secrets)
 	if err != nil {
 		return fmt.Errorf("decrypt config: %w", err)
@@ -157,7 +164,7 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 		url = rendered
 		// Automation tools (Zapier/Make/n8n) get the full structured + signed
 		// payload; the signing secret is the connection's (empty => unsigned).
-		secret := configString(target.Secrets.Conn.ConfigCapabilities, models.ConfigCapabilitiesSigningSecret)
+		secret := s.signingSecretFor(ctx, &target.Secrets, secretCfg)
 		return automationDeliver(ctx, url, secret, sub.EventType, buildAutomationPayload(sub, data, msg))
 
 	case models.IntegrationActionHubSpotUpsert:
@@ -182,30 +189,25 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 		return pipedriveUpsertPerson(ctx, token, contactEmail(data), props)
 
 	case models.IntegrationActionSalesforceUpsert:
-		if s.salesforce != nil {
-			ev := map[string]any{}
-			for k, v := range data {
-				ev[k] = v
-			}
-			// An automation's own field map overrides the connection's rules.
-			if len(autoCfg.FieldMap) > 0 {
-				ev["_salesforce_fields"] = projectFields(autoCfg.FieldMap, eventSource(data))
-			}
-			if err := s.salesforce.UpsertFromEvent(ctx, sub.OrganizationID, sub.ConnectionID, ev); err != nil {
-				if errors.Is(err, ErrPushReauth) {
-					return errReauthRequired
-				}
-				return err
-			}
-			return nil
+		// Salesforce writes go through the native sync only.
+		if s.salesforce == nil {
+			return errors.New("salesforce sync is not available on this process")
 		}
-		token, terr := s.accessTokenFor(ctx, &target.Secrets)
-		if terr != nil {
-			return errReauthRequired
+		ev := map[string]any{}
+		for k, v := range data {
+			ev[k] = v
 		}
-		instanceURL := configString(target.Secrets.Conn.DisplayFields, "instance_url")
-		props := s.crmProps(ctx, sub, models.IntegrationSalesforce, data, autoCfg)
-		return salesforceUpsertContact(ctx, token, instanceURL, contactEmail(data), props)
+		// An automation's own field map overrides the connection's rules.
+		if len(autoCfg.FieldMap) > 0 {
+			ev["_salesforce_fields"] = projectFields(autoCfg.FieldMap, eventSource(data))
+		}
+		if err := s.salesforce.UpsertFromEvent(ctx, sub.OrganizationID, sub.ConnectionID, ev); err != nil {
+			if errors.Is(err, ErrPushReauth) {
+				return errReauthRequired
+			}
+			return err
+		}
+		return nil
 
 	case models.IntegrationActionCloseUpsert:
 		apiKey := stringFromMap(secretCfg, "api_key", "api_token")

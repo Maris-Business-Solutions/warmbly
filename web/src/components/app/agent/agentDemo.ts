@@ -94,6 +94,7 @@ export function demoRun(part: "open" | "approve" | "deny"): DemoStep[] {
                 risk: "write",
                 tool_call_id: "demo-1",
                 args_summary: `${CAMPAIGN}, status: "paused"`,
+                arguments: JSON.stringify({ action: "stop", campaign_id: CAMPAIGN }, null, 2),
             },
         },
     ];

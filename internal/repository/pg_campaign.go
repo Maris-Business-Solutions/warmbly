@@ -2327,6 +2327,9 @@ func (r *campaignRepository) SetCampaignTrackingDomainVerified(ctx context.Conte
 		SET tracking_domain_verified = $2, tracking_domain_verified_at = $3, updated_at = NOW()
 		WHERE id = $1
 	`, campaignID, verified, at)
+	if isTrackingDomainTaken(err) {
+		return ErrTrackingDomainTaken
+	}
 	return err
 }
 

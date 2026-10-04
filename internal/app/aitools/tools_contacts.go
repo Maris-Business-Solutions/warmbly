@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strconv"
 
+	"github.com/google/uuid"
+
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
 )
@@ -216,8 +218,13 @@ func (d Deps) bulkEditContacts(ctx context.Context, inv Invocation, args json.Ra
 	if err != nil {
 		return "", err
 	}
-	if len(in.ContactIDs) == 0 {
+	if len(in.ContactIDs) == 0 || len(in.ContactIDs) > models.MaxContactBatchIDs {
 		return "", ErrInvalidArgs
+	}
+	for _, id := range in.ContactIDs {
+		if _, err := uuid.Parse(id); err != nil {
+			return "", ErrInvalidArgs
+		}
 	}
 	data := &models.BulkEditContactsData{
 		ContactSelection: models.ContactSelection{Contacts: in.ContactIDs},

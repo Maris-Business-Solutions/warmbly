@@ -961,6 +961,9 @@ export interface LoginCodeExemption {
     email: string;
     reason?: string | null;
     granted_at?: string | null;
+    /** When the handed-out password stops working; absent for an account
+     *  exempted without one. */
+    password_expires_at?: string | null;
 }
 
 /** The one time the password is readable. It is not stored in a form anyone
@@ -970,6 +973,8 @@ export interface CreatedTester {
     email: string;
     organization_id: string;
     password: string;
+    /** When the password stops working. */
+    password_expires_at: string;
     /** True when the tester joined a workspace that already existed rather
      *  than one minted for it. */
     joined_existing: boolean;

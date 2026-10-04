@@ -5,6 +5,7 @@
 
 import { Outlet } from "react-router-dom";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
+import { ReauthDialog } from "@/components/ReauthDialog";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
@@ -33,6 +34,7 @@ export function AppShell() {
                 </div>
             </div>
             <CommandPalette />
+            <ReauthDialog />
         </ConfirmProvider>
     );
 }

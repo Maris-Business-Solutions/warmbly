@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/errx"
 )
 
 // Admin endpoints for /admin/settings/backends — surface the storage_backends
@@ -17,7 +18,7 @@ func (h *Handler) AdminListStorageBackends(c *gin.Context) {
 	if kind := c.Query("kind"); kind != "" {
 		rows, err := h.StorageBackendRepo.ListByKind(c.Request.Context(), kind)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"backends": rows})
@@ -25,7 +26,7 @@ func (h *Handler) AdminListStorageBackends(c *gin.Context) {
 	}
 	rows, err := h.StorageBackendRepo.List(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"backends": rows})
@@ -35,7 +36,7 @@ func (h *Handler) AdminGetActiveStorageBackend(c *gin.Context) {
 	kind := c.Param("kind")
 	row, err := h.StorageBackendRepo.GetActive(c.Request.Context(), kind)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if row == nil {
@@ -52,7 +53,7 @@ func (h *Handler) AdminActivateStorageBackend(c *gin.Context) {
 		return
 	}
 	if err := h.StorageBackendRepo.SetActive(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "activated"})

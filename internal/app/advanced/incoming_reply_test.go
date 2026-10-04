@@ -71,6 +71,13 @@ func (r incomingReplyContactRepo) GetByID(context.Context, uuid.UUID) (*models.C
 	return r.taskContact, nil
 }
 
+func (r incomingReplyContactRepo) GetByIDsAndOrganization(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]models.Contact, *errx.Error) {
+	if r.taskContact == nil || len(ids) != 1 || ids[0] != r.taskContact.ID {
+		return nil, nil
+	}
+	return []models.Contact{*r.taskContact}, nil
+}
+
 type incomingReplyProgressRepo struct {
 	repository.CampaignProgressRepository
 	replied       int

@@ -116,6 +116,12 @@ type IntegrationRepository interface {
 	ListFieldMappings(ctx context.Context, orgID, connID uuid.UUID) ([]models.IntegrationFieldMapping, error)
 	ReplaceConnectionFieldMappings(ctx context.Context, orgID, connID uuid.UUID, object string, mappings []models.IntegrationFieldMapping) error
 	UpdateConnectionConfig(ctx context.Context, orgID, connID uuid.UUID, configCapabilities []byte, syncDirection string) error
+	// SetSigningSecretConfig writes an automation connection's sealed config and
+	// drops any signing secret left in config_capabilities.
+	SetSigningSecretConfig(ctx context.Context, orgID, connID uuid.UUID, configEncrypted []byte) error
+	// ListPlaintextSigningSecrets pages, by id, the connections whose
+	// config_capabilities still hold a signing secret.
+	ListPlaintextSigningSecrets(ctx context.Context, after uuid.UUID, limit int) ([]uuid.UUID, error)
 	// SetInboundSigningConfig writes a Calendly/Cal.com connection's sealed
 	// config and records in display_fields whether deliveries must be signed.
 	SetInboundSigningConfig(ctx context.Context, orgID, connID uuid.UUID, configEncrypted []byte, signed bool) error
@@ -871,6 +877,37 @@ func (r *integrationRepository) UpdateConnectionConfig(ctx context.Context, orgI
 		SET config_capabilities = $1, sync_direction = $2, updated_at = now()
 		WHERE organization_id = $3 AND id = $4`, configCapabilities, syncDirection, orgID, connID)
 	return err
+}
+
+func (r *integrationRepository) SetSigningSecretConfig(ctx context.Context, orgID, connID uuid.UUID, configEncrypted []byte) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE integration_connections
+		SET config_encrypted = $3,
+		    config_capabilities = config_capabilities - 'signing_secret',
+		    updated_at = now()
+		WHERE organization_id = $1 AND id = $2`,
+		orgID, connID, nullIfEmptyBytes(configEncrypted))
+	return err
+}
+
+func (r *integrationRepository) ListPlaintextSigningSecrets(ctx context.Context, after uuid.UUID, limit int) ([]uuid.UUID, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id FROM integration_connections
+		WHERE id > $1 AND jsonb_typeof(config_capabilities) = 'object' AND config_capabilities ? 'signing_secret'
+		ORDER BY id LIMIT $2`, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 func (r *integrationRepository) SetInboundSigningConfig(ctx context.Context, orgID, connID uuid.UUID, configEncrypted []byte, signed bool) error {

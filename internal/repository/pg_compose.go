@@ -110,10 +110,12 @@ func (r *composeRepository) AddressHistoryByAccount(ctx context.Context, orgID u
 	return out, rows.Err()
 }
 
+// UpsertDraft keeps a draft's mailbox only when it is one of the organization's;
+// any other id is stored as no mailbox (auto).
 func (r *composeRepository) UpsertDraft(ctx context.Context, userID, orgID uuid.UUID, d *ComposeDraft) error {
 	query := `
 		INSERT INTO compose_drafts (id, user_id, organization_id, email_account_id, to_addrs, cc, bcc, subject, body, body_html, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+		VALUES ($1, $2, $3, (SELECT id FROM email_accounts WHERE id = $4::uuid AND organization_id = $3), $5, $6, $7, $8, $9, $10, NOW(), NOW())
 		ON CONFLICT (id) DO UPDATE SET
 			email_account_id = EXCLUDED.email_account_id,
 			to_addrs = EXCLUDED.to_addrs,
@@ -123,7 +125,7 @@ func (r *composeRepository) UpsertDraft(ctx context.Context, userID, orgID uuid.
 			body = EXCLUDED.body,
 			body_html = EXCLUDED.body_html,
 			updated_at = NOW()
-		WHERE compose_drafts.user_id = $2
+		WHERE compose_drafts.user_id = $2 AND compose_drafts.organization_id = $3
 	`
 	args := []any{d.ID, userID, orgID, d.EmailAccountID, d.To, d.CC, d.BCC, d.Subject, d.Body, d.BodyHTML}
 	if _, err := r.db.Exec(ctx, query, args...); err != nil {

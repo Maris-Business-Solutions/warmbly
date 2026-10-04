@@ -132,16 +132,24 @@ function loadPostHog(): Promise<import("posthog-js").PostHog | null> {
                 // A single-page app: one load, then history changes.
                 capture_pageview: "history_change",
                 capture_pageleave: true,
+                // Same URL masking as the dashboard: tokens and codes can travel in a query string.
+                mask_personal_data_properties: true,
+                custom_personal_data_properties: ["token", "session", "agent_session", "code", "invite", "next"],
                 capture_dead_clicks: true,
                 capture_heatmaps: true,
                 rageclick: true,
                 capture_performance: { web_vitals: true, network_timing: true },
                 disable_session_recording: !POSTHOG_SESSION_REPLAY,
+                // Same masking as the dashboard: data-ph-mask hides a revealed
+                // secret's text and blocks an input holding one.
                 session_recording: {
                     maskAllInputs: false,
                     maskInputOptions: { password: true },
+                    maskTextSelector: "[data-ph-mask], .ph-mask",
+                    blockSelector: "input[data-ph-mask], textarea[data-ph-mask], [data-ph-mask] input, [data-ph-mask] textarea, [data-input-otp], input[autocomplete='one-time-code']",
                 },
-                enable_recording_console_log: true,
+                // Replayed console output is retained; exceptions are captured separately.
+                enable_recording_console_log: false,
                 respect_dnt: false,
                 capture_exceptions: POSTHOG_ERROR_TRACKING
                     ? {

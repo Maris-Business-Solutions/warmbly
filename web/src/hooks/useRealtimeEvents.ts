@@ -525,10 +525,14 @@ export function useRealtimeEvents() {
           ai_session: [['ai', 'sessions']],
           // AI skills (org playbooks).
           ai_skill: [['ai', 'skills']],
+          // Workspace "always allow" policies for assistant tools.
+          ai_tool_policy: [['ai', 'tool-policies']],
           // Connected MCP servers (external tools).
           mcp_server: [['ai', 'connections']],
           // A teammate published, edited or unpublished one of the workspace's apps.
           app_listing: [['oauth-app-listing'], ['integrations', 'community']],
+          // A member's app authorization ended, by them or by a workspace admin.
+          oauth_authorization: [['oauth-authorized-apps']],
           // Advisor: a background evaluation that opened or resolved findings,
           // or a teammate applying/snoozing/dismissing one. Refreshes every
           // strip and every nav badge at once.

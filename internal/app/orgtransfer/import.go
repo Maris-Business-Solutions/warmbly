@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/warmbly/warmbly/internal/app/cipher"
+	"github.com/warmbly/warmbly/internal/infrastructure/storage"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -29,6 +30,11 @@ const (
 	// maxManifestBytes bounds the manifest read from an untrusted archive.
 	maxManifestBytes = 64 << 20
 )
+
+// ErrForeignRows refuses an archive naming records another workspace on this
+// instance owns: an import only writes and references the destination's own.
+var ErrForeignRows = errors.New("this archive holds records that already belong to another workspace on this instance, so nothing was imported. " +
+	"Import it into the workspace it was exported from, or into a workspace on another instance")
 
 // ImportFrom applies an archive to a destination workspace.
 //
@@ -121,6 +127,14 @@ func (s *service) ImportFrom(
 		return nil, err
 	}
 
+	rules := &ruleEnv{orgID: orgID, heldApps: map[uuid.UUID]string{}}
+	if pu, ok := s.blobs.(storage.PublicURLer); ok {
+		rules.logos = pu
+	}
+	if rules.developerBlocked, err = s.repo.DeveloperBlocked(ctx, tx, orgID, opts.ActorUserID); err != nil {
+		return nil, err
+	}
+
 	byName := manifestTables(manifest)
 	applied := 0
 	for i := range Tables {
@@ -147,9 +161,15 @@ func (s *service) ImportFrom(
 			actor:      opts.ActorUserID,
 			conflict:   opts.Conflict,
 			selected:   selected,
+			rules:      rules,
 		})
 		if err != nil {
 			return nil, err
+		}
+		if t.Name == "oauth_applications" {
+			if err := holdImportedApps(ctx, tx, orgID, rules.heldApps); err != nil {
+				return nil, fmt.Errorf("hold imported apps: %w", err)
+			}
 		}
 		if n > 0 {
 			result.RowCounts[t.Name] = n
@@ -190,6 +210,8 @@ type importContext struct {
 	// selected is the set of groups this run applies, used to decide which
 	// references the import can actually satisfy.
 	selected map[models.OrgDataGroup]bool
+	// rules re-apply write rules to the tables in importRules.
+	rules *ruleEnv
 }
 
 // importTable streams one table's rows out of the archive and into the
@@ -253,18 +275,20 @@ func (s *service) importTable(
 			"%s: %d column(s) in the archive do not exist here and were ignored.", t.Name, unknown))
 	}
 
-	var pk []string
-	if ic.conflict == models.OrgImportConflictOverwrite {
-		if pk, err = s.repo.PrimaryKeyColumns(ctx, t.Name); err != nil {
-			return 0, nil, err
-		}
-		if len(pk) == 0 {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s has no primary key, so existing rows there were kept rather than overwritten.", t.Name))
-		}
+	pk, err := s.repo.PrimaryKeyColumns(ctx, t.Name)
+	if err != nil {
+		return 0, nil, err
+	}
+	if len(pk) == 0 && ic.conflict == models.OrgImportConflictOverwrite {
+		warnings = append(warnings, fmt.Sprintf(
+			"%s has no primary key, so existing rows there were kept rather than overwritten.", t.Name))
 	}
 
 	refs, err := s.referencePlan(ctx, t, destCols, ic.selected)
+	if err != nil {
+		return 0, nil, err
+	}
+	tenantRefs, err := s.tenantReferences(ctx, t.Name, insertCols)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -289,7 +313,14 @@ func (s *service) importTable(
 		if len(batch) == 0 {
 			return nil
 		}
-		n, err := s.repo.InsertBatch(ctx, tx, t.Name, insertCols, batch, ic.conflict, pk)
+		foreign, err := s.repo.CountForeignRows(ctx, tx, t.Name, t.OwnerScope(), pk, tenantRefs, orgID, batch)
+		if err != nil {
+			return err
+		}
+		if foreign > 0 {
+			return fmt.Errorf("%s: %w", t.Name, ErrForeignRows)
+		}
+		n, err := s.repo.InsertBatch(ctx, tx, t.Name, insertCols, batch, ic.conflict, pk, t.OwnerScope(), orgID)
 		if err != nil {
 			return err
 		}
@@ -397,6 +428,10 @@ func (s *service) importRow(
 		if _, ok := obj[c]; ok {
 			obj[c] = json.RawMessage(`null`)
 		}
+	}
+
+	if rule := importRules[t.Name]; rule != nil && ic.rules != nil {
+		rule(ic.rules, obj)
 	}
 
 	for _, sc := range t.Secrets {
@@ -520,6 +555,51 @@ func (s *service) referencePlan(
 
 	sort.Strings(plan.nullify)
 	return plan, nil
+}
+
+// tenantReferences are the foreign keys a written row carries into data some
+// organization owns, each with the fragment selecting the destination's rows.
+func (s *service) tenantReferences(ctx context.Context, table string, insertCols []string) ([]repository.TenantReference, error) {
+	fks, err := s.repo.ForeignKeys(ctx, table)
+	if err != nil {
+		return nil, err
+	}
+	written := make(map[string]bool, len(insertCols))
+	for _, c := range insertCols {
+		written[c] = true
+	}
+	if t, ok := TableByName[table]; ok {
+		for _, c := range t.PartnerRefs {
+			delete(written, c)
+		}
+	}
+	var out []repository.TenantReference
+	for _, fk := range fks {
+		carried := true
+		for _, c := range fk.Columns {
+			carried = carried && written[c]
+		}
+		if !carried {
+			continue
+		}
+		var owner string
+		switch fk.RefTable {
+		case "users":
+			// People are matched to destination accounts by email.
+			continue
+		case "organizations":
+			owner = `id = $1`
+		default:
+			dep, ok := TableByName[fk.RefTable]
+			if !ok {
+				// Instance-wide data, or a reference referencePlan clears.
+				continue
+			}
+			owner = dep.OwnerScope()
+		}
+		out = append(out, repository.TenantReference{ForeignKey: fk, RefOwner: owner})
+	}
+	return out, nil
 }
 
 // mergeOrganization applies the archive's workspace settings onto the

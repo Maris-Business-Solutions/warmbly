@@ -1,9 +1,3 @@
-# Advisories accepted with a written reason, reviewed whenever this file is
-# touched. Everything here must also appear in the CASA evidence pack under
-# 6.1.1 with the same justification.
-#
-# Nothing is listed today: the four advisories with no upstream fix
-# (github.com/xuri/excelize GO-2026-6452 and the three hamba/avro decoder
-# advisories) are Go-module findings that govulncheck reports and Trivy's
-# severity filter does not raise, so suppressing them here would be
-# suppressing nothing. They are justified in the evidence pack instead.
+# Advisories Trivy should not fail on, one id per line. Each one needs a
+# written decision in the CASA evidence pack (kept outside this repository).
+# Nothing is listed today.

@@ -43,6 +43,8 @@ At sign-in, the code submits automatically once six digits are in. Without your 
 
 Each code works once. An authenticator code stays valid for about a minute so a slow connection still works, but once it has signed you in, that same code is spent and cannot be used again.
 
+Wrong codes are limited three ways: five per sign-in attempt, after which you sign in again from the start; twenty per network address in fifteen minutes; and ten per account in fifteen minutes, however many times the password is entered in between. A correct code clears the account count.
+
 **Turn off** asks for a current code or a recovery code first, then an explicit confirmation. With 2FA off you are protected only by your password plus the emailed code, your recovery codes stop working, and setting it up again issues a fresh secret and new recovery codes.
 
 ## Passkeys
@@ -63,20 +65,25 @@ Some changes ask you to confirm it is you even though you are already signed in:
 
 - creating an API key
 - adding or removing a passkey
+- turning on two-factor authentication
+- inviting a member or changing a member's role
+- exporting or importing a whole workspace
+- approving a self-hosted instance's warmup pool link
+- revealing or rotating a webhook or OAuth app signing secret
 - transferring a workspace to someone else
 - scheduling a workspace or account for deletion
 
 Enter your password or a code from your authenticator, whichever your account has. The confirmation lasts five minutes, so a run of related changes only asks once.
 
-If you signed up with Google, Apple or your company's single sign-on, your account may have neither a password nor 2FA yet. There is nothing to confirm with in that case, so turn on 2FA first; the prompt says so rather than refusing a password you never set.
+If you signed up with Google, Apple or your company's single sign-on, your account may have neither a password nor 2FA yet. There is nothing to confirm with in that case, so your sign-in is the confirmation: 2FA can be turned on within five minutes of signing in. If more time has passed, sign out, sign in again, and set it up straight away. From then on you confirm with your authenticator.
 
-This exists because the things on that list either hand out a credential that outlives the session that made it, or cannot be undone from your side. Someone who got hold of a signed-in browser should not be able to do any of them without knowing something you know.
+This exists because the things on that list either hand out a credential that outlives the session that made it, reveal a secret, change who can get in, or cannot be undone from your side. Someone who got hold of a signed-in browser should not be able to do any of them without knowing something you know.
 
 ## Sessions
 
 Every signed-in device appears under **Sessions** with its device (`Chrome on macOS`), location where known, sign-in method (Email, Google, Apple, or Passkey), and last activity. Your current device is tagged **This device**.
 
-**Sign out** ends one session; **Sign out other sessions** clears everything except where you are now.
+**Sign out** ends one session; **Sign out other sessions** clears everything except where you are now. Signing out everywhere, changing or resetting your password, and an account ban end every session at once, and close any live connection the dashboard or an API client has open to the realtime service.
 
 A session renews itself in the background, and each renewal replaces the credential that keeps it alive. If an old one is ever presented, a copy of it exists somewhere else, so Warmbly ends that session on the spot and you sign in once more on that device.
 
@@ -90,7 +97,7 @@ A password has to be between 8 and 128 characters, and it is checked against a l
 
 There is no rule about mixing upper case, digits and symbols. A long passphrase you can remember beats a short one with a symbol bolted on, which is what current guidance from NIST and the NCSC both say. The dashboard shows a strength meter as you type.
 
-Repeated wrong passwords are counted per account, not just per device, so guessing one account from many addresses does not buy an attacker more attempts. After ten failures the account stops accepting password attempts for an hour. Signing in correctly clears the count.
+Repeated wrong passwords are counted per account, not just per device, so guessing one account from many addresses does not buy an attacker more attempts. After fifty failures in an hour the account stops accepting password attempts until the hour is up. Signing in correctly or completing a password reset clears the count. The current password asked for when you change it, and the password you confirm a sensitive change with, share a separate budget of the same size.
 
 ## Names
 

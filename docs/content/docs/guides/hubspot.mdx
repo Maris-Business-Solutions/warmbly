@@ -121,6 +121,7 @@ HubSpot's owners (its users) are matched to workspace members by email address. 
 - whose tasks appear on the Tasks page
 - who owns the email activity a mailbox logs
 - which HubSpot owner a deal or task gets when you assign it to a member in Warmbly
+- who the [Warmbly card](#working-from-inside-hubspot) acts as, and so what a HubSpot user can do from it
 
 ## Positive replies
 
@@ -160,7 +161,17 @@ Two things put Warmbly inside HubSpot itself, so a rep never has to switch tabs 
 - **The Warmbly card** on every contact record shows the contact's Warmbly status, each campaign they are in with its step, and why a lead is paused. From the card you can add the contact to a campaign, pause or resume all of their campaigns, and open them in Warmbly. A contact new to Warmbly is created from the HubSpot record when you add them.
 - **The "Add to Warmbly campaign" workflow action** enrolls a workflow's contacts in the campaign you pick, so a HubSpot list, form or lifecycle change can feed outreach on its own. Contacts who opted out of email in HubSpot are skipped, and the action reports what happened in its output for the next step of the workflow.
 
-Both act as the HubSpot user's matched member when there is one, and as the workspace owner otherwise.
+The card acts as the Warmbly member matched to the HubSpot user viewing it (see [owners](#owners)), with that member's role:
+
+| On the card | The member needs |
+| --- | --- |
+| See the contact's Warmbly status and campaigns | View campaigns and view contacts |
+| Add to campaign | Manage campaigns and manage contacts |
+| Pause or resume campaigns | Manage campaigns |
+
+A HubSpot user with no matched member, or whose member is still invited, is banned from signing in, or lacks the permission, sees why on the card and changes nothing. The workflow action has no viewer: it is set up by whoever can edit HubSpot workflows, and it acts as the workspace owner.
+
+The card and the workflow action need the HubSpot account to be in HubSpot mode in exactly one Warmbly workspace. When more than one workspace has it connected in HubSpot mode, both refuse until only one does.
 
 ## Importing from HubSpot lists
 
@@ -207,7 +218,7 @@ A self-hosted instance uses its own HubSpot app. Create one in a HubSpot develop
 2. Add the required scopes: `oauth`, `crm.objects.contacts.read`, `crm.objects.contacts.write`, `crm.objects.companies.read`, `crm.objects.companies.write`, `crm.objects.deals.read`, `crm.objects.deals.write`, `crm.objects.owners.read`, `crm.schemas.contacts.read` and `crm.schemas.contacts.write`. Add `crm.lists.read` and `sales-email-read` as optional scopes.
 3. Set `HUBSPOT_OAUTH_CLIENT_ID` and `HUBSPOT_OAUTH_CLIENT_SECRET` on the backend and the consumer, and set `APP_URL` so the `warmbly_link` property points at your dashboard. See [configuration](/development/configuration/#integrations).
 
-The consumer runs the minute-by-minute pull and the sync queue, so HubSpot mode needs no inbound traffic from HubSpot. Webhooks are optional: subscribe the app to `contact.creation`, `contact.propertyChange`, `contact.deletion`, `deal.creation`, `deal.propertyChange` and `deal.deletion` with the target URL `<backend>/api/v1/integrations/hubspot/webhooks`, and a change is picked up within seconds instead of within the minute. Deliveries are verified with HubSpot's `X-HubSpot-Signature-v3` signature and only make the next read come sooner; Warmbly always reads the record from HubSpot itself.
+The consumer runs the minute-by-minute pull and the sync queue, so HubSpot mode needs no inbound traffic from HubSpot. Webhooks are optional: subscribe the app to `contact.creation`, `contact.propertyChange`, `contact.deletion`, `deal.creation`, `deal.propertyChange` and `deal.deletion` with the target URL `<backend>/api/v1/integrations/hubspot/webhooks`, and a change is picked up within seconds instead of within the minute. Deliveries are verified with HubSpot's `X-HubSpot-Signature-v3` signature over `BACKEND_PUBLIC_URL` and only make the next read come sooner; Warmbly always reads the record from HubSpot itself, and removes a deal or task only when HubSpot answers that it is gone.
 
 ## Moving a workspace
 

@@ -3,7 +3,7 @@ defmodule Realtime.SentryFinchClient do
   Finch-based HTTP client for Sentry.
 
   Replaces the default `Sentry.HackneyClient` so the app no longer depends on
-  hackney (dropped to clear CVE-2026-47071). Finch is already a transitive
+  hackney. Finch is already a transitive
   dependency via goth and broadway_cloud_pub_sub.
 
   Because this implements `c:Sentry.HTTPClient.child_spec/0`, Sentry starts the

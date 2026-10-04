@@ -17,6 +17,7 @@ import (
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/aitools"
 	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
 )
 
@@ -41,8 +42,13 @@ func (h *Handler) agentToolInvocation(c *gin.Context) (aitools.Invocation, *errx
 	if uid, err := middleware.GetUserUUID(c); err == nil {
 		inv.UserID = uid
 	}
+	bindOAuthMember(c, &inv)
 	return inv, nil
 }
+
+// errToolsMailboxLimited refuses the tool surfaces to a key held to some mailboxes; tools act across the workspace.
+var errToolsMailboxLimited = errx.NewWithIdentifier(errx.Forbidden, apiKeyMailboxLimited,
+	"This API key is limited to some mailboxes, and AI tools act across the whole workspace. Use the REST endpoints, which apply the key's mailbox limits, or a key without them.")
 
 // ListAgentTools — GET /ai/tools[?format=openai]. The default shape mirrors
 // the registry; format=openai (alias: hermes, functions) returns OpenAI
@@ -53,9 +59,18 @@ func (h *Handler) ListAgentTools(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.ServiceUnavailable, "AI tools are not available"))
 		return
 	}
+	if keyMailboxLimited(c) {
+		errx.JSON(c, errToolsMailboxLimited)
+		return
+	}
 	inv, xerr := h.agentToolInvocation(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
+		return
+	}
+	// A member session uses the tool surface under use_ai; keys and tokens are gated per tool.
+	if !inv.IsAPIKey && !inv.OrgPerms.HasPermission(models.PermUseAI) {
+		errx.JSON(c, errx.New(errx.Forbidden, "your role does not include the AI assistant"))
 		return
 	}
 
@@ -105,9 +120,18 @@ func (h *Handler) CallAgentTool(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.ServiceUnavailable, "AI tools are not available"))
 		return
 	}
+	if keyMailboxLimited(c) {
+		errx.JSON(c, errToolsMailboxLimited)
+		return
+	}
 	inv, xerr := h.agentToolInvocation(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
+		return
+	}
+	// A member session uses the tool surface under use_ai; keys and tokens are gated per tool.
+	if !inv.IsAPIKey && !inv.OrgPerms.HasPermission(models.PermUseAI) {
+		errx.JSON(c, errx.New(errx.Forbidden, "your role does not include the AI assistant"))
 		return
 	}
 
@@ -144,10 +168,16 @@ func (h *Handler) CallAgentTool(c *gin.Context) {
 			errx.JSON(c, errx.New(errx.NotFound, "tool not found"))
 		case errors.Is(err, aitools.ErrToolForbidden):
 			errx.JSON(c, errx.New(errx.Forbidden, "your credentials lack the permission for this tool"))
+		case errors.Is(err, aitools.ErrToolNeedsFreshAuth):
+			errx.JSON(c, errx.NewWithIdentifier(errx.Forbidden, "reauth_required", "Confirm it is you before making this change."))
 		default:
 			// A tool-level failure is the agent's to read and react to, not a
 			// transport error: surface the message with a stable 422.
-			errx.JSON(c, errx.New(errx.Unprocessable, err.Error()))
+			if msg, ok := aitools.PublicMessage(err); ok {
+				errx.JSON(c, errx.New(errx.Unprocessable, msg))
+			} else {
+				errx.JSON(c, errx.New(errx.Internal, err.Error()))
+			}
 		}
 		return
 	}

@@ -39,6 +39,16 @@ use crate::handlers::{
 use crate::observability::report_error;
 use crate::producer::Producer;
 
+/// No response here is ever content-sniffed. HSTS is left to the proxy: this
+/// service also answers on customers' own tracking and redirect domains.
+async fn nosniff(mut res: axum::response::Response) -> axum::response::Response {
+    res.headers_mut().insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    res
+}
+
 /// Connects the event-bus producer, retrying transient failures.
 ///
 /// The whole stack starts at once, so the first lookup of `nats` can fail with
@@ -157,6 +167,7 @@ async fn main() {
             state.clone(),
             redirect_first,
         ))
+        .layer(axum::middleware::map_response(nosniff))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

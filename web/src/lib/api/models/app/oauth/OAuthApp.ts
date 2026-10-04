@@ -62,8 +62,15 @@ export interface OAuthConsentInfo {
     logo_url: string;
     website_url: string;
     redirect_uri: string;
+    // What approving grants: the request narrowed to the approving member's role.
     scopes: string[];
+    // Requested, but outside the member's role, so not granted.
+    withheld_scopes: string[];
     state: string;
+    // The workspace that receives the grant.
+    organization_name: string;
+    // A registered app the instance features in its directory.
+    verified: boolean;
 }
 
 // An app the current user has authorized (GET /oauth/authorized-apps).
@@ -79,4 +86,15 @@ export interface OAuthAuthorizedApp {
 
 export interface OAuthAuthorizedAppsResult {
     authorized_apps: OAuthAuthorizedApp[];
+}
+
+// One member's authorization of an app (GET /oauth/workspace-authorizations).
+export interface OAuthWorkspaceAuthorization extends OAuthAuthorizedApp {
+    user_id: string;
+    user_email: string;
+    user_name: string;
+}
+
+export interface OAuthWorkspaceAuthorizationsResult {
+    authorizations: OAuthWorkspaceAuthorization[];
 }

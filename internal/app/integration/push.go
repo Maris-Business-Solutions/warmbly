@@ -85,7 +85,7 @@ func (s *service) PushContacts(ctx context.Context, orgID, connID uuid.UUID, con
 	}
 
 	// Resolve auth once for the whole batch.
-	var token, apiKey, instanceURL string
+	var token, apiKey string
 	switch conn.Provider {
 	case models.IntegrationClose:
 		cfg, cerr := s.openConfig(ctx, sec)
@@ -96,15 +96,12 @@ func (s *service) PushContacts(ctx context.Context, orgID, connID uuid.UUID, con
 		if apiKey == "" {
 			return nil, errors.New("no close api key configured")
 		}
-	default: // OAuth CRMs: hubspot, pipedrive, salesforce
+	default: // OAuth CRMs: hubspot, pipedrive
 		tok, terr := s.accessTokenFor(ctx, sec)
 		if terr != nil {
 			return nil, ErrPushReauth
 		}
 		token = tok
-		if conn.Provider == models.IntegrationSalesforce {
-			instanceURL = configString(sec.Conn.DisplayFields, "instance_url")
-		}
 	}
 
 	// Resolve the connection's effective field map once for the whole batch — it
@@ -140,8 +137,6 @@ func (s *service) PushContacts(ctx context.Context, orgID, connID uuid.UUID, con
 			aerr = hubspotUpsertContact(ctx, token, ct.Email, props, "Synced from Warmbly")
 		case models.IntegrationPipedrive:
 			aerr = pipedriveUpsertPerson(ctx, token, ct.Email, props)
-		case models.IntegrationSalesforce:
-			aerr = salesforceUpsertContact(ctx, token, instanceURL, ct.Email, props)
 		case models.IntegrationClose:
 			aerr = closeUpsertLead(ctx, apiKey, ct.Email, props)
 		default:

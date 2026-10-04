@@ -30,6 +30,7 @@ type TokenService interface {
 	// require it, which is what the admin panel does.
 	GenerateMFASession(ctx context.Context, userID uuid.UUID, email, ipaddr, userAgent, authProvider string) (*models.Token, *errx.Error)
 	WireSignInAlerter(a SignInAlerter)
+	WireRevocationPublisher(p RevocationPublisher)
 	GetSession(ctx context.Context, sessionID uuid.UUID) (*models.Session, *errx.Error)
 	ValidateAccessToken(ctx context.Context, accessToken string) (*models.Session, *errx.Error)
 	RefreshToken(ctx context.Context, refreshToken string) (*models.Token, *errx.Error)
@@ -65,6 +66,7 @@ type tokenService struct {
 	geo             *geo.Client
 	cache           *cache.Cache
 	signInAlert     SignInAlerter
+	revocations     RevocationPublisher
 
 	AuthSecret string
 }
@@ -78,6 +80,15 @@ type SignInAlerter interface {
 
 // WireSignInAlerter attaches the new-device alerter after construction.
 func (s *tokenService) WireSignInAlerter(a SignInAlerter) { s.signInAlert = a }
+
+// RevocationPublisher announces that a user's sessions were revoked, so the
+// realtime service drops their open sockets. Satisfied by the streaming publisher.
+type RevocationPublisher interface {
+	PublishSessionsRevoked(ctx context.Context, userID uuid.UUID)
+}
+
+// WireRevocationPublisher attaches the revocation announcer (nil = off).
+func (s *tokenService) WireRevocationPublisher(p RevocationPublisher) { s.revocations = p }
 
 func NewService(db *db.DB, tokenRepository repository.TokenRepository, cache *cache.Cache, geo *geo.Client, authSecret string) TokenService {
 	return &tokenService{

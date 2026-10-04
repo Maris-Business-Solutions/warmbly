@@ -175,7 +175,7 @@ func (d Deps) snoozeThread(ctx context.Context, inv Invocation, args json.RawMes
 	if perr != nil {
 		return "", ErrInvalidArgs
 	}
-	snooze, xerr := d.Unibox.Snooze(ctx, inv.UserID, []string{in.ThreadID}, until)
+	snooze, xerr := d.Unibox.Snooze(ctx, inv.OrgID, inv.UserID, []string{in.ThreadID}, until)
 	if xerr != nil {
 		return "", fromErrx(xerr)
 	}
@@ -196,7 +196,7 @@ func (d Deps) unsnoozeThread(ctx context.Context, inv Invocation, args json.RawM
 	if in.ThreadID == "" {
 		return "", ErrInvalidArgs
 	}
-	if xerr := d.Unibox.Unsnooze(ctx, inv.UserID, []string{in.ThreadID}); xerr != nil {
+	if xerr := d.Unibox.Unsnooze(ctx, inv.OrgID, inv.UserID, []string{in.ThreadID}); xerr != nil {
 		return "", fromErrx(xerr)
 	}
 	d.logAudit(ctx, inv, models.AuditActionUpdate, models.AuditEntityUnibox, nil, nil)

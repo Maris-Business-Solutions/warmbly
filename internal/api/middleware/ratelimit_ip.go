@@ -46,8 +46,8 @@ const (
 	// enrolment, the analytics proxy) carry their authorization in a
 	// high-entropy token rather than a session, so this budget is not what
 	// stops an attacker reading someone else's data. It stops an unmetered
-	// write: every one of those requests reaches Postgres or an upstream, and
-	// none of them had a ceiling of any kind. It is deliberately loose, because
+	// write: every one of those requests reaches Postgres or an upstream, so
+	// each has a per-IP ceiling. It is deliberately loose, because
 	// a mail provider retrying one-click unsubscribe and an office behind one
 	// NAT opening invitations both look like bursts.
 	publicIPWindow       = 15 * time.Minute
@@ -82,11 +82,9 @@ func (h *Handler) PasskeyChallengeIPRateLimitMiddleware() gin.HandlerFunc {
 
 // AuthIPRateLimitMiddleware throttles the public /auth group per source IP.
 //
-// This is the only limiter those routes have. RateLimitMiddleware keys on the
-// authenticated user id and calls c.Next() when there is none, so before this
-// existed every pre-login endpoint was unbounded: password guessing was free,
-// and each guess cost a 64 MiB Argon2 hash, which is a memory-exhaustion lever
-// on the small VPS most self-hosters run.
+// This is the only limiter those routes have: RateLimitMiddleware keys on the
+// authenticated user id. It bounds password guessing and the 64 MiB Argon2
+// hash each attempt costs on the small VPS most self-hosters run.
 //
 // Fails open on a cache error, deliberately: a Redis blip must not lock every
 // user out of their own instance.

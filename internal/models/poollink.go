@@ -153,10 +153,18 @@ type PoolLinkOAuthStartRequest struct {
 	ReturnURL string        `json:"return_url"`
 }
 
-// PoolLinkOAuthStartResponse: open URL in the browser; redeem Session once the popup returns.
+// PoolLinkOAuthStartResponse: open URL (the cloud's consent page) in the browser; redeem Session once the popup returns.
 type PoolLinkOAuthStartResponse struct {
 	URL     string `json:"url"`
 	Session string `json:"session"`
+}
+
+// PoolLinkOAuthConsent is what the cloud shows before a brokered sign-in opens the provider.
+type PoolLinkOAuthConsent struct {
+	Provider      InboxProvider `json:"provider"`
+	InstanceName  string        `json:"instance_name"`
+	InstanceHost  string        `json:"instance_host"`
+	WorkspaceName string        `json:"workspace_name"`
 }
 
 // PoolLinkOAuthFinishRequest redeems a completed consent for its mailbox.

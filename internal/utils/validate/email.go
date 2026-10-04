@@ -8,6 +8,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 )
 
 func Email(email string) bool {
@@ -45,6 +46,16 @@ func EmailName(name *string) bool {
 		return false
 	}
 	return true
+}
+
+// MailboxNameShown refuses a mailbox display name under the person naming
+// rules, since warmup shows it in other workspaces' inboxes. Length stays
+// with the caller's own bound.
+func MailboxNameShown(name string) *errx.Error {
+	if _, r := displayname.Check(name, displayname.Person); r != displayname.OK && r != displayname.TooLong {
+		return displayname.Error("Mailbox name", displayname.Person, r)
+	}
+	return nil
 }
 
 // ValidateTrackingDomain checks a mailbox's custom tracking domain against the

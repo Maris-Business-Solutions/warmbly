@@ -16,14 +16,18 @@ https://docs.warmbly.com/asyncapi.json
 The socket speaks the Phoenix channel protocol (serializer version `1.0.0`) at:
 
 ```
-wss://realtime.warmbly.com/socket/websocket?vsn=1.0.0&token=<TOKEN>
+wss://realtime.warmbly.com/socket/websocket?vsn=1.0.0
 ```
 
-Three token types are accepted, and all of them go in the same `token` query parameter:
+Three token types are accepted:
 
-- **API key** (`wmbly_…`): pass a key with the `REALTIME_SUBSCRIBE` permission (bit 11) directly as `token`. See [Permissions](/api/permissions/) for how to grant it.
-- **OAuth access token** (`wmat_…`): pass an access token whose grant includes the realtime scope (the lowercased permission, `realtime_subscribe`). It connects on the granting user's behalf with exactly the scopes they approved. See [OAuth](/api/oauth/).
-- **Short-lived JWT**: browser sessions call the authenticated socket endpoint to mint a 10-minute connection token. This is what the dashboard itself uses.
+- **API key** (`wmbly_…`): send a key with the `REALTIME_SUBSCRIBE` permission (bit 11) in the `X-Warmbly-Token` request header of the WebSocket handshake. See [Permissions](/api/permissions/) for how to grant it.
+- **OAuth access token** (`wmat_…`): send an access token whose grant includes the realtime scope (the lowercased permission, `realtime_subscribe`) in the same `X-Warmbly-Token` header. It connects on the granting user's behalf with exactly the scopes they approved. See [OAuth](/api/oauth/).
+- **Short-lived JWT**: browser sessions call the authenticated socket endpoint to mint a 10-minute connection token and pass it as the `token` query parameter. This is what the dashboard itself uses.
+
+Send API keys and OAuth access tokens in the `x-warmbly-token` header. Putting one in the URL as `token` still works but is deprecated: URLs end up in proxy and access logs, and these credentials outlive any session, so it will stop working in a later API version. The 10-minute connection token belongs in the query string. Browsers cannot set headers on a WebSocket, so connect with an API key or OAuth token from a server-side client.
+
+A credential stops working on the socket as soon as it does on the REST API: a revoked key or token, a holder banned from signing in, or a suspended OAuth app is refused at the handshake. Signing out, signing out everywhere, changing or resetting a password, and an account ban also close every socket that user has open; the dashboard reconnects on its own with a fresh connection token if its session is still valid.
 
 In short, both developer auth methods work here: an API key with `REALTIME_SUBSCRIBE`, or an OAuth access token with the realtime scope. They authenticate through the same gate, so everything below applies to either.
 
@@ -123,13 +127,15 @@ Resume is **at-least-once**: a replay may re-deliver an event you already handle
 
 ## Reference client
 
-The serializer (`vsn=1.0.0`) frames every message as a five-element array `[join_ref, ref, topic, event, payload]`. The client below speaks that wire format directly over a plain `WebSocket`, so it has no dependencies (if you already use the `phoenix` npm package, its `Socket`/`Channel` classes do the same framing for you). It walks the whole lifecycle: connect with a token, join `org:<org_id>` with intents, read the HELLO join reply, run the heartbeat loop at the advertised cadence, resume from the last `seq` on reconnect, handle events (including `CUSTOM_EVENT`), and back off on close or rejection.
+The serializer (`vsn=1.0.0`) frames every message as a five-element array `[join_ref, ref, topic, event, payload]`. The client below speaks that wire format directly over the Node.js [`ws`](https://www.npmjs.com/package/ws) package, which can set the `X-Warmbly-Token` handshake header (if you already use the `phoenix` npm package, its `Socket`/`Channel` classes do the same framing for you). It walks the whole lifecycle: connect with a token, join `org:<org_id>` with intents, read the HELLO join reply, run the heartbeat loop at the advertised cadence, resume from the last `seq` on reconnect, handle events (including `CUSTOM_EVENT`), and back off on close or rejection.
 
 ```js
-// No dependencies. token can be an API key (wmbly_… with REALTIME_SUBSCRIBE)
-// or an OAuth access token (wmat_… with the realtime scope).
+// Node.js with `npm install ws`. token can be an API key (wmbly_… with
+// REALTIME_SUBSCRIBE) or an OAuth access token (wmat_… with the realtime scope).
+import WebSocket from "ws";
+
 function connectRealtime({ token, orgId, intents = ["CUSTOM"], onEvent }) {
-  const url = `wss://realtime.warmbly.com/socket/websocket?vsn=1.0.0&token=${encodeURIComponent(token)}`;
+  const url = "wss://realtime.warmbly.com/socket/websocket?vsn=1.0.0";
   const topic = `org:${orgId}`;
 
   let ws, ref = 0, joinRef = null, heartbeatTimer = null, watchdog = null;
@@ -171,7 +177,7 @@ function connectRealtime({ token, orgId, intents = ["CUSTOM"], onEvent }) {
 
   const open = () => {
     closedByUs = false;
-    ws = new WebSocket(url);
+    ws = new WebSocket(url, { headers: { "X-Warmbly-Token": token } });
 
     ws.onopen = () => { backoff = 1000; join(); };
 

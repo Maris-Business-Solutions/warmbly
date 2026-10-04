@@ -238,3 +238,24 @@ func TestRenderNodeEnvIntegrationCredentialsReachConsumerOnly(t *testing.T) {
 		t.Error("a worker was handed an integration client secret")
 	}
 }
+
+// A node calls only node routes, so with a separate node token it carries that
+// alone and never the token the tracking and forms services hold.
+func TestRenderNodeEnvSendsOnlyTheNodeToken(t *testing.T) {
+	setInstanceEnv(t)
+	t.Setenv("NODE_BROKER_TOKEN", "nodetok")
+
+	env := envLines(t, renderNodeEnv(uuid.New(), models.NodeRoleWorker, ""))
+	if env["NODE_BROKER_TOKEN"] != "nodetok" || env["ENCRYPTED_KEYS_WORKER_TOKEN"] != "nodetok" {
+		t.Errorf("node token not sent: %q / %q", env["NODE_BROKER_TOKEN"], env["ENCRYPTED_KEYS_WORKER_TOKEN"])
+	}
+	if _, ok := env["INTERNAL_API_TOKEN"]; ok {
+		t.Error("a node was handed the edge services' internal token")
+	}
+
+	t.Setenv("NODE_BROKER_TOKEN", "")
+	env = envLines(t, renderNodeEnv(uuid.New(), models.NodeRoleWorker, ""))
+	if env["ENCRYPTED_KEYS_WORKER_TOKEN"] != "tok" || env["INTERNAL_API_TOKEN"] != "tok" {
+		t.Error("a single-token instance must keep sending the shared token")
+	}
+}

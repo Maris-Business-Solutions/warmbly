@@ -40,6 +40,11 @@ func errInvalidScope(desc string) *OAuthError {
 func errAccessDenied(desc string) *OAuthError {
 	return newOAuthError(http.StatusForbidden, "access_denied", desc)
 }
+
+// errNothingGrantable refuses a consent whose member's role covers none of the requested scopes.
+func errNothingGrantable() *OAuthError {
+	return errAccessDenied("your role in this workspace does not include any of the permissions this app requests")
+}
 func errServer(desc string) *OAuthError {
 	return newOAuthError(http.StatusInternalServerError, "server_error", desc)
 }

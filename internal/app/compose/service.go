@@ -49,6 +49,8 @@ type Service interface {
 	// it is ignored when accountID is explicit. The bool reports whether
 	// the pick was automatic.
 	Resolve(ctx context.Context, userID, orgID uuid.UUID, accountID, tagID *uuid.UUID, address string) (*Candidate, bool, *errx.Error)
+	// ResolveWithin is Resolve over only the allowed mailboxes; nil allows all.
+	ResolveWithin(ctx context.Context, userID, orgID uuid.UUID, accountID, tagID *uuid.UUID, address string, allowed []uuid.UUID) (*Candidate, bool, *errx.Error)
 
 	// Drafts: autosaved per-user working copies from the compose window.
 	UpsertDraft(ctx context.Context, userID, orgID uuid.UUID, d *repository.ComposeDraft) *errx.Error
@@ -131,9 +133,16 @@ func (s *service) Candidates(ctx context.Context, userID, orgID uuid.UUID, addre
 }
 
 func (s *service) Resolve(ctx context.Context, userID, orgID uuid.UUID, accountID, tagID *uuid.UUID, address string) (*Candidate, bool, *errx.Error) {
+	return s.ResolveWithin(ctx, userID, orgID, accountID, tagID, address, nil)
+}
+
+func (s *service) ResolveWithin(ctx context.Context, userID, orgID uuid.UUID, accountID, tagID *uuid.UUID, address string, allowed []uuid.UUID) (*Candidate, bool, *errx.Error) {
 	candidates, xerr := s.Candidates(ctx, userID, orgID, address)
 	if xerr != nil {
 		return nil, false, xerr
+	}
+	if len(allowed) > 0 {
+		candidates = OnlyAllowed(candidates, allowed)
 	}
 	if len(candidates) == 0 {
 		return nil, false, errx.New(errx.BadRequest, "no active mailboxes to send from; connect a mailbox first")
@@ -184,6 +193,32 @@ func (s *service) Resolve(ctx context.Context, userID, orgID uuid.UUID, accountI
 		}
 	}
 	return &candidates[0], true, nil
+}
+
+// OnlyAllowed keeps the allowed candidates, best-first, and moves the
+// recommendation onto the best of them that still has budget.
+func OnlyAllowed(candidates []Candidate, allowed []uuid.UUID) []Candidate {
+	in := make(map[uuid.UUID]bool, len(allowed))
+	for _, id := range allowed {
+		in[id] = true
+	}
+	out := candidates[:0:0]
+	for _, c := range candidates {
+		if in[c.Account.ID] {
+			c.Recommended = false
+			out = append(out, c)
+		}
+	}
+	for i := range out {
+		if out[i].Remaining() > 0 {
+			out[i].Recommended = true
+			return out
+		}
+	}
+	if len(out) > 0 {
+		out[0].Recommended = true
+	}
+	return out
 }
 
 func (s *service) UpsertDraft(ctx context.Context, userID, orgID uuid.UUID, d *repository.ComposeDraft) *errx.Error {

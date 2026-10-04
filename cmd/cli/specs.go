@@ -2126,7 +2126,8 @@ func toolSpec() resource {
 		Long: `The same tool registry the dashboard agent and MCP use, exposed as
 plain REST for function-calling agents that do not speak MCP.
 
-Everything a tool can do is bounded by the signed-in key's scopes.`,
+The signed-in key needs the AI_AGENT scope, and everything a tool can do
+is bounded by its scopes.`,
 		Endpoints: []endpoint{
 			{
 				Name: "list", Aliases: []string{"ls"}, Short: "List the tools this key may call",

@@ -29,6 +29,12 @@ import (
 // permission gate on the route decides what it may do. Refusing them here would
 // break every automation, the CLI included, to exceed what the control asks
 // for.
+// SessionFresh reports whether the caller's session re-proved the account holder within the reauth window.
+func SessionFresh(c *gin.Context) bool {
+	session := GetSession(c)
+	return session != nil && session.ReauthAt != nil && time.Since(*session.ReauthAt) <= token.ReauthWindow
+}
+
 func RequireFreshAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if authType, _ := c.Get(AuthTypeKey); authType == AuthTypeAPIKey || authType == AuthTypeOAuth {

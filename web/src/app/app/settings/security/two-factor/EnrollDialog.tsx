@@ -216,7 +216,7 @@ function ScanStep({ info }: { info: TwoFactorEnrollStart | null }) {
         <div className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-5">
                 <div className="shrink-0 self-center sm:self-start">
-                    <div className="rounded-lg border border-slate-200 bg-white p-2.5 size-[188px] flex items-center justify-center">
+                    <div className="ph-no-capture rounded-lg border border-slate-200 bg-white p-2.5 size-[188px] flex items-center justify-center">
                         {info ? (
                             <QRCodeSVG
                                 value={info.otpauth_uri}

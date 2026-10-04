@@ -94,6 +94,11 @@ func (h *Handler) UpdateContactNote(c *gin.Context) {
 		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
 		return
 	}
+	contactID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		errx.Handle(c, errx.ErrUuid)
+		return
+	}
 	noteID, err := uuid.Parse(c.Param("noteId"))
 	if err != nil {
 		errx.Handle(c, errx.ErrUuid)
@@ -106,7 +111,7 @@ func (h *Handler) UpdateContactNote(c *gin.Context) {
 		return
 	}
 
-	note, xerr := h.CRMService.UpdateNote(c.Request.Context(), *orgID, noteID, &data)
+	note, xerr := h.CRMService.UpdateNote(c.Request.Context(), *orgID, &contactID, noteID, &data)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -123,13 +128,18 @@ func (h *Handler) DeleteContactNote(c *gin.Context) {
 		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
 		return
 	}
+	contactID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		errx.Handle(c, errx.ErrUuid)
+		return
+	}
 	noteID, err := uuid.Parse(c.Param("noteId"))
 	if err != nil {
 		errx.Handle(c, errx.ErrUuid)
 		return
 	}
 
-	xerr := h.CRMService.DeleteNote(c.Request.Context(), *orgID, noteID)
+	xerr := h.CRMService.DeleteNote(c.Request.Context(), *orgID, &contactID, noteID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return

@@ -135,6 +135,10 @@ func NewService(
 }
 
 func (s *emailSendService) SendEmail(ctx context.Context, userID, orgID, accountID uuid.UUID, req *SendEmailRequest) (*SendEmailResponse, *errx.Error) {
+	if xerr := checkHeaderValues(req); xerr != nil {
+		return nil, xerr
+	}
+
 	// Ban-scope enforcement (migration 000045). Block outbound send
 	// when the admin set BanScopeSend, even if the user can otherwise
 	// log in and inspect their account.

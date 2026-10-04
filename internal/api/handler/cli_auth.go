@@ -71,6 +71,21 @@ func (h *Handler) CLIAuthDescribeCode(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
+	// With a workspace picked, show exactly what approving there would grant.
+	if raw := c.Query("organization_id"); raw != "" {
+		orgID, perr := uuid.Parse(raw)
+		userID, uerr := middleware.GetUserUUID(c)
+		if perr != nil || uerr != nil {
+			errx.JSON(c, errx.New(errx.BadRequest, "organization_id must be a workspace id"))
+			return
+		}
+		granted, xerr := h.CLIAuthService.GrantableScopes(c.Request.Context(), orgID, userID, code.Scopes)
+		if xerr != nil {
+			errx.JSON(c, xerr)
+			return
+		}
+		code.GrantedScopes, code.GrantedScopeNames = &granted, models.APIScopeNames(granted)
+	}
 	c.JSON(http.StatusOK, code)
 }
 

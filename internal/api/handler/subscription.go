@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
@@ -211,7 +212,8 @@ func (h *Handler) HandleStripeWebhook(c *gin.Context) {
 		// recorded as processed (see ProcessWebhookEvent), and every handler is
 		// idempotent on the event id, so a retry safely re-runs without
 		// double-applying. Silently 200-ing here would strand paid-for credits.
-		c.JSON(http.StatusInternalServerError, gin.H{"received": false, "error": errX.Message})
+		log.Error().Str("request_id", c.GetString("request_id")).Str("event_id", event.ID).Str("detail", errX.Message).Msg("stripe webhook processing failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"received": false, "error": "event could not be processed"})
 		return
 	}
 

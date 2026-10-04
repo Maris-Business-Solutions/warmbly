@@ -23,9 +23,10 @@ import (
 
 // Stable error codes the dashboard branches on.
 var (
-	ErrSlackNotConfigured = errx.NewWithIdentifier(errx.ServiceUnavailable, "slack_not_configured", "Slack is not set up on this Warmbly instance.")
-	ErrSlackNotConnected  = errx.NewWithIdentifier(errx.NotFound, "slack_not_connected", "This workspace has not connected Slack.")
-	ErrSlackLinkInvalid   = errx.NewWithIdentifier(errx.NotFound, "slack_link_invalid", "This link has expired or was already used. Ask Warmbly in Slack for a new one.")
+	ErrSlackNotConfigured     = errx.NewWithIdentifier(errx.ServiceUnavailable, "slack_not_configured", "Slack is not set up on this Warmbly instance.")
+	ErrSlackNotConnected      = errx.NewWithIdentifier(errx.NotFound, "slack_not_connected", "This workspace has not connected Slack.")
+	ErrSlackLinkInvalid       = errx.NewWithIdentifier(errx.NotFound, "slack_link_invalid", "This link has expired or was already used. Ask Warmbly in Slack for a new one.")
+	ErrSlackLinkEmailMismatch = errx.NewWithIdentifier(errx.Forbidden, "slack_link_email_mismatch", "Your Slack account's email address must be the one you sign in to Warmbly with. Sign in with that address, or ask a Warmbly admin to reconnect Slack if Slack is not sharing your email.")
 )
 
 // Timeouts for work done after Slack has been answered.
@@ -55,6 +56,11 @@ type Integrations interface {
 type Organizations interface {
 	Get(ctx context.Context, orgID uuid.UUID) (*models.Organization, *errx.Error)
 	GetMembership(ctx context.Context, orgID, userID uuid.UUID) (*models.OrganizationMember, *errx.Error)
+}
+
+// BanLookup reads a user's ban scope, so a login ban also ends Slack access.
+type BanLookup interface {
+	GetBanState(ctx context.Context, userID uuid.UUID) (uint32, error)
 }
 
 // AuditLogger records Slack-side link changes on the audit spine.
@@ -89,6 +95,7 @@ type Deps struct {
 	Labels    CategoryEnsurer
 	Drafts    PendingDrafts
 	Users     UserLookup
+	Bans      BanLookup
 	Tasks     TaskLookup
 	Campaigns CampaignLookup
 	// Cipher seals drafts kept for "Review and send" with the org's DEK. Nil
@@ -103,12 +110,14 @@ type Service struct {
 	inbox *InboxPoster
 
 	orgs          Organizations
+	bans          BanLookup
 	agent         aiagent.Service
 	registry      *aitools.Registry
 	audit         AuditLogger
 	threads       UniboxThreads
 	labels        CategoryEnsurer
 	drafts        PendingDrafts
+	users         UserLookup
 	cipher        cipher.CipherService
 	guard         *guard
 	signingSecret string
@@ -132,12 +141,14 @@ func New(d Deps) *Service {
 			Tasks: d.Tasks, Campaigns: d.Campaigns, Users: d.Users,
 		}),
 		orgs:          d.Orgs,
+		bans:          d.Bans,
 		agent:         d.Agent,
 		registry:      d.Registry,
 		audit:         d.Audit,
 		threads:       d.Threads,
 		labels:        d.Labels,
 		drafts:        d.Drafts,
+		users:         d.Users,
 		cipher:        d.Cipher,
 		guard:         newGuard(d.Redis),
 		signingSecret: config.SlackSigningSecret(),
@@ -266,6 +277,12 @@ func (s *Service) membership(ctx context.Context, link *models.SlackUserLink) (*
 			log.Warn().Err(err).Msg("slack: dropping a stale link failed")
 		}
 		return nil, memberGone
+	}
+	if s.bans != nil {
+		scope, err := s.bans.GetBanState(ctx, link.UserID)
+		if err != nil || models.BanScope(scope).Has(models.BanScopeLogin) {
+			return nil, memberUnknown
+		}
 	}
 	return m, memberOK
 }

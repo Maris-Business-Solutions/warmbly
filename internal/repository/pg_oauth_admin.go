@@ -49,7 +49,7 @@ const adminOAuthAppSelect = `
 		a.name, a.description, a.logo_url, a.website_url, a.client_id, a.redirect_uris, a.webhook_url,
 		a.scopes, a.status, a.is_public, a.suspended_at, a.suspended_reason,
 		(SELECT count(DISTINCT g.organization_id) FROM oauth_access_grants g
-			WHERE g.application_id = a.id AND g.revoked_at IS NULL)::int,
+			WHERE g.application_id = a.id AND g.revoked_at IS NULL AND (g.refresh_expires_at IS NULL OR g.refresh_expires_at > now()))::int,
 		COALESCE(l.slug, ''), COALESCE(l.status, ''),
 		EXISTS (SELECT 1 FROM oauth_developer_blocks b WHERE b.organization_id = a.organization_id),
 		EXISTS (SELECT 1 FROM oauth_developer_blocks b WHERE b.user_id = a.created_by),

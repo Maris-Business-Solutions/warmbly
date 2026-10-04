@@ -2,6 +2,7 @@ package captcha
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,7 +65,7 @@ func (t *Turnstile) Verify(ctx context.Context, token, remoteIP string) *errx.Er
 		return nil
 	}
 
-	if t.cfg.BypassToken != "" && token == t.cfg.BypassToken {
+	if t.cfg.BypassToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(t.cfg.BypassToken)) == 1 {
 		return nil
 	}
 

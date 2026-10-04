@@ -173,6 +173,7 @@ func (c *Client) connectLocked() *errx.MailError {
 
 	tlsConf := &tls.Config{
 		ServerName:         host,
+		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: netbind.InsecureTLS(), //nolint:gosec // MAIL_TLS_INSECURE, local dev only
 	}
 

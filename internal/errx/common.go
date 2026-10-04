@@ -254,6 +254,9 @@ var (
 	ErrAdvisorBadSeverity  = New(BadRequest, "Minimum severity must be one of critical, high, medium, or low.")
 	ErrAdvisorFixForbidden = New(Forbidden, "You can see this recommendation but don't have permission to apply the change it makes.")
 	ErrAdvisorNoAgentFix   = New(BadRequest, "This recommendation needs a person: there's no change an agent can safely make for it.")
+
+	// Tracking domains
+	ErrTrackingDomainTaken = NewWithIdentifier(Conflict, "tracking_domain_taken", "Another workspace on this instance already uses this tracking domain. Choose a host on a domain your workspace sends from.")
 )
 
 // MailboxAllowanceReached is the refusal every connect path returns when the

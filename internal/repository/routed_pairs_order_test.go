@@ -8,8 +8,7 @@ import (
 )
 
 // The custom-field sort key is the one part of this ORDER BY that comes from a
-// customer. It used to be concatenated into the SQL text inside a quoted
-// literal; it is now a bound parameter, appended to the args slice. That makes
+// customer, so it is a bound parameter appended to the args slice. That makes
 // the placeholder number depend on how many arguments precede it, so this
 // asserts the two stay in step: a mismatch is either an injection (too few
 // args) or a bind error at runtime (too many).

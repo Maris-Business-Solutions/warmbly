@@ -18,6 +18,10 @@ var ErrSlackLinkCodeInvalid = errors.New("slack link code invalid")
 // the code's organization.
 var ErrSlackLinkNotMember = errors.New("not a member of the code's organization")
 
+// ErrSlackLinkEmailMismatch means the Slack account's email is not the
+// redeeming user's Warmbly email.
+var ErrSlackLinkEmailMismatch = errors.New("slack email does not match the user's email")
+
 // SlackRepository persists the Slack app's member links, pending link codes and
 // the assistant's thread map. Org-owned reads and writes are scoped by
 // organization_id; lookups keyed by a Slack team or user resolve the org.
@@ -39,12 +43,13 @@ type SlackRepository interface {
 	// PreviewLinkCode returns an unexpired code without consuming it.
 	PreviewLinkCode(ctx context.Context, codeHash []byte) (*models.SlackLinkCode, error)
 	// ConsumeLinkCode redeems a code for userID in one transaction: the code is
-	// deleted and the link written only when userID is an accepted member.
-	ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID) (*models.SlackUserLink, error)
+	// deleted and the link written only when userID is an accepted member
+	// whose email is slackEmail, the code's Slack account's email.
+	ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID, slackEmail string) (*models.SlackUserLink, error)
 	PurgeExpiredLinkCodes(ctx context.Context) (int64, error)
 
 	GetAgentThread(ctx context.Context, connectionID uuid.UUID, channelID, threadTS string) (*models.SlackAgentThread, error)
-	GetAgentThreadByID(ctx context.Context, id uuid.UUID) (*models.SlackAgentThread, error)
+	GetAgentThreadByID(ctx context.Context, orgID, id uuid.UUID) (*models.SlackAgentThread, error)
 	// CreateAgentThread inserts the mapping, returning the existing row when
 	// the thread is already mapped.
 	CreateAgentThread(ctx context.Context, t *models.SlackAgentThread) (*models.SlackAgentThread, error)
@@ -198,7 +203,7 @@ func (r *slackRepository) PreviewLinkCode(ctx context.Context, codeHash []byte) 
 	return &c, nil
 }
 
-func (r *slackRepository) ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID) (*models.SlackUserLink, error) {
+func (r *slackRepository) ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID, slackEmail string) (*models.SlackUserLink, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -229,6 +234,14 @@ func (r *slackRepository) ConsumeLinkCode(ctx context.Context, codeHash []byte, 
 	if !member {
 		// Rolled back: the code stays redeemable by a real member.
 		return nil, ErrSlackLinkNotMember
+	}
+	var userEmail string
+	if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&userEmail); err != nil && !isNoRows(err) {
+		return nil, err
+	}
+	if !models.SlackLinkEmailMatches(slackEmail, userEmail) {
+		// Rolled back, like a non-member.
+		return nil, ErrSlackLinkEmailMismatch
 	}
 
 	// One Slack member per workspace and one link per member per connection.
@@ -278,8 +291,9 @@ func (r *slackRepository) GetAgentThread(ctx context.Context, connectionID uuid.
 		WHERE connection_id = $1 AND channel_id = $2 AND thread_ts = $3`, connectionID, channelID, threadTS))
 }
 
-func (r *slackRepository) GetAgentThreadByID(ctx context.Context, id uuid.UUID) (*models.SlackAgentThread, error) {
-	return scanSlackThread(r.DB.QueryRow(ctx, `SELECT `+slackThreadCols+` FROM slack_agent_threads WHERE id = $1`, id))
+func (r *slackRepository) GetAgentThreadByID(ctx context.Context, orgID, id uuid.UUID) (*models.SlackAgentThread, error) {
+	return scanSlackThread(r.DB.QueryRow(ctx, `SELECT `+slackThreadCols+` FROM slack_agent_threads
+		WHERE organization_id = $1 AND id = $2`, orgID, id))
 }
 
 func (r *slackRepository) CreateAgentThread(ctx context.Context, t *models.SlackAgentThread) (*models.SlackAgentThread, error) {

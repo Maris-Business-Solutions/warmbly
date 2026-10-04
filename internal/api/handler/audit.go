@@ -27,12 +27,17 @@ func (h *Handler) auditOrg(c *gin.Context, action models.AuditAction, entityType
 	if orgID == nil {
 		return
 	}
+	h.auditInOrg(c, *orgID, action, entityType, entityID, changes, metadata)
+}
+
+// auditInOrg is auditOrg for an entity whose organization is not the session's.
+func (h *Handler) auditInOrg(c *gin.Context, orgID uuid.UUID, action models.AuditAction, entityType models.AuditEntityType, entityID *uuid.UUID, changes, metadata map[string]string) {
 	actorID, err := middleware.GetUserUUID(c)
 	if err != nil {
 		return
 	}
-	h.AuditService.LogAction(c.Request.Context(), *orgID, actorID, action, entityType, entityID, c.ClientIP(), c.Request.UserAgent(), changes, metadata)
-	h.refreshAdvisorAfter(*orgID, action, entityType)
+	h.AuditService.LogAction(c.Request.Context(), orgID, actorID, action, entityType, entityID, c.ClientIP(), c.Request.UserAgent(), changes, metadata)
+	h.refreshAdvisorAfter(orgID, action, entityType)
 }
 
 // refreshAdvisorAfter re-evaluates the advisor after a change it reads, so its

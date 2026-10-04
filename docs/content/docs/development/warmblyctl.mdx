@@ -531,7 +531,7 @@ curl -fsSL https://<your-instance>/join.sh | sh -s -- \
   --url https://<your-instance> --token <token> --role worker
 ```
 
-The token is shown once. Issuing another revokes the previous one; machines that already joined are unaffected.
+The token is shown once. It joins any number of machines until it expires: seven days by default, or what `--ttl` sets, up to `720h`. Issuing another revokes the previous one; machines that already joined are unaffected. A machine presenting an expired token is refused, so issue a fresh one.
 
 ```bash
 warmblyctl fleet list

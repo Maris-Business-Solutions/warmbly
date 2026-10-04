@@ -91,6 +91,10 @@ func (h *Handler) UpsertComposeDraft(c *gin.Context) {
 	}
 	if v := strings.TrimSpace(req.EmailAccountID); v != "" && v != "auto" {
 		if accountID, perr := uuid.Parse(v); perr == nil {
+			if xerr := mailboxAllowed(c, accountID); xerr != nil {
+				errx.Handle(c, xerr)
+				return
+			}
 			d.EmailAccountID = &accountID
 		}
 	}

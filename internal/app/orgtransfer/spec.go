@@ -51,6 +51,8 @@ type SecretColumn struct {
 	// column to hold ciphertext. email_tasks predates unconditional sealing,
 	// so its rows carry a flag rather than a format that can be sniffed.
 	Guard string
+	// PlaintextPrefix marks a value still stored in the clear from before sealing; it travels as is.
+	PlaintextPrefix string
 }
 
 // Table is one exported relation and the policy for moving it.
@@ -61,6 +63,15 @@ type Table struct {
 	// Scope is the WHERE fragment selecting this table's rows for one
 	// organization. $1 is the organization id.
 	Scope string
+
+	// Owner selects every row the organization owns, when that is wider than
+	// what Scope exports. Empty means Scope. $1 is the organization id.
+	Owner string
+
+	// PartnerRefs are columns that legitimately name another workspace's row: a
+	// warmup partner, a placement seed or a third-party app. The import's
+	// ownership check skips them.
+	PartnerRefs []string
 
 	// Secrets are columns holding ciphertext that must be re-keyed.
 	Secrets []SecretColumn
@@ -83,6 +94,15 @@ type Table struct {
 	Note string
 }
 
+// OwnerScope is the WHERE fragment deciding whether an existing row belongs to
+// the organization, which an import checks before writing or referencing it.
+func (t *Table) OwnerScope() string {
+	if t.Owner != "" {
+		return t.Owner
+	}
+	return t.Scope
+}
+
 // Scope fragments. Written as subqueries rather than joins so every scope is a
 // plain WHERE clause and the reader can stay a single generic SELECT.
 const (
@@ -92,7 +112,6 @@ const (
 	orgCampaigns   = `(SELECT id FROM campaigns WHERE organization_id = $1)`
 	orgContacts    = `(SELECT id FROM contacts WHERE organization_id = $1)`
 	orgTasks       = `(SELECT id FROM tasks WHERE email_account_id IN ` + orgMailboxes + ` AND task_type <> 'placement')`
-	orgThreads     = `(SELECT DISTINCT thread_id FROM unibox_emails WHERE email_id IN ` + orgMailboxes + `)`
 	orgPipelines   = `(SELECT id FROM pipelines WHERE organization_id = $1)`
 	orgInvitations = `(SELECT id FROM organization_invitations WHERE organization_id = $1)`
 	orgTeams       = `(SELECT id FROM teams WHERE organization_id = $1)`
@@ -169,6 +188,7 @@ var Tables = []Table{
 		Name: "domain_redirects", Group: models.OrgDataGroupCore,
 		// A row Cloud serves for a linked instance belongs to that link, which does not travel.
 		Scope: `organization_id = $1 AND linked_instance_id IS NULL`,
+		Owner: scopeOrg,
 		// DNS points at the source (or at Cloud for it) until moved, so the destination serves it itself once its own check passes.
 		ResetOnImport: []string{"verified", "verified_at", "last_checked_at", "last_error", "served_by", "remote_host", "remote_records",
 			"linked_instance_id", "reach_status", "reach_hint", "reach_detail", "reach_proxy", "reach_checked_at"},
@@ -200,10 +220,12 @@ var Tables = []Table{
 		// instance; an archive must not add mailboxes to another instance's
 		// seed panel.
 		// avatar_checked_at is this instance's photo sweep checkpoint; the photo travels.
+		// A tracking host is verified per instance and per workspace, so the
+		// destination's own sweep verifies it again.
 		ResetOnImport: []string{
 			"worker_id", "auth_checked_at", "auth_failing_since", "cold_ramp_started_at",
 			"send_lifecycle", "send_lifecycle_since", "send_lifecycle_reason", "seed_scope",
-			"avatar_checked_at",
+			"avatar_checked_at", "tracking_domain_verified", "tracking_domain_verified_at",
 		},
 		Blobs: []BlobColumn{{Column: "avatar_url", Kind: BlobKindPublicURL}},
 	},
@@ -251,11 +273,16 @@ var Tables = []Table{
 	{
 		Name: "oauth_applications", Group: models.OrgDataGroupCore,
 		Scope: scopeOrg,
-		// A suspension is the source operator's decision; the destination's operators make their own.
+		// Never written, so an overwrite keeps a destination suspension; importRules re-applies a source one.
 		ResetOnImport: []string{"suspended_at", "suspended_reason", "suspended_by"},
+		// The app's webhook signing secret is sealed under the instance key, like each endpoint's copy.
+		Secrets: []SecretColumn{
+			{Column: "webhook_secret", Domain: KeyDomainInstance, PlaintextPrefix: "whsec_"},
+		},
 	},
 	{
 		Name: "oauth_access_grants", Group: models.OrgDataGroupCore,
+		PartnerRefs:   []string{"application_id"},
 		Scope:         scopeOrg,
 		ResetOnImport: []string{"last_used_at"},
 	},
@@ -263,13 +290,14 @@ var Tables = []Table{
 		// Below oauth_applications: an endpoint owned by an OAuth app carries
 		// oauth_application_id, so the app has to exist first.
 		Name: "webhook_endpoints", Group: models.OrgDataGroupCore,
+		PartnerRefs:   []string{"oauth_application_id"},
 		Scope:         scopeOrg,
 		ResetOnImport: []string{"last_success_at", "last_failure_at", "last_failure_reason", "consecutive_failures", "first_failure_at", "auto_disabled_at", "disabled_reason"},
 		// The signing secret is sealed under the instance key, so it has to be
 		// re-sealed on the way across or the destination hands the receiver
 		// signatures computed from ciphertext it could not read.
 		Secrets: []SecretColumn{
-			{Column: "secret", Domain: KeyDomainInstance},
+			{Column: "secret", Domain: KeyDomainInstance, PlaintextPrefix: "whsec_"},
 		},
 	},
 	{
@@ -361,6 +389,8 @@ var Tables = []Table{
 	{
 		Name: "campaigns", Group: models.OrgDataGroupCampaigns,
 		Scope: scopeOrg,
+		// The tracking override is verified again on the destination.
+		ResetOnImport: []string{"tracking_domain_verified", "tracking_domain_verified_at"},
 	},
 	{
 		// A contacts-group table, but it sits here because campaign_id points at
@@ -655,7 +685,8 @@ var Tables = []Table{
 	},
 	{
 		Name: "warmup_spam_reports", Group: models.OrgDataGroupWarmup,
-		Scope: `reporter_account_id IN ` + orgMailboxes,
+		PartnerRefs: []string{"reported_account_id"},
+		Scope:       `reporter_account_id IN ` + orgMailboxes,
 	},
 	{
 		Name: "warmup_pool_participants", Group: models.OrgDataGroupWarmup,
@@ -691,11 +722,12 @@ var Tables = []Table{
 	},
 	{
 		Name: "unibox_snoozes", Group: models.OrgDataGroupInbox,
-		Scope: `thread_id IN ` + orgThreads,
+		Scope: scopeOrg,
 	},
 	{
 		Name: "inbox_tag_results", Group: models.OrgDataGroupInbox,
 		Scope: scopeOrg + ` AND status = 'complete'`,
+		Owner: scopeOrg,
 		Note: "Automatic tagging verdicts, including the raw probabilities. They travel because retuning the weights " +
 			"against stored answers is free while re-running the model over the history is not. Below email_accounts, " +
 			"which it references.",
@@ -724,6 +756,7 @@ var Tables = []Table{
 		// A placement probe's task stays behind: a pending one would send from
 		// the destination to the source instance's seeds.
 		Scope: `email_account_id IN ` + orgMailboxes + ` AND task_type <> 'placement'`,
+		Owner: `email_account_id IN ` + orgMailboxes,
 		// The handle belongs to the source instance's queue.
 		ResetOnImport: []string{"cloud_task_name"},
 	},
@@ -752,11 +785,13 @@ var Tables = []Table{
 	},
 	{
 		Name: "warmup_tasks", Group: models.OrgDataGroupSending,
-		Scope: `task_id IN ` + orgTasks,
+		PartnerRefs: []string{"target_account_id"},
+		Scope:       `task_id IN ` + orgTasks,
 	},
 	{
 		Name: "warmup_tokens", Group: models.OrgDataGroupSending,
-		Scope: `task_id IN ` + orgTasks,
+		PartnerRefs: []string{"recipient_account_id"},
+		Scope:       `task_id IN ` + orgTasks,
 	},
 	{
 		Name: "task_failures", Group: models.OrgDataGroupSending,
@@ -829,6 +864,7 @@ var Tables = []Table{
 	},
 	{
 		Name: "placement_results", Group: models.OrgDataGroupEvents,
+		PartnerRefs:   []string{"seed_account_id"},
 		Scope:         `test_id IN ` + orgPlacements,
 		ResetOnImport: []string{"seed_account_id", "remote_seed_id", "task_id", "remote_synced_at"},
 	},

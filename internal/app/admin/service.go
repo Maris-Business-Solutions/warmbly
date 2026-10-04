@@ -612,6 +612,27 @@ func (s *adminService) GrantAdminPermissions(ctx context.Context, adminID, targe
 	if permissions&^granter.AdminPermissions != 0 {
 		return errx.New(errx.Forbidden, "cannot grant an admin permission you do not hold yourself")
 	}
+	// The grant replaces the whole mask, so the bits it removes are checked like the bits it adds.
+	target, terr := s.repo.GetUserDetail(ctx, targetUserID)
+	if terr != nil {
+		errs.CaptureException(terr)
+		return errx.New(errx.Internal, "failed to load user")
+	}
+	if target != nil {
+		if (target.AdminPermissions&^permissions)&^granter.AdminPermissions != 0 {
+			return errx.New(errx.Forbidden, "cannot remove an admin permission you do not hold yourself")
+		}
+		if target.AdminPermissions.IsSuperAdmin() && !permissions.IsSuperAdmin() {
+			remaining, cerr := s.repo.CountSuperAdmins(ctx)
+			if cerr != nil {
+				errs.CaptureException(cerr)
+				return errx.New(errx.Internal, "failed to count admins")
+			}
+			if remaining <= 1 {
+				return errx.New(errx.BadRequest, "this is the last super admin; grant another one before changing this one")
+			}
+		}
+	}
 
 	if err := s.repo.UpdateUserAdminPermissions(ctx, targetUserID, uint32(permissions), adminID); err != nil {
 		errs.CaptureException(err)
@@ -635,6 +656,15 @@ func (s *adminService) RevokeAdminPermissions(ctx context.Context, adminID, targ
 	if terr != nil {
 		errs.CaptureException(terr)
 		return errx.New(errx.Internal, "failed to load user")
+	}
+	// Revoking removes every bit the target holds, so the revoker must hold them all.
+	revoker, rerr := s.repo.GetUserDetail(ctx, adminID)
+	if rerr != nil {
+		errs.CaptureException(rerr)
+		return errx.New(errx.Internal, "failed to check admin permissions")
+	}
+	if revoker == nil || (target != nil && target.AdminPermissions&^revoker.AdminPermissions != 0) {
+		return errx.New(errx.Forbidden, "cannot remove an admin permission you do not hold yourself")
 	}
 	if target != nil && target.AdminPermissions.IsSuperAdmin() {
 		remaining, cerr := s.repo.CountSuperAdmins(ctx)

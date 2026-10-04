@@ -11,6 +11,7 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/observability/errs"
+	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 	"github.com/warmbly/warmbly/internal/pkg/mailhtml"
 	"github.com/warmbly/warmbly/internal/repository"
 	"github.com/warmbly/warmbly/internal/tasks/proto"
@@ -152,7 +153,7 @@ func (s *tasksService) HandleUserEmailTask(task *proto.ProcessTask) *errx.Error 
 
 	// STEP 8: Build InReplyTo string
 	var inReplyTo string
-	if len(emailTask.InReplyTo) > 0 {
+	if len(emailTask.InReplyTo) > 0 && mailhdr.ValidMessageID(emailTask.InReplyTo[0]) {
 		inReplyTo = emailTask.InReplyTo[0]
 	}
 

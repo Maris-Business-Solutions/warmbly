@@ -1,6 +1,25 @@
 package displayname
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestCleanOr(t *testing.T) {
+	long := strings.Repeat("é", 70)
+	cases := []struct{ in, want string }{
+		{"Acme Staging", "Acme Staging"},
+		{"warmbly.acme.com", "fallback"},
+		{"visit https://evil.example", "fallback"},
+		{"", "fallback"},
+		{long, strings.Repeat("é", WorkspaceMaxLength)},
+	}
+	for _, c := range cases {
+		if got := CleanOr(c.in, Workspace, "fallback"); got != c.want {
+			t.Errorf("CleanOr(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
 
 func TestCheck(t *testing.T) {
 	cases := []struct {

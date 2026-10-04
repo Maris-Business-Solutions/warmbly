@@ -26,10 +26,16 @@ On a self-hosted instance the Slack card stays unavailable until the operator cr
 The assistant and the inbox buttons do things in Warmbly on your behalf, so Warmbly has to know which Warmbly member you are. Linking ties your Slack account to your Warmbly account in this workspace. Until you link, the bot can post notifications and inbox replies but will not act for you.
 
 1. Message the bot, mention it, or run `/warmbly link`. The bot replies with a **Link your Warmbly account** button.
-2. The button opens Warmbly. Sign in if you need to, check the workspace and Slack account it names, and confirm.
-3. The bot sends you a DM confirming the link.
+2. The button opens Warmbly. Sign in if you need to, check the workspace and the Slack account it shows (its name and picture), and confirm.
+3. Warmbly shows which Slack account it linked, and the bot sends that Slack account a DM confirming the link.
 
 The link button works once and expires after a few minutes; ask the bot for a new one if it lapses. You can only link to a Warmbly workspace you are a member of.
+
+The email address on your Slack profile has to be the email you sign in to Warmbly with (capitalization does not matter). Warmbly reads it from Slack when you confirm and refuses the link when the two differ, so a link button only ever links the Slack account it was made for to the Warmbly account with the same email. If they differ, sign in to Warmbly with the address your Slack profile uses, or change one of them so they match.
+
+<Callout type="info" title="Connections made before email matching need a reconnect">
+Reading a Slack member's email needs the `users:read` and `users:read.email` permissions. A connection made before Warmbly asked for them lists them as missing under **Integrations > Slack**, and linking is refused until someone with **Manage settings** selects **Reconnect**. Links made before then keep working.
+</Callout>
 
 A Slack account links to one Warmbly account at a time. Linking again replaces the previous link. Unlink with `/warmbly unlink`, from the app's Home tab, or from **Integrations > Slack** in Warmbly. If your membership in the workspace ends, the link stops working and the bot asks you to link again.
 
@@ -57,16 +63,18 @@ It runs as your linked Warmbly account with the permissions your role has at tha
 
 ### Approvals
 
-Reading runs straight away. A change shows an approval card in the thread with a plain-language summary and three buttons:
+Reading runs straight away. A change shows an approval card in the thread with the action, every argument the assistant passed, and these buttons:
 
 - **Approve** runs that one action.
 - **Deny** skips it.
-- **Always allow** approves it and every later action of that kind, as in the dashboard.
+- **Always allow** approves it and every later action of that kind, as in the dashboard. It is offered only to a member with **Manage settings**, and never for the actions that [always ask](/guides/ai-assistant/#approvals).
 
-Only the person whose conversation it is can press them. Anyone else in the channel sees the card but cannot act on it.
+Only the person whose conversation it is can press them. Anyone else in the channel sees the card but cannot act on it. Each card decides the one action it shows: once it is decided, here or in the dashboard, its buttons do nothing.
+
+When the details do not fit in a Slack message, the card says so and carries **Open in Warmbly**, so you can read all of it before you decide. Secrets a step returns, such as a webhook signing secret, are never shown in Slack.
 
 <Callout type="warn" title="Sending always asks">
-Anything that sends mail to a real recipient needs your approval every time, and **Always allow** is never offered for it. The card shows the full message and the sending mailbox, and only that exact message goes out.
+Anything that sends mail to a real recipient needs your approval every time, and **Always allow** is never offered for it. The card shows the sending mailbox, the recipient, the subject and the message, and only that exact message goes out.
 </Callout>
 
 ### Credits and history
@@ -150,6 +158,7 @@ To work every reply in Slack rather than be pinged about it, use the [inbox chan
 |---|---|
 | Connect, reconnect or disconnect Slack | **Manage settings** |
 | Choose channels, per-category routing, the inbox channel, and the assistant setting | **Manage settings** |
+| See the Slack connection, its settings and any missing permissions | **Manage settings** or **Use integrations** |
 | See every member's linked Slack account, and remove anyone's link | **Manage settings** |
 | Link or unlink your own Slack account, and turn your personal DMs on or off | Any member |
 | Use the assistant from Slack | Any linked member with **Use AI** |
@@ -176,6 +185,7 @@ Slack delivers other messages from channels the bot is in, including the team's 
 | Notifications post, but the bot never answers, buttons do nothing, or `/warmbly` fails | The Slack app is only partly configured: posting works but Slack cannot reach Warmbly. On a self-hosted instance the operator needs to set the signing secret ([Slack app](/development/slack-app/#environment-variables)) |
 | The Slack panel lists missing permissions | Select **Reconnect**. A feature needing a permission the connection lacks stays off until then |
 | The bot replies with a **Link your Warmbly account** button | Your Slack account is not linked yet, or the link was removed. Follow the button |
+| Linking says your Slack email must match your Warmbly email | Sign in to Warmbly with the email on your Slack profile. If they already match, ask someone with **Manage settings** to select **Reconnect** under **Integrations > Slack** so Warmbly can read Slack email addresses |
 | The bot does not answer in a channel | Check that it is a member of the channel, that the channel is not a Slack Connect channel, and that the assistant is not set to **DMs only** or **Off** |
 | An inbox button says you need inbox access | Your role lacks **Use unified inbox**. Ask a workspace admin |
 | The inbox channel cannot be saved | Pick it from the list. A private channel needs the Warmbly app invited first, and a Slack Connect channel is refused |

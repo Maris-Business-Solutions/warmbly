@@ -28,9 +28,6 @@ type TokenRepository interface {
 	ListOtherActiveSessionIDs(ctx context.Context, userID, exceptID uuid.UUID) ([]uuid.UUID, *errx.Error)
 	RevokeOtherSessions(ctx context.Context, userID, exceptID uuid.UUID) *errx.Error
 
-	FindExpiredSessions(ctx context.Context, userID uuid.UUID, cutoff time.Time) ([]uuid.UUID, *errx.Error)
-	RevokeSessions(ctx context.Context, userID uuid.UUID) *errx.Error
-
 	// Organization switching
 	UpdateCurrentOrganization(ctx context.Context, sessionID uuid.UUID, orgID *uuid.UUID) *errx.Error
 	DefaultOrganization(ctx context.Context, userID uuid.UUID) (*uuid.UUID, *errx.Error)
@@ -54,13 +51,13 @@ func (r *tokenRepository) GenerateSession(ctx context.Context, tx pgx.Tx, sessio
 		 created_at, expires_at, last_refreshed_at, revoked_at,
 		 access_nonce, refresh_nonce,
 		 location_city, location_region, location_country, location_country_code, location_postal_code,
-		 os_name, browser_name, auth_provider, mfa_verified
+		 os_name, browser_name, auth_provider, mfa_verified, reauth_at
 		) VALUES (
 		 $1, $2, $3,
 		 $4, $5, $6, $7,
 		 $8, $9,
 		 $10, $11, $12, $13, $14,
-		 $15, $16, $17, $18
+		 $15, $16, $17, $18, $4
 		)
 	`
 
@@ -266,7 +263,7 @@ func (r *tokenRepository) RefreshToken(ctx context.Context, sessionID uuid.UUID,
 		UPDATE sessions
 		SET last_refreshed_at = $5,
 		 access_nonce = $1, refresh_nonce = $2, previous_refresh_nonce = $3
-		WHERE refresh_nonce = $3 AND id = $4
+		WHERE refresh_nonce = $3 AND id = $4 AND revoked_at IS NULL
 	`
 
 	params := []any{
@@ -324,72 +321,6 @@ func (r *tokenRepository) RevokeSession(ctx context.Context, tx pgx.Tx, sessionI
 	}
 
 	_, err := tx.Exec(
-		ctx,
-		query,
-		params...,
-	)
-	if err != nil {
-		db.CaptureError(err, query, params, "exec")
-		return errx.InternalError()
-	}
-
-	return nil
-}
-
-func (r *tokenRepository) FindExpiredSessions(ctx context.Context, userID uuid.UUID, cutoff time.Time) ([]uuid.UUID, *errx.Error) {
-	query := `
-        SELECT id
-        FROM sessions
-        WHERE revoked_at IS NULL
-          AND last_refreshed_at < $1
-    `
-
-	params := []any{
-		cutoff,
-	}
-
-	rows, err := r.DB.Query(
-		ctx,
-		query,
-		cutoff,
-	)
-	if err != nil {
-		db.CaptureError(err, query, params, "query")
-		return nil, errx.InternalError()
-	}
-	defer rows.Close()
-
-	var sessions []uuid.UUID
-	for rows.Next() {
-		var s uuid.UUID
-		if err := rows.Scan(&s); err != nil {
-			db.CaptureError(err, "", nil, "scan")
-			return nil, errx.InternalError()
-		}
-		sessions = append(sessions, s)
-	}
-
-	if err := rows.Err(); err != nil {
-		db.CaptureError(err, "", nil, "rows_err")
-		return nil, errx.InternalError()
-	}
-
-	return sessions, nil
-}
-
-func (r *tokenRepository) RevokeSessions(ctx context.Context, userID uuid.UUID) *errx.Error {
-	query := `
-        UPDATE sessions
-		SET revoked_at = now()
-        WHERE revoked_at IS NULL
-		  AND user_id = $1
-    `
-
-	params := []any{
-		userID,
-	}
-
-	_, err := r.DB.Exec(
 		ctx,
 		query,
 		params...,

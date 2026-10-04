@@ -15,7 +15,7 @@ import {
 } from "@hubspot/ui-extensions";
 
 // hubspot.fetch signs every request with the app's client secret and adds
-// portalId and userEmail; the API trusts nothing else.
+// portalId, userId and userEmail; the API acts as the matched Warmbly member.
 const API = "https://api.warmbly.com/api/v1/integrations/hubspot/app";
 
 type CardCampaign = {
@@ -118,6 +118,7 @@ function WarmblyCard({ context, actions }: Props) {
   };
 
   if (!view && !error) return <LoadingSpinner label="Loading Warmbly" />;
+  if (!view) return <Alert title="Warmbly" variant="danger">{error}</Alert>;
   if (view && !view.connected) {
     return (
       <Text>

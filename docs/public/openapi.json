@@ -13658,7 +13658,7 @@
       "post": {
         "operationId": "api-keys_create",
         "summary": "Create an API key",
-        "description": "Creates a new key and returns the plaintext secret exactly once. Unknown permission bits are rejected.",
+        "description": "Creates a new key and returns the plaintext secret exactly once. Unknown permission bits are rejected. A key never exceeds its creator: a member's role bounds its permissions, and an API key caller bounds its permissions, mailboxes and IP addresses.",
         "tags": [
           "api-keys"
         ],
@@ -13714,7 +13714,7 @@
             }
           },
           "403": {
-            "description": "Missing API_KEYS scope or manage_api_keys org permission.",
+            "description": "Missing API_KEYS scope or manage_api_keys org permission; called with an OAuth app token (oauth_token_not_allowed); or the key would hold a permission, mailbox or IP address its creator does not have (api_key_permissions_exceed_caller).",
             "content": {
               "application/json": {
                 "schema": {
@@ -13740,7 +13740,7 @@
       "get": {
         "operationId": "api-keys_list_permissions",
         "summary": "List available permissions",
-        "description": "Returns the catalog of permission bits plus the read_only and full_access presets.",
+        "description": "Returns the catalog of permission bits, the read_only and full_access presets, the mask the caller may put on a key (grantable), and the mask an OAuth app may request (app_scopes).",
         "tags": [
           "api-keys"
         ],
@@ -14053,7 +14053,7 @@
       "patch": {
         "operationId": "api-keys_update",
         "summary": "Update an API key",
-        "description": "Updates the mutable fields of a key. Every field is optional; only the fields you send are changed. The secret cannot be rotated here.",
+        "description": "Updates the mutable fields of a key. Every field is optional; only the fields you send are changed. The secret cannot be rotated here. The edited key never exceeds its editor: a member's role bounds new permissions, and an API key caller bounds the whole resulting key.",
         "tags": [
           "api-keys"
         ],
@@ -14118,7 +14118,7 @@
             }
           },
           "403": {
-            "description": "Missing API_KEYS scope or manage_api_keys org permission.",
+            "description": "Missing API_KEYS scope or manage_api_keys org permission; called with an OAuth app token (oauth_token_not_allowed); or the key would hold a permission, mailbox or IP address its creator does not have (api_key_permissions_exceed_caller).",
             "content": {
               "application/json": {
                 "schema": {
@@ -14216,7 +14216,7 @@
             }
           },
           "403": {
-            "description": "Missing API_KEYS scope or manage_api_keys org permission.",
+            "description": "Missing API_KEYS scope or manage_api_keys org permission, or called with an OAuth app token (oauth_token_not_allowed).",
             "content": {
               "application/json": {
                 "schema": {
@@ -14307,7 +14307,7 @@
             }
           },
           "403": {
-            "description": "Missing API_KEYS scope or manage_api_keys org permission.",
+            "description": "Missing API_KEYS scope or manage_api_keys org permission, or called with an OAuth app token (oauth_token_not_allowed).",
             "content": {
               "application/json": {
                 "schema": {
@@ -19567,7 +19567,7 @@
       "get": {
         "operationId": "integrations_bookings_list",
         "summary": "List meeting bookings (integrations view)",
-        "description": "Up to 50 recent booked meetings, surfaced on the integrations page. For the full Meetings list with filters and pagination, use `GET /meetings`.",
+        "description": "Up to 50 recent booked meetings, surfaced on the integrations page. For the full Meetings list with filters and pagination, use `GET /meetings`. Scope `READ_CONTACTS`.",
         "tags": [
           "integrations"
         ],
@@ -22643,7 +22643,7 @@
       "get": {
         "operationId": "ai_tools_list",
         "summary": "List agent tools",
-        "description": "The AI tool registry filtered to what the caller's credentials allow. `format=openai` (aliases `hermes`, `functions`) returns OpenAI function-calling objects; the default returns `{name, description, input_schema}` per tool. Send-class tools are never listed.",
+        "description": "The AI tool registry filtered to what the caller's credentials allow. Needs `AI_AGENT` for keys and OAuth tokens, or `use_ai` for dashboard members. `format=openai` (aliases `hermes`, `functions`) returns OpenAI function-calling objects; the default returns `{name, description, input_schema}` per tool. Send-class tools are never listed.",
         "tags": [
           "ai"
         ],
@@ -22713,6 +22713,16 @@
               }
             }
           },
+          "403": {
+            "description": "The credentials lack AI_AGENT, or the member lacks use_ai.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limited.",
             "content": {
@@ -22730,7 +22740,7 @@
       "post": {
         "operationId": "ai_tools_call",
         "summary": "Execute an agent tool",
-        "description": "Runs one registry tool. The request body is the tool's JSON argument object (empty body = no arguments). Each tool enforces its own permission; send-class tools are never callable here.",
+        "description": "Runs one registry tool. The request body is the tool's JSON argument object (empty body = no arguments). Needs `AI_AGENT` for keys and OAuth tokens, or `use_ai` for dashboard members, and each tool enforces its own permission; send-class tools are never callable here.",
         "tags": [
           "ai"
         ],
@@ -22816,7 +22826,7 @@
             }
           },
           "403": {
-            "description": "The credentials lack the permission for this tool.",
+            "description": "The credentials lack AI_AGENT (or use_ai), or the permission for this tool.",
             "content": {
               "application/json": {
                 "schema": {
@@ -35681,7 +35691,9 @@
         "type": "object",
         "required": [
           "permissions",
-          "presets"
+          "presets",
+          "grantable",
+          "app_scopes"
         ],
         "properties": {
           "permissions": {
@@ -35708,6 +35720,16 @@
                 "description": "Bitmask granting every scope."
               }
             }
+          },
+          "grantable": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitmask the caller may put on a key: the reach of the member's role, or the calling API key's own permissions."
+          },
+          "app_scopes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitmask an OAuth app may request. API_KEYS is never part of it."
           }
         }
       },

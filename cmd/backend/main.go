@@ -624,11 +624,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		// The bypass token must be set explicitly. It used to fall back to a
-		// hardcoded literal whenever APP_ENV was "dev", which is the shipped
-		// default in both compose and env.example, so any deployment that
-		// turned captcha on while leaving APP_ENV alone had a universal,
-		// publicly known bypass on login, registration and password reset.
+		// The captcha bypass exists only in dev and only as an explicitly set token; there is no default.
 		turnstileBypassToken := ""
 		if cfg.Env == "dev" {
 			turnstileBypassToken = authCfg.TurnstileBypass
@@ -789,7 +785,8 @@ func main() {
 
 		integrationRepository := repository.NewIntegrationRepository(primaryDB.Pool)
 		// OAuth 2.1 authorization server (third-party app registration + token flow).
-		oauthService = oauth.NewService(repository.NewOAuthRepository(primaryDB.Pool), cache)
+		oauthRepository := repository.NewOAuthRepositorySealed(primaryDB.Pool, credEncrypter)
+		oauthService = oauth.NewService(oauthRepository, cache)
 		// Enforce the per-app webhook-domain allowlist on app-scoped endpoints (at
 		// write time, and re-checked at delivery time via the worker below).
 		webhookService.WireAppDomainResolver(oauthService.AllowedWebhookDomains)
@@ -800,7 +797,7 @@ func main() {
 		appDirectoryRepo := repository.NewAppDirectoryRepository(primaryDB.Pool)
 		oauthService.WireListingGuard(appDirectoryRepo)
 		oauthService.WireAdmin(repository.NewOAuthAdminRepository(primaryDB.Pool))
-		appDirectoryService = appdirectory.NewService(appDirectoryRepo, repository.NewOAuthRepository(primaryDB.Pool))
+		appDirectoryService = appdirectory.NewService(appDirectoryRepo, oauthRepository)
 		// integrationServiceForHandler is constructed after cipherService below —
 		// OAuth/secret sealing depends on the envelope-encryption service.
 		contactRepoForHandler = contactRepostory
@@ -868,6 +865,10 @@ func main() {
 		}
 
 		tokenService = token.NewService(primaryDB, tokenRepostory, cache, geoloc, authCfg.AuthSecret)
+		// A revoked session takes the user's open sockets with it.
+		if streamingPublisher != nil {
+			tokenService.WireRevocationPublisher(streamingPublisher)
+		}
 		userService = user.NewService(userRepostory, cache)
 
 		// A removed member's sessions and app authorizations end with the membership, on every removal path.
@@ -1676,7 +1677,7 @@ func main() {
 			Orgs: organizationService, Agent: aiAgentService, Registry: aiToolRegistry,
 			Audit: auditService, Redis: slackRedis,
 			Threads: uniboxRepository, Labels: repository.NewTagCategoryStore(primaryDB.Pool),
-			Drafts: aiDraftRepo, Users: userRepostory, Tasks: taskRepository, Campaigns: campaignRepostory,
+			Drafts: aiDraftRepo, Users: userRepostory, Bans: userRepostory, Tasks: taskRepository, Campaigns: campaignRepostory,
 			Cipher: cipherService,
 		})
 		notificationService.WireDelivery(emailNotificationService, slackService, userRepostory, organizationRepoForHandler)
@@ -1941,6 +1942,11 @@ func main() {
 		// before bodies were indexed, so search covers the whole archive and not
 		// just new mail. Walks the table once, then returns.
 		go uniboxService.StartBodyTextBackfill(ctx)
+
+		// Automation signing secrets live in each connection's sealed config.
+		if m, ok := integrationServiceForHandler.(interface{ StartSigningSecretMigration(context.Context) }); ok {
+			go m.StartSigningSecretMigration(ctx)
+		}
 
 		// Danger zone: schedule + execute delayed deletions (orgs, accounts).
 		dangerZoneRepository := repository.NewDangerZoneRepository(primaryDB.Pool)

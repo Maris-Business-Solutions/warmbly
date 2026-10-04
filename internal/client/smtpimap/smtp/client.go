@@ -138,6 +138,12 @@ func (c *Client) Send(
 		}
 	}
 
+	for k, v := range headers {
+		if err := mailhdr.CheckHeader(k, v); err != nil {
+			return nil, errx.MError(errx.MailErrorWarning, errx.MailErrorCodeUnsupported, k+": "+err.Error(), errx.MailErrorResolveMethodNone)
+		}
+	}
+
 	var msg bytes.Buffer
 	if len(attachments) > 0 {
 		c.writeMixedBody(&msg, headers, bodyPlain, bodyHTML, attachments)

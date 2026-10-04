@@ -50,6 +50,25 @@ type PendingAgentTool struct {
 	Risk        string          `json:"risk"`
 	Args        json.RawMessage `json:"args"`
 	ArgsSummary string          `json:"args_summary,omitempty"`
+	// Arguments is Args as indented JSON with sorted keys, capped at AgentApprovalArgsMax bytes.
+	Arguments          string `json:"arguments,omitempty"`
+	ArgumentsTruncated bool   `json:"arguments_truncated,omitempty"`
+	// Preview is what a send will do: sender, recipients, subject and bodies.
+	Preview *AgentSendPreview `json:"preview,omitempty"`
+	// AlwaysAllowOffered is whether the viewer may make this tool a workspace "always allow".
+	AlwaysAllowOffered bool `json:"always_allow_offered,omitempty"`
+}
+
+// AgentApprovalArgsMax caps the arguments an approval card carries.
+const AgentApprovalArgsMax = 16 << 10
+
+// AgentSendPreview is the resolved shape of a send awaiting approval.
+type AgentSendPreview struct {
+	From     string   `json:"from"`
+	To       []string `json:"to"`
+	Subject  string   `json:"subject"`
+	Body     string   `json:"body"`
+	BodyHTML string   `json:"body_html,omitempty"`
 }
 
 // AgentMessageRow is one persisted transcript turn. Content is the serialized
@@ -71,5 +90,7 @@ type AIToolPolicy struct {
 	ToolName  string     `json:"tool_name"`
 	Decision  string     `json:"decision"`
 	CreatedBy *uuid.UUID `json:"created_by,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	// CreatedByName is the setter's display name, for the settings list.
+	CreatedByName string    `json:"created_by_name,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }

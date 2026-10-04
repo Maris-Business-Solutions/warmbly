@@ -169,7 +169,7 @@ type NativeActions interface {
 	CreateTask(ctx context.Context, orgID, createdBy uuid.UUID, data *models.CreateCRMTask) error
 	CreateDeal(ctx context.Context, orgID, createdBy uuid.UUID, data *models.CreateDeal) error
 	MoveDealStage(ctx context.Context, orgID, contactID, pipelineID, stageID uuid.UUID) error
-	Unsubscribe(ctx context.Context, campaignID, contactID uuid.UUID) error
+	Unsubscribe(ctx context.Context, orgID, campaignID, contactID uuid.UUID) error
 	// LabelThread additively applies unibox conversation labels to a thread, on
 	// behalf of the mailbox-owner userID (categories are per user). Backs the
 	// "label_email" action; userID + threadID come from the reply event data.
@@ -504,7 +504,7 @@ func (s *service) execNativeAction(ctx context.Context, a models.Automation, n m
 		if perr != nil {
 			return fmt.Errorf("unsubscribe needs a campaign_id in the event data")
 		}
-		return s.native.Unsubscribe(ctx, campID, c.ID)
+		return s.native.Unsubscribe(ctx, a.OrganizationID, campID, c.ID)
 
 	case models.IntegrationActionAddTag, models.IntegrationActionRemoveTag:
 		catID, perr := uuid.Parse(cfg.CategoryID)

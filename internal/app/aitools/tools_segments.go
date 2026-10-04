@@ -142,7 +142,8 @@ func (d Deps) registerSegmentTools(r *Registry) {
 			"campaign_id": strProp("The campaign's UUID."),
 			"segment_ids": arrProp("The segment UUIDs to link, at most 20. An empty list detaches every segment.", map[string]any{"type": "string"}),
 		}, "campaign_id", "segment_ids"),
-		Risk: generation.RiskWrite,
+		Risk:      generation.RiskWrite,
+		AlwaysAsk: true,
 		// Linking an audience changes who a campaign mails.
 		RequiredOrgPerm: models.PermManageCampaigns,
 		RequiredAPIPerm: models.APIPermWriteCampaigns,
@@ -157,6 +158,7 @@ func (d Deps) registerSegmentTools(r *Registry) {
 			"campaign_id": strProp("The campaign to enrol them into."),
 		}, "segment_id", "campaign_id"),
 		Risk:            generation.RiskWrite,
+		AlwaysAsk:       true,
 		RequiredOrgPerm: models.PermManageCampaigns,
 		RequiredAPIPerm: models.APIPermWriteCampaigns,
 		Handler:         d.addSegmentToCampaign,

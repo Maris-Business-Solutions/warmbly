@@ -170,3 +170,19 @@ func TestWebhookKinds(t *testing.T) {
 		}
 	}
 }
+
+// A deletion webhook only removes a mirror once HubSpot's own read agrees.
+func TestGoneOnlyOnHubSpotsWord(t *testing.T) {
+	if !gone(nil, &APIError{Status: 404}) {
+		t.Fatal("a 404 read must count as gone")
+	}
+	if !gone(&Object{ID: "1", Archived: true}, nil) {
+		t.Fatal("an archived record must count as gone")
+	}
+	if gone(&Object{ID: "1"}, nil) {
+		t.Fatal("a live record must not count as gone")
+	}
+	if gone(nil, &APIError{Status: 429}) || gone(nil, &APIError{Status: 401}) {
+		t.Fatal("a failed read must not count as gone")
+	}
+}

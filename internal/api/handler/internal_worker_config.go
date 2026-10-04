@@ -17,7 +17,7 @@ import (
 // Heartbeats go to the role-agnostic /internal/fleet/heartbeat instead, which
 // is what tells a node the version it should be running.
 //
-// Auth: shared bearer token (INTERNAL_API_TOKEN).
+// Auth: the node token (middleware.NodeBrokerAuthMiddleware).
 
 type WorkerEgressConfig struct {
 	ID       uuid.UUID `json:"id"`
