@@ -395,6 +395,7 @@ func (r *organizationRepository) CreateInvitation(ctx context.Context, inv *mode
 			permissions = EXCLUDED.permissions,
 			invited_by = EXCLUDED.invited_by,
 			token = EXCLUDED.token,
+			link_token_hash = NULL,
 			expires_at = EXCLUDED.expires_at
 	`
 	_, err := r.db.Exec(ctx, query,

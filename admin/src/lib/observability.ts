@@ -134,7 +134,7 @@ function loadPostHog(): Promise<import("posthog-js").PostHog | null> {
                 capture_pageleave: true,
                 // Same URL masking as the dashboard: tokens and codes can travel in a query string.
                 mask_personal_data_properties: true,
-                custom_personal_data_properties: ["token", "session", "agent_session", "code"],
+                custom_personal_data_properties: ["token", "session", "agent_session", "code", "invite", "next"],
                 capture_dead_clicks: true,
                 capture_heatmaps: true,
                 rageclick: true,

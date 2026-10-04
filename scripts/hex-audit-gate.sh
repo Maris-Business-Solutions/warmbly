@@ -27,8 +27,9 @@ main() {
 
 	stale=""
 	while read -r name locked; do
-		info=$(mix hex.info "$name")
-		latest=$(printf '%s\n' "$info" | awk '/^Recent releases:/ { getline; print $1; exit }')
+		info=$(mix hex.info "$name" </dev/null)
+		# The newest stable release: pre-releases carry a "-".
+		latest=$(printf '%s\n' "$info" | awk '/^Recent releases:/ { found = 1; next } found && NF && $1 !~ /-/ { print $1; exit }')
 		if [ -z "$latest" ]; then
 			echo "hex-audit-gate: no release list for $name" >&2
 			exit 1

@@ -76,7 +76,7 @@ export function loadPostHog(): Promise<PostHog | null> {
                 capture_pageleave: true,
                 // Sign-in sessions, invitation and setup tokens and pairing codes travel in the URL.
                 mask_personal_data_properties: true,
-                custom_personal_data_properties: ["token", "session", "agent_session", "code"],
+                custom_personal_data_properties: ["token", "session", "agent_session", "code", "invite", "next"],
                 capture_dead_clicks: true,
                 capture_heatmaps: true,
                 rageclick: true,
