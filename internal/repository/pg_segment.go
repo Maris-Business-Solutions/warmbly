@@ -666,6 +666,13 @@ func setForCampaignTx(ctx context.Context, tx pgx.Tx, orgID, campaignID uuid.UUI
 			return "", change, errx.InternalError()
 		}
 	}
+	// Detaching withdraws leads, which changes the send plan the snapshot is keyed on.
+	if len(detached) > 0 {
+		if _, err := tx.Exec(ctx, `UPDATE campaigns SET updated_at = NOW() WHERE id = $1`, campaignID); err != nil {
+			db.CaptureError(err, "campaign updated_at", nil, "exec")
+			return "", change, errx.InternalError()
+		}
+	}
 	return status, change, nil
 }
 
