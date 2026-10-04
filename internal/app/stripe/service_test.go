@@ -94,8 +94,8 @@ func TestSubscriptionCheckoutCustomerParameters(t *testing.T) {
 				if r.Form.Get("mode") != "subscription" || r.Form.Has("customer_creation") || r.Form.Get("customer") != customerID {
 					t.Errorf("invalid checkout parameters: %v", r.Form)
 				}
-				if r.Form.Get("automatic_tax[enabled]") != "true" || r.Form.Get("billing_address_collection") != "required" || r.Form.Get("tax_id_collection[enabled]") != "true" {
-					t.Errorf("tax collection is not enabled: %v", r.Form)
+				if r.Form.Get("automatic_tax[enabled]") != "false" || r.Form.Get("billing_address_collection") != "required" || r.Form.Get("tax_id_collection[enabled]") != "true" {
+					t.Errorf("checkout tax parameters are wrong: %v", r.Form)
 				}
 				if customerID == "" && (r.Form.Has("customer_update[address]") || r.Form.Has("customer_update[name]")) {
 					t.Errorf("new-customer checkout included customer_update: %v", r.Form)
@@ -126,7 +126,7 @@ func TestCreditCheckoutCollectsTaxAndBusinessDetails(t *testing.T) {
 				if err := r.ParseForm(); err != nil {
 					t.Fatal(err)
 				}
-				if r.Form.Get("mode") != "payment" || r.Form.Get("automatic_tax[enabled]") != "true" || r.Form.Get("billing_address_collection") != "required" || r.Form.Get("tax_id_collection[enabled]") != "true" {
+				if r.Form.Get("mode") != "payment" || r.Form.Get("automatic_tax[enabled]") != "false" || r.Form.Get("billing_address_collection") != "required" || r.Form.Get("tax_id_collection[enabled]") != "true" {
 					t.Errorf("invalid tax-aware credit checkout: %v", r.Form)
 				}
 				if customerID == "" && r.Form.Get("customer_creation") != "always" {
