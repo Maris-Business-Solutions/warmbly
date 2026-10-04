@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/formwire"
 )
 
@@ -138,7 +140,7 @@ func (s *Server) Router(trustedProxies []string) (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.RequestLogger(), gin.Recovery(), middleware.PageHeaders())
+	r.Use(middleware.RequestLogger(), gin.Recovery(), middleware.PageHeaders(formsHost()))
 	// Same posture as the backend: trust no proxy unless the operator names
 	// it, so a forged X-Forwarded-For cannot dodge the submit limiter.
 	if len(trustedProxies) > 0 {
@@ -432,4 +434,13 @@ func (s *Server) SubmitForm(c *gin.Context) {
 func (s *Server) ServeFormsEmbedJS(c *gin.Context) {
 	c.Header("Cache-Control", "public, max-age=3600")
 	c.Data(http.StatusOK, "application/javascript; charset=utf-8", formsEmbedJS)
+}
+
+// formsHost is the hostname of FORMS_DOMAIN, the one host the forms service sends HSTS for.
+func formsHost() string {
+	u, err := url.Parse(config.FormsBaseURL())
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }
