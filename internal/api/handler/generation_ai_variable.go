@@ -93,6 +93,11 @@ func (h *Handler) GenerateAIVariable(c *gin.Context) {
 			errx.JSON(c, errx.New(errx.BadRequest, "invalid contact_id"))
 			return
 		}
+		// The rendered prompt reads that contact's fields.
+		if xerr := h.hasAccess(c, models.PermViewContacts, models.APIPermReadContacts); xerr != nil {
+			errx.JSON(c, xerr)
+			return
+		}
 		if h.ContactRepo == nil {
 			errx.JSON(c, errx.ErrNotFound)
 			return

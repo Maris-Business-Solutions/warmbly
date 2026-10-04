@@ -1465,7 +1465,7 @@ When the organization is out of credits the endpoint returns `402` with `code: "
 
 `POST /generation/ai-variable`
 
-Generate the recipient-specific snippet a per-recipient AI variable block would produce, for the campaign editor's preview. The prompt is rendered against a supplied contact (must belong to the organization) or a sample contact, then generated with the same framing the send path uses, including the surrounding email so the fragment fits. The charge is metered by usage (the model and tokens the snippet uses, plus any web lookup), refunded if the provider call fails, and `Idempotency-Key` is honored so a retried request is not double-charged. See the [AI variables](/guides/ai-variables/) guide. **Scope** `WRITE_CAMPAIGNS` · **Org permission** `manage_campaigns` and `use_ai`.
+Generate the recipient-specific snippet a per-recipient AI variable block would produce, for the campaign editor's preview. The prompt is rendered against a supplied contact (must belong to the organization) or a sample contact, then generated with the same framing the send path uses, including the surrounding email so the fragment fits. The charge is metered by usage (the model and tokens the snippet uses, plus any web lookup), refunded if the provider call fails, and `Idempotency-Key` is honored so a retried request is not double-charged. See the [AI variables](/guides/ai-variables/) guide. **Scope** `WRITE_CAMPAIGNS` · **Org permission** `manage_campaigns` and `use_ai`. Passing `contact_id` additionally requires `READ_CONTACTS` (org permission `view_contacts`), since the prompt reads that contact's fields.
 
 ### Request body
 
