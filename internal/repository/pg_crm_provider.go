@@ -697,18 +697,23 @@ func (r *crmProviderRepository) UserForOwner(ctx context.Context, orgID uuid.UUI
 func (r *crmProviderRepository) MemberForOwnerEmail(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, email string) (*uuid.UUID, models.OrganizationPermission, error) {
 	var id uuid.UUID
 	var perms models.OrganizationPermission
+	var role string
 	err := r.db.QueryRow(ctx, `
-		SELECT m.user_id, m.permissions FROM crm_owners o
+		SELECT m.user_id, m.permissions, m.role FROM crm_owners o
 		JOIN organization_members m ON m.organization_id = o.organization_id AND m.user_id = o.user_id
 		JOIN users u ON u.id = m.user_id
 		WHERE o.organization_id = $1 AND o.provider = $2 AND NOT o.archived
 		  AND LOWER(o.email) = LOWER($3) AND m.accepted_at IS NOT NULL AND (u.ban_scope & 1) = 0
-		ORDER BY o.user_pinned DESC, o.external_id LIMIT 1`, orgID, provider, email).Scan(&id, &perms)
+		ORDER BY o.user_pinned DESC, o.external_id LIMIT 1`, orgID, provider, email).Scan(&id, &perms, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, 0, nil
 	}
 	if err != nil {
 		return nil, 0, err
+	}
+	// The workspace owner holds every permission, whatever its stored mask says.
+	if role == "owner" {
+		perms = models.AllPermissions
 	}
 	return &id, perms, nil
 }
