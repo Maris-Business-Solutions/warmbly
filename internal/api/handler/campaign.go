@@ -517,13 +517,8 @@ func (h *Handler) ListCampaignSenders(c *gin.Context) {
 }
 
 // errPoolNeedsExplicitSenders holds a mailbox-limited key to explicit sender pools, which it can check.
-var errPoolNeedsExplicitSenders = errx.NewWithIdentifier(errx.Forbidden, "api_key_mailbox_limited",
+var errPoolNeedsExplicitSenders = errx.NewWithIdentifier(errx.Forbidden, apiKeyMailboxLimited,
 	"This API key is limited to some mailboxes, so its campaigns must use an explicit sender list (sender_strategy \"explicit\") of those mailboxes.")
-
-// keyMailboxLimited reports whether the caller is a key held to an allowlist of mailboxes.
-func keyMailboxLimited(c *gin.Context) bool {
-	return middleware.GetAuthType(c) != "jwt" && len(middleware.GetAPIKeyAllowedEmailAccounts(c)) > 0
-}
 
 // poolStrategyAllowed refuses a tag-resolved pool to a mailbox-limited key.
 func poolStrategyAllowed(c *gin.Context, strategy *string, tagsChanged bool) *errx.Error {

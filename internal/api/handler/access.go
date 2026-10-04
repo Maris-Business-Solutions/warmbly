@@ -95,3 +95,11 @@ func mailboxAllowed(c *gin.Context, accountID uuid.UUID) *errx.Error {
 	}
 	return nil
 }
+
+// apiKeyMailboxLimited is the stable code for a mailbox-limited key refused on a workspace-wide surface.
+const apiKeyMailboxLimited = "api_key_mailbox_limited"
+
+// keyMailboxLimited reports whether the caller is a key held to an allowlist of mailboxes.
+func keyMailboxLimited(c *gin.Context) bool {
+	return middleware.GetAuthType(c) != "jwt" && len(middleware.GetAPIKeyAllowedEmailAccounts(c)) > 0
+}
