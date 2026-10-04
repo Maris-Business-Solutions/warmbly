@@ -13,7 +13,7 @@ import (
 // ErrTrackingDomainTaken: another organization holds the tracking host verified.
 var ErrTrackingDomainTaken = errors.New("tracking domain verified by another organization")
 
-// trackingDomainConstraint is the name the verification trigger (migration 000257) raises under.
+// trackingDomainConstraint is the name the verification trigger (migration 000258) raises under.
 const trackingDomainConstraint = "tracking_domain_one_organization"
 
 func isTrackingDomainTaken(err error) bool {
