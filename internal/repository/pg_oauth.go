@@ -334,13 +334,17 @@ func (r *oauthRepository) CreateAccessGrant(ctx context.Context, g *models.OAuth
 const grantHolderIsMember = ` AND EXISTS (SELECT 1 FROM organization_members m
 	WHERE m.organization_id = oauth_access_grants.organization_id AND m.user_id = oauth_access_grants.user_id)`
 
+// A token stops working the moment its holder is banned from signing in.
+const grantHolderNotBanned = ` AND NOT EXISTS (SELECT 1 FROM users u
+	WHERE u.id = oauth_access_grants.user_id AND (u.ban_scope & 1) <> 0)`
+
 // A token works only while its app is enabled by its owner and not suspended.
 const grantAppIsUsable = ` AND EXISTS (SELECT 1 FROM oauth_applications a
 	WHERE a.id = oauth_access_grants.application_id AND a.status = 'active' AND a.suspended_at IS NULL)`
 
 func (r *oauthRepository) GetGrantByAccessTokenHash(ctx context.Context, hash string) (*models.OAuthAccessGrant, error) {
 	var g models.OAuthAccessGrant
-	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE access_token_hash = $1`+grantHolderIsMember+grantAppIsUsable, hash)
+	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE access_token_hash = $1`+grantHolderIsMember+grantHolderNotBanned+grantAppIsUsable, hash)
 	if err := scanOAuthGrant(row, &g); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -352,7 +356,7 @@ func (r *oauthRepository) GetGrantByAccessTokenHash(ctx context.Context, hash st
 
 func (r *oauthRepository) GetGrantByRefreshTokenHash(ctx context.Context, hash string) (*models.OAuthAccessGrant, error) {
 	var g models.OAuthAccessGrant
-	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE refresh_token_hash = $1`+grantHolderIsMember+grantAppIsUsable, hash)
+	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE refresh_token_hash = $1`+grantHolderIsMember+grantHolderNotBanned+grantAppIsUsable, hash)
 	if err := scanOAuthGrant(row, &g); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil

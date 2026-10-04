@@ -57,6 +57,11 @@ type Organizations interface {
 	GetMembership(ctx context.Context, orgID, userID uuid.UUID) (*models.OrganizationMember, *errx.Error)
 }
 
+// BanLookup reads a user's ban scope, so a login ban also ends Slack access.
+type BanLookup interface {
+	GetBanState(ctx context.Context, userID uuid.UUID) (uint32, error)
+}
+
 // AuditLogger records Slack-side link changes on the audit spine.
 type AuditLogger interface {
 	LogAction(ctx context.Context, orgID, actorID uuid.UUID, action models.AuditAction, entityType models.AuditEntityType, entityID *uuid.UUID, ip, userAgent string, changes, metadata map[string]string)
@@ -89,6 +94,7 @@ type Deps struct {
 	Labels    CategoryEnsurer
 	Drafts    PendingDrafts
 	Users     UserLookup
+	Bans      BanLookup
 	Tasks     TaskLookup
 	Campaigns CampaignLookup
 	// Cipher seals drafts kept for "Review and send" with the org's DEK. Nil
@@ -103,6 +109,7 @@ type Service struct {
 	inbox *InboxPoster
 
 	orgs          Organizations
+	bans          BanLookup
 	agent         aiagent.Service
 	registry      *aitools.Registry
 	audit         AuditLogger
@@ -132,6 +139,7 @@ func New(d Deps) *Service {
 			Tasks: d.Tasks, Campaigns: d.Campaigns, Users: d.Users,
 		}),
 		orgs:          d.Orgs,
+		bans:          d.Bans,
 		agent:         d.Agent,
 		registry:      d.Registry,
 		audit:         d.Audit,
@@ -266,6 +274,12 @@ func (s *Service) membership(ctx context.Context, link *models.SlackUserLink) (*
 			log.Warn().Err(err).Msg("slack: dropping a stale link failed")
 		}
 		return nil, memberGone
+	}
+	if s.bans != nil {
+		scope, err := s.bans.GetBanState(ctx, link.UserID)
+		if err != nil || models.BanScope(scope).Has(models.BanScopeLogin) {
+			return nil, memberUnknown
+		}
 	}
 	return m, memberOK
 }

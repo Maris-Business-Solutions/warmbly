@@ -29,6 +29,8 @@ const (
 	decisionDeny     = "deny"
 	decisionAlways   = "always_allow"
 	errGenericAnswer = "Something went wrong. Please try again."
+	// The dashboard gates the assistant on use_ai; Slack answers to the same rule.
+	errNoAIAnswer = "Your Warmbly role does not include the AI assistant. Ask a workspace admin for AI access."
 )
 
 // agentTurn is one assistant run inside a Slack thread.
@@ -104,6 +106,10 @@ func (s *Service) runTurn(ctx context.Context, t agentTurn) {
 		s.say(ctx, t.token, t.channel, t.threadTS, "The Warmbly assistant is not available on this Warmbly instance.")
 		return
 	}
+	if !t.inv.OrgPerms.HasPermission(models.PermUseAI) {
+		s.say(ctx, t.token, t.channel, t.threadTS, errNoAIAnswer)
+		return
+	}
 	release, ok := s.guard.lock(ctx, runLockKey(t.conn.ID, t.channel, t.threadTS), runLockTTL)
 	if !ok {
 		s.say(ctx, t.token, t.channel, t.threadTS, "I'm still answering the previous message in this thread. Send this again when I'm done.")
@@ -127,6 +133,10 @@ func (s *Service) runTurn(ctx context.Context, t agentTurn) {
 // resumeTurn continues a paused run after the owner's decision.
 func (s *Service) resumeTurn(ctx context.Context, token string, row *models.SlackAgentThread, inv aitools.Invocation, decision string) {
 	if s.agent == nil {
+		return
+	}
+	if !inv.OrgPerms.HasPermission(models.PermUseAI) {
+		s.say(ctx, token, row.ChannelID, row.ThreadTS, errNoAIAnswer)
 		return
 	}
 	release, ok := s.guard.lock(ctx, runLockKey(row.ConnectionID, row.ChannelID, row.ThreadTS), runLockTTL)

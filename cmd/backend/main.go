@@ -1676,7 +1676,7 @@ func main() {
 			Orgs: organizationService, Agent: aiAgentService, Registry: aiToolRegistry,
 			Audit: auditService, Redis: slackRedis,
 			Threads: uniboxRepository, Labels: repository.NewTagCategoryStore(primaryDB.Pool),
-			Drafts: aiDraftRepo, Users: userRepostory, Tasks: taskRepository, Campaigns: campaignRepostory,
+			Drafts: aiDraftRepo, Users: userRepostory, Bans: userRepostory, Tasks: taskRepository, Campaigns: campaignRepostory,
 			Cipher: cipherService,
 		})
 		notificationService.WireDelivery(emailNotificationService, slackService, userRepostory, organizationRepoForHandler)
