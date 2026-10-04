@@ -265,7 +265,7 @@ var Tables = []Table{
 	{
 		Name: "oauth_applications", Group: models.OrgDataGroupCore,
 		Scope: scopeOrg,
-		// A suspension is the source operator's decision; the destination's operators make their own.
+		// Never written, so an overwrite keeps a destination suspension; importRules re-applies a source one.
 		ResetOnImport: []string{"suspended_at", "suspended_reason", "suspended_by"},
 		// The app's webhook signing secret is sealed under the instance key, like each endpoint's copy.
 		Secrets: []SecretColumn{

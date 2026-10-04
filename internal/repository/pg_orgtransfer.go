@@ -67,6 +67,9 @@ type OrgTransferRepository interface {
 	// InsertBatch writes rows into table, honouring the conflict strategy. An
 	// overwrite only updates an existing row that owner selects for orgID.
 	InsertBatch(ctx context.Context, tx pgx.Tx, table string, cols []string, rows []json.RawMessage, conflict models.OrgImportConflict, pk []string, owner string, orgID uuid.UUID) (int64, error)
+	// DeveloperBlocked reports an operator's block on building apps for this
+	// workspace or person.
+	DeveloperBlocked(ctx context.Context, tx pgx.Tx, orgID, userID uuid.UUID) (bool, error)
 	// MergeOrganization applies the archive's organization row onto an
 	// existing workspace, restricted to cols.
 	MergeOrganization(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, cols []string, row json.RawMessage) error
@@ -524,6 +527,16 @@ func (r *orgTransferRepository) InsertBatch(
 		return 0, fmt.Errorf("insert into %s: %w", table, err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+func (r *orgTransferRepository) DeveloperBlocked(ctx context.Context, tx pgx.Tx, orgID, userID uuid.UUID) (bool, error) {
+	var blocked bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+		  SELECT 1 FROM oauth_developer_blocks
+		   WHERE organization_id = $1 OR (user_id = $2 AND $2 <> '00000000-0000-0000-0000-000000000000'::uuid)
+		)`, orgID, userID).Scan(&blocked)
+	return blocked, err
 }
 
 func (r *orgTransferRepository) MergeOrganization(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, cols []string, row json.RawMessage) error {

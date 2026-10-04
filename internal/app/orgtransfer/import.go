@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/warmbly/warmbly/internal/app/cipher"
+	"github.com/warmbly/warmbly/internal/infrastructure/storage"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -126,6 +127,14 @@ func (s *service) ImportFrom(
 		return nil, err
 	}
 
+	rules := &ruleEnv{orgID: orgID, heldApps: map[uuid.UUID]string{}}
+	if pu, ok := s.blobs.(storage.PublicURLer); ok {
+		rules.logos = pu
+	}
+	if rules.developerBlocked, err = s.repo.DeveloperBlocked(ctx, tx, orgID, opts.ActorUserID); err != nil {
+		return nil, err
+	}
+
 	byName := manifestTables(manifest)
 	applied := 0
 	for i := range Tables {
@@ -152,9 +161,15 @@ func (s *service) ImportFrom(
 			actor:      opts.ActorUserID,
 			conflict:   opts.Conflict,
 			selected:   selected,
+			rules:      rules,
 		})
 		if err != nil {
 			return nil, err
+		}
+		if t.Name == "oauth_applications" {
+			if err := holdImportedApps(ctx, tx, orgID, rules.heldApps); err != nil {
+				return nil, fmt.Errorf("hold imported apps: %w", err)
+			}
 		}
 		if n > 0 {
 			result.RowCounts[t.Name] = n
@@ -195,6 +210,8 @@ type importContext struct {
 	// selected is the set of groups this run applies, used to decide which
 	// references the import can actually satisfy.
 	selected map[models.OrgDataGroup]bool
+	// rules re-apply write rules to the tables in importRules.
+	rules *ruleEnv
 }
 
 // importTable streams one table's rows out of the archive and into the
@@ -411,6 +428,10 @@ func (s *service) importRow(
 		if _, ok := obj[c]; ok {
 			obj[c] = json.RawMessage(`null`)
 		}
+	}
+
+	if rule := importRules[t.Name]; rule != nil && ic.rules != nil {
+		rule(ic.rules, obj)
 	}
 
 	for _, sc := range t.Secrets {

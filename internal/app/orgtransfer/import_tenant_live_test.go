@@ -196,6 +196,31 @@ func TestLiveImportRefusesReferencesIntoAnotherWorkspace(t *testing.T) {
 	}
 }
 
+func TestLiveImportKeepsASuspendedAppSuspended(t *testing.T) {
+	svc, pool := liveImportService(t)
+	ctx := context.Background()
+	dest := newTenantFixture(t, pool)
+
+	app := uuid.New()
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM oauth_applications WHERE id = $1`, app) })
+	archive := tenantArchive(t, map[string][]map[string]any{
+		"oauth_applications": {{
+			"id": app, "organization_id": uuid.New(), "name": "Acme Sync", "client_id": "wbc_" + app.String(),
+			"suspended_at": "2026-01-01T00:00:00Z", "suspended_reason": "abuse",
+		}},
+	})
+	if _, err := svc.ImportFrom(ctx, dest.org, archive, ImportOptions{Conflict: models.OrgImportConflictOverwrite, ActorUserID: dest.owner}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var suspended bool
+	if err := pool.QueryRow(ctx, `SELECT suspended_at IS NOT NULL FROM oauth_applications WHERE id = $1 AND organization_id = $2`, app, dest.org).Scan(&suspended); err != nil {
+		t.Fatal(err)
+	}
+	if !suspended {
+		t.Fatal("an app suspended at the source arrived active")
+	}
+}
+
 func TestLiveImportOverwritesItsOwnRows(t *testing.T) {
 	svc, pool := liveImportService(t)
 	ctx := context.Background()
