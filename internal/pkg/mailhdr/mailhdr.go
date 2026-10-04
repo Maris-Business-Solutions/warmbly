@@ -57,6 +57,10 @@ func parseOne(s string) (*mail.Address, bool) {
 	if s == "" || hasControl(s) {
 		return nil, false
 	}
+	// A pasted list is several recipients, never one.
+	if list, err := mail.ParseAddressList(s); err == nil && len(list) > 1 {
+		return nil, false
+	}
 	if parsed, err := mail.ParseAddress(s); err == nil {
 		return parsed, true
 	}

@@ -42,7 +42,7 @@ func TestValidAddress(t *testing.T) {
 			t.Errorf("ValidAddress(%q) = false", s)
 		}
 	}
-	for _, s := range []string{"", "nope", "a@b.com, c@d.com", "a@b.com\r\nBcc: c@d.com", "Ana\n<a@b.com>", "a@b.com\x00"} {
+	for _, s := range []string{"", "nope", "a@b.com, c@d.com", "Ana <a@b.com>, Bob <b@c.com>", "a@b.com\r\nBcc: c@d.com", "Ana\n<a@b.com>", "a@b.com\x00"} {
 		if ValidAddress(s) {
 			t.Errorf("ValidAddress(%q) = true", s)
 		}
