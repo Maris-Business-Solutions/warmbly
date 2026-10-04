@@ -868,6 +868,10 @@ func main() {
 		}
 
 		tokenService = token.NewService(primaryDB, tokenRepostory, cache, geoloc, authCfg.AuthSecret)
+		// A revoked session takes the user's open sockets with it.
+		if streamingPublisher != nil {
+			tokenService.WireRevocationPublisher(streamingPublisher)
+		}
 		userService = user.NewService(userRepostory, cache)
 
 		// A removed member's sessions and app authorizations end with the membership, on every removal path.

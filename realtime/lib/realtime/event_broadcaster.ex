@@ -11,6 +11,16 @@ defmodule Realtime.EventBroadcaster do
   @doc """
   Broadcast a decoded event map. Unknown shapes are ignored.
   """
+  # A revoked session closes every socket the user holds; each reconnect needs
+  # a credential that is still live. A control signal, so nothing is forwarded.
+  def broadcast(%{"event_type" => "SESSIONS_REVOKED", "user_id" => user_id})
+      when is_binary(user_id) and user_id != "" do
+    RealtimeWeb.Endpoint.broadcast("user_socket:#{user_id}", "disconnect", %{})
+    :ok
+  end
+
+  def broadcast(%{"event_type" => "SESSIONS_REVOKED"}), do: :ok
+
   def broadcast(event) when is_map(event) do
     user_id = event["user_id"]
     event_type = event["event_type"]

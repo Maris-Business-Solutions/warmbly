@@ -309,7 +309,7 @@ Self-service session management for the signed-in user. Revoking by id can only 
 
 `POST /auth/logout`
 
-Revokes the current session. Returns `204 No Content`.
+Revokes the current session and closes the user's open realtime connections. Returns `204 No Content`.
 
 Auth: Session only (not available to API keys).
 
@@ -317,7 +317,7 @@ Auth: Session only (not available to API keys).
 
 `POST /auth/logout-all`
 
-Revokes every session for the user. Returns `204 No Content`.
+Revokes every session for the user, this one included, and closes their open realtime connections. A revoked session can no longer be refreshed. Returns `204 No Content`.
 
 Auth: Session only (not available to API keys).
 

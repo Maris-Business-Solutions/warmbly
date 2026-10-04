@@ -219,10 +219,10 @@ Every instance that has not updated yet runs the code an attacker can read here.
 
 ### Sessions and tokens
 
-- **every token carries a purpose** and is verified against the one purpose its consumer accepts (`internal/app/token/config.go`: `access`, `refresh`, `ws`, `login`, `registration`, `reset`, `2fa`). A token minted for one flow must never verify in another. A new token type gets a new purpose constant, not a reused one
+- **every token carries a purpose** and is verified against the one purpose its consumer accepts (`internal/app/token/config.go`: `access`, `refresh`, `ws`, `login`, `registration`, `reset`, `2fa`, `sso_link`). A token minted for one flow must never verify in another, and one with no purpose verifies for none. A new token type gets a new purpose constant, not a reused one
 - `VerifyToken` pins the algorithm to HS256 and requires an expiry. Do not relax either, and do not add a verification path that skips `token.VerifyToken`
 - `AUTH_SECRET` has a hard floor of `config.MinAuthSecretLength` (32 bytes) and the backend refuses to boot below it. The realtime service applies the same floor to `JWT_SECRET`, which is the same value. Neither check may become a warning
-- banning a user, changing a password and revoking a session all terminate the sessions they invalidate. A new "lock this account" path must revoke too, or it locks nothing
+- banning a user, changing a password and revoking a session all terminate the sessions they invalidate, and through `RevokeOtherSessions` close the user's realtime sockets. A new "lock this account" path must revoke too, or it locks nothing
 
 ### Access control: the rule that is easiest to get wrong
 
