@@ -72,7 +72,8 @@ func (h *Handler) Reauth(c *gin.Context) {
 	// measure Argon2's timing either.
 	ctx := c.Request.Context()
 	if !h.AuthService.ReserveReauthAttempt(ctx, uid) {
-		errx.Handle(c, errx.ErrAuthLimit)
+		errx.Handle(c, errx.NewWithIdentifier(errx.BadRequest, "reauth_limited",
+			"Too many confirmation attempts. Wait an hour, or sign out and sign in again."))
 		return
 	}
 

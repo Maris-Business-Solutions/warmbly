@@ -77,7 +77,12 @@ function promptForReauth(): Promise<void> {
         );
         window.dispatchEvent(
             new CustomEvent("reauth-required", {
-                detail: { resolve: finish(resolve), reject: finish(() => reject(new Error("cancelled"))) },
+                detail: {
+                    resolve: finish(resolve),
+                    reject: finish(() => reject(new Error("cancelled"))),
+                    // A mounted prompt takes over; the operator may take as long as they need.
+                    ack: () => window.clearTimeout(timer),
+                },
             }),
         );
     });

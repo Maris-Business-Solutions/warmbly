@@ -13,6 +13,7 @@ import { APIError } from "@/lib/api/client";
 interface ReauthDetail {
     resolve: () => void;
     reject: () => void;
+    ack?: () => void;
 }
 
 export function ReauthDialog() {
@@ -28,7 +29,9 @@ export function ReauthDialog() {
             setCode("");
             setError("");
             setBusy(false);
-            setPending((e as CustomEvent<ReauthDetail>).detail);
+            const detail = (e as CustomEvent<ReauthDetail>).detail;
+            detail.ack?.();
+            setPending(detail);
         };
         window.addEventListener("reauth-required", handler);
         return () => window.removeEventListener("reauth-required", handler);
@@ -51,7 +54,7 @@ export function ReauthDialog() {
         } catch (err) {
             // One message for both factors; which one matched is not worth saying.
             setError(
-                err instanceof APIError && err.code === "reauth_no_factor"
+                err instanceof APIError && (err.code === "reauth_no_factor" || err.code === "reauth_limited")
                     ? err.message
                     : "That did not match. Try again.",
             );
