@@ -1,3 +1,5 @@
+import type { CRMExternalRef } from "./CRMProvider";
+
 export type CRMTaskPriority = "low" | "medium" | "high" | "urgent";
 export type CRMTaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
@@ -19,6 +21,8 @@ export default interface CRMTask {
     completed_at?: Date;
     created_at: Date;
     updated_at: Date;
+    // Set when the task lives in HubSpot.
+    external?: CRMExternalRef;
 }
 
 // Create/update body: due_date goes out as the RFC3339 string the form builds.

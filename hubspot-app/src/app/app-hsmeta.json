@@ -1,0 +1,38 @@
+{
+  "uid": "warmbly",
+  "type": "app",
+  "config": {
+    "name": "Warmbly",
+    "description": "Cold email and warmup that runs on your HubSpot CRM: every send and reply logged as a HubSpot email, deals and tasks in sync both ways, campaigns that stop when a deal opens, and a Warmbly card on every contact.",
+    "distribution": "marketplace",
+    "auth": {
+      "type": "oauth",
+      "redirectUrls": ["https://api.warmbly.com/integrations/oauth/callback"],
+      "requiredScopes": [
+        "oauth",
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.objects.companies.read",
+        "crm.objects.companies.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "crm.objects.owners.read",
+        "crm.schemas.contacts.read",
+        "crm.schemas.contacts.write"
+      ],
+      "optionalScopes": ["crm.lists.read", "sales-email-read"],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": ["https://api.warmbly.com"],
+      "iframe": [],
+      "img": []
+    },
+    "support": {
+      "supportEmail": "team@warmbly.com",
+      "documentationUrl": "https://docs.warmbly.com/guides/hubspot/",
+      "supportUrl": "https://warmbly.com",
+      "supportPhone": ""
+    }
+  }
+}

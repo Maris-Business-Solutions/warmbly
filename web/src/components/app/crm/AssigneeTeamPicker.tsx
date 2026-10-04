@@ -9,6 +9,9 @@ import useMembers from "@/lib/api/hooks/app/organizations/useMembers";
 import useTeams from "@/lib/api/hooks/app/teams/useTeams";
 import useClickOutside from "@/hooks/useClickOutside";
 import { cn } from "@/lib/utils";
+import { HubSpotMark } from "./HubSpot";
+import { HubSpotOwnerMappingLink } from "./hubspotCrm";
+import { useHubSpotOwnerIndex } from "./hubspotUtils";
 
 export interface AssigneeValue {
     userId?: string | null;
@@ -28,11 +31,14 @@ export default function AssigneeTeamPicker({
 }) {
     const { data: members } = useMembers();
     const { data: teams } = useTeams();
+    // HubSpot mode: a member without a HubSpot owner cannot hold a HubSpot task.
+    const { isHubSpot, isMapped } = useHubSpotOwnerIndex();
     const [open, setOpen] = React.useState(false);
     const ref = React.useRef<HTMLDivElement>(null);
     useClickOutside(open, () => setOpen(false), ref);
 
     const memberList = members ?? [];
+    const anyUnmapped = isHubSpot && memberList.some((m) => !isMapped(m.user_id));
     const teamList = teams ?? [];
     const selectedMember = value.userId ? memberList.find((m) => m.user_id === value.userId) : undefined;
     const selectedTeam = value.teamId ? teamList.find((t) => t.id === value.teamId) : undefined;
@@ -103,22 +109,39 @@ export default function AssigneeTeamPicker({
                     )}
                     {memberList.length > 0 && (
                         <>
-                            <div className="px-2.5 pt-2 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Members</div>
-                            {memberList.map((m) => (
-                                <button
-                                    key={m.id}
-                                    type="button"
-                                    onClick={() => pick({ userId: m.user_id, teamId: null })}
-                                    className={cn(
-                                        "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-100",
-                                        value.userId === m.user_id ? "font-medium text-slate-900" : "text-slate-700",
-                                    )}
-                                >
-                                    <UserIcon className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                                    <span className="flex-1 truncate">{m.email || m.name || "Member"}</span>
-                                    <span className="text-[10px] capitalize text-slate-400">{m.role}</span>
-                                </button>
-                            ))}
+                            <div className="px-2.5 pt-2 pb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                                Members
+                                {isHubSpot && <HubSpotMark className="w-3 h-3" title="Assigned as HubSpot owners" />}
+                            </div>
+                            {memberList.map((m) => {
+                                const mapped = isMapped(m.user_id);
+                                return (
+                                    <button
+                                        key={m.id}
+                                        type="button"
+                                        disabled={!mapped}
+                                        title={mapped ? undefined : "Not a HubSpot owner yet. Match them in HubSpot settings."}
+                                        onClick={() => pick({ userId: m.user_id, teamId: null })}
+                                        className={cn(
+                                            "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-100",
+                                            value.userId === m.user_id ? "font-medium text-slate-900" : "text-slate-700",
+                                            !mapped && "cursor-not-allowed opacity-50 hover:bg-transparent",
+                                        )}
+                                    >
+                                        <UserIcon className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                                        <span className="flex-1 truncate">{m.email || m.name || "Member"}</span>
+                                        <span className={cn("text-[10px] text-slate-400", mapped && "capitalize")}>
+                                            {mapped ? m.role : "Not in HubSpot"}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                            {anyUnmapped && (
+                                <HubSpotOwnerMappingLink
+                                    onNavigate={() => setOpen(false)}
+                                    className="mt-1 border-t border-slate-100 pt-2"
+                                />
+                            )}
                         </>
                     )}
                 </div>

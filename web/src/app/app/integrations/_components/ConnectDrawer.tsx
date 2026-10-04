@@ -16,6 +16,7 @@
 "use client";
 
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
     ArrowRightIcon,
@@ -114,6 +115,7 @@ export default function ConnectDrawer({
     const [step, setStep] = React.useState<"overview" | "credentials">("overview");
     const [busy, setBusy] = React.useState(false);
 
+    const navigate = useNavigate();
     const connect = useConnectIntegration();
     const startOAuth = useStartIntegrationOAuth();
     const finishOAuth = useFinishIntegrationOAuth();
@@ -139,6 +141,8 @@ export default function ConnectDrawer({
             toast.success(`Connected to ${entry.name}`);
             onConnected(conn);
             onClose();
+            // HubSpot continues into its CRM setup.
+            if (entry.provider === "hubspot") navigate("/app/integrations/hubspot");
         } catch (err: unknown) {
             toast.error(errMessage(err) ?? "Connection failed");
         } finally {

@@ -45,6 +45,10 @@ Google's scopes nest, so `gmail.modify` already covers reading, sending, composi
 
 A consent screen lets you untick individual permissions. Warmbly checks what was actually granted and refuses a half-granted mailbox at connect time, naming the missing permission, rather than storing one that looks connected and fails on its first send days later.
 
+#### When Microsoft asks for admin approval
+
+Many Microsoft 365 organizations let only an administrator approve a new app, and then Microsoft answers the sign-in with **Need admin approval** instead of its consent screen. Mailboxes bought from an inbox provider are usually in such an organization, run by the provider. Nothing you choose in Warmbly changes that, but one approval fixes it for everyone: after a first try, the **Sign in one mailbox** panel shows an approval link. Send it to the organization's administrator (for a provider's mailboxes, the provider). It approves exactly the four permissions above for the whole organization, and afterwards every mailbox in it signs in on its own, with no administrator involved. On a self-hosted instance, the operator verifying the publisher of their Microsoft app removes this step for most organizations; see [Outlook and Microsoft 365](/development/deployment-guide/#outlook-and-microsoft-365).
+
 **IMAP / SMTP** needs host, port, username, and password for each direction:
 
 ```text

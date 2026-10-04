@@ -32,7 +32,7 @@ CI is strict. `go build ./...` succeeding is not enough — `golangci-lint` runs
 
 Other CI-touching rules:
 
-- the frontend trees (`admin/`, `web/`, `site/`) each have their own CI jobs; run `pnpm typecheck` in any tree you touched and `pnpm lint` when the rules are non-trivial
+- the frontend trees (`admin/`, `web/`, `site/`, `qa/`) each have their own CI jobs; run `pnpm typecheck` in any tree you touched and `pnpm lint` when the rules are non-trivial
 - never push without first re-running the relevant `*build*` / `*typecheck*` / `*lint*` step on the affected tree
 - a `make lint` (or `gofmt -l`) failure is always a real CI failure; do not push hoping it will pass
 
@@ -173,9 +173,23 @@ is `make cli-check` (and `make cli-sha` after any edit).
 Do not:
 
 - do not run `go build ./...`, `pnpm build`, or docker image builds as a "did it work" check. They are slow and are not what CI gates on. `go run` (via the make dev targets) already compiles; `make fmt` + `make lint` + `pnpm typecheck` are the real signals.
-- do not write or run Python/Playwright (or any browser-automation) scripts to test the app. Manual, in-browser verification is the user's job against the native dev stack (`make infra` + `make backend` + `make web`). Do not add screenshot/e2e test harnesses to this repo.
+- do not write Python or ad-hoc browser scripts, and do not drive the app step by step from screenshots or accessibility snapshots. Browser automation lives in `qa/` and only records proof for a PR (below); it is not a test gate, and manual verification against the native dev stack stays the user's job.
 - do not run the Go test suite as a default gate unless the task is specifically about those tests.
 - do not push hoping CI passes; a `gofmt -l` / `make lint` / `pnpm typecheck` failure is always a real CI failure.
+
+### Visual proof on pull requests
+
+Record proof only for a UI change a reviewer should actually see; most changes need none. `qa/` is the harness and `qa/README.md` is its playbook; read it before the first recording.
+
+- record for: a new page, dialog, drawer or multi-step flow; a redesigned or re-laid-out screen; a changed interaction (new controls, new states, a different path through a task); a visible bug fix where the before was visibly broken; or when the user asks for it
+- skip for: anything without a visible change (backend, API, migrations, workers, tests, CI, docs, refactors, dependency bumps) and small visual tweaks (copy, a label, an icon, spacing or colour nudges), which the PR text describes instead. When unsure, skip
+- a follow-up commit is re-recorded only when it changes what the proof shows
+
+- write a scripted flow in `qa/flows/` from the code you changed, run `pnpm proof <filter>` in `qa/`, and read only pass or the failing step. Never screenshot your way around the page; `pnpm aria <path>` prints the accessibility tree when you need a selector
+- record against this worktree's own stack (`pnpm stack up`, in the smallest of `lite`, `full`, `sandbox` the flow needs), never another session's and never anything but localhost: the repository is public and so is everything attached to its PRs
+- publish with `pnpm share` once the PR exists. The first publish goes into the PR description; every later one is a comment showing before/after of only the stills that changed. Record follow-ups with `pnpm proof:fresh` so the comparison starts from fresh seed data. Media reaches GitHub only through `gh --attach`, never an image host, a commit or another repository
+- keep shot names stable across commits, because follow-up comments diff stills by name
+- the machine is shared: record from the main agent, never from fanned-out subagents (a machine-wide lock runs one recording at a time, so they would only queue while each holds a context), and `pnpm stack down` once the proof is published
 
 ## Security And Compliance Invariants
 
@@ -361,6 +375,7 @@ API keys with the `REALTIME_SUBSCRIBE` permission (bit 11) can connect to the sa
 - `realtime/`: websocket fanout service
 - `web/`: in-product frontend (dashboard). Customer-facing only: it holds no platform-admin screens, and operator tooling must not be added back here
 - `admin/`: platform admin panel (:5174), the single operator surface. Workers, users, orgs, warmup, campaigns, analytics, audit. Every route sits behind `RequireAdmin` and the backend's `RequireAdminPermission` gates
+- `qa/`: the proof harness (scripted Playwright flows recording 1080p walkthroughs and stills for pull requests, published with `gh --attach`). Its own package; see `qa/README.md`
 - `site/`: public marketing site (Astro 5 + Tailwind v4). `site/public/install.sh` is the self-host installer served at warmbly.com/install.sh and `site/public/cli.sh` is the CLI installer served at warmbly.com/cli.sh (with `cli.ps1` for Windows), each with its checksum next to it; see the rules above before touching either
 - `deploy/`: production deploy manifests, infrastructure, and runtime config. `deploy/split-cloud/` is the three-provider shape (control plane on a container host, bus + cache + fleet on machines you own, database + root key + object store in a cloud region), documented at `docs/content/docs/development/split-deployment.mdx`
 - `docs/`: documentation site (docs.warmbly.com); product guides, API reference, and self-hosting/engineering docs under `content/docs/development/`

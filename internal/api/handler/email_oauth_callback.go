@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/warmbly/warmbly/internal/app/delegation"
+	"github.com/warmbly/warmbly/internal/app/email"
 	"github.com/warmbly/warmbly/internal/app/poollink"
 	"github.com/warmbly/warmbly/internal/config"
 )
@@ -114,6 +115,21 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 		}
 	}
 
+	// Microsoft reports an admin consent with no code; the admin grant then needs a sign-in, same state.
+	if strings.HasPrefix(state, delegation.MicrosoftStatePrefix) && providerErr == "" && code == "" &&
+		strings.EqualFold(c.Query("admin_consent"), "true") && h.DelegationService != nil {
+		if to := h.DelegationService.MicrosoftSigninURL(state); to != "" {
+			c.Redirect(http.StatusFound, to)
+			return
+		}
+	}
+
+	// An administrator approving single-mailbox sign-in may be anywhere, with no dashboard to hand back to.
+	if state == email.OutlookAdminApprovalState {
+		renderAdminApproval(c, providerErr == "" && strings.EqualFold(c.Query("admin_consent"), "true"))
+		return
+	}
+
 	data := callbackData{
 		Provider:  provider,
 		Code:      code,
@@ -142,4 +158,34 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
 	_ = callbackPage.Execute(c.Writer, data)
+}
+
+var adminApprovalPage = template.Must(template.New("oauth-admin-approval").Parse(`<!doctype html>
+<html><head><meta charset="utf-8"><title>{{.Title}}</title>
+<style>
+  html,body{margin:0;height:100%;font:14px/1.5 -apple-system,Segoe UI,Inter,sans-serif;color:#0f172a;background:#f8fafc}
+  .wrap{display:flex;align-items:center;justify-content:center;height:100%;padding:16px;box-sizing:border-box}
+  .card{max-width:420px;padding:24px 28px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;box-shadow:0 8px 24px -12px rgba(15,23,42,.18)}
+  .h{font-size:15px;font-weight:600;margin:0 0 6px}
+  .t{font-size:13px;color:#64748b;margin:0}
+</style></head>
+<body><div class="wrap"><div class="card">
+  <p class="h">{{.Title}}</p>
+  <p class="t">{{.Body}}</p>
+</div></div></body></html>`))
+
+// renderAdminApproval answers the return from an administrator approving single-mailbox Microsoft sign-in.
+func renderAdminApproval(c *gin.Context, approved bool) {
+	data := struct{ Title, Body string }{
+		Title: "Approved",
+		Body:  "People in your organization can now connect their Microsoft mailboxes to Warmbly. You can close this window.",
+	}
+	if !approved {
+		data.Title = "Not approved"
+		data.Body = "Microsoft did not record the approval. Open the link again and sign in as a Global Administrator, Cloud Application Administrator or Application Administrator."
+	}
+	c.Header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Status(http.StatusOK)
+	_ = adminApprovalPage.Execute(c.Writer, data)
 }

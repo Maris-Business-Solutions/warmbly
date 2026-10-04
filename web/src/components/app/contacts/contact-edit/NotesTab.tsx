@@ -14,6 +14,9 @@ import useUpdateContactNote from "@/lib/api/hooks/app/contacts/useUpdateContactN
 import useDeleteContactNote from "@/lib/api/hooks/app/contacts/useDeleteContactNote";
 import { useConfirm } from "@/hooks/context/confirm";
 import type ContactNote from "@/lib/api/models/app/crm/ContactNote";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotBadge, HubSpotMark, OpenInHubSpot } from "@/components/app/crm/HubSpot";
+import { crmErrorMessage } from "@/components/app/crm/hubspotUtils";
 import { fmtRelative, fmtAbsolute } from "./format";
 
 // The notes endpoint returns either a bare array or a paginated
@@ -32,6 +35,7 @@ export default function NotesTab({ contactId }: { contactId: string }) {
     const create = useCreateContactNote();
     const remove = useDeleteContactNote();
     const confirm = useConfirm();
+    const { isHubSpot } = useCrmProvider();
 
     const [draft, setDraft] = React.useState("");
 
@@ -44,9 +48,9 @@ export default function NotesTab({ contactId }: { contactId: string }) {
             await toast.promise(
                 create.mutateAsync({ contactId, data: { content } }),
                 {
-                    loading: "Adding note…",
+                    loading: isHubSpot ? "Adding note to HubSpot…" : "Adding note…",
                     success: "Note added",
-                    error: "Could not add note",
+                    error: (e: unknown) => crmErrorMessage(e),
                 },
             );
             setDraft("");
@@ -63,7 +67,7 @@ export default function NotesTab({ contactId }: { contactId: string }) {
                     {
                         loading: "Deleting…",
                         success: "Note deleted",
-                        error: "Could not delete note",
+                        error: (e: unknown) => crmErrorMessage(e),
                     },
                 );
             } catch {
@@ -78,12 +82,17 @@ export default function NotesTab({ contactId }: { contactId: string }) {
                 <textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Add a note about this contact — context for the next person who looks them up."
+                    placeholder={
+                        isHubSpot
+                            ? "Add a note. It is saved to the contact in HubSpot."
+                            : "Add a note about this contact, context for the next person who looks them up."
+                    }
                     rows={3}
                     className="w-full resize-none px-3 py-2 text-[12px] text-slate-900 placeholder:text-slate-400 outline-none bg-transparent"
                 />
                 <div className="flex items-center justify-between border-t border-slate-100 px-2 py-1.5">
-                    <span className="text-[10.5px] text-slate-400">
+                    <span className="inline-flex items-center gap-2 text-[10.5px] text-slate-400">
+                        {isHubSpot && <HubSpotBadge />}
                         {draft.length}/10000
                     </span>
                     <button
@@ -153,7 +162,7 @@ function NoteRow({
         try {
             await toast.promise(
                 update.mutateAsync({ contactId, noteId: note.id, data: { content } }),
-                { loading: "Saving…", success: "Note updated", error: "Could not save" },
+                { loading: "Saving…", success: "Note updated", error: (e: unknown) => crmErrorMessage(e) },
             );
             setEditing(false);
         } catch {
@@ -164,34 +173,42 @@ function NoteRow({
     return (
         <div className="rounded-md border border-slate-200 bg-white px-3 py-2 group">
             <div className="flex items-center justify-between gap-2">
-                <span
-                    className="text-[10.5px] text-slate-400 tabular-nums"
-                    title={fmtAbsolute(note.created_at)}
-                >
-                    {fmtRelative(note.created_at)}
+                <span className="inline-flex items-center gap-1.5 min-w-0">
+                    {note.external && <HubSpotMark className="w-3 h-3" title="Saved in HubSpot" />}
+                    <span
+                        className="text-[10.5px] text-slate-400 tabular-nums"
+                        title={fmtAbsolute(note.created_at)}
+                    >
+                        {fmtRelative(note.created_at)}
+                    </span>
                 </span>
-                <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    {!editing && (
+                <div className="flex items-center gap-0.5">
+                    {note.external?.url && (
+                        <OpenInHubSpot external={note.external} compact label="Open note in HubSpot" />
+                    )}
+                    <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        {!editing && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDraft(note.content);
+                                    setEditing(true);
+                                }}
+                                className="size-6 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 inline-flex items-center justify-center"
+                                aria-label="Edit note"
+                            >
+                                <PencilIcon className="w-3 h-3" />
+                            </button>
+                        )}
                         <button
                             type="button"
-                            onClick={() => {
-                                setDraft(note.content);
-                                setEditing(true);
-                            }}
-                            className="size-6 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 inline-flex items-center justify-center"
-                            aria-label="Edit note"
+                            onClick={onDelete}
+                            className="size-6 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 inline-flex items-center justify-center"
+                            aria-label="Delete note"
                         >
-                            <PencilIcon className="w-3 h-3" />
+                            <TrashIcon className="w-3 h-3" />
                         </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={onDelete}
-                        className="size-6 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 inline-flex items-center justify-center"
-                        aria-label="Delete note"
-                    >
-                        <TrashIcon className="w-3 h-3" />
-                    </button>
+                    </div>
                 </div>
             </div>
             {editing ? (

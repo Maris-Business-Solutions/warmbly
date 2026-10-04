@@ -91,11 +91,14 @@ import type { RowSelection } from "@/lib/helper/rowSelection";
 import type OrganizationMember from "@/lib/api/models/app/organizations/OrganizationMember";
 import type Team from "@/lib/api/models/app/teams/Team";
 import type { AppError } from "@/lib/api/client/normalizeError";
-import buildError from "@/lib/helper/buildError";
 import TaskTypePicker from "@/components/app/crm/TaskTypePicker";
 import { taskTypeColor } from "@/components/app/crm/taskTypes";
 import { Checkbox } from "@/components/ui/checkbox";
 import { labelInk } from "@/lib/utils";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotMark, HubSpotSyncedAt, OpenInHubSpot } from "@/components/app/crm/HubSpot";
+import { HUBSPOT_SETTINGS_PATH, HubSpotHeaderStatus, HubSpotOwnerMappingLink } from "@/components/app/crm/hubspotCrm";
+import { crmErrorMessage, useHubSpotOwnerIndex } from "@/components/app/crm/hubspotUtils";
 
 const PRIORITIES: { id: CRMTaskPriority; label: string; dot: string; text: string }[] = [
     { id: "urgent", label: "Urgent", dot: "bg-red-500", text: "text-red-700" },
@@ -213,6 +216,7 @@ export default function TasksPage() {
     }, [teams]);
 
     const { data: types = [] } = useTaskTypes();
+    const { isHubSpot } = useCrmProvider();
 
     // ── Multi-select ───────────────────────────────────────────────────────
     // Either the rows ticked, or every task the current filter matches minus
@@ -280,7 +284,7 @@ export default function TasksPage() {
             clearIfUnchanged(submitted);
             report(res.affected, verb);
         } catch (err) {
-            toast.error(buildError(err as AppError));
+            toast.error(crmErrorMessage(err));
         }
     }
 
@@ -293,7 +297,7 @@ export default function TasksPage() {
                 clearIfUnchanged(submitted);
                 report(res.affected, "deleted");
             } catch (err) {
-                toast.error(buildError(err as AppError));
+                toast.error(crmErrorMessage(err));
             }
         });
     }
@@ -317,7 +321,11 @@ export default function TasksPage() {
 
     return (
         <Page>
-            <PageTopbar eyebrow="Tasks" subtitle="Follow-ups + reminders across the org">
+            <PageTopbar
+                eyebrow="Tasks"
+                subtitle={isHubSpot ? "HubSpot tasks · follow-ups across the org" : "Follow-ups + reminders across the org"}
+            >
+                {isHubSpot && <HubSpotHeaderStatus />}
                 <ViewToggle view={view} onChange={setView} />
                 <TopbarAction icon={<PlusIcon className="w-3 h-3" />} onClick={() => setNewOpen(true)}>
                     New task
@@ -744,7 +752,7 @@ function FlatRow({
                 data: { status: done ? "completed" : "pending" } as CRMTaskWrite,
             });
         } catch (err) {
-            toast.error(buildError(err as AppError));
+            toast.error(crmErrorMessage(err));
         }
     }
 
@@ -753,7 +761,7 @@ function FlatRow({
             try {
                 await del.mutateAsync(task.id);
             } catch (err) {
-                toast.error(buildError(err as AppError));
+                toast.error(crmErrorMessage(err));
             }
         });
     }
@@ -807,6 +815,7 @@ function FlatRow({
                     assignedTo={task.assigned_to}
                     team={team}
                     assignedTeamId={task.assigned_team_id}
+                    externalOwner={task.external?.owner_name}
                 />
             </td>
             <td className="px-3 whitespace-nowrap">
@@ -824,6 +833,15 @@ function FlatRow({
                 <DueCell due={task.due_date} overdue={overdue} />
             </td>
             <td className="px-2 w-9 text-right" onClick={(e) => e.stopPropagation()}>
+                <div className="inline-flex items-center justify-end gap-0.5">
+                {task.external?.url && (
+                    <OpenInHubSpot
+                        external={task.external}
+                        label="Open in HubSpot"
+                        compact
+                        className="size-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                    />
+                )}
                 <PopoverMenu open={menuOpen} onOpenChange={setMenuOpen} align="end">
                     <PopoverMenuTrigger asChild>
                         <button
@@ -849,6 +867,7 @@ function FlatRow({
                         </PopoverMenuItem>
                     </PopoverMenuContent>
                 </PopoverMenu>
+                </div>
             </td>
         </tr>
     );
@@ -1016,14 +1035,14 @@ function GroupedRow({
         try {
             await update.mutateAsync({ id: task.id, data: { status: next } as CRMTaskWrite });
         } catch (err) {
-            toast.error(buildError(err as AppError));
+            toast.error(crmErrorMessage(err));
         }
     }
 
     return (
         <div
             onClick={() => onOpen(task)}
-            className={`h-10 px-3 flex items-center gap-2.5 cursor-pointer transition-colors ${
+            className={`group h-10 px-3 flex items-center gap-2.5 cursor-pointer transition-colors ${
                 selected ? "bg-sky-50/60" : "hover:bg-slate-50"
             }`}
         >
@@ -1059,6 +1078,7 @@ function GroupedRow({
                 assignedTo={task.assigned_to}
                 team={team}
                 assignedTeamId={task.assigned_team_id}
+                externalOwner={task.external?.owner_name}
                 compact
             />
             <span
@@ -1070,6 +1090,14 @@ function GroupedRow({
             <span className="inline-flex items-center gap-1 font-mono text-[10.5px] tabular-nums shrink-0 w-20 justify-end">
                 <DueCell due={task.due_date} overdue={overdue} />
             </span>
+            {task.external?.url && (
+                <OpenInHubSpot
+                    external={task.external}
+                    label="Open in HubSpot"
+                    compact
+                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                />
+            )}
         </div>
     );
 }
@@ -1106,17 +1134,21 @@ function AssigneeCell({
     assignedTo,
     team,
     assignedTeamId,
+    externalOwner,
     compact = false,
 }: {
     member?: OrganizationMember;
     assignedTo?: string;
     team?: Team;
     assignedTeamId?: string;
+    // The HubSpot owner's name when that owner is not a workspace member.
+    externalOwner?: string;
     compact?: boolean;
 }) {
     // A task may carry a person, a team, both, or neither. Render whichever are
     // present; only fall back to "Unassigned" when nothing is set.
-    if (!assignedTo && !assignedTeamId) {
+    const hubspotOwner = !assignedTo ? externalOwner?.trim() : undefined;
+    if (!assignedTo && !assignedTeamId && !hubspotOwner) {
         return <span className="text-slate-300 text-[11.5px]">{compact ? "" : "Unassigned"}</span>;
     }
     const label = memberLabel(member, assignedTo);
@@ -1132,6 +1164,17 @@ function AssigneeCell({
                         {initials}
                     </span>
                     {!compact && <span className="text-[11.5px] text-slate-600 truncate">{label}</span>}
+                </span>
+            )}
+            {hubspotOwner && (
+                <span
+                    className="inline-flex items-center gap-1.5 min-w-0"
+                    title={`${hubspotOwner} (HubSpot owner, not a workspace member)`}
+                >
+                    <span className="size-5 shrink-0 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[9px] font-semibold inline-flex items-center justify-center uppercase tracking-tight">
+                        {memberInitials({ name: hubspotOwner } as OrganizationMember)}
+                    </span>
+                    {!compact && <span className="text-[11.5px] text-slate-600 truncate">{hubspotOwner}</span>}
                 </span>
             )}
             {assignedTeamId && <TeamChip team={team} teamId={assignedTeamId} compact={compact} />}
@@ -1796,9 +1839,12 @@ function TaskDialog({
     const [status, setStatus] = React.useState<CRMTaskStatus>("pending");
     const [assignedTo, setAssignedTo] = React.useState<string>("");
     const [assignedTeamId, setAssignedTeamId] = React.useState<string>("");
+    const { isHubSpot } = useCrmProvider();
+    const [saveError, setSaveError] = React.useState<{ message: string; code?: string } | null>(null);
 
     React.useEffect(() => {
         if (!open) return;
+        setSaveError(null);
         if (editing) {
             setTitle(editing.title);
             setDescription(editing.description ?? "");
@@ -1836,18 +1882,32 @@ function TaskDialog({
         if (assignedTeamId) data.assigned_team_id = assignedTeamId;
         if (editing) data.status = status;
 
+        // HubSpot answers in sentences worth reading, so they stay in the dialog.
+        if (isHubSpot) {
+            setSaveError(null);
+            try {
+                if (editing) await update.mutateAsync({ id: editing.id, data });
+                else await create.mutateAsync(data);
+                toast.success(editing ? "Task saved to HubSpot" : "Task created in HubSpot");
+                onClose();
+            } catch (e) {
+                setSaveError({ message: crmErrorMessage(e), code: (e as AppError)?.code });
+            }
+            return;
+        }
+
         try {
             if (editing) {
                 await toast.promise(update.mutateAsync({ id: editing.id, data }), {
                     loading: "Saving…",
                     success: "Task updated",
-                    error: (e: AppError) => buildError(e),
+                    error: (e: AppError) => crmErrorMessage(e),
                 });
             } else {
                 await toast.promise(create.mutateAsync(data), {
                     loading: "Creating task…",
                     success: "Task created",
-                    error: (e: AppError) => buildError(e),
+                    error: (e: AppError) => crmErrorMessage(e),
                 });
             }
             onClose();
@@ -1863,7 +1923,7 @@ function TaskDialog({
                 await toast.promise(del.mutateAsync(editing.id), {
                     loading: "Deleting…",
                     success: "Task deleted",
-                    error: (e: AppError) => buildError(e),
+                    error: (e: AppError) => crmErrorMessage(e),
                 });
                 onClose();
             } catch {
@@ -1916,17 +1976,29 @@ function TaskDialog({
                                     <TrashIcon className="w-3 h-3" />
                                 </button>
                             )}
+                            {editing?.external?.url && (
+                                <OpenInHubSpot external={editing.external} label="Open in HubSpot" compact className="ml-auto" />
+                            )}
                             <button
                                 type="button"
                                 onClick={onClose}
                                 aria-label="Close"
-                                className="ml-auto size-7 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center justify-center transition-colors"
+                                className={`${editing?.external?.url ? "" : "ml-auto "}size-7 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center justify-center transition-colors`}
                             >
                                 <XIcon className="w-3.5 h-3.5" />
                             </button>
                         </div>
 
                         <div className="px-4 py-4 space-y-3 overflow-y-auto min-h-0 flex-1">
+                            {isHubSpot && (
+                                <div className="flex items-center gap-1.5 text-[11.5px] text-slate-500">
+                                    <HubSpotMark className="w-3 h-3" />
+                                    <span>{editing ? "Changes save to this task in HubSpot." : "This task is created in HubSpot."}</span>
+                                    {editing?.external?.synced_at && (
+                                        <HubSpotSyncedAt at={editing.external.synced_at} className="ml-auto hidden sm:inline-flex" />
+                                    )}
+                                </div>
+                            )}
                             <div>
                                 <Label>Title</Label>
                                 <TextInput
@@ -1953,14 +2025,18 @@ function TaskDialog({
                                     <TaskTypePicker value={type} onChange={setType} />
                                 </div>
                                 <div>
-                                    <Label>Assignee</Label>
+                                    <Label>{isHubSpot ? "Assigned to" : "Assignee"}</Label>
                                     <AssigneePicker
                                         value={assignedTo}
                                         members={members}
-                                        onChange={setAssignedTo}
+                                        onChange={(id) => {
+                                            setAssignedTo(id);
+                                            setSaveError(null);
+                                        }}
                                         teams={teams}
                                         teamValue={assignedTeamId}
                                         onTeamChange={setAssignedTeamId}
+                                        externalOwner={!assignedTo ? editing?.external?.owner_name : undefined}
                                     />
                                 </div>
                             </div>
@@ -2002,6 +2078,19 @@ function TaskDialog({
                                     </div>
                                 </div>
                             )}
+                            {saveError && (
+                                <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11.5px] leading-relaxed text-red-700">
+                                    {saveError.message}
+                                    {(saveError.code === "crm_reauth_required" || saveError.code === "crm_owner_unmapped") && (
+                                        <>
+                                            {" "}
+                                            <Link to={HUBSPOT_SETTINGS_PATH} className="font-medium underline underline-offset-2 hover:text-red-900">
+                                                Open HubSpot settings
+                                            </Link>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         <div className="px-3 h-12 shrink-0 border-t border-slate-200 flex items-center gap-1.5">
@@ -2038,6 +2127,7 @@ function AssigneePicker({
     teams,
     teamValue,
     onTeamChange,
+    externalOwner,
 }: {
     value: string;
     members: OrganizationMember[];
@@ -2045,10 +2135,15 @@ function AssigneePicker({
     teams: Team[];
     teamValue: string;
     onTeamChange: (id: string) => void;
+    // HubSpot owner not in this workspace, shown while no member is picked.
+    externalOwner?: string;
 }) {
     const [open, setOpen] = React.useState(false);
     const cur = members.find((m) => m.user_id === value);
     const curTeam = teams.find((t) => t.id === teamValue);
+    // HubSpot mode: only members HubSpot knows as owners can be assigned.
+    const { isHubSpot, isMapped } = useHubSpotOwnerIndex();
+    const anyUnmapped = isHubSpot && members.some((m) => !isMapped(m.user_id));
 
     // Person and team are independent: a task can set one, both, or neither.
     // The trigger summarizes whichever are selected.
@@ -2058,7 +2153,9 @@ function AssigneePicker({
             : memberLabel(cur)
         : curTeam
           ? curTeam.name
-          : "Unassigned";
+          : externalOwner
+            ? `${externalOwner} (HubSpot owner)`
+            : "Unassigned";
 
     return (
         <PopoverMenu open={open} onOpenChange={setOpen} align="start">
@@ -2101,6 +2198,12 @@ function AssigneePicker({
                         onSelect={() => onChange(m.user_id)}
                         selected={m.user_id === value}
                         closeOnSelect={false}
+                        disabled={!isMapped(m.user_id)}
+                        trailing={
+                            isMapped(m.user_id) ? undefined : (
+                                <span className="text-[10px] text-slate-400">Not in HubSpot</span>
+                            )
+                        }
                         icon={
                             <span className="size-5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[9px] font-semibold inline-flex items-center justify-center uppercase">
                                 {memberInitials(m)}
@@ -2110,6 +2213,7 @@ function AssigneePicker({
                         <span className="truncate">{memberLabel(m)}</span>
                     </PopoverMenuItem>
                 ))}
+                {anyUnmapped && <HubSpotOwnerMappingLink onNavigate={() => setOpen(false)} />}
                 <div className="my-1 h-px bg-slate-200" />
                 <div className="px-3 pt-0.5 pb-1 text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">
                     Team

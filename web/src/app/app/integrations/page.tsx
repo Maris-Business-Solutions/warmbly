@@ -172,6 +172,13 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
         navigate(path);
     }
 
+    // HubSpot has its own home (connect, CRM setup and settings), so every way
+    // into it leads there rather than to the generic drawers.
+    function manage(c: IntegrationConnection) {
+        if (c.provider === "hubspot") go(`${STORE_BASE}/hubspot`);
+        else setManageTarget(c);
+    }
+
     function openItem(item: StoreItem) {
         go(itemPath(item));
     }
@@ -182,8 +189,12 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
             openItem(item);
             return;
         }
+        if (item.entry.provider === "hubspot") {
+            go(`${STORE_BASE}/hubspot`);
+            return;
+        }
         const existing = connByProvider[item.entry.provider];
-        if (existing) setManageTarget(existing);
+        if (existing) manage(existing);
         else setConnectTarget(item.entry);
     }
 
@@ -212,7 +223,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                 allConnections={connByProvider}
                 related={relatedTo(entry.category, `b:${entry.provider}`)}
                 onConnect={() => setConnectTarget(entry)}
-                onManage={setManageTarget}
+                onManage={manage}
                 onOpenItem={openItem}
                 onActItem={actOnItem}
             />
@@ -299,7 +310,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                             {attention.length === 1 ? "A connection needs attention." : `${attention.length} connections need attention.`}
                         </span>
                         {attention.map((c) => (
-                            <button key={c.id} type="button" onClick={() => setManageTarget(c)} className="font-medium underline-offset-2 hover:underline">
+                            <button key={c.id} type="button" onClick={() => manage(c)} className="font-medium underline-offset-2 hover:underline">
                                 Fix {c.label || entryByProvider[c.provider]?.name}
                             </button>
                         ))}

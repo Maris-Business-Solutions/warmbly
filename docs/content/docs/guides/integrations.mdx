@@ -31,7 +31,7 @@ The active filters show as chips you can clear one at a time or all at once. Sea
 
 | Provider | Category | Connect | What it does |
 | --- | --- | --- | --- |
-| HubSpot | CRM | one-click OAuth | Create or update a contact, log the reply as a note |
+| HubSpot | CRM | one-click OAuth | Create or update a contact, log the reply as a note, or run the workspace's whole CRM on HubSpot ([HubSpot mode](/guides/hubspot/)) |
 | Salesforce | CRM | one-click OAuth | Upsert a contact on reply or on demand |
 | Pipedrive | CRM | one-click OAuth | Upsert a person on reply or on demand |
 | Close | CRM | API key | Upsert a lead on reply or on demand |
@@ -103,6 +103,10 @@ Any change to the listing, or to the app's name, logo, website or permissions, r
 
 A listing's link must be 3 to 48 lowercase letters, numbers or single dashes, and the names of the built-in integrations are reserved. The tagline is at most 120 characters and the description 2,000. Every link must be `https`.
 
+## HubSpot as your CRM
+
+HubSpot can do more than receive contacts: in [HubSpot mode](/guides/hubspot/) it becomes the workspace's CRM. Deals, pipelines, tasks and notes are HubSpot's records written through from Warmbly, sends, replies, bounces, unsubscribes and meetings are logged on the HubSpot timeline, and a deal opened or a lifecycle stage reached in HubSpot stops the contact's campaigns. Set it up from **Integrations > HubSpot**.
+
 ## CRM field mappings
 
 A mapping decides how a Warmbly contact projects onto provider fields. Every connection ships a sensible default:
@@ -117,6 +121,8 @@ A mapping decides how a Warmbly contact projects onto provider fields. Every con
 Override per connection: each row pairs a Warmbly source field with a destination name and can apply a `uppercase`, `lowercase`, or `trim` transform, or write a fixed `static` value. Custom contact fields are addressed as `custom:your_key`, and a static value can include event variables like `{{.company}}`.
 
 Mappings resolve by specificity: provider defaults, then your connection map, then per-automation overrides, with the most specific winning.
+
+In HubSpot mode, contacts sync on their own with a field map of their own that also sets a direction per field. See [contacts and field mapping](/guides/hubspot/#contacts-and-field-mapping).
 
 <Callout type="info" title="Blank values are not written">
 Empty values are dropped before the upsert, so a missing first name never blanks an existing one in your CRM.

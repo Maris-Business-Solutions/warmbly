@@ -65,6 +65,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/form"
 	"github.com/warmbly/warmbly/internal/app/group"
 	"github.com/warmbly/warmbly/internal/app/guardrail"
+	"github.com/warmbly/warmbly/internal/app/hubspot"
 	idempotencyapp "github.com/warmbly/warmbly/internal/app/idempotency"
 	"github.com/warmbly/warmbly/internal/app/inboxagent"
 	"github.com/warmbly/warmbly/internal/app/inboxtag"
@@ -184,6 +185,7 @@ func main() {
 	var emailService email.EmailService
 	var mailboxImportService *mailboximport.Service
 	var contactImportService *contactimport.Service
+	var hubspotService *hubspot.Service
 	var delegationService *delegation.Service
 	var vendorConnService *vendorconn.Service
 	var sendingDomainService *sendingdomain.Service
@@ -2027,6 +2029,30 @@ func main() {
 			})
 			go contactImportService.Run(ctx)
 		}
+
+		// HubSpot as the workspace CRM: write-through for the CRM service, the
+		// activity sink, and the outbox for automation-written records. The
+		// consumer drains the outbox and runs the pull.
+		hubspotService = hubspot.New(hubspot.Deps{
+			Repo:         repository.NewCRMProviderRepository(primaryDB.Pool),
+			CRM:          crmRepository,
+			Tokens:       integrationServiceForHandler,
+			Contacts:     contactRepostory,
+			Holds:        campaignProgressRepository,
+			Suppress:     advancedRepository,
+			Importer:     hubspotImporter(contactImportService),
+			Leads:        contactService,
+			Realtime:     streamingPublisher,
+			Cache:        cache,
+			AppURL:       os.Getenv("APP_URL"),
+			ClientSecret: strings.TrimSpace(os.Getenv("HUBSPOT_OAUTH_CLIENT_SECRET")),
+		})
+		crmService.SetExternal(hubspotService)
+		integrationServiceForHandler.SetCRMModeCheck(hubspotService.Active)
+		webhookServiceForHandler.WireRecordSink(hubspotService.OnEvent)
+		if advancedService != nil {
+			advancedService.WireCRMOutbox(hubspotService)
+		}
 		emailVerifyService.SetVerdictHook(func(ctx context.Context, orgID uuid.UUID) {
 			if campaignService != nil {
 				campaignService.ResumeVerificationPaused(ctx, orgID)
@@ -2255,6 +2281,7 @@ func main() {
 
 		// CRM
 		CRMService: crmService,
+		HubSpot:    hubspotService,
 
 		// Teams
 		TeamService: teamService,
@@ -2440,6 +2467,15 @@ func main() {
 }
 
 // emailVerifyHeloHost resolves the hostname the pre-send verifier announces in
+// hubspotImporter keeps a missing import service a nil interface rather than
+// a typed nil, so HubSpot list import reports itself unavailable.
+func hubspotImporter(s *contactimport.Service) hubspot.Importer {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
 // analyticsHostFrom reduces APP_URL to a bare hostname. It is one of the three
 // inputs to PostHog's cookieless hash, and PostHog reduces it further to the
 // registrable root domain, which is what makes a visit to warmbly.com and the

@@ -54,6 +54,10 @@ import {
     type MeetingsSearch,
 } from "@/lib/api/models/app/integrations/Integration";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotMark } from "@/components/app/crm/HubSpot";
+import { HUBSPOT_SETTINGS_PATH } from "@/components/app/crm/hubspotCrm";
 
 type Timeframe = "upcoming" | "past" | "all";
 
@@ -154,6 +158,9 @@ export default function MeetingsPage() {
     const { data: summary } = useMeetingsSummary();
 
     const rows = meetings ?? [];
+    // HubSpot mode with meeting logging on: booked calls also land in HubSpot.
+    const { isHubSpot, settings } = useCrmProvider();
+    const logsToHubSpot = isHubSpot && !!settings?.config?.activity?.meetings;
 
     return (
         <Page>
@@ -174,6 +181,20 @@ export default function MeetingsPage() {
             </StatStrip>
 
             <PageBody>
+                {logsToHubSpot && (
+                    <div className="px-5 py-2 border-b border-slate-200 bg-[#FF7A59]/[0.04] flex items-center gap-2 text-[11.5px] text-slate-600">
+                        <HubSpotMark className="w-3.5 h-3.5" />
+                        <span className="min-w-0 flex-1">
+                            Calls booked through Calendly or Cal.com are logged to HubSpot as meetings on the contact.
+                        </span>
+                        <Link
+                            to={HUBSPOT_SETTINGS_PATH}
+                            className="shrink-0 text-[11.5px] font-medium text-slate-600 hover:text-orange-700 transition-colors"
+                        >
+                            Settings
+                        </Link>
+                    </div>
+                )}
                 <SectionBar label="Meetings" count={total ? `${rows.length} of ${total}` : undefined}>
                     <div className="flex items-center gap-0.5 rounded-md border border-slate-200 p-0.5">
                         {TABS.map((tab) => (

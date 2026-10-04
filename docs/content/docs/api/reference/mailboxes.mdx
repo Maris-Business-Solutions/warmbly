@@ -747,6 +747,8 @@ Response:
 }
 ```
 
+For `outlook` the response also carries `admin_consent_url`: Microsoft's admin consent page for the same delegated permissions, tenant-wide. Pass it to the organization's administrator when Microsoft answers the sign-in with **Need admin approval**; once they approve, every mailbox in the organization can sign in. It returns to the API's callback page, which shows the outcome and hands nothing back to an opener.
+
 After the user approves, the provider redirects to the API's callback page, which hands `code` and `state` back to the client: a web opener receives them via `postMessage`, and when there is no opener (a native in-app browser session) the page redirects to `warmbly://email-oauth?provider=...&code=...&state=...&error=...` instead. Either way, the client then calls Finish OAuth.
 
 ### Finish OAuth

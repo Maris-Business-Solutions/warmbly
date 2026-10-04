@@ -2,8 +2,10 @@ package email
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/models"
 	"golang.org/x/oauth2"
 )
@@ -64,5 +66,29 @@ func TestAuthCodeOptions_LoginHintOnlyOnReconnect(t *testing.T) {
 		if got := q.Get("login_hint"); got != "owner@example.com" {
 			t.Errorf("%s: login_hint = %q, want the mailbox being renewed", provider, got)
 		}
+	}
+}
+
+// The approval link grants tenant-wide exactly what single-mailbox sign-in asks
+// for, never .default, which would also carry the whole-organization app permissions.
+func TestOutlookAdminApprovalURLCoversOnlyTheSigninScopes(t *testing.T) {
+	cfg := config.OutlookOauth2Inbox("https://api.example.com")
+	cfg.ClientID = "client"
+	u, err := url.Parse(outlookAdminApprovalURL(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	if u.Host != "login.microsoftonline.com" || u.Path != "/organizations/v2.0/adminconsent" {
+		t.Fatalf("approval url = %s", u)
+	}
+	if q.Get("client_id") != "client" || q.Get("redirect_uri") != "https://api.example.com/addresses/outlook/callback" || q.Get("state") != OutlookAdminApprovalState {
+		t.Fatalf("approval query = %v", q)
+	}
+	if q.Get("scope") != strings.Join(cfg.Scopes, " ") || strings.Contains(q.Get("scope"), ".default") {
+		t.Fatalf("approval scope = %q", q.Get("scope"))
+	}
+	if got := outlookAdminApprovalURL(&oauth2.Config{Endpoint: oauth2.Endpoint{AuthURL: "https://provider.example.com/authorize"}}); got != "" {
+		t.Fatalf("a non-Microsoft endpoint produced %q", got)
 	}
 }

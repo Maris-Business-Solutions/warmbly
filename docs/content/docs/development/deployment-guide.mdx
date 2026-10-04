@@ -533,7 +533,12 @@ BOX_OUTLOOK_CLIENT_SECRET=your-client-secret-value
 </Steps>
 
 <Callout title="Non-admin users and tenant-wide consent">
-None of the four permissions above requires admin consent by default, so an ordinary user can connect their own mailbox. A tenant that has turned user consent off needs an admin to grant consent once, under **Enterprise applications > your app > Permissions > Grant admin consent**. Warmbly's authorize request asks for `prompt=select_account`, never `prompt=consent`, so that grant is honoured for everyone afterwards. See [approval required when connecting an Outlook mailbox](/development/troubleshooting/#the-stack-is-up-but-something-is-wrong) if a non-admin is still refused.
+None of the four permissions above is admin-only, but whether an ordinary user may approve them is each Microsoft 365 organization's decision, not yours. Two things send a user to Microsoft's **Need admin approval** screen:
+
+- **An unverified app.** Microsoft's risk-based step-up consent treats a multitenant app registered after November 2020 with no verified publisher as risky when it asks for mail permissions, and sends every user to an administrator. [Verify the publisher](https://learn.microsoft.com/entra/identity-platform/publisher-verification-overview) of the app registration (a free Microsoft AI Cloud Partner Program account) and users of organizations with the default consent settings can approve it themselves.
+- **An organization that allows no user consent**, or only for permissions its administrator classified as low impact. Nothing on your side changes that.
+
+Either way, an administrator approves once for the whole organization and every mailbox in it then signs in on its own. The **Sign in one mailbox** panel shows a member the approval link to send them after a first try, and an administrator can also use **Enterprise applications > your app > Permissions > Grant admin consent**. Warmbly's authorize request asks for `prompt=select_account`, never `prompt=consent`, so that grant is honoured for everyone afterwards.
 </Callout>
 
 <Callout type="warn" title="Workers need these too">
