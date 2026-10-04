@@ -66,6 +66,11 @@ type Table struct {
 	// what Scope exports. Empty means Scope. $1 is the organization id.
 	Owner string
 
+	// PartnerRefs are columns that legitimately name another workspace's row: a
+	// warmup partner, a placement seed or a third-party app. The import's
+	// ownership check skips them.
+	PartnerRefs []string
+
 	// Secrets are columns holding ciphertext that must be re-keyed.
 	Secrets []SecretColumn
 
@@ -275,6 +280,7 @@ var Tables = []Table{
 	},
 	{
 		Name: "oauth_access_grants", Group: models.OrgDataGroupCore,
+		PartnerRefs:   []string{"application_id"},
 		Scope:         scopeOrg,
 		ResetOnImport: []string{"last_used_at"},
 	},
@@ -282,6 +288,7 @@ var Tables = []Table{
 		// Below oauth_applications: an endpoint owned by an OAuth app carries
 		// oauth_application_id, so the app has to exist first.
 		Name: "webhook_endpoints", Group: models.OrgDataGroupCore,
+		PartnerRefs:   []string{"oauth_application_id"},
 		Scope:         scopeOrg,
 		ResetOnImport: []string{"last_success_at", "last_failure_at", "last_failure_reason", "consecutive_failures", "first_failure_at", "auto_disabled_at", "disabled_reason"},
 		// The signing secret is sealed under the instance key, so it has to be
@@ -676,7 +683,8 @@ var Tables = []Table{
 	},
 	{
 		Name: "warmup_spam_reports", Group: models.OrgDataGroupWarmup,
-		Scope: `reporter_account_id IN ` + orgMailboxes,
+		PartnerRefs: []string{"reported_account_id"},
+		Scope:       `reporter_account_id IN ` + orgMailboxes,
 	},
 	{
 		Name: "warmup_pool_participants", Group: models.OrgDataGroupWarmup,
@@ -775,11 +783,13 @@ var Tables = []Table{
 	},
 	{
 		Name: "warmup_tasks", Group: models.OrgDataGroupSending,
-		Scope: `task_id IN ` + orgTasks,
+		PartnerRefs: []string{"target_account_id"},
+		Scope:       `task_id IN ` + orgTasks,
 	},
 	{
 		Name: "warmup_tokens", Group: models.OrgDataGroupSending,
-		Scope: `task_id IN ` + orgTasks,
+		PartnerRefs: []string{"recipient_account_id"},
+		Scope:       `task_id IN ` + orgTasks,
 	},
 	{
 		Name: "task_failures", Group: models.OrgDataGroupSending,
@@ -852,6 +862,7 @@ var Tables = []Table{
 	},
 	{
 		Name: "placement_results", Group: models.OrgDataGroupEvents,
+		PartnerRefs:   []string{"seed_account_id"},
 		Scope:         `test_id IN ` + orgPlacements,
 		ResetOnImport: []string{"seed_account_id", "remote_seed_id", "task_id", "remote_synced_at"},
 	},

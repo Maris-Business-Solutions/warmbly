@@ -568,6 +568,11 @@ func (s *service) tenantReferences(ctx context.Context, table string, insertCols
 	for _, c := range insertCols {
 		written[c] = true
 	}
+	if t, ok := TableByName[table]; ok {
+		for _, c := range t.PartnerRefs {
+			delete(written, c)
+		}
+	}
 	var out []repository.TenantReference
 	for _, fk := range fks {
 		carried := true
