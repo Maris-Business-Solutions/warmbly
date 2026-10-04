@@ -15,9 +15,7 @@ import (
 	"github.com/warmbly/warmbly/internal/pkg/crypt"
 )
 
-// Login and registration keep separate send budgets. They used to share one
-// key, which let anyone lock a known user out of login for the whole window by
-// POSTing /auth/register with that user's address.
+// Login and registration keep separate send budgets, so registering an address cannot spend its login budget.
 func getEmailVerificationKey(flow, email string) string {
 	return "email_verification:" + flow + ":" + crypt.SHA256(email)
 }
@@ -204,9 +202,7 @@ func (s *authService) refundPasswordResetLimit(ctx context.Context, email string
 }
 
 // saveResetPasswordSession binds the emailed reset JWT to a server-side nonce.
-// The TTL is PasswordResetTTL, the same lifetime the JWT carries and the same
-// one the email quotes: it used to be SessionTTL (10 minutes) against a 1-hour
-// token and a mail that promised 4 hours.
+// The TTL is PasswordResetTTL, the same lifetime the JWT carries and the email quotes.
 func (s *authService) saveResetPasswordSession(ctx context.Context, sessionID uuid.UUID, nonce string) *errx.Error {
 	if err := s.cache.SetEx(ctx, getResetPasswordSessionKey(sessionID), nonce, PasswordResetTTL).Err(); err != nil {
 		errs.CaptureException(err)

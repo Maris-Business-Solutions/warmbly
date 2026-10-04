@@ -64,7 +64,7 @@ config :phoenix, :json_library, Jason
 config :phoenix, :filter_parameters, ["password", "token", "secret", "key"]
 
 # Sentry configuration. Uses a Finch HTTP client instead of the default
-# hackney one (hackney was dropped to clear CVE-2026-47071).
+# hackney one, so the app carries no hackney dependency.
 config :sentry,
   client: Realtime.SentryFinchClient,
   environment_name: Mix.env(),

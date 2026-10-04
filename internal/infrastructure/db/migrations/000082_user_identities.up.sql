@@ -1,11 +1,7 @@
 -- Federated identities, keyed on (provider, issuer, subject).
 --
--- External sign-in previously resolved the account by email alone. That is
--- defensible for Apple and Google, which control their own email namespace,
--- but it becomes an account-takeover primitive the moment an operator points
--- a generic OIDC issuer at a provider where anyone can self-register an
--- arbitrary address: sign up there as someone@company.com and you are them
--- here. Coder shipped that exact bug (CVE-2026-55076).
+-- An identity is bound to an account by (issuer, subject), never by email
+-- alone: a generic OIDC issuer may let anyone register any address.
 --
 -- The subject claim is the only stable, provider-controlled identifier, so it
 -- is what the account is bound to. Email is a fallback used once, to link a
