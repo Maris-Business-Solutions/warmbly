@@ -13,7 +13,7 @@ import (
 
 // Internal email-message-map endpoints. Workers call these instead of touching
 // Postgres directly (per CLAUDE.md), mirroring the DEK endpoints. Auth via
-// middleware.InternalAuthMiddleware (static bearer token in INTERNAL_API_TOKEN).
+// middleware.NodeBrokerAuthMiddleware (the node token).
 //
 //	PUT    /api/v1/internal/email-message-map  body {user_id,email_id,message_id,id,thread_id} -> 204
 //	GET    /api/v1/internal/email-message-map?user_id=&email_id=&message_id=

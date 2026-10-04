@@ -10,15 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// InternalAuthMiddleware protects backend-to-backend endpoints (the worker DEK
-// fetch is the first user) with a static bearer token sourced from the
-// INTERNAL_API_TOKEN env var. Constant-time compare to defeat timing oracles.
-//
-// This is a deliberately simple primitive — workers and backend share one
-// secret out-of-band (env var in both processes). Task #9 will replace this
-// with per-worker JWTs minted at registration time.
-//
-// If INTERNAL_API_TOKEN is unset, every request is rejected — fail closed.
+// InternalAuthMiddleware protects the internal routes the edge services
+// (tracking, forms) call, with the static INTERNAL_API_TOKEN bearer. It fails
+// closed when the token is unset; the compare is constant-time.
 func (h *Handler) InternalAuthMiddleware() gin.HandlerFunc {
 	return internalAuth
 }
@@ -53,20 +47,13 @@ func internalAuth(c *gin.Context) {
 	c.Next()
 }
 
-// NodeBrokerAuthMiddleware protects the two endpoints that perform a
-// privileged operation on a caller's behalf: opening a sealed data key, and
-// signing a blob operation.
+// NodeBrokerAuthMiddleware protects the internal routes only fleet nodes
+// call: key material, blob signing, the message map, sync lookups, worker
+// config and the node heartbeat.
 //
-// They are a step up from the rest of the internal API, which only moves
-// records around. A caller here gets plaintext key material and a URL into the
-// object store, so the token that opens them should not have to be the same
-// one the tracking and forms services carry: those are internet-facing, and
-// widening what their credential is worth is the whole risk.
-//
-// NODE_BROKER_TOKEN is that separate credential. It falls back to
-// INTERNAL_API_TOKEN when unset, so an existing single-token deployment keeps
-// working, and a split deployment can hand nodes something the edge services
-// never see.
+// NODE_BROKER_TOKEN is that credential, kept apart from the one the
+// internet-facing tracking and forms services carry. It falls back to
+// INTERNAL_API_TOKEN when unset, so a single-token deployment keeps working.
 func (h *Handler) NodeBrokerAuthMiddleware() gin.HandlerFunc {
 	return nodeBrokerAuth
 }

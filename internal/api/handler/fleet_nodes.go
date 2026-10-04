@@ -143,8 +143,8 @@ func (h *Handler) FleetJoin(c *gin.Context) {
 }
 
 // FleetHeartbeat records a beat and answers with the version the node should
-// be running. Authenticated with INTERNAL_API_TOKEN, the same shared secret
-// the node already needs to read encrypted keys.
+// be running. Authenticated with the node token (NODE_BROKER_TOKEN, falling
+// back to INTERNAL_API_TOKEN), the one the node reads encrypted keys with.
 func (h *Handler) FleetHeartbeat(c *gin.Context) {
 	if h.FleetNodes == nil {
 		c.Status(http.StatusNoContent)
@@ -378,19 +378,19 @@ func renderNodeEnv(nodeID uuid.UUID, role models.NodeRole, region string) string
 	fmt.Fprintf(&b, "WARMBLY_BACKEND_URL=%s\n", backend)
 	fmt.Fprintf(&b, "ENCRYPTED_KEYS_PROVIDER=%s\n", keysProvider)
 	fmt.Fprintf(&b, "ENCRYPTED_KEYS_BACKEND_URL=%s\n", backend)
-	fmt.Fprintf(&b, "ENCRYPTED_KEYS_WORKER_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
-	fmt.Fprintf(&b, "INTERNAL_API_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
+	// A node calls only the node-only internal routes. With a separate
+	// NODE_BROKER_TOKEN it is sent that alone and never the edge services' token.
+	if v := os.Getenv("NODE_BROKER_TOKEN"); v != "" {
+		fmt.Fprintf(&b, "ENCRYPTED_KEYS_WORKER_TOKEN=%s\n", v)
+		fmt.Fprintf(&b, "NODE_BROKER_TOKEN=%s\n", v)
+	} else {
+		fmt.Fprintf(&b, "ENCRYPTED_KEYS_WORKER_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
+		fmt.Fprintf(&b, "INTERNAL_API_TOKEN=%s\n", os.Getenv("INTERNAL_API_TOKEN"))
+	}
 
 	kmsProvider, blobProvider := nodeProviders()
 	fmt.Fprintf(&b, "KMS_PROVIDER=%s\n", kmsProvider)
 	fmt.Fprintf(&b, "BLOB_PROVIDER=%s\n", blobProvider)
-
-	// The credential for the two endpoints that open a key and sign a blob
-	// operation. Sent only when the instance issues a separate one; otherwise
-	// the node falls back to the internal token it already has.
-	if v := os.Getenv("NODE_BROKER_TOKEN"); v != "" {
-		fmt.Fprintf(&b, "NODE_BROKER_TOKEN=%s\n", v)
-	}
 
 	keys := nodeEnvKeys
 	if role == models.NodeRoleConsumer {

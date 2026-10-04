@@ -112,7 +112,7 @@ The updater mounts `/var/run/docker.sock`, which is root on the host. That is wh
 
 ### An install from install.sh
 
-Already done. The installer writes the updater into the generated compose file in image mode, pointed at the install directory, sharing `INTERNAL_API_TOKEN` with the backend. Nothing to configure.
+Already done. The installer writes the updater into the generated compose file in image mode, pointed at the install directory, with its own `UPDATER_TOKEN` that the backend also reads from `.env`. Nothing to configure.
 
 To update by hand instead, from the install directory:
 
@@ -179,7 +179,7 @@ Backend:
 | `RELEASES_GITHUB_REPO` | The `owner/repo` whose releases are Warmbly versions. Point a fork's instance at the fork | `warmbly/warmbly` |
 | `RELEASES_GITHUB_TOKEN` | Optional; only raises the GitHub API rate limit | unset |
 | `UPDATER_URL` | The updater. Unset, or `none`, leaves the panel report-only | `http://updater:8095` under compose |
-| `UPDATER_TOKEN` | Bearer token presented to the updater | `INTERNAL_API_TOKEN` |
+| `UPDATER_TOKEN` | Bearer token presented to the updater. Give it its own value; the one-command installer generates one | `INTERNAL_API_TOKEN` |
 
 Updater:
 

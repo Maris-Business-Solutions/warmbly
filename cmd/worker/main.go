@@ -100,7 +100,7 @@ func main() {
 	// backend API (same base URL + token as the DEK store) rather than touching
 	// Postgres directly, per the worker no-direct-SQL rule in CLAUDE.md.
 	internalBaseURL := strings.TrimRight(os.Getenv("ENCRYPTED_KEYS_BACKEND_URL"), "/")
-	internalToken := os.Getenv("ENCRYPTED_KEYS_WORKER_TOKEN")
+	internalToken := config.NodeAPIToken()
 	emailMessageMapRepo, err := repository.NewHTTPEmailMessageMapRepository(internalBaseURL, internalToken)
 	if err != nil {
 		log.Fatal(err)
@@ -112,14 +112,8 @@ func main() {
 		log.Fatal(err)
 	}
 	// Mailboxes managed by Warmbly Cloud send with access tokens the backend
-	// brokers; the refresh grant never reaches the worker. Minting one is a
-	// broker operation, so it carries NODE_BROKER_TOKEN where the instance
-	// issues a separate one and the shared internal token otherwise.
-	brokerToken := os.Getenv("NODE_BROKER_TOKEN")
-	if brokerToken == "" {
-		brokerToken = internalToken
-	}
-	tokenBroker, err := repository.NewHTTPBrokeredTokenClient(internalBaseURL, brokerToken)
+	// brokers; the refresh grant never reaches the worker.
+	tokenBroker, err := repository.NewHTTPBrokeredTokenClient(internalBaseURL, internalToken)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -254,7 +248,7 @@ func newNodeAgent(workerID uuid.UUID, bindIP string) *nodeagent.Agent {
 		CapacityTarget: workerCapacityTarget(),
 		Version:        buildVersion(),
 		BaseURL:        os.Getenv("ENCRYPTED_KEYS_BACKEND_URL"),
-		Token:          os.Getenv("ENCRYPTED_KEYS_WORKER_TOKEN"),
+		Token:          config.NodeAPIToken(),
 		// Written for the host-side updater installed by `warmbly join`.
 		TargetVersionPath: os.Getenv("WARMBLY_TARGET_VERSION_PATH"),
 		Condition:         wsmtp.EgressCondition,

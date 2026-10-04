@@ -14,8 +14,8 @@ import (
 )
 
 // Internal endpoints used by workers to fetch/store encrypted DEKs without
-// connecting to Postgres directly. Auth via middleware.InternalAuthMiddleware
-// (static bearer token in INTERNAL_API_TOKEN env var, both sides).
+// connecting to Postgres directly. Auth via middleware.NodeBrokerAuthMiddleware
+// (NODE_BROKER_TOKEN, falling back to INTERNAL_API_TOKEN).
 //
 // Wire format mirrors what encryptedkeys.HTTPStore expects:
 //

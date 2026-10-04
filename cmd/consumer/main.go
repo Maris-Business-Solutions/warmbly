@@ -703,7 +703,7 @@ func newConsumerAgent() *nodeagent.Agent {
 		Region:            os.Getenv("WARMBLY_NODE_REGION"),
 		Version:           os.Getenv("WARMBLY_VERSION"),
 		BaseURL:           consumerBackendURL(),
-		Token:             os.Getenv("INTERNAL_API_TOKEN"),
+		Token:             config.NodeAPIToken(),
 		TargetVersionPath: os.Getenv("WARMBLY_TARGET_VERSION_PATH"),
 	})
 }

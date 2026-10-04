@@ -25,7 +25,7 @@ import (
 //	   200 emailMessageMapPayload | 404 (no mapping -> nil)
 //	DELETE {BaseURL}/api/v1/internal/email-message-map?user_id=&email_id=&message_id=&id= -> 204
 //
-// Auth: Authorization: Bearer <ENCRYPTED_KEYS_WORKER_TOKEN> (== INTERNAL_API_TOKEN).
+// Auth: Authorization: Bearer <config.NodeAPIToken()>.
 type httpEmailMessageMapRepository struct {
 	baseURL string
 	token   string

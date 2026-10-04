@@ -698,9 +698,20 @@ var table = []Entry{
 	// Workers.
 	{
 		Key: "INTERNAL_API_TOKEN", Group: GroupWorkers, RuntimeChangeable: ChangeBootOnly,
-		Effect:     "The shared token on /api/v1/internal. Workers fetch organization keys with it and the tracking service resolves click links with it.",
+		Effect:     "The token on the internal routes the tracking and forms services call. Fleet nodes use it too unless NODE_BROKER_TOKEN is set.",
 		DocsAnchor: docsWorkers,
 		Resolve:    envValue("INTERNAL_API_TOKEN"),
+	},
+	{
+		Key: "NODE_BROKER_TOKEN", Group: GroupWorkers, RuntimeChangeable: ChangeBootOnly,
+		Effect:     "The token on the internal routes only fleet nodes call (keys, blob signing, sync, heartbeat). Falls back to INTERNAL_API_TOKEN.",
+		DocsAnchor: docsWorkers, WhenUnset: SourceDerived,
+		Resolve: func(*Runtime) string {
+			if v := trimmed("NODE_BROKER_TOKEN"); v != "" {
+				return v
+			}
+			return trimmed("INTERNAL_API_TOKEN")
+		},
 	},
 	{
 		Key: "ENCRYPTED_KEYS_BACKEND_URL", Group: GroupWorkers, RuntimeChangeable: ChangeBootOnly,
@@ -710,7 +721,7 @@ var table = []Entry{
 	},
 	{
 		Key: "ENCRYPTED_KEYS_WORKER_TOKEN", Group: GroupWorkers, RuntimeChangeable: ChangeBootOnly,
-		Effect:     "The worker's copy of INTERNAL_API_TOKEN. It must match the backend's value exactly.",
+		Effect:     "The worker's copy of the node token (NODE_BROKER_TOKEN, else INTERNAL_API_TOKEN). It must match the backend's value exactly.",
 		DocsAnchor: docsWorkers,
 		Resolve:    envValue("ENCRYPTED_KEYS_WORKER_TOKEN"),
 	},

@@ -1156,6 +1156,7 @@ CREDENTIALS_ENCRYPTION_KEY=$CREDENTIALS_ENCRYPTION_KEY
 KMS_LOCAL_MASTER_KEY=$KMS_LOCAL_MASTER_KEY
 AUTH_SECRET=$AUTH_SECRET
 INTERNAL_API_TOKEN=$INTERNAL_API_TOKEN
+$(render_env_node_token)
 SECRET_KEY_BASE=$SECRET_KEY_BASE
 
 # ── Providers (all local; no cloud account of any kind) ──────────────────
@@ -1209,8 +1210,16 @@ UPDATE_CHECK_ENABLED=$UPDATE_CHECK
 UPDATE_CHANNEL=$CHANNEL
 RELEASES_GITHUB_REPO=$REPO
 UPDATER_URL=http://updater:8095
-UPDATER_TOKEN=$INTERNAL_API_TOKEN
+UPDATER_TOKEN=$UPDATER_TOKEN
 ENVEOF
+}
+
+# Fleet nodes authenticate with their own token, apart from the one the
+# tracking and forms services hold. An install from before it existed has
+# none, and keeps the shared token so its joined nodes keep working.
+render_env_node_token() {
+    [ -n "$NODE_BROKER_TOKEN" ] || return 0
+    printf '%s\n' "NODE_BROKER_TOKEN=$NODE_BROKER_TOKEN"
 }
 
 render_env_pgpassword() {
@@ -1496,7 +1505,7 @@ FORMSEOF
     image: \${WARMBLY_IMAGE_PREFIX}/updater:\${WARMBLY_TAG}
     environment:
       UPDATER_MODE: image
-      UPDATER_TOKEN: \${INTERNAL_API_TOKEN}
+      UPDATER_TOKEN: \${UPDATER_TOKEN}
       UPDATER_REPO_DIR: $DIR
       UPDATER_COMPOSE_PROJECT: warmbly
       UPDATER_COMPOSE_PROFILES: ""
@@ -1865,6 +1874,8 @@ adopt_existing() {
     # mailbox credential unreadable, permanently.
     AUTH_SECRET=$(env_get "$_env" AUTH_SECRET)
     INTERNAL_API_TOKEN=$(env_get "$_env" INTERNAL_API_TOKEN)
+    NODE_BROKER_TOKEN=$(env_get "$_env" NODE_BROKER_TOKEN)
+    UPDATER_TOKEN=$(env_get "$_env" UPDATER_TOKEN)
     SECRET_KEY_BASE=$(env_get "$_env" SECRET_KEY_BASE)
     KMS_LOCAL_MASTER_KEY=$(env_get "$_env" KMS_LOCAL_MASTER_KEY)
     CREDENTIALS_ENCRYPTION_KEY=$(env_get "$_env" CREDENTIALS_ENCRYPTION_KEY)
@@ -1892,6 +1903,11 @@ adopt_existing() {
 ensure_secrets() {
     [ -n "${AUTH_SECRET:-}" ] || AUTH_SECRET=$(gen_hex 32)
     [ -n "${INTERNAL_API_TOKEN:-}" ] || INTERNAL_API_TOKEN=$(gen_hex 32)
+    NODE_BROKER_TOKEN=${NODE_BROKER_TOKEN:-}
+    if [ -z "$NODE_BROKER_TOKEN" ] && [ "$EXISTING" = 0 ]; then
+        NODE_BROKER_TOKEN=$(gen_hex 32)
+    fi
+    [ -n "${UPDATER_TOKEN:-}" ] || UPDATER_TOKEN=$(gen_hex 32)
     [ -n "${SECRET_KEY_BASE:-}" ] || SECRET_KEY_BASE=$(gen_hex 48)
     [ -n "${KMS_LOCAL_MASTER_KEY:-}" ] || KMS_LOCAL_MASTER_KEY=$(gen_b64 32)
     [ -n "${CREDENTIALS_ENCRYPTION_KEY:-}" ] || CREDENTIALS_ENCRYPTION_KEY=$(gen_hex 32)
@@ -2070,7 +2086,7 @@ wiz_keys() {
         return 0
     fi
 
-    note "Five secrets were generated for this instance. Two of them cannot be"
+    note "Seven secrets were generated for this instance. Two of them cannot be"
     note "recovered if they are lost, and a database backup without them is not"
     note "a backup: every mailbox credential in it stays sealed forever."
     say ""
@@ -2423,10 +2439,12 @@ render_keys_backup() {
 CREDENTIALS_ENCRYPTION_KEY=$CREDENTIALS_ENCRYPTION_KEY
 KMS_LOCAL_MASTER_KEY=$KMS_LOCAL_MASTER_KEY
 
-# These three are replaceable, at the cost of signing everyone out and
+# These are replaceable, at the cost of signing everyone out and
 # reconfiguring the workers.
 AUTH_SECRET=$AUTH_SECRET
 INTERNAL_API_TOKEN=$INTERNAL_API_TOKEN
+$(render_env_node_token)
+UPDATER_TOKEN=$UPDATER_TOKEN
 SECRET_KEY_BASE=$SECRET_KEY_BASE
 KEYSEOF
 }

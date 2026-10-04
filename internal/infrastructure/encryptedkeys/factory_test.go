@@ -15,6 +15,7 @@ func TestFromEnv_HTTPNeedsURLAndToken(t *testing.T) {
 	t.Setenv("ENCRYPTED_KEYS_PROVIDER", "http")
 	t.Setenv("ENCRYPTED_KEYS_BACKEND_URL", "")
 	t.Setenv("ENCRYPTED_KEYS_WORKER_TOKEN", "")
+	t.Setenv("NODE_BROKER_TOKEN", "")
 	if _, err := FromEnv(Deps{}, ""); err == nil {
 		t.Fatal("expected error when http config missing")
 	}

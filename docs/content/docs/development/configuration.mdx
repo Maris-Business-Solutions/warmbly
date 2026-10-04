@@ -56,8 +56,8 @@ Five values protect the whole instance. Compose ships a working default for each
 | Variable | Format | What it protects | Restart needed |
 |---|---|---|---|
 | `AUTH_SECRET` | 32 characters or more, enforced at boot | JWT and session signing. The realtime service reads the same value as `JWT_SECRET` and applies the same floor. Both refuse to start below it: a shorter HS256 key can be recovered offline from any token the service has issued. It also keys the `warmbly-verify=` values workspaces publish in `_warmbly` `TXT` records to prove a domain, so changing it changes every one of them: [root redirects](/guides/sending-domains/#root-redirects) stop at their next check until the new value is published | yes |
-| `INTERNAL_API_TOKEN` | any random string | The backend's `/api/v1/internal/` routes, which workers and the tracking service authenticate against | yes |
-| `NODE_BROKER_TOKEN` | any random string | The routes that perform a privileged operation for the caller: opening a sealed data key, signing a blob operation, and minting a provider access token for a mailbox Warmbly Cloud manages. Optional, and falls back to `INTERNAL_API_TOKEN`. The same value has to be set on the control plane and on every node that calls those routes, or they answer 401. Worth setting in a split deployment, where the tracking and forms services are internet-facing and hold the shared token | yes |
+| `INTERNAL_API_TOKEN` | any random string | The backend's `/api/v1/internal/` routes the tracking and forms services call (click tickets, root redirects, page views, hosted forms). Fleet nodes authenticate with it too when `NODE_BROKER_TOKEN` is unset | yes |
+| `NODE_BROKER_TOKEN` | any random string | Every internal route only a fleet node calls: organization data keys (read, store and open), blob signing, provider access tokens for a mailbox Warmbly Cloud manages, the message map and sync lookups, worker config and the node heartbeat. Optional, and falls back to `INTERNAL_API_TOKEN`. The same value has to be set on the control plane and on every node, or those routes answer 401; a node joined after it is set receives it in `node.env` in place of `INTERNAL_API_TOKEN`, and a node joined before has to join again. The installer generates one for a new install; an existing install keeps the shared token until you set one | yes |
 | `SECRET_KEY_BASE` | 64 characters or more | Phoenix session signing in the realtime service | yes |
 | `KMS_LOCAL_MASTER_KEY` | base64, exactly 32 bytes | The root key that seals every per-organization data key | yes |
 | `CREDENTIALS_ENCRYPTION_KEY` | exactly 64 hex characters | Mailbox credentials at rest: SMTP and IMAP passwords, and Gmail and Outlook OAuth access and refresh tokens | yes |
@@ -701,7 +701,7 @@ Session replay masks what is typed into a password field in the browser, before 
 | `RELEASES_GITHUB_REPO` | The `owner/repo` whose releases count as Warmbly versions. Point a fork's instance at the fork | `warmbly/warmbly` | yes |
 | `RELEASES_GITHUB_TOKEN` | Optional GitHub token; only raises the API rate limit | unset | yes |
 | `UPDATER_URL` | The host-side updater that applies an update (pull, rebuild, restart). Unset, or `none`, leaves the panel report-only | `http://updater:8095` under compose | yes |
-| `UPDATER_TOKEN` | The bearer token the backend presents to the updater | `INTERNAL_API_TOKEN` | yes |
+| `UPDATER_TOKEN` | The bearer token the backend presents to the updater, which can pull and restart the instance. Give it its own value so the token the tracking and forms services hold cannot start an update; the installer generates one | `INTERNAL_API_TOKEN` | yes |
 
 The updater's own variables (`UPDATER_MODE`, `UPDATER_COMMAND`, `UPDATER_REPO_DIR` and the rest) are on [Updates](/development/updates/#configuration); it is a separate process and its environment is not on the configuration page.
 

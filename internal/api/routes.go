@@ -149,38 +149,60 @@ func Run(
 	// necessity: it serves the browser before anyone has signed in.
 	r.Any("/ingest/*path", m.PublicIPRateLimitMiddleware(), h.PostHogProxy)
 
-	// Internal backend-to-backend endpoints. Workers call these instead of
-	// touching Postgres directly, per the no-direct-data-services rule in
-	// CLAUDE.md. Auth: shared bearer token (INTERNAL_API_TOKEN).
-	// The broker endpoints sit in their own group. They perform a privileged
-	// operation for the caller rather than moving a record, so they take
-	// NODE_BROKER_TOKEN, which falls back to INTERNAL_API_TOKEN but lets a
-	// split deployment keep the edge services off this credential.
-	broker := r.Group("/api/v1/internal")
-	broker.Use(m.NodeBrokerAuthMiddleware())
+	// Internal backend-to-backend endpoints, in two groups by caller.
+	//
+	// The node group is everything only a fleet node (worker or consumer)
+	// calls. It takes NODE_BROKER_TOKEN, which falls back to
+	// INTERNAL_API_TOKEN, so the internet-facing tracking and forms services
+	// never need a credential that opens a key or enrols a node.
+	node := r.Group("/api/v1/internal")
+	node.Use(m.NodeBrokerAuthMiddleware())
 	{
 		// Opens a sealed data key for a node running KMS_PROVIDER=brokered, so
 		// a machine you own needs no cloud credential of its own.
-		broker.POST("/dek/decrypt", h.InternalDecryptDEK)
+		node.POST("/dek/decrypt", h.InternalDecryptDEK)
 
 		// Signs one blob operation for a node running BLOB_PROVIDER=brokered.
 		// The node then transfers directly against the object store, so bodies
 		// and attachments never pass through here.
-		broker.POST("/blobs/presign", h.InternalPresignBlob)
+		node.POST("/blobs/presign", h.InternalPresignBlob)
 
 		// Mints a live provider access token for a mailbox Warmbly Cloud
 		// manages, which is worth more than any record the rest of the
 		// internal API moves.
-		broker.GET("/cloud-link/token/:id", h.InternalCloudLinkToken)
+		node.GET("/cloud-link/token/:id", h.InternalCloudLinkToken)
+
+		node.GET("/dek/:orgID", h.InternalGetDEK)
+		node.PUT("/dek/:orgID", h.InternalPutDEK)
+		// No DELETE: a lost DEK is unrecoverable, so nothing holding this token may remove one.
+
+		// Worker mailbox-sync messageId -> internal email map.
+		node.GET("/email-message-map", h.InternalGetEmailMessageMap)
+		node.PUT("/email-message-map", h.InternalPutEmailMessageMap)
+		node.DELETE("/email-message-map", h.InternalDeleteEmailMessageMap)
+
+		// Sync governor priority lane: "is this new message a reply to
+		// something the mailbox sent?" (tasks, message map, unibox threads).
+		node.GET("/sync/own-conversation", h.InternalSyncOwnConversation)
+
+		// Expunge reconciliation: what the platform still holds for one IMAP
+		// folder, so the worker can drop the rows the server no longer reports.
+		node.GET("/sync/folder-messages", h.InternalSyncFolderMessages)
+
+		// Gmail folder reconciliation: the rows the platform believes Gmail
+		// has in a folder, so the worker can report the ones that moved.
+		node.GET("/sync/provider-folder-messages", h.InternalSyncProviderFolderMessages)
+
+		// Worker runtime config and the role-agnostic node heartbeat.
+		node.GET("/worker/config", h.InternalWorkerConfig)
+		node.POST("/fleet/heartbeat", h.FleetHeartbeat)
 	}
 
+	// The edge group is what the tracking and forms services call, on
+	// INTERNAL_API_TOKEN.
 	internal := r.Group("/api/v1/internal")
 	internal.Use(m.InternalAuthMiddleware())
 	{
-		internal.GET("/dek/:orgID", h.InternalGetDEK)
-		internal.PUT("/dek/:orgID", h.InternalPutDEK)
-		// No DELETE: a lost DEK is unrecoverable, so nothing holding this token may remove one.
-
 		// Click-link tickets: the tracking service resolves /c/<id> redirects
 		// here instead of touching Postgres (read-only, heavily cached there).
 		internal.GET("/tracked-links/:id", h.InternalGetTrackedLink)
@@ -193,30 +215,6 @@ func Run(
 		// here after its own rate limiting and filtering. Enrichment (user
 		// agent, IP location) and storage happen on this side.
 		internal.POST("/page-hits", h.InternalIngestPageHit)
-
-		// Worker mailbox-sync messageId -> internal email map (replaces the
-		// former DynamoDB EmailMessageData table). Workers read/write it here.
-		internal.GET("/email-message-map", h.InternalGetEmailMessageMap)
-		internal.PUT("/email-message-map", h.InternalPutEmailMessageMap)
-		internal.DELETE("/email-message-map", h.InternalDeleteEmailMessageMap)
-
-		// Sync governor priority lane: "is this new message a reply to
-		// something the mailbox sent?" (tasks, message map, unibox threads).
-		internal.GET("/sync/own-conversation", h.InternalSyncOwnConversation)
-
-		// Expunge reconciliation: what the platform still holds for one IMAP
-		// folder, so the worker can drop the rows the server no longer reports.
-		internal.GET("/sync/folder-messages", h.InternalSyncFolderMessages)
-
-		// Gmail folder reconciliation: the rows the platform believes Gmail
-		// has in a folder, so the worker can report the ones that moved.
-		internal.GET("/sync/provider-folder-messages", h.InternalSyncProviderFolderMessages)
-
-		// Worker bootstrap config + heartbeat. Workers POST their identity
-		// on boot (worker_id + bind_ip + tag) and pull their runtime config
-		// instead of carrying it all in the install-time env file.
-		internal.GET("/worker/config", h.InternalWorkerConfig)
-		internal.POST("/fleet/heartbeat", h.FleetHeartbeat)
 
 		// Hosted forms: the forms service (cmd/forms) resolves published
 		// forms, forwards deduped funnel events and visitor submissions
