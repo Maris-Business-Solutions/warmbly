@@ -31,13 +31,7 @@ defmodule Realtime.MixProject do
       {:phoenix, "~> 1.7"},
       {:phoenix_pubsub, "~> 2.1"},
       {:plug_cowboy, "~> 2.7"},
-      # cowlib 2.20.0 is the latest release and still carries
-      # EEF-CVE-2026-43966 (response splitting) and -43969 (cookie header
-      # injection); neither is patched upstream. 43966 is answered by the floor
-      # below: cowboy >= 2.16 rejects CR/LF in response header values before the
-      # wire. 43969 needs cow_cookie:cookie/1, and this service sets no cookie
-      # on any path: the socket authenticates from a JWT and answers with none.
-      # Keep the floor, and re-check both when cowlib next publishes.
+      # Keep this floor; re-check it whenever cowlib publishes a release.
       {:cowboy, "~> 2.16"},
       {:jason, "~> 1.4"},
 
@@ -57,7 +51,7 @@ defmodule Realtime.MixProject do
       {:jose, "~> 1.11"},
 
       # Error tracking. Finch is the HTTP client (already pulled in by goth and
-      # broadway_cloud_pub_sub); hackney was dropped to clear CVE-2026-47071.
+      # broadway_cloud_pub_sub).
       {:sentry, "~> 10.0"},
       {:finch, "~> 0.21"},
 

@@ -5,16 +5,14 @@ allowBuilds:
   esbuild: true
   sharp: true
 
-# Clear CVE-2026-59869 (DoS via crafted YAML) and GHSA-5p4m-2wfm-xmqj
-# (quadratic CPU use resolving !!omap) in the transitive js-yaml.
+# The patched http-cache-semantics below, admitted before it is a day old.
+minimumReleaseAgeExclude:
+  - http-cache-semantics@4.3.0
+
+# Patched releases of transitive dependencies, until their parents require them.
 overrides:
   js-yaml: ^4.3.1
-  # Clear GHSA-2p49-hgcm-8545 (SVGO removeScripts can leave some scripts) in the
-  # transitive svgo used for build-time SVG optimization.
   svgo: ^4.0.2
-  # NOTE: sharp is intentionally NOT bumped here. Its 0.35 line clears the
-  # libvips CVEs but breaks the marketing site's Cloudflare Pages build, so site
-  # stays on 0.34.5 and that one HIGH is suppressed in .trivyignore (build-time
-  # image optimization of our own assets, no untrusted input).
-  # Clear CVE-2026-67213 (DoS via infinite loop) in the transitive nanoid.
+  # sharp is not overridden: its 0.35 line breaks the Cloudflare Pages build.
   nanoid: ^3.3.17
+  http-cache-semantics: ^4.3.0
