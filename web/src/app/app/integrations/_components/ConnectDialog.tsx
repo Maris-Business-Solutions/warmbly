@@ -200,11 +200,12 @@ export default function ConnectDialog({
                     ? { environment: sfHost.includes(".sandbox.") ? ("sandbox" as const) : ("production" as const), domain: sfHost }
                     : { environment: sfEnv }
                 : {};
-            const { code, state } = await authorizeInPopup(async () => {
-                const { url } = await startOAuth.mutateAsync({ provider: entry.provider, label: "", ...sf });
-                goTo("waiting");
-                return url;
-            });
+            const { code, state } = await authorizeInPopup(
+                async () => (await startOAuth.mutateAsync({ provider: entry.provider, label: "", ...sf })).url,
+                () => {
+                    if (alive.current) goTo("waiting");
+                },
+            );
             if (!alive.current) return;
             const conn = await finishOAuth.mutateAsync({ code, state });
             if (!alive.current) return;

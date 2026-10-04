@@ -211,10 +211,18 @@ func (s *Service) ConfirmLink(ctx context.Context, userID uuid.UUID, code string
 // SlackInstalled implements integration.SlackInstallHook: the member who
 // connected Slack is linked to the Slack account that approved the install
 // when the two share an email.
-func (s *Service) SlackInstalled(ctx context.Context, conn *models.IntegrationConnection, slackUserID string, userID uuid.UUID) {
+func (s *Service) SlackInstalled(_ context.Context, conn *models.IntegrationConnection, slackUserID string, userID uuid.UUID) {
 	if conn == nil || slackUserID == "" || conn.ExternalAccountID == "" {
 		return
 	}
+	// Best effort, so it never holds up the OAuth callback on a Slack call.
+	c := *conn
+	s.spawn("installer_link", shortTaskTime, func(ctx context.Context) {
+		s.linkInstaller(ctx, &c, slackUserID, userID)
+	})
+}
+
+func (s *Service) linkInstaller(ctx context.Context, conn *models.IntegrationConnection, slackUserID string, userID uuid.UUID) {
 	token, err := s.integ.SlackBotToken(ctx, conn.OrganizationID, conn.ID)
 	if err != nil {
 		return
@@ -237,10 +245,7 @@ func (s *Service) SlackInstalled(ctx context.Context, conn *models.IntegrationCo
 		s.audit.LogAction(ctx, link.OrganizationID, userID, models.AuditActionCreate, models.AuditEntityIntegration,
 			&link.ConnectionID, "", "Slack", nil, map[string]string{"slack_link": "linked_on_install"})
 	}
-	l := *link
-	s.spawn("link_confirmation", shortTaskTime, func(ctx context.Context) {
-		s.sendLinkConfirmation(ctx, &l, false)
-	})
+	s.sendLinkConfirmation(ctx, link, false)
 }
 
 // resumeAsk answers the question that was held while its author linked.
