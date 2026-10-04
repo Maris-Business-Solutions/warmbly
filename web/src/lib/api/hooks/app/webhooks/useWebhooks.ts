@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import listWebhooks from "@/lib/api/client/app/webhooks/listWebhooks";
 import createWebhook from "@/lib/api/client/app/webhooks/createWebhook";
@@ -15,12 +15,14 @@ import type {
     WebhookEndpointInput,
 } from "@/lib/api/models/app/webhooks/Webhook";
 
+export const webhooksListQuery = queryOptions({
+    queryKey: ["webhooks", "list"],
+    queryFn: () => listWebhooks(),
+    staleTime: 5_000,
+});
+
 export function useWebhooks() {
-    return useQuery({
-        queryKey: ["webhooks", "list"],
-        queryFn: () => listWebhooks(),
-        staleTime: 5_000,
-    });
+    return useQuery(webhooksListQuery);
 }
 
 export function useCreateWebhook() {
@@ -96,10 +98,12 @@ export function useWebhookEventCatalog() {
     });
 }
 
+export const webhookDropsQuery = queryOptions({
+    queryKey: ["webhooks", "drops"],
+    queryFn: () => listWebhookDrops(),
+    staleTime: 30_000,
+});
+
 export function useWebhookDrops() {
-    return useQuery({
-        queryKey: ["webhooks", "drops"],
-        queryFn: () => listWebhookDrops(),
-        staleTime: 30_000,
-    });
+    return useQuery(webhookDropsQuery);
 }

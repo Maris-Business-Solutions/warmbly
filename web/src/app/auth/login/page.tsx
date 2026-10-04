@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
@@ -31,6 +31,7 @@ import beginSSO from "@/lib/api/client/auth/beginSSO";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import safeNext from "@/lib/helper/safeNext";
+import { hrefTarget } from "@/lib/routerSearch";
 import { captureException } from "@/lib/observability";
 import { isEmpty, readAcquisition } from "@/lib/acquisition";
 import type Token from "@/lib/api/models/auth/Token";
@@ -180,15 +181,15 @@ export default function LoginPage() {
     // A brand new instance has no account to sign in as. Send them to the
     // claim link rather than showing a form that cannot succeed.
     useEffect(() => {
-        if (authConfigReady && authConfig.setup_required) navigate("/setup", { replace: true });
+        if (authConfigReady && authConfig.setup_required) navigate({ to: "/setup", replace: true });
     }, [authConfigReady, authConfig.setup_required, navigate]);
 
     // The SSO callback redirects here with a reason when the provider or the
     // exchange refused, so the failure is visible instead of silent.
     useEffect(() => {
-        const reason = new URLSearchParams(location.search).get("sso_error");
+        const reason = new URLSearchParams(location.searchStr).get("sso_error");
         if (reason) toast.error(reason);
-    }, [location.search]);
+    }, [location.searchStr]);
     const captchaRequired = authConfig.captcha;
     const turnstileBypassToken = import.meta.env.DEV
         ? (import.meta.env.VITE_TURNSTILE_BYPASS_TOKEN?.trim() || "")
@@ -197,15 +198,15 @@ export default function LoginPage() {
     // A social or single sign-on login that hits an enrolled TOTP comes back
     // here with its pending challenge rather than a session, because the 2FA
     // form lives on this screen. See the SSO landing page.
-    const ssoTwoFA = (location.state as { two_fa_pending?: string } | null)?.two_fa_pending ?? "";
+    const ssoTwoFA = location.state.two_fa_pending ?? "";
     // A federated sign-in whose address already belongs to an account with a
     // password comes back the same way: the identity is attached, and the
     // session issued, only once that password is entered here.
-    const ssoLink = (location.state as { sso_link?: SSOLinkChallenge } | null)?.sso_link ?? null;
+    const ssoLink = location.state.sso_link ?? null;
     // The pending token is single use, so it must not survive a reload of this
     // screen: history state does, and would leave a form that can only fail.
     useEffect(() => {
-        if (ssoTwoFA || ssoLink) navigate(location.pathname + location.search, { replace: true, state: null });
+        if (ssoTwoFA || ssoLink) navigate({ ...hrefTarget(location.pathname + location.searchStr), replace: true, state: {} });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -214,7 +215,7 @@ export default function LoginPage() {
     const [linkChallenge, setLinkChallenge] = useState<SSOLinkChallenge | null>(ssoLink);
     const [mode, setMode] = useState<"signin" | "signup">(() =>
         location.pathname.includes("/register") ||
-        new URLSearchParams(location.search).get("mode") === "signup"
+        new URLSearchParams(location.searchStr).get("mode") === "signup"
             ? "signup"
             : "signin"
     );
@@ -222,8 +223,8 @@ export default function LoginPage() {
     // The invitation token from /invite. It is the only thing that reopens
     // signup on an invite_only instance, so it drives the whole screen.
     const inviteToken = useMemo(
-        () => new URLSearchParams(location.search).get("invite") ?? "",
-        [location.search],
+        () => new URLSearchParams(location.searchStr).get("invite") ?? "",
+        [location.searchStr],
     );
     // Where this signup came from, read once from the URL so a re-render or a
     // history replace cannot lose it. Empty for a direct visit.
@@ -247,16 +248,17 @@ export default function LoginPage() {
         setRefusal(null);
         // Keep the query string: dropping it is how ?invite= and ?next= were
         // silently lost on a toggle, turning an invited signup into a refused one.
+        // The current state carries the router's entry key; null would wipe it.
         window.history.replaceState(
-            null,
+            window.history.state,
             "",
-            `${m === "signin" ? "/auth/login" : "/auth/register"}${location.search}`,
+            `${m === "signin" ? "/auth/login" : "/auth/register"}${location.searchStr}`,
         );
     };
     // /invite sends the invited address along, because the backend only accepts
     // a signup whose email matches the invitation exactly.
     const [email, setEmail] = useState(
-        () => new URLSearchParams(location.search).get("email")?.trim() ?? "",
+        () => new URLSearchParams(location.searchStr).get("email")?.trim() ?? "",
     );
     const [password, setPassword] = useState("");
     const [session, setSession] = useState("");
@@ -311,10 +313,10 @@ export default function LoginPage() {
         }
         // Honor a post-auth ?next= (internal paths only), else the default
         // home. Powers the /invite link: sign in, then bounce back to accept.
-        const params = new URLSearchParams(location.search);
+        const params = new URLSearchParams(location.searchStr);
         const next = params.get("next");
-        navigate(safeNext(next, "/app/emails"));
-    }, [navigate, queryClient, location.search]);
+        navigate(hrefTarget(safeNext(next, "/app/emails")));
+    }, [navigate, queryClient, location.searchStr]);
 
     // Conditional UI: surface passkeys inside the email field's native autofill
     // — no modal, no layout shift. Stays pending until the user picks a passkey

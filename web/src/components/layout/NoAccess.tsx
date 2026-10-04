@@ -3,7 +3,7 @@
 // member lacks the permission a feature requires, so the app always says WHY
 // something is unavailable rather than rendering nothing.
 
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { LockIcon } from "lucide-react";
 
 export function NoAccess({

@@ -10,7 +10,7 @@
 // each row.
 
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, PlusIcon, Settings2Icon } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAppStore } from "@/stores";
@@ -141,7 +141,7 @@ export function OrgSwitcher() {
                     New workspace
                 </PopoverMenuItem>
                 <PopoverMenuItem
-                    onSelect={() => navigate("/select-org")}
+                    onSelect={() => navigate({ to: "/select-org" })}
                     icon={<Settings2Icon className="w-3 h-3" />}
                 >
                     Manage workspaces

@@ -10,7 +10,8 @@
 // so there is no metric strip: the numbers live where the clicks are.
 
 import React from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { ChevronLeftIcon, InboxIcon } from "lucide-react";
 
 import { ConversationList } from "@/components/app/unibox/ConversationList";
@@ -58,7 +59,7 @@ export default function UniboxPage() {
   const access = useFeatureAccess();
   const canAccess = usePermission("ACCESS_UNIBOX");
   const overview = useUniboxOverview();
-  const routeParams = useParams<{ scope?: string; threadId?: string }>();
+  const routeParams = useParams({ strict: false });
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [scopeSheetOpen, setScopeSheetOpen] = React.useState(false);
@@ -161,10 +162,13 @@ export default function UniboxPage() {
       const threadId =
         next.threadId === undefined ? urlThread : next.threadId;
       const ref = next.ref === undefined ? urlScopeRef : next.ref;
-      let path = `/app/unibox/${scope || "all"}`;
-      if (threadId) path += `/${encodeURIComponent(threadId)}`;
-      if (ref) path += `?ref=${encodeURIComponent(ref)}`;
-      navigate(path, { replace: true });
+      navigate({
+        to: "/app/unibox/{-$scope}/{-$threadId}",
+        params: { scope: scope || "all", threadId: threadId || undefined },
+        search: { ref: ref || undefined },
+        replace: true,
+        resetScroll: false,
+      });
     },
     [navigate, urlScope, urlThread, urlScopeRef],
   );

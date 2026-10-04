@@ -10,7 +10,7 @@
 // shown dead.
 
 import { useCallback, useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { useNavigate, type NavigateFunction } from 'react-router-dom'
+import { useNavigate } from '@tanstack/react-router'
 import { useAppStore } from '@/stores'
 import { useComposeStore } from '@/hooks/useComposeStore'
 import { checkPermission } from '@/hooks/usePermission'
@@ -29,7 +29,7 @@ export interface ShortcutRow {
   available?: () => boolean
 }
 
-type Ctx = { navigate: NavigateFunction }
+type Ctx = { navigate: ReturnType<typeof useNavigate> }
 
 export interface GlobalShortcut extends ShortcutRow {
   /** Single-press form. */
@@ -132,7 +132,7 @@ export const globalShortcuts: GlobalShortcut[] = [
     description: `Go to ${label}`,
     group: 'navigation',
     sequence: ['g', key],
-    run: ({ navigate }) => navigate(path),
+    run: ({ navigate }) => navigate({ to: path }),
   })),
 
   // ── List navigation: only on screens that register a list ─────────────────

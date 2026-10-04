@@ -1,7 +1,7 @@
 import { NoAccess } from "@/components/layout/NoAccess";
 import { usePermission } from "@/hooks/usePermission";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import {
     ActivityIcon,
     AlertTriangleIcon,
@@ -228,7 +228,8 @@ export default function AnalyticsPage() {
                                 return (
                                     <Link
                                         key={c.campaign_id}
-                                        to={`/app/campaigns/${c.campaign_id}`}
+                                        to="/app/campaigns/$id"
+                                        params={{ id: c.campaign_id }}
                                         className="group h-11 px-5 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                                     >
                                         <span className={`size-1.5 rounded-full shrink-0 ${dot}`} />

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import getAuthConfig from "../../client/auth/getAuthConfig";
 import type AuthConfig from "../../models/auth/AuthConfig";
 
@@ -39,14 +39,16 @@ export const AUTH_CONFIG_FALLBACK: AuthConfig = {
     brand: { name: "Warmbly" },
 };
 
+export const authConfigQuery = queryOptions({
+    queryKey: ["auth", "config"],
+    queryFn: getAuthConfig,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: 1,
+});
+
 export default function useAuthConfig() {
-    const query = useQuery({
-        queryKey: ["auth", "config"],
-        queryFn: getAuthConfig,
-        staleTime: Infinity,
-        gcTime: Infinity,
-        retry: 1,
-    });
+    const query = useQuery(authConfigQuery);
 
     return {
         ...query,

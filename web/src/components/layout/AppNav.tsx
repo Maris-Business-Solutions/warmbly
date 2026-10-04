@@ -6,7 +6,7 @@
 // generic "+ New Campaign" pill. Cold-email work is always-on; the
 // sidebar should reflect that rather than nag with a CTA.
 
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
     ClipboardListIcon,
     BarChart3Icon,
@@ -245,7 +245,7 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
 }
 
 function NavRow({ item, collapsed = false }: { item: NavItem; collapsed?: boolean }) {
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const unseen = useAppStore((s) => s.unseenCount);
     const access = useFeatureAccess();
     const hasItemPermission = usePermission(item.permission ?? "VIEW_CAMPAIGNS");
@@ -758,7 +758,7 @@ function Section({
     collapsed?: boolean;
 }) {
     const id = useId();
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const folded = useAppStore((s) => s.navCollapsedSections[section.id] ?? false);
     const toggleNavSection = useAppStore((s) => s.toggleNavSection);
     const org = useAppStore((s) => s.currentOrganization);

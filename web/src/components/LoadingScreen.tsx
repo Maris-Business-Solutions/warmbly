@@ -18,11 +18,12 @@ export default function LoadingScreen({
             transition={{ duration: 0.3, ease: "easeInOut" }}
         >
             {!(errorTitle && errorMessage) && (
+                // Held back, so a load that finishes quickly never flashes a spinner.
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    transition={{ duration: 0.2, delay: 0.4 }}
                 >
                     <LoaderIcon className="w-4 h-4 text-zinc-400 animate-spin" />
                 </motion.div>

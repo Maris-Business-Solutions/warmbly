@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import PermissionButton from "@/components/ui/PermissionButton";
-import { Link, Outlet, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { motion } from "framer-motion";
 import {
     ArrowLeftIcon,
@@ -30,11 +31,11 @@ import { usePresenceResource } from "@/hooks/PresenceProvider";
 import { usePermission } from "@/hooks/usePermission";
 
 const TABS = [
-    { label: "Overview", path: "", Icon: BarChart3Icon },
-    { label: "Leads", path: "/leads", Icon: UsersIcon },
-    { label: "Steps", path: "/steps", Icon: ListChecksIcon },
-    { label: "Schedule", path: "/schedule", Icon: CalendarIcon },
-    { label: "Settings", path: "/preferences", Icon: Settings2Icon },
+    { label: "Overview", to: "/app/campaigns/$id", Icon: BarChart3Icon },
+    { label: "Leads", to: "/app/campaigns/$id/leads", Icon: UsersIcon },
+    { label: "Steps", to: "/app/campaigns/$id/steps", Icon: ListChecksIcon },
+    { label: "Schedule", to: "/app/campaigns/$id/schedule", Icon: CalendarIcon },
+    { label: "Settings", to: "/app/campaigns/$id/preferences", Icon: Settings2Icon },
 ] as const;
 
 const STATUS_PILL: Record<string, string> = {
@@ -47,10 +48,10 @@ const STATUS_PILL: Record<string, string> = {
 };
 
 export default function CampaignLayout() {
-    const { pathname } = useLocation();
-    const { id } = useParams();
+    const pathname = useLocation({ select: (l) => l.pathname });
+    const { id } = useParams({ from: "/app/campaigns/$id" });
     const navigate = useNavigate();
-    const campaignData = useCampaign(id ?? "");
+    const campaignData = useCampaign(id);
     const confirm = useConfirm();
     const startCampaign = useStartCampaign();
     const stopCampaign = useStopCampaign();
@@ -87,7 +88,7 @@ export default function CampaignLayout() {
             const detail = (e as CustomEvent<CampaignDeletedDetail>).detail;
             if (detail?.id !== id) return;
             toast(`"${detail.name || "This campaign"}" was deleted by a teammate`);
-            navigate("/app/campaigns", { replace: true });
+            navigate({ to: "/app/campaigns", replace: true });
         };
         window.addEventListener(CAMPAIGN_DELETED_EVENT, onDeleted);
         return () => window.removeEventListener(CAMPAIGN_DELETED_EVENT, onDeleted);
@@ -138,7 +139,9 @@ export default function CampaignLayout() {
     const onToggle = () => {
         if (isActive) {
             confirm?.show(`Pause ${campaign.name}?`, () => {
-                stopCampaign.mutate(campaign.id);
+                stopCampaign.mutate(campaign.id, {
+                    onError: (err) => toast.error((err as { message?: string })?.message || "Could not pause the campaign"),
+                });
             });
         } else {
             setLaunchOpen(true);
@@ -194,7 +197,7 @@ export default function CampaignLayout() {
                             campaign={campaign}
                             variant="header"
                             onToggle={canToggle ? onToggle : undefined}
-                            afterDelete={() => navigate("/app/campaigns", { replace: true })}
+                            afterDelete={() => navigate({ to: "/app/campaigns", replace: true })}
                         />
                     </div>
                 </div>
@@ -202,31 +205,31 @@ export default function CampaignLayout() {
                 <UndeliverableBanner campaignId={campaign.id} status={status} />
 
                 <div className="shrink-0 px-3 flex items-center gap-1 border-b border-slate-200 overflow-x-auto no-scrollbar">
-                    {TABS.map(({ label, path, Icon }) => {
-                        const fullPath = `/app/campaigns/${id}${path}`;
-                        const isTabActive = pathname.replace(/\/$/, "") === fullPath.replace(/\/$/, "");
-                        return (
-                            <Link
-                                key={path || "overview"}
-                                to={fullPath}
-                                className={`relative h-10 px-2.5 inline-flex items-center gap-1.5 text-[12.5px] transition-colors ${
-                                    isTabActive
-                                        ? "text-slate-900 font-medium"
-                                        : "text-slate-500 hover:text-slate-800"
-                                }`}
-                            >
-                                <Icon className="w-3.5 h-3.5" />
-                                {label}
-                                {isTabActive && (
-                                    <motion.span
-                                        layoutId="campaign-tab-underline"
-                                        className="absolute left-1.5 right-1.5 -bottom-px h-0.5 rounded-full bg-sky-600"
-                                        transition={{ type: "spring", duration: 0.3, bounce: 0.15 }}
-                                    />
-                                )}
-                            </Link>
-                        );
-                    })}
+                    {TABS.map(({ label, to, Icon }) => (
+                        <Link
+                            key={to}
+                            to={to}
+                            params={{ id }}
+                            activeOptions={{ exact: true, includeSearch: false }}
+                            className="relative h-10 px-2.5 inline-flex items-center gap-1.5 text-[12.5px] transition-colors"
+                            activeProps={{ className: "text-slate-900 font-medium" }}
+                            inactiveProps={{ className: "text-slate-500 hover:text-slate-800" }}
+                        >
+                            {({ isActive }) => (
+                                <>
+                                    <Icon className="w-3.5 h-3.5" />
+                                    {label}
+                                    {isActive && (
+                                        <motion.span
+                                            layoutId="campaign-tab-underline"
+                                            className="absolute left-1.5 right-1.5 -bottom-px h-0.5 rounded-full bg-sky-600"
+                                            transition={{ type: "spring", duration: 0.3, bounce: 0.15 }}
+                                        />
+                                    )}
+                                </>
+                            )}
+                        </Link>
+                    ))}
                 </div>
 
                 {/* Leads renders a full-bleed Page (its own topbar, stat strip

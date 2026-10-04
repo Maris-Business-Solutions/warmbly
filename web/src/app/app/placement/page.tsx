@@ -3,7 +3,8 @@
 // the audit spine; nothing here polls.
 
 import React from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { motion } from "framer-motion";
 import { InboxIcon, Layers3Icon, Loader2Icon, ListIcon, PlusIcon, XIcon } from "lucide-react";
 import { EmptyBlock, Page, PageTopbar, SectionBar, TopbarAction } from "@/components/layout/Page";
@@ -251,7 +252,7 @@ function TestsTable({
                         </thead>
                         <tbody className="divide-y divide-slate-200/60">
                             {list.tests.map((t) => (
-                                <TestRow key={t.id} test={t} onOpen={() => navigate(`/app/placement/${t.id}`)} />
+                                <TestRow key={t.id} test={t} onOpen={() => navigate({ to: "/app/placement/$id", params: { id: t.id } })} />
                             ))}
                         </tbody>
                     </table>
@@ -312,7 +313,7 @@ function TestRow({ test, onOpen }: { test: PlacementTest; onOpen: () => void }) 
                 {fmtRate(s.inbox_rate)}
             </td>
             <td className="px-5 py-2 text-right hidden md:table-cell text-[11px] text-slate-400 whitespace-nowrap">
-                <Link to={`/app/placement/${test.id}`} onClick={(e) => e.stopPropagation()} className="hover:text-slate-700">
+                <Link to="/app/placement/$id" params={{ id: test.id }} onClick={(e) => e.stopPropagation()} className="hover:text-slate-700">
                     {fmtDate(test.created_at)}
                 </Link>
             </td>
@@ -408,7 +409,7 @@ function BatchesTable({ onNew }: { onNew: () => void }) {
                         </thead>
                         <tbody className="divide-y divide-slate-200/60">
                             {list.batches.map((b) => (
-                                <BatchRow key={b.id} batch={b} onOpen={() => navigate(`/app/placement/batches/${b.id}`)} />
+                                <BatchRow key={b.id} batch={b} onOpen={() => navigate({ to: "/app/placement/batches/$id", params: { id: b.id } })} />
                             ))}
                         </tbody>
                     </table>
@@ -460,7 +461,7 @@ function BatchRow({ batch, onOpen }: { batch: PlacementBatch; onOpen: () => void
             <td className="px-3 py-2 hidden sm:table-cell">{s.total > 0 && <PlacementBar counts={s} />}</td>
             <td className={cn("px-3 py-2 text-right font-mono text-[12px] tabular-nums", rateTone(s.inbox_rate))}>{fmtRate(s.inbox_rate)}</td>
             <td className="px-5 py-2 text-right hidden md:table-cell text-[11px] text-slate-400 whitespace-nowrap">
-                <Link to={`/app/placement/batches/${batch.id}`} onClick={(e) => e.stopPropagation()} className="hover:text-slate-700">
+                <Link to="/app/placement/batches/$id" params={{ id: batch.id }} onClick={(e) => e.stopPropagation()} className="hover:text-slate-700">
                     {fmtDate(batch.started_at ?? batch.created_at)}
                 </Link>
             </td>

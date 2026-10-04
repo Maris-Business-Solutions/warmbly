@@ -1,6 +1,7 @@
 import type React from "react";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import useRegisterConfirm from "@/lib/api/hooks/auth/useRegisterConfirm";
 import toast from "react-hot-toast";
 import type { AppError } from "@/lib/api/client/normalizeError";
@@ -25,7 +26,7 @@ export function useRegisterConfirmForm() {
                 registerConfirm.mutateAsync({ session, code: otp.map(v => v || "0").join(""), turnstile: token }),
                 { loading: "Loading...", success: "Account successfully created.", error: (err: AppError) => buildError(err) }
             );
-            navigate("/auth/login?action=0");
+            navigate({ to: "/auth/login", search: { action: "0" } });
         } finally { setPending(false); }
     };
 

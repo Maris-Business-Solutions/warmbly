@@ -11,7 +11,7 @@
 // layer goes dormant there and a pointer is never broadcast twice.
 
 import React from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "@tanstack/react-router";
 import { cursorColor, useLiveCursors } from "@/hooks/useLiveCursors";
 import { useOnlineMembers } from "@/hooks/PresenceProvider";
 import { useUserProfile } from "@/hooks/context/user";
@@ -62,7 +62,7 @@ export function GlobalCursorsProvider({
 }
 
 function GlobalCursorsOverlay({ scrollRef }: { scrollRef: React.RefObject<HTMLElement | null> }) {
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const resource = `page:${pathname}`;
 
     // Only broadcast when a teammate is on this same route (presence carries each

@@ -1,7 +1,7 @@
 // The store's rail, drawn like the Settings rail: search, then grouped links.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 
 import { cn } from "@/lib/utils";
@@ -41,6 +41,7 @@ export default function StoreSidebar({
                                     <Link
                                         key={it.key}
                                         to={it.to}
+                                        activeOptions={{ exact: true, includeSearch: false }}
                                         aria-current={on ? "page" : undefined}
                                         className={cn(
                                             "group relative w-full flex items-center gap-2.5 px-2.5 h-8 rounded-md text-[12.5px] transition-colors",

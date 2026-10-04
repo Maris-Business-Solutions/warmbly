@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { useAppStore, type Organization as StoreOrganization } from "@/stores";
 import { FieldError, TextInput } from "@/components/ui/field";
 import { WORKSPACE_NAME_MAX, nameError, normalizeName } from "@/lib/displayName";

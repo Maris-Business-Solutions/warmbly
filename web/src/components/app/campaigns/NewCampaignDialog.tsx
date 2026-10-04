@@ -25,7 +25,7 @@ import {
     XIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import useCampaignEstimate from "@/lib/api/hooks/app/campaigns/useCampaignEstimate";
 import useDeleteCampaign from "@/lib/api/hooks/app/campaigns/useDeleteCampaign";
@@ -72,7 +72,7 @@ function resumeStep(d: Draft, meta: DraftMeta): number {
 
 export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
     const navigate = useNavigate();
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const confirm = useConfirm();
     const queryClient = useQueryClient();
     const deleteCampaign = useDeleteCampaign();
@@ -292,7 +292,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
             try {
                 if (changed) await persist();
                 onClose();
-                navigate(to);
+                navigate({ to });
                 if (message) toast(message);
             } catch (err) {
                 toast.error(`Could not save the draft: ${buildError(err as AppError)}`);
@@ -315,7 +315,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
                 await deleteCampaign.mutateAsync(id);
                 toast.success("Draft deleted.");
                 onClose();
-                if (pathname.startsWith(`/app/campaigns/${id}`)) navigate("/app/campaigns", { replace: true });
+                if (pathname.startsWith(`/app/campaigns/${id}`)) navigate({ to: "/app/campaigns", replace: true });
             } catch (err) {
                 toast.error(buildError(err as AppError));
             } finally {
@@ -361,7 +361,7 @@ export function NewCampaignDialog({ open, onClose, draftId = null }: Props) {
             onClose();
             if (mode === "launch") {
                 // The campaign page's launch dialog runs the pre-send checks and the start.
-                navigate(`/app/campaigns/${id}?launch=1`);
+                navigate({ to: "/app/campaigns/$id", params: { id }, search: { launch: "1" } });
             } else {
                 toast.success(
                     hasLeads ? "Draft saved. Launch it when you are ready." : "Draft saved. Add leads, then launch it.",

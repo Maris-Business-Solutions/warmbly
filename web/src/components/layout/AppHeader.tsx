@@ -12,7 +12,7 @@
 // AppShell, not here.
 
 import { useRef } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronRight, Menu, Search } from "lucide-react";
 import { Logo } from "@/components/svg";
 import AgentMark from "@/components/app/agent/AgentMark";
@@ -31,6 +31,7 @@ import { VersionPill } from "./VersionPill";
 import { CreditsMeter } from "./CreditsMeter";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { hrefTarget } from "@/lib/routerSearch";
 
 // Pretty labels for path segments. Anything missing falls back to the
 // raw segment with its first letter capitalised.
@@ -65,12 +66,17 @@ const labelMap: Record<string, string> = {
     steps: "Steps",
 };
 
+// Crumb prefixes that are not pages of their own, sent to the page that lists them.
+const crumbTargets: Record<string, string> = {
+    "/app/placement/batches": "/app/placement?tab=batches",
+};
+
 function pretty(segment: string): string {
     return labelMap[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1);
 }
 
 export function AppHeader({ onMenu }: { onMenu?: () => void }) {
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
     // The logo zone spans the sidebar column, so it has to collapse with it or
     // the breadcrumb stops lining up with the content panel below.
@@ -151,7 +157,7 @@ export function AppHeader({ onMenu }: { onMenu?: () => void }) {
                             </span>
                         ) : (
                             <Link
-                                to={to}
+                                {...hrefTarget(crumbTargets[to] ?? to)}
                                 className="text-[13px] text-slate-500 hover:text-slate-900 truncate transition-colors"
                             >
                                 {pretty(seg)}

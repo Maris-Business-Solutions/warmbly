@@ -3,7 +3,7 @@
 // in the new-campaign flow, and launch opens the page's launch dialog.
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { CheckIcon, MailIcon, PencilLineIcon, RocketIcon, SendIcon, UsersIcon } from "lucide-react";
 import type Campaign from "@/lib/api/models/app/campaigns/Campaign";
@@ -27,14 +27,13 @@ export default function DraftSetupCard({ campaign, leads }: { campaign: Campaign
     const emails = (steps.data ?? []).filter((s) => (s.kind ?? "email") === "email").length;
     const explicit = campaign.sender_strategy === "explicit";
     const senderCount = explicit ? (campaign.senders?.length ?? 0) : (campaign.email_tags?.length ?? 0);
-    const base = `/app/campaigns/${campaign.id}`;
     const rows = [
         {
             icon: UsersIcon,
             done: (leads ?? 0) > 0,
             title: "Contacts",
             value: leads === undefined ? "…" : leads > 0 ? `${leads.toLocaleString()} lead${leads === 1 ? "" : "s"}` : "No leads yet",
-            to: `${base}/leads`,
+            to: "/app/campaigns/$id/leads" as const,
             action: "Add contacts",
         },
         {
@@ -42,7 +41,7 @@ export default function DraftSetupCard({ campaign, leads }: { campaign: Campaign
             done: emails > 0,
             title: "Emails",
             value: steps.isPending ? "…" : emails > 0 ? `${emails} email${emails === 1 ? "" : "s"} written` : "Nothing written yet",
-            to: `${base}/steps`,
+            to: "/app/campaigns/$id/steps" as const,
             action: "Write",
         },
         {
@@ -55,7 +54,7 @@ export default function DraftSetupCard({ campaign, leads }: { campaign: Campaign
                     : explicit
                       ? `${senderCount} chosen mailbox${senderCount === 1 ? "" : "es"}`
                       : `${senderCount} mailbox tag${senderCount === 1 ? "" : "s"}`,
-            to: `${base}/preferences`,
+            to: "/app/campaigns/$id/preferences" as const,
             action: "Change",
         },
     ];
@@ -88,7 +87,9 @@ export default function DraftSetupCard({ campaign, leads }: { campaign: Campaign
                     )}
                     {canSend && ready && (
                         <Link
-                            to={`${base}?launch=1`}
+                            to="/app/campaigns/$id"
+                            params={{ id: campaign.id }}
+                            search={{ launch: "1" }}
                             className="h-7 px-3 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors"
                         >
                             <RocketIcon className="w-3 h-3" />
@@ -99,7 +100,7 @@ export default function DraftSetupCard({ campaign, leads }: { campaign: Campaign
             </div>
             <div className="grid sm:grid-cols-3 gap-px bg-slate-100 border-t border-slate-100">
                 {rows.map((r) => (
-                    <Link key={r.title} to={r.to} className="group bg-white px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+                    <Link key={r.title} to={r.to} params={{ id: campaign.id }} className="group bg-white px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
                         <span
                             className={cn(
                                 "size-6 rounded-full inline-flex items-center justify-center shrink-0",

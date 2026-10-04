@@ -2,7 +2,7 @@
 // that save on their own, and the way back to Warmbly's own CRM.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     AlertTriangleIcon,

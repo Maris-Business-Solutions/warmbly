@@ -2,7 +2,7 @@
 // editor instead of writing one form's draft into another (same pattern as
 // the automation editor).
 
-import { useParams } from "react-router-dom";
+import { useParams } from "@tanstack/react-router";
 
 import { EmptyBlock } from "@/components/layout/Page";
 import { NoAccess } from "@/components/layout/NoAccess";
@@ -12,7 +12,7 @@ import { useForm } from "@/lib/api/hooks/app/forms";
 
 export default function FormBuilderPage() {
     const canView = usePermission("VIEW_CONTACTS");
-    const { id } = useParams<{ id: string }>();
+    const { id } = useParams({ from: "/app/forms/$id" });
     const form = useForm(canView ? id : undefined);
 
     if (!canView) return <NoAccess feature="forms" permissionLabel="View contacts" />;

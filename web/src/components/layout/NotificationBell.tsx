@@ -3,7 +3,7 @@
 // NOTIFICATION event (wired in useRealtimeEvents).
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     BellIcon,
@@ -23,6 +23,7 @@ import {
     UsersIcon,
     type LucideIcon,
 } from "lucide-react";
+import { hrefTarget } from "@/lib/routerSearch";
 import useClickOutside from "@/hooks/useClickOutside";
 import {
     useNotifications,
@@ -240,7 +241,7 @@ export function NotificationBell() {
                                                 setOpen(false);
                                             };
                                             return n.link ? (
-                                                <Link key={n.id} to={n.link} onClick={click} className={rowClass(n)}>
+                                                <Link key={n.id} {...hrefTarget(n.link)} onClick={click} className={rowClass(n)}>
                                                     {itemBody(n)}
                                                 </Link>
                                             ) : (

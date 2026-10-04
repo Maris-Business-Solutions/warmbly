@@ -7,7 +7,7 @@
 "use client";
 
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
     AlertTriangleIcon,
     ArrowRightIcon,
@@ -110,7 +110,7 @@ export default function ConnectionDetail({
     const needsReauth = conn.status === "reauth_required";
     const isSlack = conn.provider === "slack";
     const isHubSpot = conn.provider === "hubspot";
-    const onHubSpotPage = useLocation().pathname.startsWith("/app/integrations/hubspot");
+    const onHubSpotPage = useLocation({ select: (l) => l.pathname.startsWith("/app/integrations/hubspot") });
 
     async function handleReauth() {
         setBusy(true);
@@ -198,7 +198,8 @@ export default function ConnectionDetail({
                     {conn.provider === "salesforce" && (
                         <div className="px-5 py-4 border-b border-slate-200 space-y-2">
                             <Link
-                                to={`/app/integrations/salesforce/${conn.id}`}
+                                to="/app/integrations/salesforce/$id"
+                                params={{ id: conn.id }}
                                 className="w-full h-8 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors"
                             >
                                 <Settings2Icon className="w-3.5 h-3.5" />

@@ -16,7 +16,7 @@
 // landing, no orgs" and "ongoing management" cases.
 
 import React from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "@tanstack/react-router";
 import { LogOutIcon, Loader2Icon, MailIcon, PlusIcon, UsersIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import getToken from "@/lib/helper/getToken";
@@ -90,7 +90,7 @@ function SelectOrgPageInner() {
 
     async function onLogout() {
         await logout.mutateAsync();
-        navigate("/auth/login", { replace: true });
+        navigate({ to: "/auth/login", replace: true });
     }
 
     const orgList = orgs.data ?? [];
@@ -113,7 +113,7 @@ function SelectOrgPageInner() {
                 await switchOrg.mutateAsync(list[0].id).catch(() => undefined);
                 setOrganizations(list);
                 setCurrentOrganization(list[0]);
-                navigate("/app/emails", { replace: true });
+                navigate({ to: "/app/emails", replace: true });
             }
         } catch {
             /* surfaced */
@@ -125,7 +125,7 @@ function SelectOrgPageInner() {
             await switchOrg.mutateAsync(orgId);
             const org = orgList.find((o) => o.id === orgId);
             if (org) setCurrentOrganization(org);
-            navigate("/app/emails", { replace: true });
+            navigate({ to: "/app/emails", replace: true });
         } catch (e) {
             toast.error(buildError(e as AppError));
         }

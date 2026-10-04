@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { TrashIcon } from "lucide-react";
 import PermissionButton from "@/components/ui/PermissionButton";
 import type Campaign from "@/lib/api/models/app/campaigns/Campaign";
@@ -26,7 +26,7 @@ export default function CampaignDangerZone({ campaign }: { campaign: Campaign })
                 permission="MANAGE_CAMPAIGNS"
                 type="button"
                 onClick={() =>
-                    actions.requestDelete(campaign, { afterDelete: () => navigate("/app/campaigns") })
+                    actions.requestDelete(campaign, { afterDelete: () => navigate({ to: "/app/campaigns" }) })
                 }
                 disabled={actions.deleting}
                 className="h-7 px-2.5 rounded-md border border-red-200 text-red-600 hover:bg-red-600 hover:border-red-600 hover:text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60 shrink-0"

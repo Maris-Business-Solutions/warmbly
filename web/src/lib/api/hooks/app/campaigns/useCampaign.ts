@@ -1,5 +1,11 @@
 import getCampaign from "@/lib/api/client/app/campaigns/getCampaign";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
+
+export const campaignQuery = (id: string) =>
+    queryOptions({
+        queryKey: ["campaigns", id],
+        queryFn: () => getCampaign(id),
+    });
 
 // Plain useQuery (not useSuspenseQuery) so the layout can gate on
 // isLoading/isError. The detail route has no Suspense boundary, and a
@@ -8,8 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 // flag the layout can branch on.
 const useCampaign = (id: string) =>
     useQuery({
-        queryKey: ["campaigns", id],
-        queryFn: () => getCampaign(id),
+        ...campaignQuery(id),
         enabled: !!id,
     });
 

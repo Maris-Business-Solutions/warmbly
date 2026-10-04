@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     addSegmentToCampaign,
     listCampaignSegments,
@@ -20,17 +20,33 @@ import type ContactSelection from "@/lib/api/models/app/contacts/ContactSelectio
 
 // Every segment read lives under ["segments"]: the realtime spine invalidates
 // that prefix on any segment or contact mutation, since membership is live.
+export const segmentsListQuery = queryOptions({ queryKey: ["segments", "list"], queryFn: listSegments });
+
 export function useSegments(enabled = true) {
-    return useQuery({ queryKey: ["segments", "list"], queryFn: listSegments, enabled });
+    return useQuery({ ...segmentsListQuery, enabled });
 }
+
+export const segmentQuery = (id: string | undefined) =>
+    queryOptions({ queryKey: ["segments", id], queryFn: () => getSegment(id as string) });
 
 export function useSegment(id: string | undefined) {
-    return useQuery({ queryKey: ["segments", id], queryFn: () => getSegment(id as string), enabled: !!id });
+    return useQuery({ ...segmentQuery(id), enabled: !!id });
 }
 
+export const segmentFieldsQuery = queryOptions({ queryKey: ["segments", "fields"], queryFn: listSegmentFields, staleTime: 5 * 60 * 1000 });
+
 export function useSegmentFields(enabled = true) {
-    return useQuery({ queryKey: ["segments", "fields"], queryFn: listSegmentFields, enabled, staleTime: 5 * 60 * 1000 });
+    return useQuery({ ...segmentFieldsQuery, enabled });
 }
+
+// One label's live member count, as the labels page reads it: through the
+// segment preview, so it agrees with a "has any of" condition.
+export const labelCountQuery = (categoryId: string) =>
+    queryOptions({
+        queryKey: ["segments", "preview", "category", categoryId],
+        queryFn: () => previewSegment({ match: "all", conditions: [{ field: "category", operator: "in", values: [categoryId] }] }),
+        staleTime: 30_000,
+    });
 
 export function useSegmentPreview(preview: SegmentPreview | null) {
     return useQuery({

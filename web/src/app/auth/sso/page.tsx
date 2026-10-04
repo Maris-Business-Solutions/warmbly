@@ -6,7 +6,8 @@
 // dashboard, so a token never appears in a URL or in history.
 
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2Icon, AlertCircleIcon } from "lucide-react";
 
@@ -49,7 +50,7 @@ export default function SSOCallbackPage() {
                         setError("Two-factor authentication is required, but the challenge did not arrive. Try signing in again.");
                         return;
                     }
-                    navigate("/auth/login", { replace: true, state: { two_fa_pending: session.pending_token } });
+                    navigate({ to: "/auth/login", replace: true, state: { two_fa_pending: session.pending_token } });
                     return;
                 }
                 // The provider's address already belongs to an account with a
@@ -60,7 +61,8 @@ export default function SSOCallbackPage() {
                         setError("This address already has an account, but the link request did not arrive. Try signing in again.");
                         return;
                     }
-                    navigate("/auth/login", {
+                    navigate({
+                        to: "/auth/login",
                         replace: true,
                         state: {
                             sso_link: {
@@ -84,7 +86,7 @@ export default function SSOCallbackPage() {
                 } catch {
                     // UserProvider retries and redirects on a genuine failure.
                 }
-                navigate("/app/emails", { replace: true });
+                navigate({ to: "/app/emails", replace: true });
             } catch (err) {
                 setError(buildError(err as AppError));
             }
@@ -102,7 +104,7 @@ export default function SSOCallbackPage() {
                         <h1 className="text-[18px] font-semibold text-slate-900">Sign-in failed</h1>
                         <p className="text-sm text-slate-500 mt-2">{error}</p>
                         <button
-                            onClick={() => navigate("/auth/login", { replace: true })}
+                            onClick={() => navigate({ to: "/auth/login", replace: true })}
                             className="mt-5 w-full h-10 rounded-md bg-slate-900 text-white text-[13px] font-medium hover:bg-slate-800 transition-colors"
                         >
                             Back to sign in

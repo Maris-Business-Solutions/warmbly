@@ -1,4 +1,4 @@
-import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
+import { infiniteQueryOptions, useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
 import type GetEmails from "@/lib/api/models/app/emails/GetEmails";
 import getEmails from "@/lib/api/client/app/emails/getEmails";
 import useAllPages from "@/lib/api/hooks/useAllPages";
@@ -13,9 +13,8 @@ interface UseEmailsProps {
     enabled?: boolean;
 }
 
-// Every caller counts, selects or picks from the whole list, so this keeps paging until it is complete.
-export default function useEmails({ query, tag, limit = EMAILS_PAGE_LIMIT, enabled = true }: UseEmailsProps) {
-    const queryResult = useInfiniteQuery<
+export const emailsListQuery = ({ query, tag, limit = EMAILS_PAGE_LIMIT }: Omit<UseEmailsProps, "enabled">) =>
+    infiniteQueryOptions<
         GetEmails,
         Error,
         InfiniteData<GetEmails, string | null>,
@@ -33,6 +32,12 @@ export default function useEmails({ query, tag, limit = EMAILS_PAGE_LIMIT, enabl
         },
         staleTime: 5 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
+    });
+
+// Every caller counts, selects or picks from the whole list, so this keeps paging until it is complete.
+export default function useEmails({ query, tag, limit = EMAILS_PAGE_LIMIT, enabled = true }: UseEmailsProps) {
+    const queryResult = useInfiniteQuery({
+        ...emailsListQuery({ query, tag, limit }),
         enabled,
     });
 

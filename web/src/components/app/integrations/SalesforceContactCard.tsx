@@ -4,7 +4,7 @@
 // Renders nothing when the workspace has no Salesforce connection.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import {
     AlertTriangleIcon,
     ExternalLinkIcon,
@@ -380,7 +380,8 @@ function RecordCard({
                 </button>
                 {!compact && (
                     <Link
-                        to={`/app/integrations/salesforce/${r.connection_id}`}
+                        to="/app/integrations/salesforce/$id"
+                        params={{ id: r.connection_id }}
                         title="Salesforce settings"
                         className={cn(actionBtn, "text-slate-400 hover:text-slate-900 hover:bg-slate-100")}
                     >

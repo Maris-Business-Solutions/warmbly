@@ -8,7 +8,7 @@
 // labels and colours.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import {

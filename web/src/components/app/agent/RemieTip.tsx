@@ -6,7 +6,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "@tanstack/react-router";
 import { BellOffIcon, XIcon } from "lucide-react";
 import { useAppStore } from "@/stores";
 import useClickOutside from "@/hooks/useClickOutside";
@@ -39,7 +39,7 @@ export default function RemieTip({ anchor }: { anchor: React.RefObject<HTMLEleme
     const userId = useAppStore((s) => s.user?.id ?? "");
     const orgId = useAppStore((s) => s.currentOrganization?.id ?? "");
     const panelOpen = useAppStore((s) => s.aiAssistantOpen && !s.agentMinimized);
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
 
     const [wide, setWide] = React.useState(() => window.matchMedia("(min-width: 640px)").matches);
     React.useEffect(() => {

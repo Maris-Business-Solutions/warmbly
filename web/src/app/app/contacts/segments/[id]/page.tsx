@@ -2,7 +2,7 @@
 // shared ContactsTable scoped by segment_ids, with include/exclude actions).
 
 import React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, CopyIcon, MegaphoneIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -34,7 +34,7 @@ export default function SegmentPage() {
 }
 
 function SegmentDetail() {
-    const { id } = useParams<{ id: string }>();
+    const { id } = useParams({ from: "/app/contacts/segments/$id" });
     const navigate = useNavigate();
     const confirm = useConfirm();
     const write = useWriteGuard("MANAGE_CONTACTS");
@@ -71,7 +71,7 @@ function SegmentDetail() {
             try {
                 await remove.mutateAsync(s.id);
                 toast.success("Segment deleted");
-                navigate("/app/contacts/segments");
+                navigate({ to: "/app/contacts/segments" });
             } catch (err) {
                 toast.error(buildError(err as AppError));
             }

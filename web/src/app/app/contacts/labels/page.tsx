@@ -3,7 +3,7 @@
 // list filtered to that category.
 
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
 import { CheckIcon, MoreHorizontalIcon, PlusIcon, XIcon } from "lucide-react";
 import toast from "react-hot-toast";
@@ -153,7 +153,7 @@ function CategoryRow({ category, count }: { category: Category; count?: number }
     const [renaming, setRenaming] = React.useState(false);
     const [title, setTitle] = React.useState(category.title);
 
-    const open = () => navigate(`/app/contacts?category=${category.id}`);
+    const open = () => navigate({ to: "/app/contacts", search: { category: category.id } });
 
     async function submitRename() {
         const next = title.trim();

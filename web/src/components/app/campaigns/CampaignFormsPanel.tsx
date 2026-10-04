@@ -2,7 +2,7 @@
 // its recipients: links handed out, who opened them, who started, who
 // submitted. Renders nothing when the campaign links to no forms.
 
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon } from "lucide-react";
 
 import { SectionBar } from "@/components/layout/Page";
@@ -49,7 +49,8 @@ export default function CampaignFormsPanel({ campaignId }: { campaignId: string 
                     <div key={f.form_id} className="min-h-11 py-1.5 px-5 flex items-center gap-3">
                         <span className="flex items-center gap-2 flex-1 min-w-0">
                             <Link
-                                to={`/app/forms/${f.form_id}`}
+                                to="/app/forms/$id"
+                                params={{ id: f.form_id }}
                                 className="text-[12.5px] text-slate-900 truncate hover:text-sky-700 transition-colors"
                             >
                                 {f.form_name}
@@ -79,7 +80,9 @@ export default function CampaignFormsPanel({ campaignId }: { campaignId: string 
                         </span>
                         <span className="w-7 flex justify-end">
                             <Link
-                                to={`/app/forms/${f.form_id}?tab=analytics`}
+                                to="/app/forms/$id"
+                                params={{ id: f.form_id }}
+                                search={{ tab: "analytics" }}
                                 aria-label={`Open ${f.form_name} analytics`}
                                 className="size-6 inline-flex items-center justify-center rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                             >

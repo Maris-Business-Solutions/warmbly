@@ -6,7 +6,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LockIcon, ShieldCheckIcon, SparklesIcon, XIcon } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 
 interface DeniedDetail {
     message?: string;
@@ -106,7 +106,8 @@ export default function PermissionDeniedModal() {
                         <div className="mt-4 flex items-center justify-center gap-2">
                             {isPlan && (
                                 <Link
-                                    to="/app/settings/billing"
+                                    to="/app/settings/billing/{-$tab}"
+                                    params={{ tab: undefined }}
                                     onClick={close}
                                     className="inline-flex items-center h-8 px-3 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-[12.5px] font-medium transition-colors"
                                 >

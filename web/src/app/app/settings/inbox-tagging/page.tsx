@@ -7,7 +7,7 @@
 // run from day one and decide when to trust the suppression.
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { CheckIcon, FilterIcon, InfoIcon, SparklesIcon } from "lucide-react";
 
 import {
@@ -280,7 +280,7 @@ export default function InboxTaggingPage() {
             <div className="px-5 py-3 flex items-center gap-1.5 text-[11px] text-slate-400 flex-wrap">
                 <SparklesIcon className="w-3 h-3" />
                 Every label is a workspace label, so the{" "}
-                <Link to="/app/unibox/all" className="underline underline-offset-2 hover:text-slate-700">
+                <Link to="/app/unibox/{-$scope}/{-$threadId}" params={{ scope: "all", threadId: undefined }} className="underline underline-offset-2 hover:text-slate-700">
                     inbox
                 </Link>{" "}
                 filters on them like any other. What a verdict may do is set under{" "}

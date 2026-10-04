@@ -60,7 +60,7 @@ import type { DealWrite } from "@/lib/api/models/app/crm/Deal";
 import type { Stage } from "@/lib/api/models/app/crm/Pipeline";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import DealsTable, { DealOwner } from "@/components/app/crm/DealsTable";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import useCrmProvider from "@/hooks/useCrmProvider";
 import useMembers from "@/lib/api/hooks/app/organizations/useMembers";
 import type OrganizationMember from "@/lib/api/models/app/organizations/OrganizationMember";

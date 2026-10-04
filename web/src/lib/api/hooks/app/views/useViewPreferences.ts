@@ -1,5 +1,5 @@
 import React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
     getViewPreferences,
@@ -53,12 +53,17 @@ function writeCachedView(scope: ViewScope, view: ViewName, prefs: ViewPreference
     }
 }
 
-export function useViewPreferences(view: ViewName, scope: ViewScope) {
-    const q = useQuery({
+export const viewPreferencesQuery = (view: ViewName, scope: ViewScope) =>
+    queryOptions({
         queryKey: queryKey(scope, view),
         queryFn: async () => (await getViewPreferences(view)).preferences,
-        enabled: scoped(scope),
         staleTime: 5 * 60 * 1000,
+    });
+
+export function useViewPreferences(view: ViewName, scope: ViewScope) {
+    const q = useQuery({
+        ...viewPreferencesQuery(view, scope),
+        enabled: scoped(scope),
         placeholderData: () => readCachedView(scope, view),
     });
     React.useEffect(() => {

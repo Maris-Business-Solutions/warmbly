@@ -15,7 +15,8 @@
 // never also opens it.
 
 import React from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     ArchiveIcon,
@@ -348,7 +349,7 @@ function RowActions({
   const openThreadId = useAppStore((s) => s.selectedThreadId);
   const setSelectedThreadId = useAppStore((s) => s.setSelectedThreadId);
   const setSelectedAccountId = useAppStore((s) => s.setSelectedAccountId);
-  const { scope: urlScope } = useParams<{ scope?: string }>();
+  const { scope: urlScope } = useParams({ strict: false });
   const [searchParams] = useSearchParams();
 
   const filed = scope === "archive" || scope === "trash";

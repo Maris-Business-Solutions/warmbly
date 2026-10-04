@@ -8,15 +8,29 @@
 
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { screen, act, fireEvent } from "@testing-library/react";
+import { createRootRoute, createRoute, Outlet } from "@tanstack/react-router";
+import { createTestRouter, renderRouter } from "@/test/routerHarness";
 
-// jsdom has no layout, so Element.scrollTo is missing entirely.
-const scrolled: { top: number }[] = [];
-(Element.prototype as unknown as { scrollTo: (o: { top: number }) => void }).scrollTo = function (o) {
-    scrolled.push(o);
-};
+// jsdom has no layout: scrollTop is a hard 0 and nothing has a height, so the
+// shell would see a hidden panel and leave it alone. Give every element a
+// height and a settable offset so the panel's position can be set and read.
+const tops = new WeakMap<Element, number>();
+Object.defineProperty(Element.prototype, "scrollTop", {
+    configurable: true,
+    get(this: Element) {
+        return tops.get(this) ?? 0;
+    },
+    set(this: Element, value: number) {
+        tops.set(this, value);
+    },
+});
+Object.defineProperty(Element.prototype, "clientHeight", { configurable: true, get: () => 400 });
+Object.defineProperty(Element.prototype, "scrollHeight", { configurable: true, get: () => 4000 });
+(Element.prototype as unknown as { scrollTo: () => void }).scrollTo = () => {};
+
+// The shell's content panel, the one scroll container every page renders into.
+const contentPanel = () => document.querySelector<HTMLElement>("main div.h-full.overflow-auto")!;
 
 // Every request the dashboard bootstrap fires, answered with the smallest
 // shape each consumer needs. `hang` lets a test hold one endpoint open.
@@ -105,32 +119,19 @@ const CampaignOverview = (await import("./[id]/page")).default;
 const CampaignLeads = (await import("./[id]/leads/page")).default;
 const CampaignSteps = (await import("./[id]/steps/page")).default;
 
-function mountDashboard() {
-    const router = createMemoryRouter(
-        [
-            {
-                path: "/app",
-                element: <RootAppLayout />,
-                children: [
-                    {
-                        path: "campaigns/:id",
-                        element: <CampaignLayout />,
-                        children: [
-                            { index: true, element: <CampaignOverview /> },
-                            { path: "leads", element: <CampaignLeads /> },
-                            { path: "steps", element: <CampaignSteps /> },
-                        ],
-                    },
-                ],
-            },
-        ],
-        { initialEntries: ["/app/campaigns/camp-1"] },
+async function mountDashboard() {
+    const root = createRootRoute({ component: Outlet });
+    const app = createRoute({ getParentRoute: () => root, path: "app", component: RootAppLayout });
+    const campaigns = createRoute({ getParentRoute: () => app, path: "campaigns" });
+    const campaign = createRoute({ getParentRoute: () => campaigns, path: "$id", component: CampaignLayout });
+    const overview = createRoute({ getParentRoute: () => campaign, path: "/", component: CampaignOverview });
+    const leads = createRoute({ getParentRoute: () => campaign, path: "leads", component: CampaignLeads });
+    const steps = createRoute({ getParentRoute: () => campaign, path: "steps", component: CampaignSteps });
+    const router = createTestRouter(
+        root.addChildren([app.addChildren([campaigns.addChildren([campaign.addChildren([overview, leads, steps])])])]),
+        "/app/campaigns/camp-1",
     );
-    render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-            <RouterProvider router={router} />
-        </QueryClientProvider>,
-    );
+    await renderRouter(router);
     return router;
 }
 
@@ -147,10 +148,11 @@ function clickTab(name: RegExp) {
     });
 }
 
-describe("campaign tabs", () => {
+// The whole shell is slow to mount in jsdom on a loaded runner, so the suite gets more than the 5s default.
+describe("campaign tabs", { timeout: 30_000 }, () => {
     it("swaps the content panel when the URL changes", async () => {
         hang = null;
-        const router = mountDashboard();
+        const router = await mountDashboard();
         await settle();
         expect(screen.queryByText("Performance")).toBeTruthy();
 
@@ -170,13 +172,13 @@ describe("campaign tabs", () => {
 
     it("puts every navigation back at the top of the content panel", async () => {
         hang = null;
-        mountDashboard();
+        await mountDashboard();
         await settle();
-        scrolled.length = 0;
+        contentPanel().scrollTop = 900;
 
         await clickTab(/Leads/i);
         await settle();
-        expect(scrolled.some((s) => s.top === 0)).toBe(true);
+        expect(contentPanel().scrollTop).toBe(0);
     });
 
     it("shows a loading state instead of an empty panel when a page suspends", async () => {
@@ -184,7 +186,7 @@ describe("campaign tabs", () => {
         // that request is still open: something has to render, or the panel
         // sits blank until the user reloads.
         hang = /\/steps$/;
-        mountDashboard();
+        await mountDashboard();
         await settle();
 
         await clickTab(/Steps/i);

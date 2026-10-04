@@ -1,6 +1,6 @@
 import React from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBlocker, useNavigate } from "react-router-dom";
+import { useBlocker, useNavigate } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 
 import { useConfirm } from "@/hooks/context/confirm";
@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/hooks/app/integrations/useIntegrationOAuth";
 import type { IntegrationConnection } from "@/lib/api/models/app/integrations/Integration";
 import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
+import { stringifySearch } from "@/lib/routerSearch";
 import usePipelines from "@/lib/api/hooks/app/crm/pipelines/usePipelines";
 import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 
@@ -70,21 +71,23 @@ export function useLeaveGuard(dirty: boolean, message: string) {
     const navigate = useNavigate();
     const allow = React.useRef(false);
 
-    const blocker = useBlocker(
-        React.useCallback(
-            ({ currentLocation, nextLocation }: { currentLocation: { pathname: string }; nextLocation: { pathname: string } }) =>
-                dirty && !allow.current && currentLocation.pathname !== nextLocation.pathname,
+    const blocker = useBlocker({
+        shouldBlockFn: React.useCallback(
+            ({ current, next }: { current: { pathname: string }; next: { pathname: string } }) =>
+                dirty && !allow.current && current.pathname !== next.pathname,
             [dirty],
         ),
-    );
+        withResolver: true,
+        enableBeforeUnload: false,
+    });
 
     React.useEffect(() => {
-        if (blocker.state !== "blocked") return;
-        const to = blocker.location;
+        if (blocker.status !== "blocked") return;
+        const to = blocker.next;
         blocker.reset();
         confirm.show(message, async () => {
             allow.current = true;
-            navigate(`${to.pathname}${to.search}${to.hash}`);
+            navigate({ href: `${to.pathname}${stringifySearch(to.search)}` });
         });
     }, [blocker, confirm, message, navigate]);
 

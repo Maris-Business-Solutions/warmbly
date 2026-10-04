@@ -11,7 +11,8 @@
 //     section header so it nests cleanly under the campaign view.
 
 import React from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import {
     AlertTriangleIcon,
     ArrowDownIcon,
@@ -1172,7 +1173,7 @@ export default function ContactsTable({
                 open={segmentPreset !== null}
                 onClose={() => setSegmentPreset(null)}
                 preset={segmentPreset}
-                onSaved={(saved) => navigate(`/app/contacts/segments/${saved.id}`)}
+                onSaved={(saved) => navigate({ to: "/app/contacts/segments/$id", params: { id: saved.id } })}
             />
             <ContactEdit contacts={contacts ?? []} active={edit} setActive={setEdit} initialTab={editTab} />
             <ContactsEditBulk

@@ -6,7 +6,7 @@
 // time" path.
 
 import React from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -273,7 +273,7 @@ export function ThreadView({ threadId, emailId, onClose }: ThreadViewProps) {
   };
 
   // Restoring is only offered where the user can see what they are restoring.
-  const { scope: urlScope } = useParams<{ scope?: string }>();
+  const { scope: urlScope } = useParams({ strict: false });
   const filed = urlScope === "trash" || urlScope === "archive";
 
   const snooze = useMutation({

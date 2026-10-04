@@ -4,7 +4,7 @@
 // cause (optionally with a new password), a per-row fix, and Sign in for rows
 // that connect with Google or Microsoft sign-in.
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {

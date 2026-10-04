@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, act } from '@testing-library/react'
+import { act } from '@testing-library/react'
 import React, { createContext } from 'react'
-import { MemoryRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import SocketProvider from './SocketProvider'
 import { RealtimeManager } from './RealtimeManager'
 import { useChannel, useChannelEvent } from './context/socket'
 import { useAppStore } from '@/stores'
 import { installFakeSocket, freezeJitter, type SocketEnv } from './socketTestHarness'
+import { createPassthroughRouter, renderRouter } from '@/test/routerHarness'
 
 vi.mock('@/lib/api/client/app/socket/getSocket', () => ({
     default: vi.fn(async () => ({ url: 'ws://localhost:4000/socket/websocket?token=test' })),
@@ -46,18 +46,14 @@ function OrgListener({ orgId, onEvent }: { orgId: string; onEvent: () => void })
 
 function Tree({ children }: { children?: React.ReactNode }) {
     return (
-        <MemoryRouter>
-            <QueryClientProvider client={queryClient}>
-                <SocketProvider>
-                    <RealtimeManager>{children}</RealtimeManager>
-                </SocketProvider>
-            </QueryClientProvider>
-        </MemoryRouter>
+        <SocketProvider>
+            <RealtimeManager>{children}</RealtimeManager>
+        </SocketProvider>
     )
 }
 
 async function mount(children?: React.ReactNode) {
-    const result = render(<Tree>{children}</Tree>)
+    const result = await renderRouter(createPassthroughRouter(<Tree>{children}</Tree>), queryClient)
     await act(async () => {
         await vi.advanceTimersByTimeAsync(10)
     })

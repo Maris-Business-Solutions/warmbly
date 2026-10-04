@@ -1,0 +1,114 @@
+// Everything the dashboard needs before its first paint, resolved in as few
+// round trips as the data allows: the workspace list and the session's
+// workspace together, then identity and plan together. Pages then mount with
+// their bootstrap data already cached instead of discovering it one request
+// at a time.
+
+import { isRedirect, redirect } from "@tanstack/react-router";
+import type { QueryClient } from "@tanstack/react-query";
+
+import getToken from "./helper/getToken";
+import { clearClientSession } from "./session";
+import { AuthError } from "./errors/auth";
+import type { AppError } from "./api/client/normalizeError";
+import switchOrganization from "./api/client/app/organizations/switchOrganization";
+import { organizationsQuery } from "./api/hooks/app/organizations/useOrganizations";
+import { userQuery } from "./api/hooks/auth/useUser";
+import { timezonesQuery } from "./api/hooks/app/useTimezones";
+import { subscriptionQuery } from "./api/hooks/app/subscription/useSubscription";
+import { authConfigQuery } from "./api/hooks/auth/useAuthConfig";
+import { useAppStore } from "@/stores/useAppStore";
+
+let boot: Promise<void> | null = null;
+// The workspace this page has already put on the server session.
+let syncedOrgId: string | null = null;
+
+export function isOrgSynced(id: string): boolean {
+    return syncedOrgId === id;
+}
+
+export function markOrgSynced(id: string | null): void {
+    syncedOrgId = id;
+}
+
+/** Forget the boot, so the next dashboard navigation resolves the session afresh. */
+export function resetBoot(): void {
+    boot = null;
+    syncedOrgId = null;
+}
+
+function isAuthFailure(err: unknown): boolean {
+    if (err instanceof AuthError) return true;
+    const e = err as AppError | undefined;
+    return e?.status === 401 || e?.redirect === true;
+}
+
+export function requireDashboardToken(location: { pathname: string; href: string }) {
+    if (getToken()) return;
+    // A Slack link code is single-use and short-lived, so it survives sign-in.
+    const next = location.pathname === "/app/slack/link" ? location.href : undefined;
+    throw redirect({ to: "/auth/login", search: next ? { next } : {}, replace: true });
+}
+
+/** Resolves once the dashboard session is ready; page loaders await it before org-scoped fetches. */
+export function dashboardReady(): Promise<void> {
+    return boot ?? Promise.resolve();
+}
+
+export async function bootDashboard(queryClient: QueryClient, location: { pathname: string; href: string }) {
+    requireDashboardToken(location);
+    boot ??= runBoot(queryClient).catch((err) => {
+        boot = null;
+        throw err;
+    });
+    await boot;
+}
+
+async function runBoot(queryClient: QueryClient) {
+    const store = useAppStore.getState();
+    const remembered = store.currentOrganization;
+
+    // Reference data nobody waits on.
+    void queryClient.prefetchQuery(timezonesQuery);
+    void queryClient.prefetchQuery(authConfigQuery);
+
+    try {
+        // The remembered workspace goes on the session in parallel with the
+        // membership list; a stale one is refused and resolved below.
+        const [orgs, rememberedSync] = await Promise.all([
+            queryClient.ensureQueryData(organizationsQuery),
+            remembered
+                ? switchOrganization(remembered.id).then(() => true, () => false)
+                : Promise.resolve(false),
+        ]);
+        store.setOrganizations(orgs);
+
+        const stillMember = !!remembered && orgs.some((o) => o.id === remembered.id);
+        if (stillMember && remembered) {
+            if (rememberedSync) syncedOrgId = remembered.id;
+        } else if (orgs.length === 1) {
+            await switchOrganization(orgs[0].id);
+            syncedOrgId = orgs[0].id;
+            store.setCurrentOrganization(orgs[0]);
+        } else {
+            throw redirect({ to: "/select-org", replace: true });
+        }
+
+        // Identity carries the workspace's folders and labels, so it follows the switch.
+        const [user] = await Promise.all([
+            queryClient.ensureQueryData(userQuery),
+            queryClient.ensureQueryData(subscriptionQuery).catch(() => undefined),
+        ]);
+        if (!user.onboarding_completed_at) {
+            throw redirect({ to: "/onboarding", replace: true });
+        }
+    } catch (err) {
+        if (isAuthFailure(err)) {
+            clearClientSession(queryClient);
+            throw redirect({ to: "/auth/login", replace: true });
+        }
+        // A redirect is the answer; anything else is shown by the providers,
+        // which render their own error state for a query that failed.
+        if (isRedirect(err)) throw err;
+    }
+}

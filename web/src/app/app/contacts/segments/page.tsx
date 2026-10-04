@@ -2,7 +2,7 @@
 // with its live member count; clicking opens the segment's contact list.
 
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontalIcon, PlusIcon } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -54,7 +54,7 @@ function SegmentsList() {
                 conditions: s.conditions,
             });
             toast.success(`Duplicated as ${copy.name}`);
-            navigate(`/app/contacts/segments/${copy.id}`);
+            navigate({ to: "/app/contacts/segments/$id", params: { id: copy.id } });
         } catch (err) {
             toast.error(buildError(err as AppError));
         }
@@ -168,9 +168,9 @@ function SegmentsList() {
                                 key={s.id}
                                 role="link"
                                 tabIndex={0}
-                                onClick={() => navigate(`/app/contacts/segments/${s.id}`)}
+                                onClick={() => navigate({ to: "/app/contacts/segments/$id", params: { id: s.id } })}
                                 onKeyDown={(e) => {
-                                    if (e.key === "Enter") navigate(`/app/contacts/segments/${s.id}`);
+                                    if (e.key === "Enter") navigate({ to: "/app/contacts/segments/$id", params: { id: s.id } });
                                 }}
                                 className="group h-11 px-5 flex items-center gap-3 border-b border-slate-200/60 transition-colors hover:bg-slate-50/80 cursor-pointer"
                             >
@@ -208,7 +208,7 @@ function SegmentsList() {
                                         </button>
                                     </PopoverMenuTrigger>
                                     <PopoverMenuContent minWidth={180}>
-                                        <PopoverMenuItem onSelect={() => navigate(`/app/contacts/segments/${s.id}`)}>View contacts</PopoverMenuItem>
+                                        <PopoverMenuItem onSelect={() => navigate({ to: "/app/contacts/segments/$id", params: { id: s.id } })}>View contacts</PopoverMenuItem>
                                         <PopoverMenuItem onSelect={guarded(() => openEdit(s))}>Edit conditions</PopoverMenuItem>
                                         <PopoverMenuItem onSelect={campaignGuarded(() => setCampaignFor(s))}>Add to campaign</PopoverMenuItem>
                                         <PopoverMenuItem onSelect={guarded(() => duplicate(s))}>Duplicate</PopoverMenuItem>
@@ -228,7 +228,7 @@ function SegmentsList() {
                 onClose={() => setEditorOpen(false)}
                 segment={editing}
                 onSaved={(saved) => {
-                    if (!editing) navigate(`/app/contacts/segments/${saved.id}`);
+                    if (!editing) navigate({ to: "/app/contacts/segments/$id", params: { id: saved.id } });
                 }}
             />
             {campaignFor && (

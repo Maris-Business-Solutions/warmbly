@@ -6,7 +6,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
     AlertCircleIcon,
     AlertTriangleIcon,
@@ -448,7 +448,7 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
             const batch = await create.mutateAsync({ body, idempotencyKey: idemKey.current });
             toast.success("Placement batch queued.");
             onClose();
-            navigate(`/app/placement/batches/${batch.id}`);
+            navigate({ to: "/app/placement/batches/$id", params: { id: batch.id } });
         } catch (err) {
             const e = batchErrorMessage(err as AppError, { resetsOn: fp.usage.period_end, panel: draft.panel });
             setError(e);
@@ -1282,7 +1282,8 @@ function ReviewStep({
                                 </label>
                             ) : canBuy ? (
                                 <Link
-                                    to="/app/settings/billing/ai-credits"
+                                    to="/app/settings/billing/{-$tab}"
+                                    params={{ tab: "ai-credits" }}
                                     target="_blank"
                                     rel="noopener"
                                     className="mt-2 inline-flex text-[12px] font-medium text-sky-700 hover:underline"

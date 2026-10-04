@@ -40,7 +40,7 @@ import {
     UsersRoundIcon,
     XIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import useTeams from "@/lib/api/hooks/app/teams/useTeams";
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";

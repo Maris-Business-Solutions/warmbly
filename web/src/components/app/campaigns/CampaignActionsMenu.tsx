@@ -4,7 +4,7 @@
 // without manage_campaigns gets the standard explanation instead of a request.
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import {
     CopyIcon,
     MoreHorizontalIcon,
@@ -61,7 +61,7 @@ export default function CampaignActionsMenu({ campaign, variant, onToggle, after
             </PopoverMenuTrigger>
             <PopoverMenuContent minWidth={184}>
                 <PopoverMenuItem
-                    onSelect={() => navigate(`/app/campaigns/${campaign.id}/preferences`)}
+                    onSelect={() => navigate({ to: "/app/campaigns/$id/preferences", params: { id: campaign.id } })}
                     icon={<PencilIcon className="w-3 h-3" />}
                 >
                     {variant === "row" ? "Edit" : "Edit settings"}

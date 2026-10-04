@@ -1,4 +1,4 @@
-import { useLocation } from 'react-router-dom'
+import { useLocation } from '@tanstack/react-router'
 import { Fragment } from 'react'
 
 const labelMap: Record<string, string> = {
@@ -26,8 +26,8 @@ const labelMap: Record<string, string> = {
 }
 
 export function DynamicBreadcrumb() {
-  const location = useLocation()
-  const segments = location.pathname.split('/').filter(Boolean)
+  const pathname = useLocation({ select: (l) => l.pathname })
+  const segments = pathname.split('/').filter(Boolean)
   const breadcrumbSegments = segments.filter((s) => s !== 'app')
 
   if (breadcrumbSegments.length === 0) {

@@ -3,7 +3,8 @@
 // links on an explicit confirm.
 
 import React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRightIcon, BuildingIcon, CheckIcon, ExternalLinkIcon, Loader2Icon, TriangleAlertIcon } from "lucide-react";
 import toast from "react-hot-toast";

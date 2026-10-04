@@ -5,7 +5,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { PlusIcon, Trash2Icon, ZapIcon, Loader2Icon } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import {
     EmptyBlock,
@@ -67,7 +67,7 @@ export default function AutomationsPage() {
                 graph: { nodes: [{ id: "trigger", type: "trigger", x: 0, y: 0 }], edges: [] },
             },
             {
-                onSuccess: (res) => navigate(`/app/automations/${res.automation.id}`),
+                onSuccess: (res) => navigate({ to: "/app/automations/$id", params: { id: res.automation.id } }),
                 onError: () => toast.error("Could not create automation"),
             },
         );
@@ -77,7 +77,7 @@ export default function AutomationsPage() {
         create.mutate(
             { name: t.name, enabled: false, trigger_event: t.trigger_event, graph: t.graph },
             {
-                onSuccess: (res) => navigate(`/app/automations/${res.automation.id}`),
+                onSuccess: (res) => navigate({ to: "/app/automations/$id", params: { id: res.automation.id } }),
                 onError: () => toast.error("Could not create automation"),
             },
         );
@@ -128,7 +128,7 @@ export default function AutomationsPage() {
                                 index={i}
                                 automation={a}
                                 canManage={canManage}
-                                onOpen={() => navigate(`/app/automations/${a.id}`)}
+                                onOpen={() => navigate({ to: "/app/automations/$id", params: { id: a.id } })}
                             />
                         ))}
                     </div>
@@ -205,7 +205,10 @@ function AutomationCard({
 
     const toggle = (e: React.MouseEvent) => {
         e.stopPropagation();
-        update.mutate({ id: a.id, w: { ...toWrite(a), enabled: !a.enabled } });
+        update.mutate(
+            { id: a.id, w: { ...toWrite(a), enabled: !a.enabled } },
+            { onError: (err) => toast.error((err as { message?: string })?.message || "Could not update automation") },
+        );
     };
 
     const remove = (e: React.MouseEvent) => {

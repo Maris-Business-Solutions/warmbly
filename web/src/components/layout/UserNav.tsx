@@ -7,7 +7,7 @@
 // Opens upward (side="top") from the trigger so the popover settles up
 // from the bottom of the sidebar instead of falling off-screen.
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import {
     LogOutIcon,
     SettingsIcon,
@@ -33,7 +33,7 @@ export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
 
     const handleLogout = async () => {
         await logoutMutation.mutateAsync();
-        navigate("/auth/login", { replace: true });
+        navigate({ to: "/auth/login", replace: true });
     };
 
     const initials = user.email.slice(0, 2).toUpperCase();
@@ -105,7 +105,7 @@ export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
                 </div>
                 <PopoverMenuSeparator />
                 <PopoverMenuItem
-                    onSelect={() => navigate("/app/settings")}
+                    onSelect={() => navigate({ to: "/app/settings" })}
                     icon={<SettingsIcon className="w-3 h-3" />}
                 >
                     Settings

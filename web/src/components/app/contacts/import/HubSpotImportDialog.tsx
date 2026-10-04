@@ -2,7 +2,7 @@
 // workspace's HubSpot rules skip, then continue in the regular import review.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     AlertTriangleIcon,

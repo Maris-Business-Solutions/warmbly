@@ -4,7 +4,7 @@
 // because it is not evidence of anything.
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import {
     AlertTriangleIcon,

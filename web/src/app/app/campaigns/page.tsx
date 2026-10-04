@@ -19,7 +19,7 @@ import type Campaign from "@/lib/api/models/app/campaigns/Campaign";
 import type Folder from "@/lib/api/models/app/Folder";
 import { cn, hexToRgba } from "@/lib/utils";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import {
     AlertTriangleIcon,
     CalendarIcon,
@@ -516,7 +516,8 @@ export default function CampaignsPage() {
                             return (
                                 <Link
                                     key={c.id}
-                                    to={`/app/campaigns/${c.id}`}
+                                    to="/app/campaigns/$id"
+                                    params={{ id: c.id }}
                                     onClick={(e) => {
                                         // A modified click still opens the page, in a new tab or not.
                                         if (!canManage || cstatus !== "draft" || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;

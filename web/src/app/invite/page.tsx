@@ -5,7 +5,8 @@
 // brand-new users (sign up, bounce back, accept) and logged-in users.
 
 import React from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { Loader2Icon, AlertCircleIcon, MailIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import getToken from "@/lib/helper/getToken";
@@ -47,10 +48,11 @@ export default function InviteAcceptPage() {
     const invitedEmail = preview.data?.email ?? "";
     // The token has to travel as ?invite= too: without it the backend cannot
     // tell the signup is invited, and an invite_only instance refuses it.
-    const registerPath =
-        `/auth/register?invite=${encodeURIComponent(token ?? "")}` +
-        (invitedEmail ? `&email=${encodeURIComponent(invitedEmail)}` : "") +
-        `&next=${encodeURIComponent(nextPath)}`;
+    const registerSearch = {
+        invite: token ?? "",
+        email: invitedEmail || undefined,
+        next: nextPath,
+    };
     const signupClosed = authConfig.registration === "true";
     const signedInEmail = me.data?.email ?? "";
     const wrongAccount =
@@ -62,7 +64,7 @@ export default function InviteAcceptPage() {
 
     async function onSwitchAccount() {
         await logout.mutateAsync();
-        navigate(`/auth/login?next=${encodeURIComponent(nextPath)}`, { replace: true });
+        navigate({ to: "/auth/login", search: { next: nextPath }, replace: true });
     }
 
     async function onAccept() {
@@ -81,7 +83,7 @@ export default function InviteAcceptPage() {
                 setOrganizations(list);
                 setCurrentOrganization(joined);
             }
-            navigate("/app/emails", { replace: true });
+            navigate({ to: "/app/emails", replace: true });
         } catch {
             /* surfaced */
         }
@@ -188,7 +190,8 @@ export default function InviteAcceptPage() {
                                         Sign in or create an account with <span className="font-medium text-slate-700">{preview.data.email}</span> to join.
                                     </p>
                                     <Link
-                                        to={`/auth/login?next=${encodeURIComponent(nextPath)}`}
+                                        to="/auth/login"
+                                        search={{ next: nextPath }}
                                         className="w-full h-9 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[13px] font-medium inline-flex items-center justify-center transition-colors"
                                     >
                                         Sign in to accept
@@ -200,7 +203,8 @@ export default function InviteAcceptPage() {
                                         </p>
                                     ) : (
                                         <Link
-                                            to={registerPath}
+                                            to="/auth/register"
+                                            search={registerSearch}
                                             className="w-full h-9 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-medium inline-flex items-center justify-center transition-colors"
                                         >
                                             Create an account

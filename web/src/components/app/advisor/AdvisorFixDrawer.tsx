@@ -9,7 +9,8 @@
 // screen that shows the exact before and after has been seen.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
+import { hrefTarget } from "@/lib/routerSearch";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     ArrowLeftIcon,
@@ -478,7 +479,7 @@ function ChangeStep({
 
             {link ? (
                 <Link
-                    to={link.href}
+                    {...hrefTarget(link.href)}
                     className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-[12px] font-medium text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
                 >
                     {link.label}
