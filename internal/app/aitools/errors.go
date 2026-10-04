@@ -18,6 +18,8 @@ var (
 	// ErrToolForbidden is returned when the invocation lacks the tool's
 	// required permission.
 	ErrToolForbidden = errors.New("tool not permitted")
+	// ErrToolNeedsFreshAuth means the member must confirm it is them in the dashboard before this tool runs.
+	ErrToolNeedsFreshAuth = errors.New("confirm it is you in the Warmbly dashboard, then ask again")
 	// ErrInvalidArgs is returned by a handler when the model's JSON arguments
 	// fail to decode or validate. It is fed back to the model so it can retry.
 	ErrInvalidArgs = errors.New("invalid tool arguments")

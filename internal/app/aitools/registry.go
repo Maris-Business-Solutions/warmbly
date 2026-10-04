@@ -30,6 +30,8 @@ type Invocation struct {
 	IsAPIKey bool
 	// ActsForMember marks an OAuth token: it also needs OrgPerms, its member's permissions.
 	ActsForMember bool
+	// FreshAuthed marks a member session that confirmed the account holder within the reauth window.
+	FreshAuthed bool
 	// IP / UserAgent flow into the audit trail for write-class tools.
 	IP        string
 	UserAgent string
@@ -56,11 +58,21 @@ type Tool struct {
 	JWTOnly bool
 	// AlwaysAsk keeps the tool out of workspace "always allow" policies: it starts sending, or changes who has access.
 	AlwaysAsk bool
+	// FreshAuth holds a member to the same recent confirmation the tool's REST route requires.
+	FreshAuth bool
 	// SecretFields are top-level result keys the assistant never sees; the member is shown them once.
 	SecretFields []string
 	// Preview resolves a send's sender, recipients and subject for the approval card, and pins them in the returned args.
 	Preview func(ctx context.Context, inv Invocation, args json.RawMessage) (*models.AgentSendPreview, json.RawMessage, error)
 	Handler Handler
+}
+
+// run executes the tool, refusing a member session that has not confirmed recently when the tool needs it.
+func (t Tool) run(ctx context.Context, inv Invocation, args json.RawMessage) (string, error) {
+	if t.FreshAuth && !inv.IsAPIKey && !inv.FreshAuthed {
+		return "", ErrToolNeedsFreshAuth
+	}
+	return t.Handler(ctx, inv, args)
 }
 
 // allowed reports whether the invocation's permissions grant this tool. A zero
@@ -147,7 +159,7 @@ func (r *Registry) ToolDefs(ctx context.Context, inv Invocation) []generation.To
 			InputSchema: t.InputSchema,
 			Risk:        t.Risk,
 			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
-				return t.Handler(ctx, inv, args)
+				return t.run(ctx, inv, args)
 			},
 		})
 	}
@@ -201,7 +213,7 @@ func (r *Registry) bindNamed(inv Invocation, gate bool, names ...string) []gener
 			InputSchema: t.InputSchema,
 			Risk:        t.Risk,
 			Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
-				return t.Handler(ctx, inv, args)
+				return t.run(ctx, inv, args)
 			},
 		})
 	}
@@ -242,5 +254,5 @@ func (r *Registry) Call(ctx context.Context, inv Invocation, name string, args j
 	if !t.allowed(inv) {
 		return "", ErrToolForbidden
 	}
-	return t.Handler(ctx, inv, args)
+	return t.run(ctx, inv, args)
 }

@@ -30,6 +30,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "invite_member",
+		FreshAuth:   true,
 		Description: "Invite a user to the organization by email with one or more roles. Returns the invitation id.",
 		InputSchema: objectSchema(map[string]any{
 			"email":    strProp("The invitee's email address."),
@@ -45,6 +46,7 @@ func (d Deps) registerTeamTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "update_member_role",
+		FreshAuth:   true,
 		Description: "Change a member's role assignment.",
 		InputSchema: objectSchema(map[string]any{
 			"member_user_id": strProp("The member's user UUID."),

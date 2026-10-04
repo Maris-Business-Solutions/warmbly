@@ -157,6 +157,8 @@ func (h *Handler) CallAgentTool(c *gin.Context) {
 			errx.JSON(c, errx.New(errx.NotFound, "tool not found"))
 		case errors.Is(err, aitools.ErrToolForbidden):
 			errx.JSON(c, errx.New(errx.Forbidden, "your credentials lack the permission for this tool"))
+		case errors.Is(err, aitools.ErrToolNeedsFreshAuth):
+			errx.JSON(c, errx.NewWithIdentifier(errx.Forbidden, "reauth_required", "Confirm it is you before making this change."))
 		default:
 			// A tool-level failure is the agent's to read and react to, not a
 			// transport error: surface the message with a stable 422.

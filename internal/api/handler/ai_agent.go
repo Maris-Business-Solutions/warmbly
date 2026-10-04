@@ -42,12 +42,13 @@ func (h *Handler) jwtInvocation(c *gin.Context) (aitools.Invocation, *errx.Error
 		perms = models.AllPermissions
 	}
 	return aitools.Invocation{
-		OrgID:     *orgID,
-		UserID:    userID,
-		OrgPerms:  perms,
-		IsAPIKey:  false,
-		IP:        c.ClientIP(),
-		UserAgent: c.Request.UserAgent(),
+		OrgID:       *orgID,
+		UserID:      userID,
+		OrgPerms:    perms,
+		IsAPIKey:    false,
+		FreshAuthed: middleware.SessionFresh(c),
+		IP:          c.ClientIP(),
+		UserAgent:   c.Request.UserAgent(),
 	}, nil
 }
 

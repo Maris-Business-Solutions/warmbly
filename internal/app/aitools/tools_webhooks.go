@@ -73,6 +73,7 @@ func (d Deps) registerWebhookTools(r *Registry) {
 
 	r.Register(Tool{
 		Name:        "rotate_webhook_secret",
+		FreshAuth:   true,
 		Description: "Rotate a webhook endpoint's signing secret. The new secret is shown once to the member, never to you.",
 		InputSchema: objectSchema(map[string]any{
 			"webhook_id": strProp("The endpoint's UUID."),
