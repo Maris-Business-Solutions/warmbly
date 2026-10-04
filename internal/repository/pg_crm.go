@@ -625,6 +625,14 @@ func (r *crmRepository) CreateDeal(ctx context.Context, orgID uuid.UUID, data *m
 	}); err != nil {
 		return nil, err
 	}
+	var stageInPipeline bool
+	if err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pipeline_stages WHERE id = $1 AND pipeline_id = $2)`,
+		data.StageID, data.PipelineID).Scan(&stageInPipeline); err != nil {
+		return nil, err
+	}
+	if !stageInPipeline {
+		return nil, errx.ErrNotFound
+	}
 
 	currency := data.Currency
 	if currency == "" {
@@ -763,7 +771,8 @@ func (r *crmRepository) UpdateDeal(ctx context.Context, orgID, dealID uuid.UUID,
 	argPos := 3
 
 	if data.StageID != nil {
-		setClauses = append(setClauses, fmt.Sprintf("stage_id = $%d", argPos))
+		// A deal always sits in the pipeline its stage belongs to.
+		setClauses = append(setClauses, fmt.Sprintf("stage_id = $%d, pipeline_id = (SELECT pipeline_id FROM pipeline_stages WHERE id = $%d)", argPos, argPos))
 		args = append(args, *data.StageID)
 		argPos++
 	}

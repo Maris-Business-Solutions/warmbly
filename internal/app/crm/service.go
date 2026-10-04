@@ -256,6 +256,11 @@ func (s *crmService) CreatePipeline(ctx context.Context, orgID uuid.UUID, data *
 	if len(data.Name) == 0 || len(data.Name) > 255 {
 		return nil, errx.New(errx.BadRequest, "pipeline name must be between 1 and 255 characters")
 	}
+	for _, st := range data.Stages {
+		if len(st.Name) == 0 || len(st.Name) > 255 || st.Color == "" {
+			return nil, errx.New(errx.BadRequest, "every stage needs a name of 1 to 255 characters and a color")
+		}
+	}
 
 	pipeline, err := s.repo.CreatePipeline(ctx, orgID, data)
 	if err != nil {
