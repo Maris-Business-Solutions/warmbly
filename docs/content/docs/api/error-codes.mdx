@@ -481,6 +481,23 @@ The confirmation is recorded on the session and lasts for the window returned, s
 }
 ```
 
+#### `slack_link_email_mismatch`
+
+A `403` whose `code` is `slack_link_email_mismatch` comes from `POST /integrations/slack/link`. Confirming a [Slack link](/guides/slack/#link-your-slack-account) needs the email on the Slack account's profile to be the signed-in user's Warmbly email, compared without regard to case. Warmbly reads the Slack email when the link is confirmed, and a Slack connection that does not share member emails (one made before Warmbly asked for `users:read.email`) never matches. The code stays usable, so the same button works once the emails match. `GET /integrations/slack/link/:code` reports the same check ahead of time as `email_matches`.
+
+```json
+{
+  "error": "Forbidden",
+  "message": "Your Slack account's email address must be the one you sign in to Warmbly with. Sign in with that address, or ask a Warmbly admin to reconnect Slack if Slack is not sharing your email.",
+  "code": "slack_link_email_mismatch",
+  "request_id": "4bbbd1b2-8f86-47dd-8a7f-9476501ad20e"
+}
+```
+
+**How to fix:**
+- Sign in to Warmbly with the address on your Slack profile, then confirm again
+- If the addresses already match, a member with `manage_settings` reconnects Slack under **Integrations > Slack** so the connection grants `users:read` and `users:read.email`
+
 ### 404 Not Found
 
 Returned when the requested resource doesn't exist.
@@ -678,7 +695,7 @@ A `503` whose `code` is `slack_not_configured` is not transient and retrying wil
 - Create the instance's Slack app and set `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET` and `SLACK_SIGNING_SECRET` on the backend and the consumer, then restart. See [Slack app](/development/slack-app/)
 - In a client, read `app_configured` and `interactive_configured` from `GET /integrations/slack/status` and hide the Slack affordances rather than retrying
 
-Those request URLs answer `401` `unauthorized` to a request whose Slack signature does not verify. Linking a Slack account to a workspace you are not a member of is `403` `forbidden`.
+Those request URLs answer `401` `unauthorized` to a request whose Slack signature does not verify. Linking a Slack account to a workspace you are not a member of is `403` `forbidden`, and linking one whose email is not yours is `403` [`slack_link_email_mismatch`](#slack_link_email_mismatch).
 
 #### `mailbox_allowance_reached`
 

@@ -23,9 +23,10 @@ import (
 
 // Stable error codes the dashboard branches on.
 var (
-	ErrSlackNotConfigured = errx.NewWithIdentifier(errx.ServiceUnavailable, "slack_not_configured", "Slack is not set up on this Warmbly instance.")
-	ErrSlackNotConnected  = errx.NewWithIdentifier(errx.NotFound, "slack_not_connected", "This workspace has not connected Slack.")
-	ErrSlackLinkInvalid   = errx.NewWithIdentifier(errx.NotFound, "slack_link_invalid", "This link has expired or was already used. Ask Warmbly in Slack for a new one.")
+	ErrSlackNotConfigured     = errx.NewWithIdentifier(errx.ServiceUnavailable, "slack_not_configured", "Slack is not set up on this Warmbly instance.")
+	ErrSlackNotConnected      = errx.NewWithIdentifier(errx.NotFound, "slack_not_connected", "This workspace has not connected Slack.")
+	ErrSlackLinkInvalid       = errx.NewWithIdentifier(errx.NotFound, "slack_link_invalid", "This link has expired or was already used. Ask Warmbly in Slack for a new one.")
+	ErrSlackLinkEmailMismatch = errx.NewWithIdentifier(errx.Forbidden, "slack_link_email_mismatch", "Your Slack account's email address must be the one you sign in to Warmbly with. Sign in with that address, or ask a Warmbly admin to reconnect Slack if Slack is not sharing your email.")
 )
 
 // Timeouts for work done after Slack has been answered.
@@ -116,6 +117,7 @@ type Service struct {
 	threads       UniboxThreads
 	labels        CategoryEnsurer
 	drafts        PendingDrafts
+	users         UserLookup
 	cipher        cipher.CipherService
 	guard         *guard
 	signingSecret string
@@ -146,6 +148,7 @@ func New(d Deps) *Service {
 		threads:       d.Threads,
 		labels:        d.Labels,
 		drafts:        d.Drafts,
+		users:         d.Users,
 		cipher:        d.Cipher,
 		guard:         newGuard(d.Redis),
 		signingSecret: config.SlackSigningSecret(),

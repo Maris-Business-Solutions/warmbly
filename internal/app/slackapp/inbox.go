@@ -40,6 +40,7 @@ const (
 // UniboxThreads reads stored conversations; satisfied by repository.UniboxRepository.
 type UniboxThreads interface {
 	GetByThread(ctx context.Context, orgID, emailID uuid.UUID, threadID string, limit int, cursor string) (*models.MailSearchResult, error)
+	GetByIDForOrg(ctx context.Context, orgID, id uuid.UUID) (*models.EmailMessageStoreData, uuid.UUID, error)
 	ListThreadLabels(ctx context.Context, orgID uuid.UUID, threadID string) ([]models.MiniCategory, error)
 }
 

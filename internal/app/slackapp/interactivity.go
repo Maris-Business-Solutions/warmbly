@@ -187,7 +187,7 @@ func (s *Service) handleApproval(ctx context.Context, p *interaction, value, dec
 	if a == nil {
 		return
 	}
-	row, err := s.repo.GetAgentThreadByID(ctx, rowID)
+	row, err := s.repo.GetAgentThreadByID(ctx, a.link.OrganizationID, rowID)
 	if err != nil {
 		return
 	}
@@ -245,6 +245,10 @@ func (s *Service) handleNotificationDraft(ctx context.Context, p *interaction, v
 	if a == nil {
 		return
 	}
+	if !s.conversationInOrg(ctx, a.link.OrganizationID, v) {
+		s.whisper(ctx, a.token, p, "That conversation is not in your Warmbly workspace.")
+		return
+	}
 	channel, ts := p.channelID(), p.Container.MessageTS
 	if refusal := s.channelRefusal(ctx, a, channel); refusal != "" {
 		s.whisper(ctx, a.token, p, refusal)
@@ -258,6 +262,30 @@ func (s *Service) handleNotificationDraft(ctx context.Context, p *interaction, v
 		channel: channel, threadTS: ts, messageID: "slack:action:" + ts + ":" + actionTS,
 		text: text, dm: strings.HasPrefix(channel, "D"), reassign: true,
 	})
+}
+
+// conversationInOrg reports whether every message a draft card names is stored
+// in orgID's mailboxes.
+func (s *Service) conversationInOrg(ctx context.Context, orgID uuid.UUID, v draftReplyValue) bool {
+	if s.threads == nil {
+		return false
+	}
+	if v.ThreadID != "" {
+		res, err := s.threads.GetByThread(ctx, orgID, uuid.Nil, v.ThreadID, 1, "")
+		if err != nil || res == nil || len(res.Data) == 0 {
+			return false
+		}
+	}
+	if v.EmailID != "" {
+		id, err := uuid.Parse(v.EmailID)
+		if err != nil {
+			return false
+		}
+		if e, _, err := s.threads.GetByIDForOrg(ctx, orgID, id); err != nil || e == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // askAboutMessage starts the assistant about one message: in its thread, or

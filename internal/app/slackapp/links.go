@@ -15,6 +15,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -80,13 +81,24 @@ func (s *Service) PreviewLink(ctx context.Context, userID uuid.UUID, code string
 	if c == nil {
 		return nil, ErrSlackLinkInvalid
 	}
+	prof, xerr := s.slackProfile(ctx, c)
+	if xerr != nil {
+		return nil, xerr
+	}
 	out := &LinkPreview{
 		OrganizationID: c.OrganizationID,
 		SlackLinkPreview: models.SlackLinkPreview{
-			SlackTeamID: c.SlackTeamID,
-			SlackUserID: c.SlackUserID,
-			ExpiresAt:   c.ExpiresAt,
+			SlackTeamID:     c.SlackTeamID,
+			SlackUserID:     c.SlackUserID,
+			SlackUserName:   prof.Name,
+			SlackUserAvatar: prof.Avatar,
+			ExpiresAt:       c.ExpiresAt,
 		},
+	}
+	if s.users != nil {
+		if u, err := s.users.GetUser(ctx, userID); err == nil && u != nil {
+			out.EmailMatches = models.SlackLinkEmailMatches(prof.Email, u.Email)
+		}
 	}
 	if org, xerr := s.orgs.Get(ctx, c.OrganizationID); xerr == nil && org != nil {
 		out.OrganizationName = org.Name
@@ -104,19 +116,78 @@ func (s *Service) PreviewLink(ctx context.Context, userID uuid.UUID, code string
 	return out, nil
 }
 
+// linkProfile is the Slack account a code names, as Slack reports it now.
+type linkProfile struct {
+	Name   string
+	Email  string
+	Avatar string
+}
+
+// profileFrom keeps a name safe to show, an https avatar, and the email only
+// when Slack has not marked it unconfirmed.
+func profileFrom(u *slackUser) linkProfile {
+	var p linkProfile
+	if u == nil || u.Deleted || u.IsBot {
+		return p
+	}
+	for _, n := range []string{u.Profile.DisplayName, u.Profile.RealName} {
+		if p.Name = displayname.Clean(n, displayname.Person); p.Name != "" {
+			break
+		}
+	}
+	if u.IsEmailConfirmed == nil || *u.IsEmailConfirmed {
+		p.Email = strings.TrimSpace(u.Profile.Email)
+	}
+	if v, err := url.Parse(u.Profile.Image72); err == nil && v.Scheme == "https" && v.Host != "" {
+		p.Avatar = v.String()
+	}
+	return p
+}
+
+// slackProfile reads the code's Slack account. An install without the users
+// scopes yields an empty profile, which no Warmbly email matches.
+func (s *Service) slackProfile(ctx context.Context, c *models.SlackLinkCode) (linkProfile, *errx.Error) {
+	token, err := s.integ.SlackBotToken(ctx, c.OrganizationID, c.ConnectionID)
+	if err != nil {
+		return linkProfile{}, ErrSlackLinkInvalid
+	}
+	u, err := s.client.UserInfo(ctx, token, c.SlackUserID)
+	switch {
+	case IsAPIError(err, "missing_scope", "user_not_found"):
+		return linkProfile{}, nil
+	case err != nil:
+		return linkProfile{}, errx.NewPublic(errx.ServiceUnavailable, "Slack could not be reached to check this account. Try again in a moment.")
+	}
+	return profileFrom(u), nil
+}
+
 // ConfirmLink redeems a code for the signed-in user, who must be an accepted
-// member of the code's workspace. The code is spent in the same transaction.
+// member of the code's workspace whose email is the Slack account's email.
+// The code is spent in the same transaction.
 func (s *Service) ConfirmLink(ctx context.Context, userID uuid.UUID, code string) (*models.SlackUserLink, *errx.Error) {
 	code = strings.TrimSpace(code)
 	if !validCode(code) {
 		return nil, ErrSlackLinkInvalid
 	}
-	link, err := s.repo.ConsumeLinkCode(ctx, hashLinkCode(code), userID)
+	c, err := s.repo.PreviewLinkCode(ctx, hashLinkCode(code))
+	if err != nil {
+		return nil, errx.InternalError()
+	}
+	if c == nil {
+		return nil, ErrSlackLinkInvalid
+	}
+	prof, xerr := s.slackProfile(ctx, c)
+	if xerr != nil {
+		return nil, xerr
+	}
+	link, err := s.repo.ConsumeLinkCode(ctx, hashLinkCode(code), userID, prof.Email)
 	switch {
 	case errors.Is(err, repository.ErrSlackLinkCodeInvalid):
 		return nil, ErrSlackLinkInvalid
 	case errors.Is(err, repository.ErrSlackLinkNotMember):
 		return nil, errx.New(errx.Forbidden, "You are not a member of the Warmbly workspace this link belongs to.")
+	case errors.Is(err, repository.ErrSlackLinkEmailMismatch):
+		return nil, ErrSlackLinkEmailMismatch
 	case err != nil || link == nil:
 		return nil, errx.InternalError()
 	}
