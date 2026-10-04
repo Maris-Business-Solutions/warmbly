@@ -8,7 +8,6 @@ import (
 
 // Callback and command ids shared by the manifest and the handlers.
 const (
-	SlashCommand             = "/warmbly"
 	CallbackMessageShortcut  = "ask_warmbly_about_message"
 	ActionApprove            = "agent_approve"
 	ActionDeny               = "agent_deny"
@@ -18,7 +17,6 @@ const (
 	ActionOpenURL            = "open_url"
 	pathSlackEvents          = "/api/v1/integrations/slack/events"
 	pathSlackInteractivity   = "/api/v1/integrations/slack/interactivity"
-	pathSlackCommands        = "/api/v1/integrations/slack/commands"
 	pathIntegrationsCallback = "/integrations/oauth/callback"
 )
 
@@ -47,7 +45,6 @@ var suggestedPrompts = []SuggestedPrompt{
 type RequestURLs struct {
 	Events        string `json:"events"`
 	Interactivity string `json:"interactivity"`
-	Commands      string `json:"commands"`
 	OAuthRedirect string `json:"oauth_redirect"`
 }
 
@@ -60,7 +57,6 @@ func requestURLs(backendURL, oauthRedirect string) RequestURLs {
 	return RequestURLs{
 		Events:        base + pathSlackEvents,
 		Interactivity: base + pathSlackInteractivity,
-		Commands:      base + pathSlackCommands,
 		OAuthRedirect: oauthRedirect,
 	}
 }
@@ -107,15 +103,6 @@ func Manifest(backendURL, oauthRedirect string) map[string]any {
 					"type":        "message",
 					"callback_id": CallbackMessageShortcut,
 					"description": "Start a Warmbly assistant thread about this message",
-				},
-			},
-			"slash_commands": []any{
-				map[string]any{
-					"command":       SlashCommand,
-					"url":           u.Commands,
-					"description":   "Ask Warmbly a question or link your account",
-					"usage_hint":    "[question] | link | unlink | help",
-					"should_escape": false,
 				},
 			},
 		},

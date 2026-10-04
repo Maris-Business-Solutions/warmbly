@@ -285,6 +285,15 @@ func (c *Client) SetAssistantTitle(ctx context.Context, token, channel, threadTS
 	}, nil)
 }
 
+// AddReaction reacts to a message as the bot; needs reactions:write.
+func (c *Client) AddReaction(ctx context.Context, token, channel, ts, name string) error {
+	return c.callJSON(ctx, token, "reactions.add", map[string]any{"channel": channel, "timestamp": ts, "name": name}, nil)
+}
+
+func (c *Client) RemoveReaction(ctx context.Context, token, channel, ts, name string) error {
+	return c.callJSON(ctx, token, "reactions.remove", map[string]any{"channel": channel, "timestamp": ts, "name": name}, nil)
+}
+
 // slackUser is the part of a users.info answer the link flow reads.
 type slackUser struct {
 	ID               string `json:"id"`

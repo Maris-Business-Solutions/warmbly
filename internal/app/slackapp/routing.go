@@ -45,13 +45,16 @@ type routeFacts struct {
 	ThreadMapped bool
 	// OwnerIsAuthor: the session belongs to the linked author of the message.
 	OwnerIsAuthor bool
-	ExtShared     bool
-	Settings      models.SlackSettings
+	// SameOrg: the thread's session belongs to the author's Warmbly workspace.
+	SameOrg   bool
+	ExtShared bool
+	Settings  models.SlackSettings
 }
 
 // decideRoute says whether a message reaches the assistant. Channel messages
-// that are not mentions only continue a thread the author already owns;
-// explicit requests that are refused get told why, passive ones are ignored.
+// that are not mentions only continue a thread the author already owns, and
+// a mention in a teammate's thread takes it over; explicit requests that are
+// refused get told why, passive ones are ignored.
 func decideRoute(f routeFacts) msgRoute {
 	explicit := f.DM || f.Mention
 	if !explicit {
@@ -72,7 +75,7 @@ func decideRoute(f routeFacts) msgRoute {
 		return refuse(routeRefuseDisabled)
 	case f.Settings.AssistantDMOnly && !f.DM:
 		return refuse(routeRefuseDMOnly)
-	case f.ThreadMapped && !f.OwnerIsAuthor:
+	case f.ThreadMapped && !f.OwnerIsAuthor && !(f.Mention && f.SameOrg):
 		return refuse(routeRefuseNotOwner)
 	}
 	return routeAgent

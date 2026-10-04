@@ -26,6 +26,7 @@ var SlackBotScopes = []string{
 	"im:read",
 	"im:write",
 	"mpim:history",
+	"reactions:write",
 	"users:read",
 	"users:read.email",
 }

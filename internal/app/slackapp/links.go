@@ -30,12 +30,18 @@ func hashLinkCode(code string) []byte {
 // mintLinkURL stores a fresh single-use code for a Slack member and returns
 // the dashboard URL that redeems it ("" when the instance has no APP_URL).
 func (s *Service) mintLinkURL(ctx context.Context, conn *models.IntegrationConnection, teamID, slackUserID string) string {
+	u, _ := s.mintLink(ctx, conn, teamID, slackUserID)
+	return u
+}
+
+// mintLink is mintLinkURL that also returns the code, to hold a question under.
+func (s *Service) mintLink(ctx context.Context, conn *models.IntegrationConnection, teamID, slackUserID string) (string, string) {
 	if appURL("/") == "" {
-		return ""
+		return "", ""
 	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return ""
+		return "", ""
 	}
 	code := base64.RawURLEncoding.EncodeToString(raw)
 	err := s.repo.CreateLinkCode(ctx, hashLinkCode(code), models.SlackLinkCode{
@@ -47,9 +53,9 @@ func (s *Service) mintLinkURL(ctx context.Context, conn *models.IntegrationConne
 	})
 	if err != nil {
 		log.Warn().Err(err).Msg("slack: storing a link code failed")
-		return ""
+		return "", ""
 	}
-	return appURL("/app/slack/link?code=" + url.QueryEscape(code))
+	return appURL("/app/slack/link?code=" + url.QueryEscape(code)), code
 }
 
 // LinkPreview is GET /v1/integrations/slack/link/:code.
@@ -192,13 +198,66 @@ func (s *Service) ConfirmLink(ctx context.Context, userID uuid.UUID, code string
 		return nil, errx.InternalError()
 	}
 	l := *link
-	s.spawn("link_confirmation", shortTaskTime, func(ctx context.Context) {
-		s.sendLinkConfirmation(ctx, &l)
+	s.spawn("link_confirmation", agentRunTimeout, func(ctx context.Context) {
+		q := s.takeAsk(ctx, l.OrganizationID, code)
+		s.sendLinkConfirmation(ctx, &l, q != nil)
+		if q != nil {
+			s.resumeAsk(ctx, &l, q)
+		}
 	})
 	return link, nil
 }
 
-func (s *Service) sendLinkConfirmation(ctx context.Context, link *models.SlackUserLink) {
+// SlackInstalled implements integration.SlackInstallHook: the member who
+// connected Slack is linked to the Slack account that approved the install
+// when the two share an email.
+func (s *Service) SlackInstalled(_ context.Context, conn *models.IntegrationConnection, slackUserID string, userID uuid.UUID) {
+	if conn == nil || slackUserID == "" || conn.ExternalAccountID == "" {
+		return
+	}
+	// Best effort, so it never holds up the OAuth callback on a Slack call.
+	c := *conn
+	s.spawn("installer_link", shortTaskTime, func(ctx context.Context) {
+		s.linkInstaller(ctx, &c, slackUserID, userID)
+	})
+}
+
+func (s *Service) linkInstaller(ctx context.Context, conn *models.IntegrationConnection, slackUserID string, userID uuid.UUID) {
+	token, err := s.integ.SlackBotToken(ctx, conn.OrganizationID, conn.ID)
+	if err != nil {
+		return
+	}
+	// The same rule as a link button: only the Warmbly account with the Slack
+	// account's email is linked; anyone else links by asking the bot.
+	u, err := s.client.UserInfo(ctx, token, slackUserID)
+	if err != nil {
+		return
+	}
+	link, err := s.repo.LinkInstaller(ctx, conn.OrganizationID, conn.ID, conn.ExternalAccountID, slackUserID, profileFrom(u).Email, userID)
+	if err != nil {
+		log.Warn().Err(err).Msg("slack: linking the installer failed")
+		return
+	}
+	if link == nil {
+		return
+	}
+	if s.audit != nil {
+		s.audit.LogAction(ctx, link.OrganizationID, userID, models.AuditActionCreate, models.AuditEntityIntegration,
+			&link.ConnectionID, "", "Slack", nil, map[string]string{"slack_link": "linked_on_install"})
+	}
+	s.sendLinkConfirmation(ctx, link, false)
+}
+
+// resumeAsk answers the question that was held while its author linked.
+func (s *Service) resumeAsk(ctx context.Context, link *models.SlackUserLink, q *ask) {
+	a := s.resolveActor(ctx, link.SlackTeamID, link.SlackUserID)
+	if a == nil || a.link == nil {
+		return
+	}
+	s.handleAsk(ctx, a, *q)
+}
+
+func (s *Service) sendLinkConfirmation(ctx context.Context, link *models.SlackUserLink, resuming bool) {
 	token, err := s.integ.SlackBotToken(ctx, link.OrganizationID, link.ConnectionID)
 	if err != nil {
 		return
@@ -211,7 +270,10 @@ func (s *Service) sendLinkConfirmation(ctx context.Context, link *models.SlackUs
 	if org, xerr := s.orgs.Get(ctx, link.OrganizationID); xerr == nil && org != nil && org.Name != "" {
 		orgName = "*" + escapeMrkdwn(org.Name) + "*"
 	}
-	text := "You're linked to " + orgName + ". Ask me anything about your outreach right here, mention me in a channel, or type `/warmbly help`."
+	text := "You're linked to " + orgName + ". Ask me anything about your outreach right here, or mention @Warmbly in any channel I'm in."
+	if resuming {
+		text = "You're linked to " + orgName + ". I'm answering your question now."
+	}
 	if _, err := s.client.PostMessage(ctx, token, Message{Channel: dm, Text: "You're linked to Warmbly", Blocks: blocks(sectionBlock(text))}); err != nil {
 		log.Warn().Err(err).Msg("slack: link confirmation DM failed")
 	}
@@ -247,4 +309,25 @@ func (s *Service) RemoveLink(ctx context.Context, orgID, linkID uuid.UUID) (*mod
 		return nil, errx.New(errx.NotFound, "Slack link not found.")
 	}
 	return link, nil
+}
+
+func (s *Service) linkedLine(ctx context.Context, a *actor) string {
+	org := "your Warmbly workspace"
+	if o, xerr := s.orgs.Get(ctx, a.link.OrganizationID); xerr == nil && o != nil && o.Name != "" {
+		org = "*" + escapeMrkdwn(o.Name) + "*"
+	}
+	who := ""
+	if a.link.UserName != "" {
+		who = " as *" + escapeMrkdwn(a.link.UserName) + "*"
+	}
+	return "You're linked to " + org + who + "."
+}
+
+// auditUnlink records a link removed from Slack on the audit spine.
+func (s *Service) auditUnlink(ctx context.Context, link *models.SlackUserLink) {
+	if s.audit == nil || link == nil {
+		return
+	}
+	s.audit.LogAction(ctx, link.OrganizationID, link.UserID, models.AuditActionDelete, models.AuditEntityIntegration,
+		&link.ConnectionID, "", "Slack", nil, map[string]string{"slack_link": "removed_from_slack"})
 }

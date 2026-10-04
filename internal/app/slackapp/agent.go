@@ -29,6 +29,8 @@ const (
 	decisionDeny     = "deny"
 	decisionAlways   = "always_allow"
 	errGenericAnswer = "Something went wrong. Please try again."
+	reactWorking     = "eyes"
+	reactDone        = "white_check_mark"
 	// The dashboard gates the assistant on use_ai; Slack answers to the same rule.
 	errNoAIAnswer = "Your Warmbly role does not include the AI assistant. Ask a workspace admin for AI access."
 )
@@ -47,6 +49,11 @@ type agentTurn struct {
 	// reassign lets a member take over a thread another member started
 	// (inbox threads are shared by the team).
 	reassign bool
+	// ackTS is the member's message, reacted to while the run works on it.
+	ackTS string
+	// quotesOthers: the run reads text other people wrote (a thread, a
+	// message, an email), so no change may run without asking.
+	quotesOthers bool
 }
 
 // invocation builds the tool identity from the member's live permissions.
@@ -128,10 +135,36 @@ func (s *Service) runTurn(ctx context.Context, t agentTurn) {
 		}
 		return
 	}
+	s.react(ctx, t.token, t.channel, t.ackTS, reactWorking, true)
+	// Anyone can post in a channel, so there every change asks.
+	if !t.dm || t.quotesOthers {
+		ctx = aiagent.WithStrictApproval(ctx)
+	}
 	r := s.newRenderer(t.token, t.channel, t.threadTS, row.SessionID, t.dm)
 	r.start(ctx)
 	xerr := s.agent.RunMessage(ctx, t.inv, row.SessionID, t.messageID, t.text, aiagent.PageSlack, "slack:"+t.channel, r.emit)
 	s.afterRun(ctx, t.token, row, r, xerr)
+	s.react(ctx, t.token, t.channel, t.ackTS, reactWorking, false)
+	if xerr == nil && !r.failed() && r.pendingApproval() == nil {
+		s.react(ctx, t.token, t.channel, t.ackTS, reactDone, true)
+	}
+}
+
+// react adds or removes the bot's reaction on a member's message. An install
+// without reactions:write simply shows none.
+func (s *Service) react(ctx context.Context, token, channel, ts, name string, add bool) {
+	if ts == "" {
+		return
+	}
+	var err error
+	if add {
+		err = s.client.AddReaction(ctx, token, channel, ts, name)
+	} else {
+		err = s.client.RemoveReaction(ctx, token, channel, ts, name)
+	}
+	if err != nil && !IsAPIError(err, "missing_scope", "already_reacted", "no_reaction", "message_not_found") {
+		log.Debug().Err(err).Msg("slack: reaction failed")
+	}
 }
 
 // resumeTurn continues a paused run after the owner's decision.
@@ -149,6 +182,8 @@ func (s *Service) resumeTurn(ctx context.Context, token string, row *models.Slac
 		return
 	}
 	defer release()
+	// What the run read before pausing is not known here, so later changes ask too.
+	ctx = aiagent.WithStrictApproval(ctx)
 	r := s.newRenderer(token, row.ChannelID, row.ThreadTS, row.SessionID, strings.HasPrefix(row.ChannelID, "D"))
 	r.start(ctx)
 	xerr := s.agent.Resume(ctx, inv, row.SessionID, toolCallID, decision, r.emit)
@@ -543,6 +578,13 @@ func (r *renderer) settleDraft(result string) {
 	for k, v := range p {
 		r.drafts[k] = v
 	}
+}
+
+// failed reports whether the run ended on an error.
+func (r *renderer) failed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.errMsg != ""
 }
 
 func (r *renderer) pendingApproval() *pendingApprovalInfo {

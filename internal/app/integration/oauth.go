@@ -314,6 +314,11 @@ func (m *OAuthManager) Exchange(ctx context.Context, p models.IntegrationProvide
 	if id, ok := tok.Extra("id").(string); ok {
 		acct.IdentityURL = strings.TrimSpace(id)
 	}
+	if p == models.IntegrationSlack {
+		if au, ok := tok.Extra("authed_user").(map[string]any); ok {
+			acct.InstallerID, _ = au["id"].(string)
+		}
+	}
 	return tokens, acct, nil
 }
 
@@ -371,6 +376,8 @@ type extAccount struct {
 	UIDomain string
 	// IdentityURL is Salesforce's /id/<org>/<user> URL for the connected user.
 	IdentityURL string
+	// InstallerID is the Slack member who approved the install (authed_user).
+	InstallerID string
 }
 
 // --- identity resolvers -----------------------------------------------------

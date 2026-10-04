@@ -558,7 +558,7 @@ Returned when the requested resource doesn't exist.
 | `unknown_view` | `/me/views/:view` was given a view name other than `contacts`, `campaign_leads` or `unibox_rail` |
 | `lead_cc_contact_not_found` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named a contact that is not in the workspace |
 | `slack_not_connected` | A [Slack](/guides/slack/) route was called for a workspace that has not connected Slack, or whose connection was removed. Connect it under **Integrations > Slack** |
-| `slack_link_invalid` | The Slack link code is unknown, expired or already used. Ask the bot for a new link button (`/warmbly link`) |
+| `slack_link_invalid` | The Slack link code is unknown, expired or already used. Mention or message the bot in Slack for a new link button |
 | `slack_not_linked` | `PATCH /integrations/slack/link` from a member who has not linked a Slack account in this workspace |
 
 ### 409 Conflict

@@ -29,7 +29,7 @@ import {
     ExternalLinkIcon,
     PanelRightIcon,
     RefreshCwIcon,
-    SlashIcon,
+    QuoteIcon,
     Trash2Icon,
     UnlinkIcon,
     UsersIcon,
@@ -63,7 +63,7 @@ import { NOTIFICATION_CATEGORY_GROUPS } from "@/lib/api/models/app/notifications
 import { errorMessage } from "@/lib/errors/message";
 import { cn } from "@/lib/utils";
 
-import { SectionLabel } from "./ConnectDrawer";
+import { SectionLabel } from "./Drawer";
 
 export type SlackTab = "overview" | "assistant" | "inbox" | "notifications" | "members";
 
@@ -157,7 +157,7 @@ export function SlackStatusBanner({ onReconnect, reconnecting }: { onReconnect: 
     if (!s.interactive_configured) {
         return (
             <Banner tone="amber" icon={BellIcon} title="Notifications only">
-                Slack posts notifications, but the assistant, buttons and /warmbly need the instance operator to
+                Slack posts notifications, but the assistant and buttons need the instance operator to
                 set <span className="font-mono">SLACK_SIGNING_SECRET</span>.
             </Banner>
         );
@@ -254,7 +254,7 @@ const CAPABILITIES: { icon: LucideIcon; title: string; body: string }[] = [
     { icon: MessageSquareIcon, title: "Direct message", body: "Message the Warmbly app and ask anything about your workspace." },
     { icon: AtSignIcon, title: "Mention in a channel", body: "Mention @Warmbly in a thread and it answers there, with the thread as context." },
     { icon: PanelRightIcon, title: "Assistant pane", body: "Open Warmbly from Slack's assistant side panel, with suggested prompts." },
-    { icon: SlashIcon, title: "/warmbly", body: "Ask a quick question, or link your account with /warmbly link." },
+    { icon: QuoteIcon, title: "Ask about a message", body: "Pick Ask Warmbly about this on any message to start a thread about it." },
 ];
 
 function AssistantTab({ status, canManage }: { status: SlackStatus; canManage: boolean }) {
@@ -570,8 +570,7 @@ function MembersTab({ status, canManage }: { status: SlackStatus; canManage: boo
                         <p className="text-[11.5px] text-slate-500 leading-relaxed">
                             {status.interactive_configured ? (
                                 <>
-                                    Message the Warmbly app in Slack and click Link, or run{" "}
-                                    <span className="font-mono text-slate-700">/warmbly link</span>. Linking lets the
+                                    Mention @Warmbly or message it in Slack, and it sends you a link. Linking lets the
                                     assistant act as you and lets you get notifications as DMs.
                                 </>
                             ) : (

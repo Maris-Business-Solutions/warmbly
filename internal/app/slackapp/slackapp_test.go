@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -145,7 +147,6 @@ func TestManifestContents(t *testing.T) {
 	for _, want := range []string{
 		`"request_url":"https://api.example.com/api/v1/integrations/slack/events"`,
 		`"request_url":"https://api.example.com/api/v1/integrations/slack/interactivity"`,
-		`"url":"https://api.example.com/api/v1/integrations/slack/commands"`,
 		`"redirect_urls":["https://api.example.com/integrations/oauth/callback"]`,
 		`"callback_id":"ask_warmbly_about_message"`,
 		`"socket_mode_enabled":false`,
@@ -161,6 +162,9 @@ func TestManifestContents(t *testing.T) {
 	scopes := m["oauth_config"].(map[string]any)["scopes"].(map[string]any)["bot"].([]any)
 	if len(scopes) != len(integration.SlackBotScopes) {
 		t.Fatalf("manifest has %d scopes, OAuth requests %d", len(scopes), len(integration.SlackBotScopes))
+	}
+	if strings.Contains(s, "slash_commands") {
+		t.Error("the app answers mentions and DMs; it has no slash command")
 	}
 	if strings.Contains(s, "—") {
 		t.Error("manifest copy contains an em dash")
@@ -203,6 +207,9 @@ func TestDecideRoute(t *testing.T) {
 		{"owner follow-up", routeFacts{InThread: true, ThreadMapped: true, OwnerIsAuthor: true}, routeAgent},
 		{"someone else's thread, passive", routeFacts{InThread: true, ThreadMapped: true}, routeIgnore},
 		{"someone else's thread, mention", routeFacts{Mention: true, InThread: true, ThreadMapped: true}, routeRefuseNotOwner},
+		{"teammate's thread, mention", routeFacts{Mention: true, InThread: true, ThreadMapped: true, SameOrg: true}, routeAgent},
+		{"teammate's thread, passive", routeFacts{InThread: true, ThreadMapped: true, SameOrg: true}, routeIgnore},
+		{"teammate's thread, dm only", routeFacts{Mention: true, InThread: true, ThreadMapped: true, SameOrg: true, Settings: models.SlackSettings{AssistantDMOnly: true}}, routeRefuseDMOnly},
 		{"follow-up that also mentions", routeFacts{InThread: true, ThreadMapped: true, OwnerIsAuthor: true, MentionsBot: true}, routeIgnore},
 		{"slack connect mention", routeFacts{Mention: true, ExtShared: true}, routeRefuseExternal},
 		{"slack connect follow-up", routeFacts{InThread: true, ThreadMapped: true, OwnerIsAuthor: true, ExtShared: true}, routeIgnore},
@@ -455,5 +462,79 @@ func TestStatusAccess(t *testing.T) {
 	full, _ := s.Status(ctx, orgID, userID, StatusManage)
 	if full.Connection == nil || len(full.Links) != 2 {
 		t.Fatalf("manage status must list every link, got %+v", full)
+	}
+}
+
+// fakeSlackRepo stores link codes nowhere, so a test with APP_URL set runs too.
+type fakeSlackRepo struct {
+	repository.SlackRepository
+}
+
+func (fakeSlackRepo) CreateLinkCode(context.Context, []byte, models.SlackLinkCode) error {
+	return nil
+}
+
+// fakeSlack records each Web API call's method and JSON body.
+func fakeSlack(t *testing.T) (*Service, *[]string, *[]map[string]any) {
+	t.Helper()
+	var methods []string
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		method := strings.TrimPrefix(r.URL.Path, "/")
+		methods = append(methods, method)
+		bodies = append(bodies, b)
+		if method == "conversations.open" {
+			_, _ = w.Write([]byte(`{"ok":true,"channel":{"id":"D1"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"ts":"2.0"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{http: srv.Client(), base: srv.URL + "/", maxWait: time.Second}
+	return &Service{Notifier: &Notifier{client: c, repo: fakeSlackRepo{}}, guard: newGuard(nil)}, &methods, &bodies
+}
+
+// An ephemeral reply to a top-level mention must not name a thread: Slack
+// does not show an ephemeral message in a thread that has no replies yet.
+func TestTellPlacement(t *testing.T) {
+	cases := []struct {
+		name       string
+		q          ask
+		wantMethod string
+		wantThread string
+	}{
+		{"top-level mention", ask{Channel: "C1", ThreadTS: "1.0", TS: "1.0"}, "chat.postEphemeral", ""},
+		{"mention in a thread", ask{Channel: "C1", ThreadTS: "1.0", TS: "1.5", InThread: true}, "chat.postEphemeral", "1.0"},
+		{"dm", ask{Channel: "D1", ThreadTS: "1.0", TS: "1.0", DM: true}, "chat.postMessage", "1.0"},
+	}
+	for _, tc := range cases {
+		s, methods, bodies := fakeSlack(t)
+		s.tell(context.Background(), "xoxb", "U1", &tc.q, plainMessage("hi"))
+		if len(*methods) != 1 || (*methods)[0] != tc.wantMethod {
+			t.Fatalf("%s: calls %v, want %s", tc.name, *methods, tc.wantMethod)
+		}
+		got, _ := (*bodies)[0]["thread_ts"].(string)
+		if got != tc.wantThread {
+			t.Errorf("%s: thread_ts %q, want %q", tc.name, got, tc.wantThread)
+		}
+	}
+}
+
+// An unlinked member's link goes to their DM, never into the channel.
+func TestPromptLinkInChannelUsesDM(t *testing.T) {
+	s, methods, bodies := fakeSlack(t)
+	a := &actor{teamID: "T1", userID: "U1", token: "xoxb", conn: &models.IntegrationConnection{}}
+	s.promptLink(context.Background(), a, &ask{Channel: "C1", ThreadTS: "1.0", TS: "1.0", Mention: true})
+	want := []string{"conversations.open", "chat.postMessage", "chat.postEphemeral"}
+	if !reflect.DeepEqual(*methods, want) {
+		t.Fatalf("calls %v, want %v", *methods, want)
+	}
+	if ch := (*bodies)[1]["channel"]; ch != "D1" {
+		t.Errorf("link prompt posted to %v, want the DM", ch)
+	}
+	if _, ok := (*bodies)[2]["thread_ts"]; ok {
+		t.Error("the channel note names a thread that does not exist yet")
 	}
 }

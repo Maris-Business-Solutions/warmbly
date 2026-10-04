@@ -220,6 +220,20 @@ func validateSettings(in models.SlackSettings) (models.SlackSettings, *errx.Erro
 	return out, nil
 }
 
+// CurrentSettings is the workspace's Slack settings and Slack workspace name,
+// for the assistant's Slack tools.
+func (s *Service) CurrentSettings(ctx context.Context, orgID uuid.UUID) (*models.SlackSettings, string, *errx.Error) {
+	conn, err := s.workspaceConnection(ctx, orgID)
+	if err != nil {
+		return nil, "", errx.InternalError()
+	}
+	if conn == nil {
+		return nil, "", ErrSlackNotConnected
+	}
+	st := settingsFrom(conn)
+	return &st, conn.ExternalAccountName, nil
+}
+
 // UpdateSettings validates and stores the workspace's Slack settings.
 func (s *Service) UpdateSettings(ctx context.Context, orgID uuid.UUID, in models.SlackSettings) (*models.SlackSettings, *errx.Error) {
 	st, xerr := validateSettings(in)

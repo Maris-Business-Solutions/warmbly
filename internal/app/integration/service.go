@@ -209,6 +209,9 @@ type Service interface {
 	// SetSalesforce routes Salesforce pushes, upsert actions and new
 	// connections through the native sync.
 	SetSalesforce(b SalesforceBridge)
+	// SetSlackInstallHook is told who approved a Slack install, so the member
+	// who connected Slack is linked without a separate step.
+	SetSlackInstallHook(h SlackInstallHook)
 }
 
 // ProviderAccess is a live credential for one connection.
@@ -228,6 +231,11 @@ type SalesforceBridge interface {
 	Connected(ctx context.Context, conn *models.IntegrationConnection)
 }
 
+// SlackInstallHook is implemented by the slackapp package.
+type SlackInstallHook interface {
+	SlackInstalled(ctx context.Context, conn *models.IntegrationConnection, slackUserID string, userID uuid.UUID)
+}
+
 type service struct {
 	refresh    singleflight.Group
 	crmMode    func(ctx context.Context, orgID uuid.UUID) bool
@@ -240,6 +248,7 @@ type service struct {
 	credits    credits.CreditService
 	aiSearch   generation.SearchClient
 	salesforce SalesforceBridge
+	slackHook  SlackInstallHook
 
 	popMu         sync.Mutex
 	pop           map[models.IntegrationProvider]int
@@ -266,6 +275,7 @@ func (s *service) SetAI(p generation.Provider, c credits.CreditService) {
 }
 func (s *service) SetAISearch(sc generation.SearchClient) { s.aiSearch = sc }
 func (s *service) SetSalesforce(b SalesforceBridge)       { s.salesforce = b }
+func (s *service) SetSlackInstallHook(h SlackInstallHook) { s.slackHook = h }
 
 func (s *service) Repo() repository.IntegrationRepository { return s.repo }
 
@@ -588,6 +598,8 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 				label = fmt.Sprintf("%s (%s)", label, orFallback(account.Name, fmt.Sprint(display["sf_org_id"])))
 			}
 		}
+	} else if account.ID != "" {
+		label = s.accountLabel(ctx, st.OrganizationID, st.Provider, label, account)
 	}
 	df, _ := json.Marshal(display)
 
@@ -628,9 +640,36 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 		if st.Provider == models.IntegrationSalesforce && s.salesforce != nil {
 			s.salesforce.Connected(ctx, stored)
 		}
+		if st.Provider == models.IntegrationSlack && s.slackHook != nil && account.InstallerID != "" {
+			s.slackHook.SlackInstalled(ctx, stored, account.InstallerID, userID)
+		}
 		return stored, nil
 	}
 	return conn, nil
+}
+
+// accountLabel keeps a different account of the same provider from replacing
+// an existing connection: the label falls to the first one that is free or
+// already this account's.
+func (s *service) accountLabel(ctx context.Context, orgID uuid.UUID, provider models.IntegrationProvider, base string, account extAccount) string {
+	derived := fmt.Sprintf("%s (%s)", base, orFallback(account.Name, account.ID))
+	for n := 0; n < 50; n++ {
+		label := base
+		switch {
+		case n == 1:
+			label = derived
+		case n > 1:
+			label = fmt.Sprintf("%s %d", derived, n)
+		}
+		prev, err := s.repo.GetConnection(ctx, orgID, provider, label)
+		if err != nil {
+			return label
+		}
+		if prev == nil || prev.ExternalAccountID == "" || prev.ExternalAccountID == account.ID {
+			return label
+		}
+	}
+	return fmt.Sprintf("%s (%s)", base, account.ID)
 }
 
 func (s *service) Reauth(ctx context.Context, orgID, userID, id uuid.UUID) (*models.IntegrationOAuthStartResponse, error) {

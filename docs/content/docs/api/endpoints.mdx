@@ -692,7 +692,7 @@ The [Slack](/guides/slack/) panel's routes. They are session-only: linking binds
 | DELETE | `/integrations/slack/link` | organization member, own link. Answers `204`, also when there was no link, so a repeat is safe |
 | DELETE | `/integrations/slack/links/:id` | `manage_settings`. Removes any member's link. Answers `204` |
 
-The two `/integrations/slack/link` routes that take a code do not need a workspace selected, because the code names one. `GET /integrations/slack/status` reports `app_configured` (the instance has a Slack app) and `interactive_configured` (it also has the signing secret, so the assistant, buttons and `/warmbly` work), so a client can tell what is available before calling anything else. The settings and channel routes answer `404` `slack_not_connected` until the workspace connects Slack. Error codes are under [404](/api/error-codes/#404-not-found) and [503](/api/error-codes/#slack_not_configured).
+The two `/integrations/slack/link` routes that take a code do not need a workspace selected, because the code names one. `GET /integrations/slack/status` reports `app_configured` (the instance has a Slack app) and `interactive_configured` (it also has the signing secret, so the assistant and buttons work), so a client can tell what is available before calling anything else. The settings and channel routes answer `404` `slack_not_connected` until the workspace connects Slack. Error codes are under [404](/api/error-codes/#404-not-found) and [503](/api/error-codes/#slack_not_configured).
 
 ## MCP server
 
@@ -713,7 +713,7 @@ The two `/integrations/slack/link` routes that take a code do not need a workspa
 
 On the backend's host but outside `/v1`, called by Slack and never by an API key or a session:
 
-- `POST /api/v1/integrations/slack/events`, `POST /api/v1/integrations/slack/interactivity`, `POST /api/v1/integrations/slack/commands` (Slack signature). Each request must carry a valid Slack `X-Slack-Signature` made with the instance's signing secret over a timestamp within five minutes, and its body is capped at 1 MiB. A bad signature is `401` `unauthorized`, and nothing in the body is parsed before the signature checks out. With no `SLACK_SIGNING_SECRET` set they answer `503` `slack_not_configured`. They answer Slack within its three-second limit and do the work afterwards. See [Slack app](/development/slack-app/)
+- `POST /api/v1/integrations/slack/events`, `POST /api/v1/integrations/slack/interactivity` (Slack signature). Each request must carry a valid Slack `X-Slack-Signature` made with the instance's signing secret over a timestamp within five minutes, and its body is capped at 1 MiB. A bad signature is `401` `unauthorized`, and nothing in the body is parsed before the signature checks out. With no `SLACK_SIGNING_SECRET` set they answer `503` `slack_not_configured`. They answer Slack within its three-second limit and do the work afterwards. See [Slack app](/development/slack-app/)
 
 On the tracking service (the `TRACKING_DOMAIN` host, not the API), also public and rate-limited per source:
 

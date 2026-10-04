@@ -26,21 +26,56 @@ function callbackOrigins(): string[] {
     return origins;
 }
 
-export function openOAuthPopup(authUrl: string): Promise<OAuthPopupResult> {
+function popupFeatures(): string {
+    const width = 600;
+    const height = 720;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    return `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes`;
+}
+
+const POPUP_BLOCKED = "Popup blocked. Allow popups for this site and try again.";
+const POPUP_CLOSED = "Authorization window was closed before finishing.";
+
+// Opens the window inside the click, before start() is awaited: a browser
+// blocks a popup opened after the click's activation has lapsed. onOpened runs
+// once the provider page is loading in it.
+export async function authorizeInPopup(start: () => Promise<string>, onOpened?: () => void): Promise<OAuthPopupResult> {
+    const popup = window.open("about:blank", "warmbly_oauth", popupFeatures());
+    if (!popup) throw new Error(POPUP_BLOCKED);
+    let closedTimer: number | undefined;
+    const request = start();
+    // A request that loses the race to a closed window still settles; keep its failure handled.
+    request.catch(() => {});
+    let url: string;
+    try {
+        url = await Promise.race([
+            request,
+            new Promise<never>((_, reject) => {
+                closedTimer = window.setInterval(() => {
+                    if (popup.closed) reject(new Error(POPUP_CLOSED));
+                }, 600);
+            }),
+        ]);
+    } catch (err) {
+        popup.close();
+        throw err;
+    } finally {
+        window.clearInterval(closedTimer);
+    }
+    if (popup.closed) throw new Error(POPUP_CLOSED);
+    onOpened?.();
+    return openOAuthPopup(url, popup);
+}
+
+export function openOAuthPopup(authUrl: string, reserved?: Window): Promise<OAuthPopupResult> {
     return new Promise((resolve, reject) => {
-        const width = 600;
-        const height = 720;
-        const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-        const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-        const popup = window.open(
-            authUrl,
-            "warmbly_oauth",
-            `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes`,
-        );
+        const popup = reserved ?? window.open(authUrl, "warmbly_oauth", popupFeatures());
         if (!popup) {
-            reject(new Error("Popup blocked. Allow popups for this site and try again."));
+            reject(new Error(POPUP_BLOCKED));
             return;
         }
+        if (reserved) reserved.location.href = authUrl;
 
         let settled = false;
         const cleanup = () => {
@@ -78,7 +113,7 @@ export function openOAuthPopup(authUrl: string): Promise<OAuthPopupResult> {
         const closedTimer = window.setInterval(() => {
             if (popup.closed && !settled) {
                 cleanup();
-                reject(new Error("Authorization window was closed before finishing."));
+                reject(new Error(POPUP_CLOSED));
             }
         }, 600);
     });

@@ -42,15 +42,6 @@
         "name": "Ask Warmbly about this",
         "type": "message"
       }
-    ],
-    "slash_commands": [
-      {
-        "command": "/warmbly",
-        "description": "Ask Warmbly a question or link your account",
-        "should_escape": false,
-        "url": "https://YOUR-BACKEND-HOST/api/v1/integrations/slack/commands",
-        "usage_hint": "[question] | link | unlink | help"
-      }
     ]
   },
   "oauth_config": {
@@ -72,6 +63,7 @@
         "im:read",
         "im:write",
         "mpim:history",
+        "reactions:write",
         "users:read",
         "users:read.email"
       ]

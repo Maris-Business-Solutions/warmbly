@@ -60,7 +60,6 @@ func (s *Service) homeView(ctx context.Context, a *actor, appID string) Block {
 			"*What you can do here*",
 			"• Message me, or open the assistant, to ask about campaigns, replies, contacts and mailboxes.",
 			"• Mention @Warmbly in a channel thread to bring me into the conversation.",
-			"• Type `/warmbly` and a question from anywhere.",
 			"• Use *Ask Warmbly about this* on any message.",
 		}, "\n")),
 	)

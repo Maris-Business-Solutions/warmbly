@@ -5,7 +5,7 @@ description: "Ask the Warmbly assistant from Slack, work inbox replies in a Slac
 
 Warmbly for Slack brings three things into the Slack workspace your team already lives in:
 
-- **The assistant.** Ask the same [AI assistant](/guides/ai-assistant/) you use in the dashboard from a DM, Slack's assistant pane, a channel mention, or a slash command. It acts as you, with your permissions, and asks before changing anything.
+- **The assistant.** Ask the same [AI assistant](/guides/ai-assistant/) you use in the dashboard by mentioning `@Warmbly` or messaging it, the way you would ask a teammate. It is the same assistant, with the same tools and the same answers, and it acts as you, with your permissions, and asks before changing anything.
 - **Inbox in Slack.** Replies from the [Unibox](/guides/unibox/) land in a channel of your choice, one thread per conversation, where the team can discuss, label, draft and reply.
 - **Notifications.** Post Warmbly [notifications](/guides/notifications/) to a default channel, route each category to its own channel, and optionally get your own as DMs.
 
@@ -25,11 +25,13 @@ On a self-hosted instance the Slack card stays unavailable until the operator cr
 
 The assistant and the inbox buttons do things in Warmbly on your behalf, so Warmbly has to know which Warmbly member you are. Linking ties your Slack account to your Warmbly account in this workspace. Until you link, the bot can post notifications and inbox replies but will not act for you.
 
-1. Message the bot, mention it, or run `/warmbly link`. The bot replies with a **Link your Warmbly account** button.
-2. The button opens Warmbly. Sign in if you need to, check the workspace and the Slack account it shows (its name and picture), and confirm.
-3. Warmbly shows which Slack account it linked, and the bot sends that Slack account a DM confirming the link.
+The member who connects Slack is linked automatically to the Slack account that approved the install, when the two use the same email. Everyone else links once:
 
-The link button works once and expires after a few minutes; ask the bot for a new one if it lapses. You can only link to a Warmbly workspace you are a member of.
+1. Ask the bot something: mention `@Warmbly` or message it. The bot sends you a **Link your Warmbly account** button in a DM. In a channel it also replies in the thread to say it is waiting for you, and the button itself is only ever sent to you.
+2. The button opens Warmbly. Sign in if you need to, check the workspace and the Slack account it shows (its name and picture), and confirm.
+3. Warmbly shows which Slack account it linked. The bot confirms in that account's DM and answers the question you asked, where you asked it. You do not have to ask again.
+
+The link button works once and expires after 15 minutes; ask the bot for a new one if it lapses. A question waiting for the link is dropped with it. You can only link to a Warmbly workspace you are a member of.
 
 The email address on your Slack profile has to be the email you sign in to Warmbly with (capitalization does not matter). Warmbly reads it from Slack when you confirm and refuses the link when the two differ, so a link button only ever links the Slack account it was made for to the Warmbly account with the same email. If they differ, sign in to Warmbly with the address your Slack profile uses, or change one of them so they match.
 
@@ -37,7 +39,7 @@ The email address on your Slack profile has to be the email you sign in to Warmb
 Reading a Slack member's email needs the `users:read` and `users:read.email` permissions. A connection made before Warmbly asked for them lists them as missing under **Integrations > Slack**, and linking is refused until someone with **Manage settings** selects **Reconnect**. Links made before then keep working.
 </Callout>
 
-A Slack account links to one Warmbly account at a time. Linking again replaces the previous link. Unlink with `/warmbly unlink`, from the app's Home tab, or from **Integrations > Slack** in Warmbly. If your membership in the workspace ends, the link stops working and the bot asks you to link again.
+A Slack account links to one Warmbly account at a time. Linking again replaces the previous link. Unlink from the app's Home tab or from **Integrations > Slack** in Warmbly. If your membership in the workspace ends, the link stops working and the bot asks you to link again.
 
 ## The assistant
 
@@ -48,16 +50,25 @@ A Slack account links to one Warmbly account at a time. Linking again replaces t
 | Direct message | Open the Warmbly app in Slack and write in its **Messages** tab |
 | Assistant pane | Open Warmbly from Slack's AI apps entry to chat in a side pane next to whatever you are reading. It offers a few suggested prompts to start from |
 | A channel | Mention `@Warmbly` with your question. It answers in a thread, and you continue by replying in that thread |
-| Anywhere | `/warmbly <question>`. The answer arrives in your DM with Warmbly |
 | On a message | Choose **Ask Warmbly about this** from the message's **More actions** menu. The assistant starts a thread with that message as context |
 
 To use it in a channel, the bot has to be a member: invite it with `/invite @Warmbly`. Slack offers to add it when you mention it in a channel it is not in.
 
-Each Slack thread is one conversation. Follow-ups in the thread continue it, with everything said before.
+Each Slack thread is one conversation. Follow-ups in the thread continue it, with everything said before, and you do not need to mention the bot again. When you mention it inside an existing thread, it reads the thread first, so you can ask about a discussion that is already under way.
+
+The bot reacts with 👀 to the message it is working on and swaps it for ✅ when the answer is done. A workspace connected before Warmbly asked for the reactions permission shows no reactions until it is reconnected.
+
+### Working a thread together
+
+A thread belongs to whoever is talking to the assistant in it, and only they continue it without a mention. A teammate who mentions `@Warmbly` in that thread takes it over: from then on the assistant acts as them, with their permissions, and starts from what the thread already says. Anyone outside your Warmbly workspace who mentions it is turned away.
 
 ### What it can do
 
-Everything the dashboard assistant can: find and edit contacts, read campaign stats, draft replies, manage mailboxes, and the rest of the list in [What you can ask](/guides/ai-assistant/#what-you-can-ask). The reply appears as one message that updates while the assistant works, with a line for each step it takes.
+Everything the dashboard assistant can: find and edit contacts, read campaign stats, pause a campaign, turn warmup off on a mailbox, draft replies, and the rest of the list in [What you can ask](/guides/ai-assistant/#what-you-can-ask). The reply appears as one message that updates while the assistant works, with a line for each step it takes.
+
+It can also set up Slack itself. Ask `@Warmbly send reply notifications here` or `@Warmbly use this channel for the inbox` in the channel you mean, or `@Warmbly only answer in DMs`. For an integration that is not connected yet, it gives you a link that opens the connect window in Warmbly, because connecting needs you signed in to the other service.
+
+It can do exactly what your role can do in the dashboard and nothing more: changing Slack setup needs **Manage settings**, as it does under **Integrations > Slack**.
 
 It runs as your linked Warmbly account with the permissions your role has at that moment. If your role cannot do something in the dashboard, the assistant cannot do it from Slack either, and a permission removed from your role takes effect on the next message.
 
@@ -69,7 +80,9 @@ Reading runs straight away. A change shows an approval card in the thread with t
 - **Deny** skips it.
 - **Always allow** approves it and every later action of that kind, as in the dashboard. It is offered only to a member with **Manage settings**, and never for the actions that [always ask](/guides/ai-assistant/#approvals).
 
-Only the person whose conversation it is can press them. Anyone else in the channel sees the card but cannot act on it. Each card decides the one action it shows: once it is decided, here or in the dashboard, its buttons do nothing.
+In a channel, every change asks, even one your workspace always allows, because anyone in the channel can post there. The same holds in a DM when the assistant is reading text someone else wrote (a thread, a message you asked about, or an email), and for changes that follow an approval in the same request. **Always allow** applies in a DM with only your own messages, and in the dashboard.
+
+Only the person whose conversation it is can press them. Anyone else in the channel sees the card but cannot act on it. Each card decides the one action it shows: once it is decided, here or in the dashboard, its buttons do nothing. A teammate who takes the thread over skips any card still waiting.
 
 When the details do not fit in a Slack message, the card says so and carries **Open in Warmbly**, so you can read all of it before you decide. Secrets a step returns, such as a webhook signing secret, are never shown in Slack.
 
@@ -143,15 +156,6 @@ Each post carries an **Open in Warmbly** button. A **Reply received** notificati
 
 To work every reply in Slack rather than be pinged about it, use the [inbox channel](#inbox-in-slack) instead.
 
-## Slash commands
-
-| Command | What it does |
-|---|---|
-| `/warmbly <question>` | Ask the assistant. The answer arrives in your DM with Warmbly |
-| `/warmbly link` | Get a button to link your Slack account to Warmbly |
-| `/warmbly unlink` | Remove the link |
-| `/warmbly help` | Show what the command can do (so does `/warmbly` on its own) |
-
 ## Permissions
 
 | Action | Who |
@@ -172,7 +176,7 @@ The bot acts only on messages addressed to it:
 
 - direct messages to the bot and messages in its assistant pane
 - messages that mention `@Warmbly`
-- replies in a thread the assistant is answering
+- replies in a thread the assistant is answering for you
 - a message you run **Ask Warmbly about this** on
 
 Slack delivers other messages from channels the bot is in, including the team's discussion in inbox threads, and Warmbly ignores them. When you mention the bot inside an existing thread, or use the message shortcut, it also reads that thread's earlier messages so it knows what you are asking about. Those messages are passed to the assistant as quoted material, never as instructions, so text in a thread cannot tell the assistant to do something. The same holds for email text in the inbox channel.
@@ -182,10 +186,11 @@ Slack delivers other messages from channels the bot is in, including the team's 
 | What you see | What to do |
 |---|---|
 | The Slack card says Slack is not available | The instance has no Slack app. On a self-hosted instance, ask the operator to follow [Slack app](/development/slack-app/) |
-| Notifications post, but the bot never answers, buttons do nothing, or `/warmbly` fails | The Slack app is only partly configured: posting works but Slack cannot reach Warmbly. On a self-hosted instance the operator needs to set the signing secret ([Slack app](/development/slack-app/#environment-variables)) |
+| Notifications post, but the bot never answers and buttons do nothing | The Slack app is only partly configured: posting works but Slack cannot reach Warmbly. On a self-hosted instance the operator needs to set the signing secret ([Slack app](/development/slack-app/#environment-variables)) |
 | The Slack panel lists missing permissions | Select **Reconnect**. A feature needing a permission the connection lacks stays off until then |
-| The bot replies with a **Link your Warmbly account** button | Your Slack account is not linked yet, or the link was removed. Follow the button |
+| The bot says it sent you a link, or replies with a **Link your Warmbly account** button | Your Slack account is not linked yet, or the link was removed. Follow the button in your DM with Warmbly; the bot then answers what you asked |
 | Linking says your Slack email must match your Warmbly email | Sign in to Warmbly with the email on your Slack profile. If they already match, ask someone with **Manage settings** to select **Reconnect** under **Integrations > Slack** so Warmbly can read Slack email addresses |
+| The bot says the thread is someone else's conversation | The thread belongs to a member of a different Warmbly workspace. Start a new thread |
 | The bot does not answer in a channel | Check that it is a member of the channel, that the channel is not a Slack Connect channel, and that the assistant is not set to **DMs only** or **Off** |
 | An inbox button says you need inbox access | Your role lacks **Use unified inbox**. Ask a workspace admin |
 | The inbox channel cannot be saved | Pick it from the list. A private channel needs the Warmbly app invited first, and a Slack Connect channel is refused |
