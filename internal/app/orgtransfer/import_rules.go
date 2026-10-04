@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/warmbly/warmbly/internal/app/oauth"
+	"github.com/warmbly/warmbly/internal/app/webhook"
 	"github.com/warmbly/warmbly/internal/infrastructure/storage"
 	"github.com/warmbly/warmbly/internal/models"
 )
@@ -18,6 +19,14 @@ import (
 var importRules = map[string]func(env *ruleEnv, row map[string]json.RawMessage){
 	"oauth_applications": cleanImportedApp,
 	"forms":              cleanImportedForm,
+	"webhook_endpoints":  cleanImportedWebhook,
+}
+
+// cleanImportedWebhook disables an endpoint whose address a create would refuse.
+func cleanImportedWebhook(_ *ruleEnv, row map[string]json.RawMessage) {
+	if raw, ok := row["url"]; ok && webhook.ValidateOutboundURL(jsonString(raw)) != nil {
+		setJSON(row, "enabled", false)
+	}
 }
 
 // ruleEnv is what the rules need to know about the destination.

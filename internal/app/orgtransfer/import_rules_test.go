@@ -75,6 +75,20 @@ func TestImportedAppPassesTheAppWriteRules(t *testing.T) {
 	}
 }
 
+func TestImportedWebhookToAPrivateHostArrivesDisabled(t *testing.T) {
+	t.Setenv("WARMBLY_ALLOW_UNSAFE_WEBHOOK_URLS", "")
+	bad := rowOf(t, map[string]any{"url": "https://127.0.0.1/hook", "enabled": true})
+	cleanImportedWebhook(nil, bad)
+	if string(bad["enabled"]) != "false" {
+		t.Errorf("enabled = %s", bad["enabled"])
+	}
+	good := rowOf(t, map[string]any{"url": "https://hooks.example.com/in", "enabled": true})
+	cleanImportedWebhook(nil, good)
+	if string(good["enabled"]) != "true" {
+		t.Errorf("a valid endpoint was disabled")
+	}
+}
+
 func TestImportedFormPassesTheFormWriteRules(t *testing.T) {
 	row := rowOf(t, map[string]any{
 		"name":            "Newsletter",
