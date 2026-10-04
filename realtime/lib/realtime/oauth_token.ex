@@ -58,12 +58,14 @@ defmodule Realtime.OAuthToken do
   # Reuse the API key hashing so both token types hash identically.
   defp hash_token(token), do: ApiKey.hash_key(token)
 
-  # The holder must not be banned from signing in and the app must be usable,
+  # The holder must still be a member, not banned from signing in, and the app usable,
   # the same conditions the API applies when it resolves the token.
   @lookup_query """
   SELECT g.user_id::text, g.scopes, g.access_expires_at, g.revoked_at
   FROM oauth_access_grants g
   WHERE g.access_token_hash = $1
+    AND EXISTS (SELECT 1 FROM organization_members m
+                WHERE m.organization_id = g.organization_id AND m.user_id = g.user_id)
     AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = g.user_id AND (u.ban_scope & 1) <> 0)
     AND EXISTS (SELECT 1 FROM oauth_applications a
                 WHERE a.id = g.application_id AND a.status = 'active' AND a.suspended_at IS NULL)

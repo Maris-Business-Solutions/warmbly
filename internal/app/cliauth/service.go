@@ -287,7 +287,7 @@ func (s *service) GrantableScopes(ctx context.Context, orgID, userID uuid.UUID, 
 	if member == nil {
 		return 0, ErrForbidden
 	}
-	return requested & memberScopes(member), nil
+	return requested & models.APIPermissionsFor(member), nil
 }
 
 func (s *service) DenyCode(ctx context.Context, userCode string) *errx.Error {
