@@ -3,6 +3,7 @@ package orgtransfer
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -110,6 +111,9 @@ func TestLiveTablesAreInDependencyOrder(t *testing.T) {
 		for _, r := range refs {
 			if r.target == tbl.Name {
 				continue // self-reference, ordered within the table's own rows
+			}
+			if slices.Contains(tbl.ResetOnImport, r.col) {
+				continue // blanked on import, so it references nothing yet
 			}
 			target, carried := pos[r.target]
 			if !carried {

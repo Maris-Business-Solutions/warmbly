@@ -1119,9 +1119,9 @@ func (r *crmProviderRepository) MirrorDeal(ctx context.Context, in *MirrorDeal) 
 	default:
 		tag, err := tx.Exec(ctx, `
 			UPDATE deals SET pipeline_id = $3, stage_id = $4, contact_id = COALESCE($5, contact_id), name = $6,
-				value = $7, currency = $8, status = $9, expected_close_date = $10,
-				won_at = CASE WHEN $9 = 'won' THEN COALESCE(won_at, $11) END,
-				lost_at = CASE WHEN $9 = 'lost' THEN COALESCE(lost_at, $12) END,
+				value = $7, currency = $8, status = $9::text::deal_status, expected_close_date = $10,
+				won_at = CASE WHEN $9::text = 'won' THEN COALESCE(won_at, $11) END,
+				lost_at = CASE WHEN $9::text = 'lost' THEN COALESCE(lost_at, $12) END,
 				assigned_to = $13, updated_at = NOW()
 			WHERE organization_id = $1 AND id = $2`,
 			in.OrganizationID, localID, in.PipelineID, in.StageID, in.ContactID, truncate(in.Name, 255), in.Value,
