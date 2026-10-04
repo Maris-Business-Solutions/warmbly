@@ -1655,26 +1655,28 @@ func Run(
 			}
 
 			// Self-hosted side: Settings > Warmbly Cloud, registered on a self-host only.
-			// The link is one per instance, so every route takes the instance
-			// administrator (admin manage_settings, second factor); mailbox routes also
-			// take the workspace's manage_emails.
+			// The link is one per instance, so linking, unlinking and the linked cloud
+			// workspace's mailboxes take the instance administrator (admin
+			// manage_settings, second factor). A workspace's own mailboxes ride the
+			// link under its manage_emails.
 			if config.SelfHosted() {
 				cloudLink := jwtOnly.Group("/cloud-link")
-				cloudLink.Use(m.RateLimitMiddleware(models.RateLimitWrite), m.RequireOrganization(),
-					m.AdminMiddleware(), middleware.RequireAdminPermission(models.AdminPermManageSettings))
-				cloudLink.GET("", h.CloudLinkStatus)
-				cloudLink.GET("/mailboxes", h.CloudLinkMailboxes)
-				cloudLink.POST("/connect", h.CloudLinkConnectStart)
-				cloudLink.POST("/connect/poll", h.CloudLinkConnectPoll)
-				cloudLink.DELETE("", h.CloudLinkDisconnect)
-				cloudLink.POST("/mailboxes/:id/enroll", m.RequirePermission(models.PermManageEmails), h.CloudLinkEnroll)
-				cloudLink.DELETE("/mailboxes/:id/enroll", m.RequirePermission(models.PermManageEmails), h.CloudLinkUnenroll)
-				cloudLink.POST("/mailboxes/:id/pause", m.RequirePermission(models.PermManageEmails), h.CloudLinkPause)
-				cloudLink.POST("/mailboxes/:id/resume", m.RequirePermission(models.PermManageEmails), h.CloudLinkResume)
-				cloudLink.POST("/oauth/start", m.RequirePermission(models.PermManageEmails), h.CloudLinkOAuthStart)
-				cloudLink.POST("/oauth/finish", m.RequirePermission(models.PermManageEmails), h.CloudLinkOAuthFinish)
-				cloudLink.GET("/workspace-mailboxes", h.CloudLinkWorkspaceMailboxes)
-				cloudLink.POST("/workspace-mailboxes/:id/adopt", m.RequirePermission(models.PermManageEmails), h.CloudLinkAdopt)
+				cloudLink.Use(m.RateLimitMiddleware(models.RateLimitWrite), m.RequireOrganization())
+				members := cloudLink.Group("", m.RequirePermission(models.PermManageEmails))
+				members.GET("", h.CloudLinkStatus)
+				members.GET("/mailboxes", h.CloudLinkMailboxes)
+				members.POST("/mailboxes/:id/enroll", h.CloudLinkEnroll)
+				members.DELETE("/mailboxes/:id/enroll", h.CloudLinkUnenroll)
+				members.POST("/mailboxes/:id/pause", h.CloudLinkPause)
+				members.POST("/mailboxes/:id/resume", h.CloudLinkResume)
+				members.POST("/oauth/start", h.CloudLinkOAuthStart)
+				members.POST("/oauth/finish", h.CloudLinkOAuthFinish)
+				operator := cloudLink.Group("", m.AdminMiddleware(), middleware.RequireAdminPermission(models.AdminPermManageSettings))
+				operator.POST("/connect", h.CloudLinkConnectStart)
+				operator.POST("/connect/poll", h.CloudLinkConnectPoll)
+				operator.DELETE("", h.CloudLinkDisconnect)
+				operator.GET("/workspace-mailboxes", h.CloudLinkWorkspaceMailboxes)
+				operator.POST("/workspace-mailboxes/:id/adopt", m.RequirePermission(models.PermManageEmails), h.CloudLinkAdopt)
 			}
 
 			subscriptions := jwtOnly.Group("/subscription")

@@ -37,7 +37,7 @@ The link is offered on a self-hosted instance as the last step of onboarding whe
 
 The whole flow takes about a minute. A code expires after 15 minutes if nobody approves it; start again from the instance.
 
-The link belongs to the whole instance, not to one workspace, so everything about it is an instance administrator's job: it needs a platform admin account with the manage settings admin permission (the [first owner](/development/first-run/) has it) signed in with two-factor authentication. That covers connecting, disconnecting, reading its status, enrolling mailboxes and bringing in mailboxes from the cloud workspace; enrolling also needs the manage mailboxes permission in the workspace that owns the mailbox. Other members see none of the Warmbly Cloud controls, and the onboarding step is shown only to an administrator who can complete it.
+The link belongs to the whole instance, not to one workspace, so connecting and disconnecting it, and bringing in mailboxes from the cloud workspace, is an instance administrator's job: it needs a platform admin account with the manage settings admin permission (the [first owner](/development/first-run/) has it) signed in with two-factor authentication. Once the instance is linked, any member with the manage mailboxes permission sees the link and puts their own workspace's mailboxes on it: enrolling, pausing and resuming, and connecting Google and Microsoft mailboxes through Warmbly Cloud. The onboarding step that links the instance is shown only to an administrator who can complete it.
 
 ## Google and Microsoft mailboxes: sign in through Warmbly Cloud
 
@@ -65,7 +65,7 @@ A Google or Microsoft mailbox that was signed in with your instance's own OAuth 
 
 ## What your instance shows
 
-Once linked, the **Mailboxes** page marks every enrolled mailbox with a blue **Cloud** badge on its address and its avatar and a "Warmed by Warmbly Cloud" line under it (amber while paused), shows the cloud's daily count in the warmup column with the same warming animation local warmup uses, and offers **Warm in Warmbly Cloud**, pause, resume and remove in each row's warmup menu. The mailbox drawer's Warmup tab shows the same block with the cloud's numbers in place of the local controls. This is shown to the instance administrator, who enrolls with the workspace's manage mailboxes permission.
+Once linked, the **Mailboxes** page marks every enrolled mailbox with a blue **Cloud** badge on its address and its avatar and a "Warmed by Warmbly Cloud" line under it (amber while paused), shows the cloud's daily count in the warmup column with the same warming animation local warmup uses, and offers **Warm in Warmbly Cloud**, pause, resume and remove in each row's warmup menu. The mailbox drawer's Warmup tab shows the same block with the cloud's numbers in place of the local controls. This is shown to members with the manage mailboxes permission.
 
 **Settings > Warmbly Cloud** lists every active mailbox with a switch for whether it is in the pool. For enrolled mailboxes it shows the cloud's view:
 

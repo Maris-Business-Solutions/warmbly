@@ -1,11 +1,11 @@
 // One view of the Warmbly Cloud pool link for the dashboard: whether this is
 // a self-hosted instance, whether it is linked, and which mailboxes the cloud
-// warms. The link is instance-wide, so its queries run only for the instance
-// administrator (`manageable`) and stay disabled on the hosted product.
+// warms. Members who manage mailboxes see the link and use it for their own
+// mailboxes (`manageable`); linking it is the instance administrator's.
 
 import { useMemo } from "react";
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
-import { useInstanceAdmin } from "@/hooks/usePermission";
+import { useInstanceAdmin, usePermission } from "@/hooks/usePermission";
 import { useCloudLinkMailboxes, useCloudLinkStatus } from "@/lib/api/hooks/app/cloudlink/useCloudLink";
 import type { CloudLinkMailboxRow, PoolLinkPlan } from "@/lib/api/models/app/cloudlink/CloudLink";
 
@@ -13,7 +13,8 @@ export default function useCloudPool() {
     const authConfig = useAuthConfig();
     const selfHosted = authConfig.data?.self_hosted === true;
     const instanceAdmin = useInstanceAdmin();
-    const manageable = selfHosted && instanceAdmin.allowed;
+    const manageEmails = usePermission("MANAGE_EMAILS");
+    const manageable = selfHosted && (instanceAdmin.allowed || manageEmails);
     const status = useCloudLinkStatus(manageable);
     const connected = manageable && status.data?.connected === true;
     const mailboxes = useCloudLinkMailboxes(connected);
