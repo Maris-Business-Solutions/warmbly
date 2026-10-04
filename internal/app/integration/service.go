@@ -240,9 +240,10 @@ type service struct {
 	aiSearch   generation.SearchClient
 	salesforce SalesforceBridge
 
-	popMu sync.Mutex
-	pop   map[models.IntegrationProvider]int
-	popAt time.Time
+	popMu         sync.Mutex
+	pop           map[models.IntegrationProvider]int
+	popAt         time.Time
+	popRefreshing bool
 }
 
 // NewService builds the integration service. cipherSvc seals provider secrets

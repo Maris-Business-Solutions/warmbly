@@ -9,7 +9,10 @@ import (
 )
 
 // popularityTTL bounds how stale the instance-wide usage counts may be.
-const popularityTTL = 10 * time.Minute
+const (
+	popularityTTL   = 10 * time.Minute
+	popularityRetry = 30 * time.Second
+)
 
 // curatedOrder breaks ties, so a new instance with no connections still lists
 // the integrations most outbound teams reach for first.
@@ -29,20 +32,30 @@ var curatedOrder = []models.IntegrationProvider{
 	models.IntegrationCleanMyList,
 }
 
-// popularity returns workspaces per provider, cached; a failed read keeps the
-// last good counts and falls back to the curated order alone.
+// popularity returns workspaces per provider from a cache. A stale cache is
+// refreshed by one request at a time outside the lock, and the rest answer from
+// the old counts meanwhile; a failed refresh retries after popularityRetry.
 func (s *service) popularity(ctx context.Context) map[models.IntegrationProvider]int {
 	s.popMu.Lock()
+	counts, fresh := s.pop, time.Since(s.popAt) < popularityTTL
+	if fresh || s.popRefreshing {
+		s.popMu.Unlock()
+		return counts
+	}
+	s.popRefreshing = true
+	s.popMu.Unlock()
+
+	next, err := s.repo.WorkspacesByProvider(ctx)
+
+	s.popMu.Lock()
 	defer s.popMu.Unlock()
-	if s.pop != nil && time.Since(s.popAt) < popularityTTL {
-		return s.pop
-	}
-	counts, err := s.repo.WorkspacesByProvider(ctx)
+	s.popRefreshing = false
 	if err != nil {
+		s.popAt = time.Now().Add(popularityRetry - popularityTTL)
 		return s.pop
 	}
-	s.pop, s.popAt = counts, time.Now()
-	return counts
+	s.pop, s.popAt = next, time.Now()
+	return next
 }
 
 // rankByPopularity sets each entry's Rank without reordering the slice.

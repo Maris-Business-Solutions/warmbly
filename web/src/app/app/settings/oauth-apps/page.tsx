@@ -25,6 +25,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { EmptyBlock } from "@/components/layout/Page";
 import { Label, TextInput } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
+import { nameError } from "@/lib/displayName";
 import { useConfirm } from "@/hooks/context/confirm";
 import useAPIPermissions from "@/lib/api/hooks/app/api-keys/useAPIPermissions";
 import type APIPermission from "@/lib/api/models/app/apikeys/APIPermission";
@@ -596,8 +597,9 @@ function EditModal({ app, onClose }: { app: OAuthApplication; onClose: () => voi
     const webhookUrlValid = webhookUrl.trim() === "" || /^https:\/\/.+/i.test(webhookUrl.trim());
 
     const save = async () => {
-        if (name.trim().length === 0) {
-            toast.error("Give the app a name");
+        const nameProblem = nameError("Name", name, "workspace");
+        if (nameProblem) {
+            toast.error(nameProblem);
             return;
         }
         if (redirectList.length === 0) {

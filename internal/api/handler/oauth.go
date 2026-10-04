@@ -67,12 +67,7 @@ func (h *Handler) CreateOAuthApplication(c *gin.Context) {
 	}
 	app, err := h.OAuthService.RegisterApplication(c.Request.Context(), *orgID, userID, w)
 	if err != nil {
-		var blocked *oauth.DeveloperBlockedError
-		if errors.As(err, &blocked) {
-			errx.JSON(c, errx.NewWithIdentifier(errx.Forbidden, "developer_access_blocked", blocked.Error()))
-			return
-		}
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, oauthAppWriteError(err))
 		return
 	}
 	c.JSON(http.StatusCreated, app)
@@ -130,9 +125,10 @@ func (h *Handler) UpdateOAuthApplication(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	app, uerr := h.OAuthService.UpdateApplication(c.Request.Context(), *orgID, id, w)
+	userID, _ := middleware.GetUserUUID(c)
+	app, uerr := h.OAuthService.UpdateApplication(c.Request.Context(), *orgID, userID, id, w)
 	if uerr != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, uerr.Error()))
+		errx.JSON(c, oauthAppWriteError(uerr))
 		return
 	}
 	c.JSON(http.StatusOK, app)
@@ -568,4 +564,22 @@ func (h *Handler) OAuthProtectedResourceMetadata(c *gin.Context) {
 		"bearer_methods_supported": []string{"header"},
 		"resource_documentation":   "https://docs.warmbly.com/api/mcp/",
 	})
+}
+
+// oauthAppWriteError maps a register or update refusal to its response: a
+// naming rule keeps its own code, a block and a suspension have theirs, and
+// any other validation message is a plain 400.
+func oauthAppWriteError(err error) *errx.Error {
+	var xe *errx.Error
+	if errors.As(err, &xe) {
+		return xe
+	}
+	var blocked *oauth.DeveloperBlockedError
+	if errors.As(err, &blocked) {
+		return errx.NewWithIdentifier(errx.Forbidden, "developer_access_blocked", blocked.Error())
+	}
+	if errors.Is(err, oauth.ErrAppSuspended) {
+		return errx.NewWithIdentifier(errx.Conflict, "app_suspended", err.Error())
+	}
+	return errx.New(errx.BadRequest, err.Error())
 }

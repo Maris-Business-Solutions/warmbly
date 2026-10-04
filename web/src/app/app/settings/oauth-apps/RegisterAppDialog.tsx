@@ -15,6 +15,7 @@ import { CheckSquare } from "@/components/ui/check-square";
 import { Label, TextInput } from "@/components/ui/field";
 import { useConfirm } from "@/hooks/context/confirm";
 import useAPIPermissions from "@/lib/api/hooks/app/api-keys/useAPIPermissions";
+import { nameError } from "@/lib/displayName";
 import { useCreateOAuthApp, useSetOAuthAppLogo } from "@/lib/api/hooks/app/oauth/useOAuthApps";
 import { useWebhookEventCatalog } from "@/lib/api/hooks/app/webhooks/useWebhooks";
 import type APIPermission from "@/lib/api/models/app/apikeys/APIPermission";
@@ -83,6 +84,7 @@ export default function RegisterAppDialog({ onClose }: { onClose: () => void }) 
 
     const redirectList = redirects.map((r) => r.trim()).filter(Boolean);
     const redirectErrors = redirects.map(redirectProblem);
+    const nameProblem = nameError("Name", name, "workspace");
     const websiteProblem = website.trim() && !/^https?:\/\/[^\s/]+/i.test(website.trim()) ? "Start with https://" : null;
     const webhookProblem =
         webhooksOn && webhookUrl.trim() && !/^https:\/\/[^\s/]+/i.test(webhookUrl.trim()) ? "Use an https address" : null;
@@ -94,7 +96,7 @@ export default function RegisterAppDialog({ onClose }: { onClose: () => void }) 
 
     // Why a step cannot be left, shown beside the button rather than a disabled one.
     const problems: string[][] = [
-        [!name.trim() ? "Give the app a name" : "", websiteProblem ? "Fix the website address" : ""].filter(Boolean),
+        [nameProblem ?? "", websiteProblem ? "Fix the website address" : ""].filter(Boolean),
         [
             scopes === 0 ? "Choose at least one permission" : "",
             redirectList.length === 0 ? "Add the address people return to" : "",
@@ -269,8 +271,10 @@ export default function RegisterAppDialog({ onClose }: { onClose: () => void }) 
                                             </div>
                                             <div>
                                                 <Label>Name</Label>
-                                                <TextInput value={name} onChange={setName} placeholder="Acme Sync" autoFocus maxLength={80} className="w-full" invalid={showErrors && !name.trim()} />
-                                                <p className="mt-1 text-[11.5px] text-slate-400">People see it on the consent screen when they connect your app.</p>
+                                                <TextInput value={name} onChange={setName} placeholder="Acme Sync" autoFocus maxLength={80} className="w-full" invalid={showErrors && !!nameProblem} />
+                                                <p className={cn("mt-1 text-[11.5px]", showErrors && nameProblem ? "text-rose-600" : "text-slate-400")}>
+                                                    {(showErrors && nameProblem) || "People see it on the consent screen when they connect your app."}
+                                                </p>
                                             </div>
                                             <div>
                                                 <Label>Description</Label>

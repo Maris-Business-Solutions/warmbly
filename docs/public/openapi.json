@@ -17902,7 +17902,7 @@
       "get": {
         "operationId": "integrations_community_list",
         "summary": "List community apps",
-        "description": "Community directory listings shown in discovery: featured apps first, then published apps used by at least 25 workspaces, most installed first. A link-only app is never returned here; open it by its slug.",
+        "description": "Community directory listings shown in discovery: featured apps first, then published apps installed in at least 25 workspaces other than the publisher's, each at least two weeks old, most installed first. A link-only app is never returned here; open it by its slug.",
         "tags": [
           "integrations"
         ],
@@ -37915,7 +37915,7 @@
           },
           "listed": {
             "type": "boolean",
-            "description": "Shown in discovery: featured, or used by at least 25 workspaces."
+            "description": "Shown in discovery: featured, or installed in at least 25 workspaces other than the publisher's, each at least two weeks old."
           },
           "installs": {
             "type": "integer",

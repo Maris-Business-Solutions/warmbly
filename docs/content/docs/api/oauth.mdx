@@ -337,7 +337,7 @@ Once your app works, publish it to the [community directory](/guides/integration
 
 A published listing has a `status`:
 
-- `published`: link only. It opens at `/app/integrations/apps/{slug}` with a note that it is shared by link, and stays out of the directory, search and recommendations until 25 workspaces on the instance use it.
+- `published`: link only. It opens at `/app/integrations/apps/{slug}` with a note that it is shared by link, and stays out of the directory, search and recommendations until it is installed in 25 workspaces other than the publisher's, each at least two weeks old.
 - `featured`: the instance's team picked it. It is listed with a Featured badge whatever its installs.
 - `hidden`: the team took it down. It is reachable nowhere, and `status_note` says why.
 
@@ -399,7 +399,7 @@ Removes the listing and its link. Workspaces that installed the app keep their g
 
 #### Browsing the directory
 
-`GET /integrations/community` returns the listed apps (featured ones first, then those used by at least 25 workspaces, most installed first), as `data` plus `pagination` (`limit` 1 to 200, default 100). `GET /integrations/community/{slug}` returns one published or featured listing, listed or not. Both need **Scope** `INTEGRATIONS`, and each listing reports `installs` (workspaces with an active grant) and `installed` (whether the caller's workspace has one). See [integrations](/api/reference/integrations/#list-community-apps).
+`GET /integrations/community` returns the listed apps (featured ones first, then those installed in at least 25 workspaces other than the publisher's, each at least two weeks old, most installed first), as `data` plus `pagination` (`limit` 1 to 200, default 100). `GET /integrations/community/{slug}` returns one published or featured listing, listed or not. Both need **Scope** `INTEGRATIONS`, and each listing reports `installs` (workspaces with an active grant) and `installed` (whether the caller's workspace has one). See [integrations](/api/reference/integrations/#list-community-apps).
 
 ## Security notes
 

@@ -50,7 +50,7 @@ A `catalog` array of provider entries.
 
 `GET /integrations/community`
 
-Returns the [community directory](/guides/integrations/#community-apps) listings shown in discovery: featured apps first, then published apps used by at least 25 workspaces, most installed first. A link-only app is never returned here.
+Returns the [community directory](/guides/integrations/#community-apps) listings shown in discovery: featured apps first, then published apps installed in at least 25 workspaces other than the publisher's, each at least two weeks old, most installed first. A link-only app is never returned here.
 
 Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
 

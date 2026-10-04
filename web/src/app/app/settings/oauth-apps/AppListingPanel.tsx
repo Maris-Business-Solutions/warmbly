@@ -77,21 +77,23 @@ export default function AppListingPanel({ app, blocked = false }: { app: OAuthAp
                             >
                                 Edit listing
                             </button>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    confirm.show(
-                                        `Unpublish ${app.name}? Its link stops working and it leaves the directory. Workspaces that installed it keep their access.`,
-                                        async () => {
-                                            await unpublish.mutateAsync();
-                                            toast.success("Unpublished");
-                                        },
-                                    )
-                                }
-                                className="h-6 px-2 rounded text-[11.5px] text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-                            >
-                                Unpublish
-                            </button>
+                            {listing.status !== "hidden" && (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        confirm.show(
+                                            `Unpublish ${app.name}? Its link stops working and it leaves the directory. Workspaces that installed it keep their access.`,
+                                            async () => {
+                                                await unpublish.mutateAsync();
+                                                toast.success("Unpublished");
+                                            },
+                                        )
+                                    }
+                                    className="h-6 px-2 rounded text-[11.5px] text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+                                >
+                                    Unpublish
+                                </button>
+                            )}
                         </>
                     ) : (
                         <button

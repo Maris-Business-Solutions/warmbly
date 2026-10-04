@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/app/oauth"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/storage"
 	"github.com/warmbly/warmbly/internal/models"
@@ -58,6 +59,12 @@ func reencodeLogo(body []byte) ([]byte, string, string, *errx.Error) {
 		return out.Bytes(), "image/jpeg", ".jpg", nil
 	}
 	return nil, "", "", errx.New(errx.BadRequest, "the logo must be a PNG or JPG")
+}
+
+// appOwnLogoPrefix is the key prefix of images stored for one app. Only those
+// are deleted when its logo changes; an older upload another app may share is left alone.
+func appOwnLogoPrefix(appID uuid.UUID) string {
+	return appLogoPrefix + appID.String() + "-"
 }
 
 func appLogoKey(orgID uuid.UUID, ext string) (string, error) {
@@ -139,6 +146,15 @@ func (h *Handler) UploadOAuthApplicationLogo(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if app.SuspendedAt != nil {
+		errx.JSON(c, oauthAppWriteError(oauth.ErrAppSuspended))
+		return
+	}
+	userID, _ := middleware.GetUserUUID(c)
+	if err := h.OAuthService.CheckDeveloperAccess(c.Request.Context(), orgID, userID); err != nil {
+		errx.JSON(c, oauthAppWriteError(err))
+		return
+	}
 	raw, _, _, xerr := readAvatarUpload(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
@@ -162,7 +178,7 @@ func (h *Handler) UploadOAuthApplicationLogo(c *gin.Context) {
 		errx.JSON(c, errx.InternalError())
 		return
 	}
-	h.deleteAvatarObject(ctx, app.LogoURL, appLogoPrefix, key)
+	h.deleteAvatarObject(ctx, app.LogoURL, appOwnLogoPrefix(app.ID), key)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -178,6 +194,6 @@ func (h *Handler) DeleteOAuthApplicationLogo(c *gin.Context) {
 		errx.JSON(c, errx.InternalError())
 		return
 	}
-	h.deleteAvatarObject(ctx, app.LogoURL, appLogoPrefix, "")
+	h.deleteAvatarObject(ctx, app.LogoURL, appOwnLogoPrefix(app.ID), "")
 	c.JSON(http.StatusOK, updated)
 }

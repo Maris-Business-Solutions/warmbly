@@ -31,6 +31,8 @@ const (
 	ErrCodeSlugTaken = "listing_slug_taken"
 	// ErrCodeNotListable is the response code for an app that cannot be listed.
 	ErrCodeNotListable = "app_not_listable"
+	// ErrCodeListingHidden is the response code for unpublishing a hidden listing.
+	ErrCodeListingHidden = "listing_hidden"
 	// ErrCodeDeveloperBlocked is the response code when an operator has blocked
 	// this workspace or person from publishing apps.
 	ErrCodeDeveloperBlocked = "developer_access_blocked"
@@ -157,6 +159,13 @@ func (s *Service) SaveListing(ctx context.Context, orgID, userID, appID uuid.UUI
 func (s *Service) DeleteListing(ctx context.Context, orgID, appID uuid.UUID) *errx.Error {
 	if _, xerr := s.listableApp(ctx, orgID, appID); xerr != nil {
 		return xerr
+	}
+	current, err := s.repo.GetListing(ctx, orgID, appID)
+	if err != nil {
+		return errx.New(errx.Internal, "lookup failed")
+	}
+	if current != nil && current.Status == models.AppListingHidden {
+		return errx.NewWithIdentifier(errx.Conflict, ErrCodeListingHidden, "a hidden listing stays until the instance's administrators restore it")
 	}
 	if err := s.repo.DeleteListing(ctx, orgID, appID); err != nil {
 		return errx.New(errx.Internal, "delete failed")

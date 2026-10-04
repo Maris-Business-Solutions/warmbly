@@ -132,11 +132,13 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
         return m;
     }, [catalog]);
 
+    // A disconnected row is history, not a connection.
+    const liveConnections = React.useMemo(() => connections.filter((c) => c.status !== "disconnected"), [connections]);
     const connByProvider = React.useMemo(() => {
         const m: Partial<Record<string, IntegrationConnection>> = {};
-        for (const c of connections) if (!m[c.provider]) m[c.provider] = c;
+        for (const c of liveConnections) if (!m[c.provider]) m[c.provider] = c;
         return m;
-    }, [connections]);
+    }, [liveConnections]);
 
     const builtins = React.useMemo(() => catalog.map(builtinItem), [catalog]);
     const communityItems = React.useMemo(() => community.map(communityItem), [community]);
@@ -150,9 +152,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
     const visibleCategories = STORE_CATEGORIES.filter((c) => (counts[c] ?? 0) > 0);
 
     const recommendations = React.useMemo(() => {
-        const have = new Set(
-            connections.filter((c) => c.status !== "disconnected").map((c) => entryByProvider[c.provider]?.category),
-        );
+        const have = new Set(liveConnections.map((c) => entryByProvider[c.provider]?.category));
         const out: StoreItem[] = [];
         for (const gap of GAPS) {
             if (have.has(gap.category)) continue;
@@ -161,12 +161,13 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
             if (pick) out.push(builtinItem(pick));
         }
         return out.slice(0, 4);
-    }, [connections, entryByProvider, catalog]);
+    }, [liveConnections, entryByProvider, catalog]);
 
     const isConnected = React.useCallback(
         (item: StoreItem) => (item.kind === "builtin" ? !!connByProvider[item.entry.provider] : item.app.installed),
         [connByProvider],
     );
+    const connectedCount = React.useMemo(() => allItems.filter(isConnected).length, [allItems, isConnected]);
 
     function go(path: string) {
         navigate(path);
@@ -366,7 +367,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
             items: [
                 { key: "home", label: "Discover", to: STORE_BASE, icon: CompassIcon },
                 { key: "all", label: "All apps", to: `${STORE_BASE}/all`, icon: LayoutGridIcon, count: allItems.length },
-                { key: "connected", label: "Connected", to: `${STORE_BASE}/connected`, icon: PlugIcon, count: connections.length },
+                { key: "connected", label: "Connected", to: `${STORE_BASE}/connected`, icon: PlugIcon, count: connectedCount },
             ],
         },
         {

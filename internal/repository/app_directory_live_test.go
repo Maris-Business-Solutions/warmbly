@@ -163,19 +163,31 @@ func TestLiveAppDirectory(t *testing.T) {
 		}
 	})
 
-	t.Run("enough live installs list a published app", func(t *testing.T) {
+	t.Run("enough installs from established workspaces list a published app", func(t *testing.T) {
 		f.grant(t, pool, f.app, f.viewer, false)
 		f.grant(t, pool, f.app, f.viewer, false)
-		f.grant(t, pool, f.app, f.pub, true)
-		if _, ok := listed()[slug]; ok {
-			t.Fatal("listed with one live workspace")
-		}
+		f.grant(t, pool, f.app, f.pub, false)
 		f.grant(t, pool, f.app, f.other, false)
+		if _, ok := listed()[slug]; ok {
+			t.Fatal("listed on installs from workspaces made today")
+		}
+		if _, err := pool.Exec(ctx, `UPDATE organizations SET created_at = now() - interval '30 days' WHERE id = $1`, f.viewer); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE organizations SET created_at = now() - interval '30 days' WHERE id = $1`, f.pub); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := listed()[slug]; ok {
+			t.Fatal("the publisher's own workspace counted toward listing")
+		}
+		if _, err := pool.Exec(ctx, `UPDATE organizations SET created_at = now() - interval '30 days' WHERE id = $1`, f.other); err != nil {
+			t.Fatal(err)
+		}
 		got, ok := listed()[slug]
 		if !ok {
 			t.Fatal("not listed at the install threshold")
 		}
-		if got.Installs != 2 || !got.Installed || !got.Listed {
+		if got.Installs != 3 || !got.Installed || !got.Listed {
 			t.Fatalf("installs = %d installed = %v listed = %v", got.Installs, got.Installed, got.Listed)
 		}
 		if _, err := pool.Exec(ctx, `UPDATE oauth_access_grants SET revoked_at = now() WHERE application_id = $1`, f.app); err != nil {
@@ -245,6 +257,12 @@ func TestLiveAppDirectory(t *testing.T) {
 		}
 		if edit.Status != models.AppListingHidden || edit.StatusNote != "wrong logo" {
 			t.Fatalf("edited hidden listing = %q %q", edit.Status, edit.StatusNote)
+		}
+		if err := repo.DeleteListing(ctx, f.pub, f.app); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := repo.GetListing(ctx, f.pub, f.app); got == nil || got.Status != models.AppListingHidden {
+			t.Fatal("unpublishing removed a hidden listing, so republishing would lift the hide")
 		}
 	})
 

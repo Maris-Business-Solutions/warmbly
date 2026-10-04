@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/models"
 )
 
@@ -108,8 +110,10 @@ func (r *appDirectoryRepository) SaveListing(ctx context.Context, l *models.AppL
 	return nil
 }
 
+// DeleteListing unpublishes the app. A hidden listing stays, so an operator's
+// decision is not undone by unpublishing and publishing again.
 func (r *appDirectoryRepository) DeleteListing(ctx context.Context, orgID, appID uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM app_directory_listings WHERE organization_id = $1 AND application_id = $2`, orgID, appID)
+	_, err := r.db.Exec(ctx, `DELETE FROM app_directory_listings WHERE organization_id = $1 AND application_id = $2 AND status <> 'hidden'`, orgID, appID)
 	return err
 }
 
@@ -121,15 +125,23 @@ func (r *appDirectoryRepository) Unfeature(ctx context.Context, orgID, appID uui
 	return err
 }
 
+// qualifiedInstallsSQL counts the workspaces that may list an app on installs
+// alone: not the publisher's, and old enough not to be made for the purpose.
+var qualifiedInstallsSQL = `SELECT count(DISTINCT g.organization_id) FROM oauth_access_grants g
+	JOIN organizations og ON og.id = g.organization_id
+	WHERE g.application_id = a.id AND g.revoked_at IS NULL AND g.organization_id <> l.organization_id
+		AND og.created_at <= now() - make_interval(days => ` + strconv.Itoa(config.AppDirectoryInstallOrgMinAgeDays) + `)`
+
 // communityAppCTE reads every reachable listing of an active app as the
 // directory shows it. $1 is the viewing organization (for its installed flag
 // only) and $2 the install count that lists a published app.
-const communityAppCTE = `
+var communityAppCTE = `
 	WITH c AS (
 		SELECT l.application_id, l.slug, a.name, l.tagline, l.description, l.category, a.logo_url, a.website_url,
 			l.install_url, l.support_url, l.privacy_url, COALESCE(o.name, '') AS developer, a.scopes, l.status,
 			(SELECT count(DISTINCT g.organization_id) FROM oauth_access_grants g
 				WHERE g.application_id = a.id AND g.revoked_at IS NULL)::int AS installs,
+			(` + qualifiedInstallsSQL + `)::int AS qualified_installs,
 			EXISTS (SELECT 1 FROM oauth_access_grants g
 				WHERE g.application_id = a.id AND g.organization_id = $1 AND g.revoked_at IS NULL) AS installed,
 			l.created_at
@@ -138,7 +150,7 @@ const communityAppCTE = `
 		LEFT JOIN organizations o ON o.id = l.organization_id
 		WHERE l.status IN ('published', 'featured') AND a.status = 'active' AND a.suspended_at IS NULL
 	), listed AS (
-		SELECT c.*, (c.status = 'featured' OR c.installs >= $2::int) AS is_listed FROM c
+		SELECT c.*, (c.status = 'featured' OR c.qualified_installs >= $2::int) AS is_listed FROM c
 	)`
 
 const communityAppCols = `application_id, slug, name, tagline, description, category, logo_url, website_url,
@@ -194,10 +206,10 @@ func (r *appDirectoryRepository) GetPublished(ctx context.Context, viewerOrgID u
 }
 
 // adminAppListingSelect: $1 is the install count that lists a published app.
-const adminAppListingSelect = `
+var adminAppListingSelect = `
 	SELECT ` + appListingCols + `, a.name, a.logo_url, a.website_url, a.scopes,
 		CASE WHEN a.suspended_at IS NOT NULL THEN 'suspended' ELSE a.status END,
-		COALESCE(o.name, ''), x.installs, (l.status = 'featured' OR (l.status = 'published' AND x.installs >= $1::int)),
+		COALESCE(o.name, ''), x.installs, (l.status = 'featured' OR (l.status = 'published' AND (` + qualifiedInstallsSQL + `) >= $1::int)),
 		l.status_by, COALESCE(u.email, '')
 	FROM app_directory_listings l
 	JOIN oauth_applications a ON a.id = l.application_id

@@ -14,8 +14,11 @@ const (
 	CampaignDailyLimitMin = 3
 
 	// AppDirectoryPopularInstalls is how many workspaces must use a community
-	// app before it is listed in the directory without being featured.
-	AppDirectoryPopularInstalls = 25
+	// app before it is listed in the directory without being featured. Only
+	// workspaces other than the publisher's, at least AppDirectoryInstallOrgMinAgeDays
+	// old, count toward it, so fresh throwaway workspaces cannot list an app.
+	AppDirectoryPopularInstalls      = 25
+	AppDirectoryInstallOrgMinAgeDays = 14
 
 	// SignatureHTMLMax/SignaturePlainMax bound a stored mailbox signature.
 	// The old ceiling was 1000 characters for both, which a real signature

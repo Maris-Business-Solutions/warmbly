@@ -104,7 +104,7 @@ func (h *Handler) AdminRemoveOAuthAppLogo(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	h.deleteAvatarObject(c.Request.Context(), previous, appLogoPrefix, "")
+	h.deleteAvatarObject(c.Request.Context(), previous, appOwnLogoPrefix(id), "")
 	h.audit(c, models.AuditAction("remove_oauth_app_logo"), models.AuditEntityAppListing, &id, map[string]string{"name": app.Name})
 	c.JSON(http.StatusOK, app)
 }

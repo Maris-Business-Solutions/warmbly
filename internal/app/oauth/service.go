@@ -11,7 +11,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"github.com/warmbly/warmbly/internal/errx"
 	"net/url"
 	"strings"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/webhook"
 	"github.com/warmbly/warmbly/internal/infrastructure/cache"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/pkg/whdomain"
 	"github.com/warmbly/warmbly/internal/repository"
 )
@@ -47,6 +50,33 @@ func (e *DeveloperBlockedError) Error() string {
 		return "registering and publishing apps is blocked for this workspace"
 	}
 	return "registering and publishing apps is blocked for this workspace: " + e.Reason
+}
+
+// ErrAppSuspended is returned when the owner edits an app an operator suspended.
+var ErrAppSuspended = errors.New("this app is suspended by the instance's administrators")
+
+// appName applies the shared naming rules: an app name is shown to every
+// workspace that sees its consent screen or its directory listing.
+func appName(raw string) (string, error) {
+	name, xerr := displayname.Validate("name", raw, displayname.Workspace, false)
+	if xerr != nil {
+		return "", xerr
+	}
+	return name, nil
+}
+
+// appWebsite accepts an empty value or an http(s) address on a host, without
+// credentials; it is shown to other workspaces as a link.
+func appWebsite(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || len(raw) > 2048 {
+		return "", errx.NewWithIdentifier(errx.BadRequest, "invalid_website", "the website must be an http or https address")
+	}
+	return u.String(), nil
 }
 
 // Service is the OAuth authorization server.
@@ -108,9 +138,13 @@ func (s *Service) RegisterApplication(ctx context.Context, orgID, userID uuid.UU
 	if err := s.CheckDeveloperAccess(ctx, orgID, userID); err != nil {
 		return nil, err
 	}
-	name := strings.TrimSpace(w.Name)
-	if name == "" {
-		return nil, fmt.Errorf("a name is required")
+	name, err := appName(w.Name)
+	if err != nil {
+		return nil, err
+	}
+	website, err := appWebsite(w.WebsiteURL)
+	if err != nil {
+		return nil, err
 	}
 	uris, err := validateRedirectURIs(w.RedirectURIs)
 	if err != nil {
@@ -134,7 +168,7 @@ func (s *Service) RegisterApplication(ctx context.Context, orgID, userID uuid.UU
 		Name:                  name,
 		Description:           strings.TrimSpace(w.Description),
 		LogoURL:               strings.TrimSpace(w.LogoURL),
-		WebsiteURL:            strings.TrimSpace(w.WebsiteURL),
+		WebsiteURL:            website,
 		ClientID:              clientID,
 		RedirectURIs:          uris,
 		AllowedWebhookDomains: domains,
@@ -168,7 +202,7 @@ func (s *Service) GetApplication(ctx context.Context, orgID, id uuid.UUID) (*mod
 // UpdateApplication edits an app's display fields, redirect URIs, scopes, and
 // status. client_id and the secret are immutable here (rotate the secret
 // separately).
-func (s *Service) UpdateApplication(ctx context.Context, orgID, id uuid.UUID, w models.OAuthApplicationWrite) (*models.OAuthApplication, error) {
+func (s *Service) UpdateApplication(ctx context.Context, orgID, userID, id uuid.UUID, w models.OAuthApplicationWrite) (*models.OAuthApplication, error) {
 	app, err := s.repo.GetApplication(ctx, orgID, id)
 	if err != nil {
 		return nil, err
@@ -176,9 +210,16 @@ func (s *Service) UpdateApplication(ctx context.Context, orgID, id uuid.UUID, w 
 	if app == nil {
 		return nil, fmt.Errorf("application not found")
 	}
-	name := strings.TrimSpace(w.Name)
-	if name == "" {
-		return nil, fmt.Errorf("a name is required")
+	if app.SuspendedAt != nil {
+		return nil, ErrAppSuspended
+	}
+	name, err := appName(w.Name)
+	if err != nil {
+		return nil, err
+	}
+	website, err := appWebsite(w.WebsiteURL)
+	if err != nil {
+		return nil, err
 	}
 	uris, err := validateRedirectURIs(w.RedirectURIs)
 	if err != nil {
@@ -197,12 +238,17 @@ func (s *Service) UpdateApplication(ctx context.Context, orgID, id uuid.UUID, w 
 	if v := strings.TrimSpace(w.LogoURL); v != "" {
 		logo = v
 	}
-	faceChanged := app.Name != name || app.LogoURL != logo ||
-		app.WebsiteURL != strings.TrimSpace(w.WebsiteURL) || app.Scopes != scopes
+	faceChanged := app.Name != name || app.LogoURL != logo || app.WebsiteURL != website || app.Scopes != scopes
+	// A blocked developer keeps a working app but cannot change what other workspaces see of it.
+	if faceChanged {
+		if err := s.CheckDeveloperAccess(ctx, orgID, userID); err != nil {
+			return nil, err
+		}
+	}
 	app.Name = name
 	app.Description = strings.TrimSpace(w.Description)
 	app.LogoURL = logo
-	app.WebsiteURL = strings.TrimSpace(w.WebsiteURL)
+	app.WebsiteURL = website
 	app.RedirectURIs = uris
 	app.AllowedWebhookDomains = domains
 	app.Scopes = scopes
