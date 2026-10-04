@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import BrandMark from "@/components/shared/BrandMark";
+import ReauthModal from "@/components/app/modals/ReauthModal";
 import getToken from "@/lib/helper/getToken";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
@@ -51,7 +52,13 @@ export default function ConnectPage() {
         const next = encodeURIComponent(window.location.pathname + window.location.search);
         return <Navigate to={`/auth/login?next=${next}`} replace />;
     }
-    return <ConnectInner />;
+    // Outside the /app layout, so approving (which needs a fresh confirmation) brings its own prompt.
+    return (
+        <>
+            <ConnectInner />
+            <ReauthModal />
+        </>
+    );
 }
 
 function ConnectInner() {
