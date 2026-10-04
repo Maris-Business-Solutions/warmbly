@@ -189,30 +189,25 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 		return pipedriveUpsertPerson(ctx, token, contactEmail(data), props)
 
 	case models.IntegrationActionSalesforceUpsert:
-		if s.salesforce != nil {
-			ev := map[string]any{}
-			for k, v := range data {
-				ev[k] = v
-			}
-			// An automation's own field map overrides the connection's rules.
-			if len(autoCfg.FieldMap) > 0 {
-				ev["_salesforce_fields"] = projectFields(autoCfg.FieldMap, eventSource(data))
-			}
-			if err := s.salesforce.UpsertFromEvent(ctx, sub.OrganizationID, sub.ConnectionID, ev); err != nil {
-				if errors.Is(err, ErrPushReauth) {
-					return errReauthRequired
-				}
-				return err
-			}
-			return nil
+		// Salesforce writes go through the native sync only.
+		if s.salesforce == nil {
+			return errors.New("salesforce sync is not available on this process")
 		}
-		token, terr := s.accessTokenFor(ctx, &target.Secrets)
-		if terr != nil {
-			return errReauthRequired
+		ev := map[string]any{}
+		for k, v := range data {
+			ev[k] = v
 		}
-		instanceURL := configString(target.Secrets.Conn.DisplayFields, "instance_url")
-		props := s.crmProps(ctx, sub, models.IntegrationSalesforce, data, autoCfg)
-		return salesforceUpsertContact(ctx, token, instanceURL, contactEmail(data), props)
+		// An automation's own field map overrides the connection's rules.
+		if len(autoCfg.FieldMap) > 0 {
+			ev["_salesforce_fields"] = projectFields(autoCfg.FieldMap, eventSource(data))
+		}
+		if err := s.salesforce.UpsertFromEvent(ctx, sub.OrganizationID, sub.ConnectionID, ev); err != nil {
+			if errors.Is(err, ErrPushReauth) {
+				return errReauthRequired
+			}
+			return err
+		}
+		return nil
 
 	case models.IntegrationActionCloseUpsert:
 		apiKey := stringFromMap(secretCfg, "api_key", "api_token")
