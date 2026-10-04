@@ -1465,7 +1465,7 @@ Auth: Session only (not available to API keys). **Org permission** `manage_team`
 
 `GET /organization/invitations/:id/link`
 
-Returns the shareable accept token for a pending invitation so a team manager can copy a real accept link.
+Mints a shareable accept token for a pending invitation so a team manager can copy a real accept link. Invitation tokens are stored only as digests, so each call issues a new link token and the previously copied link stops working; the emailed link keeps working alongside it.
 
 Auth: Session only (not available to API keys). **Org permission** `manage_team`.
 

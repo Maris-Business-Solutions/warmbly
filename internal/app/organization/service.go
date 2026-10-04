@@ -678,7 +678,7 @@ func (s *organizationService) InviteMember(ctx context.Context, orgID uuid.UUID,
 		RoleID:         roleID,
 		Permissions:    permissions,
 		InvitedBy:      inviterID,
-		Token:          token,
+		Token:          crypt.SHA256(token),
 		ExpiresAt:      time.Now().Add(s.invitationTTL(ctx)),
 		CreatedAt:      time.Now(),
 	}
@@ -692,6 +692,8 @@ func (s *organizationService) InviteMember(ctx context.Context, orgID uuid.UUID,
 		return nil, errx.New(errx.Internal, "failed to attach roles")
 	}
 	inv.Roles = toMemberRoles(roles)
+	// The caller mails the plaintext; only its digest is stored.
+	inv.Token = token
 
 	return inv, nil
 }
@@ -730,7 +732,7 @@ func toMemberRoles(roles []models.OrganizationRole) []models.MemberRole {
 
 // AcceptInvitation accepts an invitation and adds the user as a member
 func (s *organizationService) AcceptInvitation(ctx context.Context, token string, userID uuid.UUID, email string) (*models.OrganizationMember, *errx.Error) {
-	inv, err := s.orgRepo.GetInvitationByToken(ctx, token)
+	inv, err := s.orgRepo.GetInvitationByToken(ctx, crypt.SHA256(token))
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.New(errx.Internal, "failed to get invitation")
@@ -757,7 +759,7 @@ func (s *organizationService) AcceptInvitationByID(ctx context.Context, invitati
 
 // PreviewInvitation returns the safe public view for the /invite landing page.
 func (s *organizationService) PreviewInvitation(ctx context.Context, token string) (*models.InvitationPreview, *errx.Error) {
-	inv, err := s.orgRepo.GetInvitationByToken(ctx, token)
+	inv, err := s.orgRepo.GetInvitationByToken(ctx, crypt.SHA256(token))
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.New(errx.Internal, "failed to get invitation")
@@ -797,8 +799,8 @@ func (s *organizationService) PreviewInvitation(ctx context.Context, token strin
 	return preview, nil
 }
 
-// GetInvitationToken returns the secure token for one of the org's pending
-// invitations, so a team manager can copy a shareable /invite link.
+// GetInvitationToken mints a shareable /invite link token for one of the org's
+// pending invitations; the emailed link keeps working alongside it.
 func (s *organizationService) GetInvitationToken(ctx context.Context, orgID, invitationID uuid.UUID) (string, *errx.Error) {
 	// The link is a bearer credential, so an operator can switch it off and
 	// require the invitation to arrive by email.
@@ -814,7 +816,21 @@ func (s *organizationService) GetInvitationToken(ctx context.Context, orgID, inv
 	if inv == nil || inv.OrganizationID != orgID {
 		return "", errx.New(errx.NotFound, "invitation not found")
 	}
-	return inv.Token, nil
+	// Only digests are stored, so each copy mints the link's own token and replaces the last copied one.
+	token, err := generateInvitationToken()
+	if err != nil {
+		errs.CaptureException(err)
+		return "", errx.New(errx.Internal, "failed to generate invitation token")
+	}
+	ok, err := s.orgRepo.SetInvitationLinkToken(ctx, orgID, invitationID, crypt.SHA256(token))
+	if err != nil {
+		errs.CaptureException(err)
+		return "", errx.New(errx.Internal, "failed to store invitation link")
+	}
+	if !ok {
+		return "", errx.New(errx.NotFound, "invitation not found")
+	}
+	return token, nil
 }
 
 // acceptResolved performs the actual join given an already-loaded invitation.
