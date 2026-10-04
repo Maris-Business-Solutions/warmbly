@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
@@ -123,14 +124,14 @@ func (s *Service) UpdateSettings(ctx context.Context, orgID uuid.UUID, upd *mode
 	}
 	s.forget(orgID)
 
-	if row.Provider == provider && !wasHubSpot {
+	if row.Provider == provider {
 		if o, rerr := s.resolve(ctx, orgID); rerr == nil && o != nil {
-			if row.Config.WriteProperties {
-				if perr := s.ensureProperties(ctx, o); perr != nil {
-					return nil, s.userError(ctx, o, perr)
-				}
+			if perr := s.propertiesReady(ctx, o); perr != nil {
+				return nil, s.userError(ctx, o, perr)
 			}
-			go s.initialPull(orgID)
+			if !wasHubSpot {
+				go s.initialPull(orgID)
+			}
 		}
 	}
 	return s.Settings(ctx, orgID)
@@ -141,6 +142,11 @@ func (s *Service) UpdateSettings(ctx context.Context, orgID uuid.UUID, upd *mode
 func (s *Service) initialPull(orgID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().Interface("panic", r).Msg("hubspot: initial pull panicked")
+		}
+	}()
 	key := "pull:" + orgID.String()
 	if !s.claim(ctx, key, 10*time.Minute) {
 		return

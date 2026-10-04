@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
@@ -256,64 +257,61 @@ func (s *Service) StartBackfill(ctx context.Context, orgID uuid.UUID, req *model
 
 const backfillBatch = 40
 
-// backfill copies a batch of Warmbly-only records and requeues itself until
-// none are left. A list-link job links imported contacts instead.
+// backfillKinds are copied in order: deals first, so tasks can attach to them.
+var backfillKinds = []struct{ flag, object string }{
+	{"deals", models.CRMObjectDeal}, {"tasks", models.CRMObjectTask}, {"notes", models.CRMObjectNote},
+}
+
+// backfill copies one batch per run and continues the same job with a cursor
+// until every chosen type is done, so it never runs twice at once and never
+// revisits a record. A record HubSpot refuses is skipped and counted; a
+// HubSpot outage retries the batch, whose copied records are already linked.
+// A list-link job links imported contacts instead.
 func (s *Service) backfill(ctx context.Context, o *org, p map[string]any) error {
 	if listID := str(p, "link_list"); listID != "" {
 		return s.linkList(ctx, o, listID)
 	}
-	more := false
-	if b, _ := p["deals"].(bool); b {
-		ids, err := s.d.Repo.UnlinkedNative(ctx, o.ID, models.CRMObjectDeal, backfillBatch)
+	for _, k := range backfillKinds {
+		if on, _ := p[k.flag].(bool); !on {
+			continue
+		}
+		if done, _ := p["done_"+k.flag].(bool); done {
+			continue
+		}
+		ids, err := s.d.Repo.UnlinkedNative(ctx, o.ID, k.object, uuidOf(p, "after_"+k.flag), backfillBatch)
 		if err != nil {
 			return err
 		}
+		skipped, _ := p["skipped"].(float64)
 		for _, id := range ids {
-			if err := s.backfillDeal(ctx, o, id); err != nil {
-				return err
+			if err := s.backfillOne(ctx, o, k.object, id); err != nil {
+				if _, retry := s.classify(ctx, o, err); retry {
+					return err
+				}
+				skipped++
+				log.Info().Err(err).Str("org_id", o.ID.String()).Str("object", k.object).Msg("hubspot: backfill skipped a record")
 			}
+			p["after_"+k.flag] = id.String()
 		}
-		more = more || len(ids) == backfillBatch
-	}
-	if b, _ := p["tasks"].(bool); b {
-		ids, err := s.d.Repo.UnlinkedNative(ctx, o.ID, models.CRMObjectTask, backfillBatch)
-		if err != nil {
-			return err
+		p["skipped"] = skipped
+		if len(ids) < backfillBatch {
+			p["done_"+k.flag] = true
 		}
-		for _, id := range ids {
-			if err := s.syncLocalTask(ctx, o, id); err != nil {
-				return err
-			}
-		}
-		more = more || len(ids) == backfillBatch
-	}
-	if b, _ := p["notes"].(bool); b {
-		ids, err := s.d.Repo.UnlinkedNative(ctx, o.ID, models.CRMObjectNote, backfillBatch)
-		if err != nil {
-			return err
-		}
-		for _, id := range ids {
-			if err := s.syncLocalNote(ctx, o, id); err != nil {
-				return err
-			}
-		}
-		more = more || len(ids) == backfillBatch
-	}
-	if more {
-		// The running job still holds its own key, so the next batch takes the
-		// other one of a pair; the chain never collides with itself.
-		next := "backfill-a"
-		if str(p, "_key") == next {
-			next = "backfill-b"
-		}
-		np := map[string]any{"deals": p["deals"], "tasks": p["tasks"], "notes": p["notes"], "_key": next}
-		return s.d.Repo.EnqueueJob(ctx, &models.CRMSyncJob{
-			OrganizationID: o.ID, Provider: provider, Kind: models.CRMJobBackfill,
-			DedupeKey: next, Subject: "Copy Warmbly CRM data to HubSpot", Payload: np,
-		})
+		return &errContinue{payload: p}
 	}
 	s.notify(ctx, o.ID, "", "deal", "task", "note")
 	return nil
+}
+
+func (s *Service) backfillOne(ctx context.Context, o *org, object string, id uuid.UUID) error {
+	switch object {
+	case models.CRMObjectDeal:
+		return s.backfillDeal(ctx, o, id)
+	case models.CRMObjectTask:
+		return s.syncLocalTask(ctx, o, id)
+	default:
+		return s.syncLocalNote(ctx, o, id)
+	}
 }
 
 // backfillDeal moves a Warmbly-only deal onto the HubSpot pipeline (matching
@@ -362,7 +360,8 @@ func (s *Service) backfillDeal(ctx context.Context, o *org, id uuid.UUID) error 
 	if stageID == uuid.Nil {
 		sid, _, ok := s.stageForStatus(ctx, o, target.ID, deal.Status)
 		if !ok {
-			return nil
+			return errx.NewWithIdentifier(errx.BadRequest, "crm_stage_unknown",
+				"The HubSpot pipeline has no stage for a "+string(deal.Status)+" deal.")
 		}
 		stageID = sid
 	}

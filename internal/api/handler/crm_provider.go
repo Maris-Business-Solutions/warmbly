@@ -465,6 +465,12 @@ func (h *Handler) hubspotCardInput(c *gin.Context) (*hubspotCardRequest, bool) {
 	if !ok {
 		return nil, false
 	}
+	// HubSpot appends the portal it signed for; a second value would let the
+	// URL name a different one, so exactly one is accepted.
+	if len(c.QueryArray("portalId")) != 1 || c.Query("portalId") == "" {
+		errx.Handle(c, errx.New(errx.BadRequest, "invalid request"))
+		return nil, false
+	}
 	var req hubspotCardRequest
 	if err := json.Unmarshal(body, &req); err != nil || len(req.ContactID) > 32 || len(req.Email) > 320 {
 		errx.Handle(c, errx.New(errx.BadRequest, "invalid request"))

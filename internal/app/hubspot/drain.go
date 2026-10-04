@@ -14,10 +14,13 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
+// Jobs are claimed one at a time under a lease longer than a job may run, so
+// a lease never lapses while its job is still working.
 const (
 	drainEvery    = 2 * time.Second
-	drainBatch    = 25
-	drainLease    = 3 * time.Minute
+	drainPerTick  = 50
+	jobTimeout    = 2 * time.Minute
+	drainLease    = jobTimeout + time.Minute
 	maxJobRetries = 6
 )
 
@@ -37,44 +40,59 @@ func (s *Service) RunDrainer(ctx context.Context) {
 		case <-purge.C:
 			_ = s.d.Repo.PurgeJobs(ctx)
 		case <-t.C:
-			for {
-				jobs, err := s.d.Repo.ClaimJobs(ctx, drainBatch, drainLease)
+			for n := 0; n < drainPerTick && ctx.Err() == nil; n++ {
+				jobs, err := s.d.Repo.ClaimJobs(ctx, 1, drainLease)
 				if err != nil {
 					log.Warn().Err(err).Msg("hubspot: claim jobs")
 					break
 				}
-				for i := range jobs {
-					s.runJob(ctx, &jobs[i])
-				}
-				if len(jobs) < drainBatch || ctx.Err() != nil {
+				if len(jobs) == 0 {
 					break
 				}
+				s.runJob(ctx, &jobs[0])
 			}
 		}
 	}
 }
 
+// errContinue asks the drainer to run the job again with a new payload (the
+// next step of a backfill) instead of completing it.
+type errContinue struct{ payload map[string]any }
+
+func (e *errContinue) Error() string { return "continue" }
+
 func (s *Service) runJob(ctx context.Context, job *models.CRMSyncJob) {
-	jctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	jctx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().Interface("panic", r).Str("kind", job.Kind).Msg("hubspot: job panicked")
+			_ = s.d.Repo.FailJob(ctx, job, "Warmbly hit an internal error on this item.", nil)
+		}
+	}()
 	o, err := s.resolve(jctx, job.OrganizationID)
 	if o == nil && err == nil {
 		// The workspace left HubSpot mode: nothing to deliver to.
-		_ = s.d.Repo.FailJob(ctx, job.ID, "HubSpot is no longer this workspace's CRM", nil)
+		_ = s.d.Repo.FailJob(ctx, job, "HubSpot is no longer this workspace's CRM", nil)
 		return
 	}
 	if err != nil {
 		at := time.Now().Add(retryDelays[min(job.Attempts-1, len(retryDelays)-1)])
 		if errors.Is(err, errNotConnected) || job.Attempts >= maxJobRetries {
-			_ = s.d.Repo.FailJob(ctx, job.ID, "HubSpot is disconnected. Reconnect it, then retry.", nil)
+			_ = s.d.Repo.FailJob(ctx, job, "HubSpot is disconnected. Reconnect it, then retry.", nil)
 			return
 		}
-		_ = s.d.Repo.FailJob(ctx, job.ID, "Warmbly could not reach its database; retrying.", &at)
+		_ = s.d.Repo.FailJob(ctx, job, "Warmbly could not reach its database; retrying.", &at)
 		return
 	}
 	err = s.execute(jctx, o, job)
 	if err == nil {
-		_ = s.d.Repo.CompleteJob(ctx, job.ID)
+		_ = s.d.Repo.CompleteJob(ctx, job)
+		return
+	}
+	var cont *errContinue
+	if errors.As(err, &cont) {
+		_ = s.d.Repo.ContinueJob(ctx, job, cont.payload)
 		return
 	}
 	msg, retry := s.classify(jctx, o, err)
@@ -83,10 +101,10 @@ func (s *Service) runJob(ctx context.Context, job *models.CRMSyncJob) {
 		if ae, ok := AsAPIError(err); ok && ae.RetryAfter > 0 {
 			at = time.Now().Add(ae.RetryAfter)
 		}
-		_ = s.d.Repo.FailJob(ctx, job.ID, msg, &at)
+		_ = s.d.Repo.FailJob(ctx, job, msg, &at)
 		return
 	}
-	_ = s.d.Repo.FailJob(ctx, job.ID, msg, nil)
+	_ = s.d.Repo.FailJob(ctx, job, msg, nil)
 }
 
 // classify words a failure for the sync health list and decides whether
@@ -111,7 +129,9 @@ func (s *Service) execute(ctx context.Context, o *org, job *models.CRMSyncJob) e
 	p := job.Payload
 	switch job.Kind {
 	case models.CRMJobLogEmail:
-		return s.logEmail(ctx, o, p)
+		return s.logEmail(ctx, o, job)
+	case models.CRMJobReplyOutcome:
+		return s.replyOutcomeJob(ctx, o, p)
 	case models.CRMJobLogEvent:
 		return s.logEvent(ctx, o, p)
 	case models.CRMJobLogMeeting:

@@ -143,7 +143,9 @@ func (s *crmService) CreateNote(ctx context.Context, orgID, contactID, userID uu
 			_ = s.repo.DeleteNote(ctx, orgID, note.ID)
 			return nil, xerr
 		}
-		ext.DecorateNotes(ctx, orgID, []models.ContactNote{*note})
+		one := []models.ContactNote{*note}
+		ext.DecorateNotes(ctx, orgID, one)
+		note = &one[0]
 	}
 
 	// Record activity
@@ -355,7 +357,9 @@ func (s *crmService) CreateDeal(ctx context.Context, orgID uuid.UUID, data *mode
 			_ = s.repo.DeleteDeal(ctx, orgID, deal.ID)
 			return nil, xerr
 		}
-		ext.DecorateDeals(ctx, orgID, []models.Deal{*deal})
+		one := []models.Deal{*deal}
+		ext.DecorateDeals(ctx, orgID, one)
+		deal = &one[0]
 	}
 
 	// Record activity if deal has a contact

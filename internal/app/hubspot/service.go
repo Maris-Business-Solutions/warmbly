@@ -81,7 +81,14 @@ type Service struct {
 
 	mu       sync.Mutex
 	settings map[uuid.UUID]cachedSettings
-	clients  map[uuid.UUID]*Client
+	clients  map[uuid.UUID]*orgClient
+}
+
+// orgClient is a workspace's client, valid for one connection: a reconnect
+// makes a new connection row, and the old one's token is gone.
+type orgClient struct {
+	*Client
+	connID uuid.UUID
 }
 
 type cachedSettings struct {
@@ -94,7 +101,7 @@ type cachedSettings struct {
 const settingsTTL = 30 * time.Second
 
 func New(d Deps) *Service {
-	return &Service{d: d, settings: map[uuid.UUID]cachedSettings{}, clients: map[uuid.UUID]*Client{}}
+	return &Service{d: d, settings: map[uuid.UUID]cachedSettings{}, clients: map[uuid.UUID]*orgClient{}}
 }
 
 // org is a workspace in HubSpot mode, resolved for one operation.
@@ -165,16 +172,16 @@ func (s *Service) resolve(ctx context.Context, orgID uuid.UUID) (*org, error) {
 	}
 	s.mu.Lock()
 	cl := s.clients[orgID]
-	if cl == nil || cl.portal != o.Portal {
+	if cl == nil || cl.portal != o.Portal || cl.connID != conn.ID {
 		connID := conn.ID
-		cl = NewClient(o.Portal, func(ctx context.Context) (string, error) {
+		cl = &orgClient{Client: NewClient(o.Portal, func(ctx context.Context) (string, error) {
 			tok, _, err := s.d.Tokens.AccessToken(ctx, orgID, connID)
 			return tok, err
-		}, s.d.Cache)
+		}, s.d.Cache), connID: connID}
 		s.clients[orgID] = cl
 	}
 	s.mu.Unlock()
-	o.Client = cl
+	o.Client = cl.Client
 	return o, nil
 }
 

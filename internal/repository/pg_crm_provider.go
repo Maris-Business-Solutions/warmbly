@@ -51,8 +51,9 @@ type CRMProviderRepository interface {
 
 	EnqueueJob(ctx context.Context, job *models.CRMSyncJob) error
 	ClaimJobs(ctx context.Context, limit int, lease time.Duration) ([]models.CRMSyncJob, error)
-	CompleteJob(ctx context.Context, id uuid.UUID) error
-	FailJob(ctx context.Context, id uuid.UUID, msg string, retryAt *time.Time) error
+	CompleteJob(ctx context.Context, job *models.CRMSyncJob) error
+	FailJob(ctx context.Context, job *models.CRMSyncJob, msg string, retryAt *time.Time) error
+	ContinueJob(ctx context.Context, job *models.CRMSyncJob, payload map[string]any) error
 	RetryFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error)
 	DiscardFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error)
 	PurgeJobs(ctx context.Context) error
@@ -72,7 +73,7 @@ type CRMProviderRepository interface {
 	OpenDealContactIDs(ctx context.Context, orgID uuid.UUID, contactIDs []uuid.UUID) (map[uuid.UUID]bool, error)
 	MoveDeal(ctx context.Context, orgID, dealID, pipelineID, stageID uuid.UUID) error
 
-	UnlinkedNative(ctx context.Context, orgID uuid.UUID, objectType string, limit int) ([]uuid.UUID, error)
+	UnlinkedNative(ctx context.Context, orgID uuid.UUID, objectType string, after uuid.UUID, limit int) ([]uuid.UUID, error)
 	CountUnlinkedNative(ctx context.Context, orgID uuid.UUID) (*models.CRMBackfillPreview, error)
 }
 
@@ -219,7 +220,8 @@ func (r *crmProviderRepository) OrgsForAccount(ctx context.Context, provider mod
 	rows, err := r.db.Query(ctx, `
 		SELECT s.organization_id FROM crm_settings s
 		JOIN integration_connections c ON c.id = s.connection_id AND c.organization_id = s.organization_id
-		WHERE s.provider = $1 AND c.provider = $1 AND c.external_account_id = $2`, provider, externalAccountID)
+		WHERE s.provider = $1 AND c.provider = $1 AND c.external_account_id = $2
+		ORDER BY s.created_at`, provider, externalAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -414,12 +416,19 @@ func (r *crmProviderRepository) UpsertContactRecord(ctx context.Context, rec *mo
 		props = map[string]string{}
 	}
 	raw, _ := json.Marshal(props)
-	// A provider record re-pointed at another contact moves rather than conflicts.
-	_, err := r.db.Exec(ctx, `
-		WITH moved AS (
-			DELETE FROM crm_contact_records
-			WHERE organization_id = $1 AND provider = $3 AND external_id = $4 AND contact_id <> $2
-		)
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// A provider record re-pointed at another contact (a merge in the
+	// provider) moves rather than conflicts.
+	if _, err := tx.Exec(ctx, `DELETE FROM crm_contact_records
+		WHERE organization_id = $1 AND provider = $2 AND external_id = $3 AND contact_id <> $4`,
+		rec.OrganizationID, rec.Provider, rec.ExternalID, rec.ContactID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO crm_contact_records (organization_id, contact_id, provider, external_id, owner_external_id,
 			lifecycle_stage, lead_status, company_external_id, company_name, company_domain, opted_out, properties,
 			external_updated_at, synced_at)
@@ -432,8 +441,10 @@ func (r *crmProviderRepository) UpsertContactRecord(ctx context.Context, rec *mo
 		    company_domain = EXCLUDED.company_domain, opted_out = EXCLUDED.opted_out,
 		    properties = EXCLUDED.properties, external_updated_at = EXCLUDED.external_updated_at, synced_at = NOW()`,
 		rec.OrganizationID, rec.ContactID, rec.Provider, rec.ExternalID, rec.OwnerExternalID, rec.LifecycleStage,
-		rec.LeadStatus, rec.CompanyExternalID, rec.CompanyName, rec.CompanyDomain, rec.OptedOut, raw, rec.ExternalUpdatedAt)
-	return err
+		rec.LeadStatus, rec.CompanyExternalID, rec.CompanyName, rec.CompanyDomain, rec.OptedOut, raw, rec.ExternalUpdatedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *crmProviderRepository) DeleteContactRecord(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, externalID string) error {
@@ -721,14 +732,18 @@ func nullTime(t time.Time) *time.Time {
 }
 
 const jobCols = `id, organization_id, provider, kind, COALESCE(dedupe_key, ''), subject, payload, status, attempts,
-	next_attempt_at, COALESCE(last_error, ''), created_at, updated_at, finished_at`
+	next_attempt_at, COALESCE(last_error, ''), created_at, updated_at, finished_at, lease_token`
 
 func scanJob(row pgx.Row) (*models.CRMSyncJob, error) {
 	var j models.CRMSyncJob
 	var raw []byte
+	var lease *uuid.UUID
 	if err := row.Scan(&j.ID, &j.OrganizationID, &j.Provider, &j.Kind, &j.DedupeKey, &j.Subject, &raw, &j.Status,
-		&j.Attempts, &j.NextAttemptAt, &j.LastError, &j.CreatedAt, &j.UpdatedAt, &j.FinishedAt); err != nil {
+		&j.Attempts, &j.NextAttemptAt, &j.LastError, &j.CreatedAt, &j.UpdatedAt, &j.FinishedAt, &lease); err != nil {
 		return nil, err
+	}
+	if lease != nil {
+		j.LeaseToken = *lease
 	}
 	j.Payload = map[string]any{}
 	if len(raw) > 0 {
@@ -742,7 +757,8 @@ func scanJob(row pgx.Row) (*models.CRMSyncJob, error) {
 func (r *crmProviderRepository) ClaimJobs(ctx context.Context, limit int, lease time.Duration) ([]models.CRMSyncJob, error) {
 	rows, err := r.db.Query(ctx, `
 		UPDATE crm_sync_jobs j
-		SET status = 'running', attempts = j.attempts + 1, locked_until = NOW() + make_interval(secs => $2), updated_at = NOW()
+		SET status = 'running', attempts = j.attempts + 1, locked_until = NOW() + make_interval(secs => $2),
+		    lease_token = gen_random_uuid(), updated_at = NOW()
 		WHERE j.id IN (
 			SELECT id FROM crm_sync_jobs
 			WHERE (status = 'pending' AND next_attempt_at <= NOW())
@@ -767,27 +783,50 @@ func (r *crmProviderRepository) ClaimJobs(ctx context.Context, limit int, lease 
 	return out, rows.Err()
 }
 
-func (r *crmProviderRepository) CompleteJob(ctx context.Context, id uuid.UUID) error {
+func (r *crmProviderRepository) CompleteJob(ctx context.Context, job *models.CRMSyncJob) error {
 	_, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs SET status = 'done', last_error = NULL, locked_until = NULL,
-		finished_at = NOW(), updated_at = NOW() WHERE id = $1`, id)
+		lease_token = NULL, finished_at = NOW(), updated_at = NOW() WHERE id = $1 AND lease_token = $2`, job.ID, job.LeaseToken)
 	return err
 }
 
-func (r *crmProviderRepository) FailJob(ctx context.Context, id uuid.UUID, msg string, retryAt *time.Time) error {
+func (r *crmProviderRepository) FailJob(ctx context.Context, job *models.CRMSyncJob, msg string, retryAt *time.Time) error {
 	if retryAt != nil {
-		_, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs SET status = 'pending', last_error = $2, next_attempt_at = $3,
-			locked_until = NULL, updated_at = NOW() WHERE id = $1`, id, truncate(msg, 1000), *retryAt)
+		_, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs SET status = 'pending', last_error = $3, next_attempt_at = $4,
+			locked_until = NULL, lease_token = NULL, updated_at = NOW() WHERE id = $1 AND lease_token = $2`,
+			job.ID, job.LeaseToken, truncate(msg, 1000), *retryAt)
 		return err
 	}
-	_, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs SET status = 'failed', last_error = $2, locked_until = NULL,
-		finished_at = NOW(), updated_at = NOW() WHERE id = $1`, id, truncate(msg, 1000))
+	_, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs SET status = 'failed', last_error = $3, locked_until = NULL,
+		lease_token = NULL, finished_at = NOW(), updated_at = NOW() WHERE id = $1 AND lease_token = $2`,
+		job.ID, job.LeaseToken, truncate(msg, 1000))
 	return err
 }
 
+// ContinueJob hands a long job (a backfill) its next step: same row, same
+// dedupe key, new payload, due again now.
+func (r *crmProviderRepository) ContinueJob(ctx context.Context, job *models.CRMSyncJob, payload map[string]any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `UPDATE crm_sync_jobs SET status = 'pending', payload = $3, attempts = 0, last_error = NULL,
+		next_attempt_at = NOW(), locked_until = NULL, lease_token = NULL, updated_at = NOW()
+		WHERE id = $1 AND lease_token = $2`, job.ID, job.LeaseToken, raw)
+	return err
+}
+
+// RetryFailedJobs requeues failed jobs (all when ids is empty). A failure whose
+// work is already queued again under the same key stays failed.
 func (r *crmProviderRepository) RetryFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error) {
-	tag, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs SET status = 'pending', attempts = 0, next_attempt_at = NOW(),
+	if ids == nil {
+		ids = []uuid.UUID{}
+	}
+	tag, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs j SET status = 'pending', attempts = 0, next_attempt_at = NOW(),
 		finished_at = NULL, updated_at = NOW()
-		WHERE organization_id = $1 AND status = 'failed' AND (cardinality($2::uuid[]) = 0 OR id = ANY($2))`, orgID, ids)
+		WHERE j.organization_id = $1 AND j.status = 'failed' AND (cardinality($2::uuid[]) = 0 OR j.id = ANY($2))
+		  AND (j.dedupe_key IS NULL OR NOT EXISTS (
+			SELECT 1 FROM crm_sync_jobs o WHERE o.organization_id = j.organization_id AND o.dedupe_key = j.dedupe_key
+			  AND o.status IN ('pending', 'running')))`, orgID, ids)
 	if err != nil {
 		return 0, err
 	}
@@ -795,6 +834,9 @@ func (r *crmProviderRepository) RetryFailedJobs(ctx context.Context, orgID uuid.
 }
 
 func (r *crmProviderRepository) DiscardFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error) {
+	if ids == nil {
+		ids = []uuid.UUID{}
+	}
 	tag, err := r.db.Exec(ctx, `DELETE FROM crm_sync_jobs
 		WHERE organization_id = $1 AND status = 'failed' AND (cardinality($2::uuid[]) = 0 OR id = ANY($2))`, orgID, ids)
 	if err != nil {
@@ -1262,18 +1304,18 @@ func (r *crmProviderRepository) MoveDeal(ctx context.Context, orgID, dealID, pip
 	return nil
 }
 
-// UnlinkedNative lists Warmbly-only rows of one type, oldest first, for the
+// UnlinkedNative lists Warmbly-only rows of one type past a cursor, for the
 // one-time copy into a provider.
-func (r *crmProviderRepository) UnlinkedNative(ctx context.Context, orgID uuid.UUID, objectType string, limit int) ([]uuid.UUID, error) {
+func (r *crmProviderRepository) UnlinkedNative(ctx context.Context, orgID uuid.UUID, objectType string, after uuid.UUID, limit int) ([]uuid.UUID, error) {
 	table, ok := mirrorTables[objectType]
 	if !ok {
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
 		SELECT t.id FROM `+table+` t
-		WHERE t.organization_id = $1
+		WHERE t.organization_id = $1 AND t.id > $4
 		  AND NOT EXISTS (SELECT 1 FROM crm_external_links l WHERE l.organization_id = $1 AND l.object_type = $2 AND l.local_id = t.id)
-		ORDER BY t.created_at LIMIT $3`, orgID, objectType, limit)
+		ORDER BY t.id LIMIT $3`, orgID, objectType, limit, after)
 	if err != nil {
 		return nil, err
 	}

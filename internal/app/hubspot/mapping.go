@@ -63,15 +63,30 @@ var warmblyProperties = []PropertyDef{
 	{Name: propLink, Label: "Open in Warmbly", Type: "string", FieldType: "text", GroupName: propGroup},
 }
 
+// ensureProperties creates the Warmbly property group in the portal. Only a
+// success is remembered, so a failed attempt is retried by the next caller.
 func (s *Service) ensureProperties(ctx context.Context, o *org) error {
+	key := "hubspot:propsready:" + o.Portal
 	if s.d.Cache != nil {
-		key := "hubspot:propsready:" + o.Portal
 		if ok, _ := s.d.Cache.Exists(ctx, key).Result(); ok > 0 {
 			return nil
 		}
-		defer s.d.Cache.Set(ctx, key, 1, 6*time.Hour)
 	}
-	return o.Client.EnsureContactProperties(ctx, propGroup, "Warmbly", warmblyProperties)
+	if err := o.Client.EnsureContactProperties(ctx, propGroup, "Warmbly", warmblyProperties); err != nil {
+		return err
+	}
+	if s.d.Cache != nil {
+		s.d.Cache.Set(ctx, key, 1, 6*time.Hour)
+	}
+	return nil
+}
+
+// propertiesReady makes sure the properties a job writes exist first.
+func (s *Service) propertiesReady(ctx context.Context, o *org) error {
+	if !o.Config.WriteProperties {
+		return nil
+	}
+	return s.ensureProperties(ctx, o)
 }
 
 func hsTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }

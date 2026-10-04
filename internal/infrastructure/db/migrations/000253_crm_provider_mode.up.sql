@@ -93,6 +93,9 @@ CREATE TABLE crm_sync_jobs (
     attempts        integer NOT NULL DEFAULT 0,
     next_attempt_at timestamptz NOT NULL DEFAULT NOW(),
     locked_until    timestamptz,
+    -- Names the claim that holds the job, so a drainer whose lease lapsed
+    -- cannot complete or fail a job another drainer has since taken.
+    lease_token     uuid,
     last_error      text,
     created_at      timestamptz NOT NULL DEFAULT NOW(),
     updated_at      timestamptz NOT NULL DEFAULT NOW(),

@@ -169,10 +169,21 @@ func (s *Service) jobContact(ctx context.Context, o *org, p map[string]any, crea
 // logEmail writes a send or a reply as a HubSpot email activity, attached to
 // the contact, its company and its open deals, and updates the Warmbly
 // properties.
-func (s *Service) logEmail(ctx context.Context, o *org, p map[string]any) error {
+//
+// A retry never logs the same email twice: the logged email is linked to the
+// send's task (or, for a reply, to this job) before anything else can fail.
+func (s *Service) logEmail(ctx context.Context, o *org, job *models.CRMSyncJob) error {
+	p := job.Payload
+	if err := s.propertiesReady(ctx, o); err != nil {
+		return err
+	}
 	contactID, ext, rec, err := s.jobContact(ctx, o, p, true)
 	if err != nil || ext == "" {
 		return err
+	}
+	logKey := job.ID
+	if taskID, perr := uuid.Parse(str(p, "task_id")); perr == nil && str(p, "direction") != "in" {
+		logKey = taskID
 	}
 	inbound := str(p, "direction") == "in"
 	at := parseHSTime(str(p, "at"))
@@ -191,6 +202,13 @@ func (s *Service) logEmail(ctx context.Context, o *org, p map[string]any) error 
 	}
 
 	logIt := (inbound && o.Config.Activity.Replies) || (!inbound && o.Config.Activity.Sent)
+	if logIt {
+		if done, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectEmail, logKey); err != nil {
+			return err
+		} else if done != nil {
+			logIt = false
+		}
+	}
 	if logIt {
 		contactEmail := str(p, "contact_email")
 		from, to := str(p, "from_email"), contactEmail
@@ -225,9 +243,9 @@ func (s *Service) logEmail(ctx context.Context, o *org, p map[string]any) error 
 		if err != nil {
 			return err
 		}
-		if taskID, perr := uuid.Parse(str(p, "task_id")); perr == nil && !inbound {
-			_ = s.d.Repo.UpsertLink(ctx, &models.CRMExternalLink{OrganizationID: o.ID, Provider: provider,
-				ObjectType: models.CRMObjectEmail, LocalID: taskID, ExternalID: obj.ID})
+		if err := s.d.Repo.UpsertLink(ctx, &models.CRMExternalLink{OrganizationID: o.ID, Provider: provider,
+			ObjectType: models.CRMObjectEmail, LocalID: logKey, ExternalID: obj.ID}); err != nil {
+			return err
 		}
 	}
 
@@ -272,7 +290,13 @@ func (s *Service) logEmail(ctx context.Context, o *org, p map[string]any) error 
 	}
 
 	if inbound && models.ReplyIntentType(str(p, "intent")) == models.ReplyIntentPositive {
-		return s.replyOutcome(ctx, o, contactID, ext, p)
+		// Its own job, so a failure there retries the outcome and not the email.
+		return s.d.Repo.EnqueueJob(ctx, &models.CRMSyncJob{
+			OrganizationID: o.ID, Provider: provider, Kind: models.CRMJobReplyOutcome,
+			DedupeKey: "outcome:" + job.ID.String(), Subject: job.Subject,
+			Payload: map[string]any{"contact_id": contactID.String(), "campaign_id": str(p, "campaign_id"),
+				"email_account_id": str(p, "email_account_id")},
+		})
 	}
 	s.notify(ctx, o.ID, contactID.String(), "contact")
 	return nil
@@ -333,6 +357,15 @@ func (s *Service) openDealAssocs(ctx context.Context, o *org, contactID uuid.UUI
 		out = append(out, Assoc{ToID: l.ExternalID, TypeID: typeID})
 	}
 	return out
+}
+
+// replyOutcomeJob runs the interested-reply outcome for a contact in HubSpot.
+func (s *Service) replyOutcomeJob(ctx context.Context, o *org, p map[string]any) error {
+	contactID, ext, _, err := s.jobContact(ctx, o, p, false)
+	if err != nil || ext == "" {
+		return err
+	}
+	return s.replyOutcome(ctx, o, contactID, ext, p)
 }
 
 // replyOutcome is what an interested reply does in HubSpot: lead status,
@@ -408,6 +441,9 @@ func (s *Service) afterOutcome(ctx context.Context, o *org, contactID uuid.UUID)
 // logEvent records a bounce, unsubscribe, open or click on a contact HubSpot
 // already has. Nobody is created in HubSpot for an open.
 func (s *Service) logEvent(ctx context.Context, o *org, p map[string]any) error {
+	if err := s.propertiesReady(ctx, o); err != nil {
+		return err
+	}
 	contactID, ext, _, err := s.jobContact(ctx, o, p, false)
 	if err != nil || ext == "" {
 		return err
@@ -457,6 +493,9 @@ func (s *Service) logEvent(ctx context.Context, o *org, p map[string]any) error 
 
 // logMeeting records a Calendly or Cal.com booking as a HubSpot meeting.
 func (s *Service) logMeeting(ctx context.Context, o *org, p map[string]any) error {
+	if err := s.propertiesReady(ctx, o); err != nil {
+		return err
+	}
 	contactID, ext, rec, err := s.jobContact(ctx, o, p, true)
 	if err != nil || ext == "" {
 		return err

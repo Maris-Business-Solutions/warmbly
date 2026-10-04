@@ -65,7 +65,14 @@ func (s *Service) pullAll(ctx context.Context) {
 			continue
 		}
 		pctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-		s.pullOrg(pctx, o, false)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error().Interface("panic", r).Str("org_id", o.ID.String()).Msg("hubspot: pull panicked")
+				}
+			}()
+			s.pullOrg(pctx, o, false)
+		}()
 		cancel()
 		s.release(ctx, "pull:"+row.OrganizationID.String())
 	}

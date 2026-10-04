@@ -380,6 +380,7 @@ type CRMSyncJob struct {
 	Provider       CRMProvider    `json:"provider"`
 	Kind           string         `json:"kind"`
 	DedupeKey      string         `json:"-"`
+	LeaseToken     uuid.UUID      `json:"-"`
 	Subject        string         `json:"subject"`
 	Payload        map[string]any `json:"-"`
 	Status         string         `json:"status"`
