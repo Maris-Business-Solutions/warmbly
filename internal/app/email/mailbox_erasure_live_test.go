@@ -218,8 +218,8 @@ func TestLiveDeleteClearsLabelsOnThreadsItEmptied(t *testing.T) {
 			uuid.New(), f.user, m.mailbox, m.thread, "mid-"+m.thread)
 		exec(t, f, `INSERT INTO unibox_thread_labels (organization_id, user_id, thread_id, category_id)
 		            VALUES ($1, $2, $3, $4)`, f.org, f.user, m.thread, category)
-		exec(t, f, `INSERT INTO unibox_snoozes (user_id, thread_id, snoozed_until) VALUES ($1, $2, now() + interval '1 day')`,
-			f.user, m.thread)
+		exec(t, f, `INSERT INTO unibox_snoozes (organization_id, user_id, thread_id, snoozed_until) VALUES ($1, $2, $3, now() + interval '1 day')`,
+			f.org, f.user, m.thread)
 	}
 
 	if xerr := f.svc.Delete(ctx, f.org.String(), f.mailbox.String()); xerr != nil {
