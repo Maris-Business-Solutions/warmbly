@@ -50,6 +50,10 @@ func (h *Handler) MCPEndpoint(c *gin.Context) {
 		c.JSON(http.StatusOK, rpcError(req.ID, -32000, "no organization for this key"))
 		return
 	}
+	if toolsMailboxLimited(c) {
+		c.JSON(http.StatusOK, rpcError(req.ID, -32000, errToolsMailboxLimited.Message))
+		return
+	}
 	inv := aitools.Invocation{
 		OrgID:     *orgID,
 		IsAPIKey:  true,

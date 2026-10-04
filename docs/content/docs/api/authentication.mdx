@@ -171,8 +171,9 @@ A restricted key only reaches those mailboxes and their mail, and naming any oth
 
 - **Unibox reads.** `GET /unibox` lists only their conversations, `GET /unibox/thread` returns only their messages, `GET /unibox/count` and `GET /unibox/overview` count only them, and `GET /unibox/:id`, thread labels and agent drafts are refused or left out for mail in any other mailbox.
 - **Unibox writes.** Reply, compose (an automatic pick chooses among the listed mailboxes), drafts, agent-draft approval and discard, `PATCH /unibox/seen`, `PATCH /unibox/folder` and snoozes refuse a message or conversation with mail in another mailbox. Marking a whole folder read (`folder` on `PATCH /unibox/seen`) is refused, since it reaches every mailbox.
-- **Campaigns and analytics.** A sender pool (`senders` on `POST /campaigns`, `PUT /campaigns/:id/senders`) may only name listed mailboxes, `GET /analytics/accounts` lists only them, and `GET /analytics/accounts/:id` refuses any other.
+- **Campaigns and analytics.** A sender pool (`senders` on `POST /campaigns`, `PUT /campaigns/:id/senders`) may only name listed mailboxes, `GET /analytics/accounts` lists only them, and `GET /analytics/accounts/:id` refuses any other. The key's campaigns use an explicit sender list (`sender_strategy` `explicit`): a pool resolved from mailbox tags, setting `email_tag_ids` or `email_tags`, or starting a campaign whose pool is not an explicit list of the key's mailboxes answers `403` with code `api_key_mailbox_limited`.
 - **Advisor.** Applying or undoing a fix is refused when the fix changes another mailbox.
+- **AI tools.** `/ai/tools` and `/mcp` act across the whole workspace, so a restricted key is refused there with code `api_key_mailbox_limited`. Use the REST endpoints, which apply the limit.
 
 ## Key expiration
 

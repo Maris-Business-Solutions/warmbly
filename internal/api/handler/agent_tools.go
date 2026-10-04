@@ -45,6 +45,15 @@ func (h *Handler) agentToolInvocation(c *gin.Context) (aitools.Invocation, *errx
 	return inv, nil
 }
 
+// errToolsMailboxLimited refuses the tool surfaces to a key held to some mailboxes; tools act across the workspace.
+var errToolsMailboxLimited = errx.NewWithIdentifier(errx.Forbidden, "api_key_mailbox_limited",
+	"This API key is limited to some mailboxes, and AI tools act across the whole workspace. Use the REST endpoints, which apply the key's mailbox limits, or a key without them.")
+
+// toolsMailboxLimited reports whether the caller is a key held to an allowlist of mailboxes.
+func toolsMailboxLimited(c *gin.Context) bool {
+	return middleware.GetAuthType(c) != "jwt" && len(middleware.GetAPIKeyAllowedEmailAccounts(c)) > 0
+}
+
 // ListAgentTools — GET /ai/tools[?format=openai]. The default shape mirrors
 // the registry; format=openai (alias: hermes, functions) returns OpenAI
 // function-calling objects usable verbatim in an OpenAI-compatible `tools`
@@ -52,6 +61,10 @@ func (h *Handler) agentToolInvocation(c *gin.Context) (aitools.Invocation, *errx
 func (h *Handler) ListAgentTools(c *gin.Context) {
 	if h.AITools == nil {
 		errx.JSON(c, errx.New(errx.ServiceUnavailable, "AI tools are not available"))
+		return
+	}
+	if toolsMailboxLimited(c) {
+		errx.JSON(c, errToolsMailboxLimited)
 		return
 	}
 	inv, xerr := h.agentToolInvocation(c)
@@ -104,6 +117,10 @@ func (h *Handler) ListAgentTools(c *gin.Context) {
 func (h *Handler) CallAgentTool(c *gin.Context) {
 	if h.AITools == nil {
 		errx.JSON(c, errx.New(errx.ServiceUnavailable, "AI tools are not available"))
+		return
+	}
+	if toolsMailboxLimited(c) {
+		errx.JSON(c, errToolsMailboxLimited)
 		return
 	}
 	inv, xerr := h.agentToolInvocation(c)
