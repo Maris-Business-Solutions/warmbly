@@ -655,14 +655,29 @@ func setForCampaignTx(ctx context.Context, tx pgx.Tx, orgID, campaignID uuid.UUI
 		return "", change, xerr
 	}
 	if len(segmentIDs) > 0 {
-		if _, err := tx.Exec(ctx, `INSERT INTO campaign_segments (campaign_id, segment_id) SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`, campaignID, segmentIDs); err != nil {
+		tag, err := tx.Exec(ctx, `INSERT INTO campaign_segments (campaign_id, segment_id) SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`, campaignID, segmentIDs)
+		if err != nil {
 			db.CaptureError(err, "campaign segments insert", nil, "exec")
 			return "", change, errx.InternalError()
+		}
+		// New links change the send plan the snapshot is keyed on.
+		if tag.RowsAffected() > 0 {
+			if _, err := tx.Exec(ctx, `UPDATE campaigns SET updated_at = NOW() WHERE id = $1`, campaignID); err != nil {
+				db.CaptureError(err, "campaign updated_at", nil, "exec")
+				return "", change, errx.InternalError()
+			}
 		}
 		// A live audience is the reason to keep running: linking turns the
 		// setting on, and the owner can turn it off again in preferences.
 		if _, err := tx.Exec(ctx, `UPDATE campaigns SET continuous = true, updated_at = NOW() WHERE id = $1 AND NOT continuous`, campaignID); err != nil {
 			db.CaptureError(err, "campaign continuous", nil, "exec")
+			return "", change, errx.InternalError()
+		}
+	}
+	// Detaching withdraws leads, which changes the send plan the snapshot is keyed on.
+	if len(detached) > 0 {
+		if _, err := tx.Exec(ctx, `UPDATE campaigns SET updated_at = NOW() WHERE id = $1`, campaignID); err != nil {
+			db.CaptureError(err, "campaign updated_at", nil, "exec")
 			return "", change, errx.InternalError()
 		}
 	}

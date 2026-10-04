@@ -1338,7 +1338,7 @@ func (r *campaignRepository) Update(ctx context.Context, orgID, campaignID strin
 	}()
 
 	var query string
-	if argPos > 3 {
+	if argPos >= 3 {
 		query = fmt.Sprintf(`
 			UPDATE campaigns
 			SET %s
@@ -2181,6 +2181,12 @@ func (r *campaignRepository) ReplaceCampaignSenders(ctx context.Context, campaig
 	senders, xerr := syncCampaignSendersTx(ctx, tx, campaignID, userID, orgStr, in)
 	if xerr != nil {
 		return nil, xerr
+	}
+
+	// The send-plan snapshot is keyed on updated_at, so a sender edit must move it.
+	if _, err := tx.Exec(ctx, `UPDATE campaigns SET updated_at = now() WHERE id = $1`, campaignID); err != nil {
+		db.CaptureError(err, "campaign updated_at", []any{campaignID}, "exec")
+		return nil, errx.InternalError()
 	}
 
 	if err := tx.Commit(ctx); err != nil {
