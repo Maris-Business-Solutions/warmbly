@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,11 +104,16 @@ func NewWebhookRepositorySealed(db *pgxpool.Pool, enc *encrypt.Encrypter) Webhoo
 	return &webhookRepository{db: db, enc: enc}
 }
 
-// sealSecret encrypts a signing secret for storage. Without an encrypter it
-// stores what it was given, matching the behaviour before sealing existed.
+// errNoCredentialKey refuses to store a signing secret that could not be sealed.
+var errNoCredentialKey = errors.New("CREDENTIALS_ENCRYPTION_KEY is not set, so a signing secret cannot be stored")
+
+// sealSecret encrypts a signing secret for storage, and refuses without the instance key.
 func (r *webhookRepository) sealSecret(plain string) (string, error) {
-	if r.enc == nil || plain == "" {
+	if plain == "" {
 		return plain, nil
+	}
+	if r.enc == nil {
+		return "", errNoCredentialKey
 	}
 	return r.enc.Encrypt(plain)
 }
@@ -126,7 +132,11 @@ func (r *webhookRepository) openSecret(stored string) (string, bool) {
 	if plain, err := r.enc.Decrypt(stored); err == nil {
 		return plain, false
 	}
-	return stored, true
+	// Only a plaintext token is legacy; anything else is ciphertext under another key.
+	if strings.HasPrefix(stored, "whsec_") {
+		return stored, true
+	}
+	return "", false
 }
 
 // endpointCols is the shared column projection so every read scans identically.
@@ -271,6 +281,9 @@ func (r *webhookRepository) GetEndpointSecret(ctx context.Context, endpointID uu
 	}
 
 	plain, legacy := r.openSecret(secret)
+	if plain == "" && secret != "" {
+		return "", errors.New("webhook signing secret is unreadable under this instance's key; rotate it")
+	}
 	if legacy {
 		// Re-seal on first read, the same way mailbox credentials convert, so
 		// the plaintext window closes on its own rather than waiting for the

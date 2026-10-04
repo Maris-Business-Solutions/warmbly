@@ -18,6 +18,7 @@ package bootstrap
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -294,11 +295,12 @@ func (s *Service) Claim(ctx context.Context, token, address, password, firstName
 	remaining, _ := s.cache.PTTL(ctx, setupTokenKey).Result()
 
 	stored, gerr := s.cache.GetDel(ctx, setupTokenKey).Result()
-	if gerr != nil || stored == "" || stored != hashToken(token) {
+	matches := subtle.ConstantTimeCompare([]byte(stored), []byte(hashToken(token))) == 1
+	if gerr != nil || stored == "" || !matches {
 		// Put a valid-but-losing token back only when the value did not match,
 		// so a typo does not burn the real one, and only for the time it had
 		// left.
-		if gerr == nil && stored != "" && stored != hashToken(token) && remaining > 0 {
+		if gerr == nil && stored != "" && !matches && remaining > 0 {
 			_ = s.cache.SetEx(ctx, setupTokenKey, stored, remaining).Err()
 		}
 		return nil, errx.ErrSetupToken

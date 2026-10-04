@@ -85,8 +85,11 @@ func NewOAuthRepositorySealed(db *pgxpool.Pool, enc *encrypt.Encrypter) OAuthRep
 const webhookSecretPrefix = "whsec_"
 
 func (r *oauthRepository) sealWebhookSecret(plain string) (string, error) {
-	if r.enc == nil || plain == "" {
+	if plain == "" {
 		return plain, nil
+	}
+	if r.enc == nil {
+		return "", errNoCredentialKey
 	}
 	return r.enc.Encrypt(plain)
 }

@@ -1598,6 +1598,16 @@ render_caddyfile() {
 	}
 }
 
+# Customer-owned domains get the same headers minus HSTS: a pin sent from a
+# customer's apex would cover every subdomain they run elsewhere.
+(customer_headers) {
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
 $H_APP {
 	import warmbly_headers
 	reverse_proxy web:80
@@ -1655,7 +1665,7 @@ render_caddy_custom_domains() {
 # obtains the certificate on the first request, after /tls/authorize confirms
 # this instance has verified the name.
 https:// {
-	import warmbly_headers
+	import customer_headers
 	tls {
 		on_demand
 	}

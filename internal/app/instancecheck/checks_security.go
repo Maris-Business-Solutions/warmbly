@@ -87,7 +87,7 @@ func checkCredentialsKeyUnset(ctx context.Context, d Deps, in Input) *Finding {
 		return nil
 	}
 	return result(CategorySecurity, SeverityError, "Mailbox credentials are not sealed",
-		"CREDENTIALS_ENCRYPTION_KEY is not set, so mailbox SMTP and IMAP passwords are stored without being sealed. "+
+		"CREDENTIALS_ENCRYPTION_KEY is not set, so mailbox credentials and webhook signing secrets cannot be stored and those connections are refused. "+
 			"Set a 64 hex character key (`openssl rand -hex 32`) before connecting any mailbox. "+
 			"Back it up: losing it makes connected mailboxes unrecoverable.",
 		docsEncryption)
