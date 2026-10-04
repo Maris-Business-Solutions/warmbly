@@ -182,6 +182,23 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 		return pipedriveUpsertPerson(ctx, token, contactEmail(data), props)
 
 	case models.IntegrationActionSalesforceUpsert:
+		if s.salesforce != nil {
+			ev := map[string]any{}
+			for k, v := range data {
+				ev[k] = v
+			}
+			// An automation's own field map overrides the connection's rules.
+			if len(autoCfg.FieldMap) > 0 {
+				ev["_salesforce_fields"] = projectFields(autoCfg.FieldMap, eventSource(data))
+			}
+			if err := s.salesforce.UpsertFromEvent(ctx, sub.OrganizationID, sub.ConnectionID, ev); err != nil {
+				if errors.Is(err, ErrPushReauth) {
+					return errReauthRequired
+				}
+				return err
+			}
+			return nil
+		}
 		token, terr := s.accessTokenFor(ctx, &target.Secrets)
 		if terr != nil {
 			return errReauthRequired

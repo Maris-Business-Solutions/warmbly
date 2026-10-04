@@ -552,7 +552,7 @@ Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`.
 
 `POST /integrations/connections/:id/push`
 
-Synchronously upserts the given org contacts into a connected CRM (HubSpot, Pipedrive, Salesforce, Close). Retries are naturally safe: every provider upsert is keyed by email, so a repeated push converges rather than duplicating records. No `Idempotency-Key` is required. Per-record results are returned.
+Synchronously upserts the given org contacts into a connected CRM (HubSpot, Pipedrive, Salesforce, Close). Retries are naturally safe: every provider upsert is keyed by email, so a repeated push converges rather than duplicating records. No `Idempotency-Key` is required. Per-record results are returned. For Salesforce, each contact is matched to its Lead or Contact, created as the connection's **Create as** when missing, and updated through its [field rules](/guides/salesforce/#field-mapping).
 
 Auth: **Scope** `INTEGRATIONS` · **Org permission** `use_integrations`.
 
@@ -591,6 +591,36 @@ Auth: **Scope** `INTEGRATIONS` · **Org permission** `use_integrations`.
 ```
 
 A connection whose token can no longer be refreshed returns `409 Conflict` with a "needs to be reconnected" message.
+
+## Salesforce sync
+
+Every route below takes the Salesforce connection id as `:id` and is scoped to the caller's organization. See the [Salesforce guide](/guides/salesforce/) for what each setting does.
+
+| Method | Path | Org permission | Purpose |
+|--------|------|----------------|---------|
+| GET | `/integrations/salesforce/:id/overview` | read | Health, API usage and budget, outbox counts, last pull. `?checks=1` also probes what the connected user can create and edit |
+| GET | `/integrations/salesforce/:id/settings` | read | `{ settings, warmbly_fields, defaults }` |
+| PUT | `/integrations/salesforce/:id/settings` | `manage_settings` | Replace the settings. A whole-document write, so a retry converges |
+| GET | `/integrations/salesforce/:id/metadata` | read | Lead and Contact fields, Lead Status and Lead Source picklists |
+| GET | `/integrations/salesforce/:id/users?q=` | read | Active Salesforce users, for owner pickers |
+| GET | `/integrations/salesforce/:id/list-views?object=Lead\|Contact` | read | List views the connected user can see |
+| GET | `/integrations/salesforce/:id/campaigns?q=` | read | Salesforce Campaigns |
+| POST | `/integrations/salesforce/:id/import/preview` | `use_integrations` | `{ source_kind, object, source_id }` to `{ total, sample }`. Writes nothing |
+| GET | `/integrations/salesforce/:id/import-sources` | read | Saved imports with their last result |
+| POST | `/integrations/salesforce/:id/import-sources` | `manage_settings` | Save an import and start its first run |
+| PATCH | `/integrations/salesforce/:id/import-sources/:sourceId` | `manage_settings` | Edit name, `campaign_id` (`null` clears it), `category_ids`, `recurring`, `enabled` |
+| POST | `/integrations/salesforce/:id/import-sources/:sourceId/run` | `use_integrations` | Run now. `409 import_running` while one is running |
+| DELETE | `/integrations/salesforce/:id/import-sources/:sourceId` | `manage_settings` | Remove the import. Contacts it brought in stay |
+| GET | `/integrations/salesforce/:id/activity?status=&contact_id=&cursor=&limit=` | read | The activity log, newest first, `{ data, pagination }` |
+| POST | `/integrations/salesforce/:id/activity/retry` | `manage_settings` | `{ ids }` re-queues those failed or skipped rows; no ids re-queues every failed row |
+| POST | `/integrations/salesforce/:id/sync-now` | `use_integrations` | Log pending activity and pull changes now |
+| GET | `/contacts/:id/salesforce` | `view_contacts` | The contact's Salesforce card: linked records, owner, status, opportunities, recent Tasks, sync state |
+| POST | `/contacts/:id/salesforce/sync` | `use_integrations` | `{ connection_id?, create_as? }`: match (or create as `lead` or `contact`) and push mapped fields; returns the card |
+| DELETE | `/contacts/:id/salesforce/links/:linkId` | `use_integrations` | Unlink the contact from a record. Nothing changes in Salesforce |
+
+"read" is any of `manage_settings` or `use_integrations`. API keys need the `INTEGRATIONS` permission, except `GET /contacts/:id/salesforce`, which shows opportunities and needs `READ_CRM`.
+
+Creating an import is not deduplicated by request: a retried create saves a second import, whose run brings in nobody new because people are matched by address.
 
 ## List meeting bookings (integrations view)
 

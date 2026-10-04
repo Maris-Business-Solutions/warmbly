@@ -1555,6 +1555,8 @@ export function sourceLabel(source?: string | null): string {
             return "Imported from a file";
         case "sheet_sync":
             return "Synced from Google Sheets";
+        case "crm_sync":
+            return "CRM sync";
         case "api":
             return "Created via the API";
         case "ai_assistant":
@@ -1626,6 +1628,8 @@ function createdLabel(source?: string | null): string {
             return "Imported";
         case "sheet_sync":
             return "Synced from sheet";
+        case "crm_sync":
+            return "CRM sync";
         case "api":
             return "Created via API";
         case "campaign":

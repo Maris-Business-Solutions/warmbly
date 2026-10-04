@@ -93,6 +93,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/releases"
 	"github.com/warmbly/warmbly/internal/app/replyclassify"
 	"github.com/warmbly/warmbly/internal/app/research"
+	"github.com/warmbly/warmbly/internal/app/salesforce"
 	"github.com/warmbly/warmbly/internal/app/segment"
 	"github.com/warmbly/warmbly/internal/app/sendingdomain"
 	"github.com/warmbly/warmbly/internal/app/sequence"
@@ -350,6 +351,7 @@ func main() {
 	var attachmentRepoForHandler repository.AttachmentRepository
 	var emailImageRepoForHandler repository.EmailImageRepository
 	var leadSyncServiceForHandler leadsync.Service
+	var salesforceServiceForHandler *salesforce.Service
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1591,6 +1593,25 @@ func main() {
 		// The AI switch's optional web search shares the same pluggable backend as
 		// the campaign switch and dashboard agent.
 		integrationServiceForHandler.SetAISearch(aiSearch)
+
+		// Native Salesforce sync: events are recorded ahead of the webhook
+		// throttle, and the loops log them as Tasks, pull changes back and run
+		// recurring list-view imports.
+		salesforceServiceForHandler = salesforce.NewService(salesforce.Deps{
+			Repo:         repository.NewSalesforceRepository(primaryDB.Pool),
+			Integrations: integrationServiceForHandler,
+			Cipher:       cipherService,
+			Contacts:     contactService,
+			Holds:        campaignProgressRepository,
+			Suppression:  advancedRepository,
+			Subscription: contactRepostory,
+		})
+		integrationServiceForHandler.SetSalesforce(salesforceServiceForHandler)
+		webhookService.WireRecordSink(salesforceServiceForHandler.Recorder().Record)
+		go jobrun.Loop(ctx, "salesforce_activity_drain", 30*time.Second, true, salesforceServiceForHandler.Drain)
+		go jobrun.Loop(ctx, "salesforce_pull", 5*time.Minute, false, salesforceServiceForHandler.Pull)
+		go jobrun.Loop(ctx, "salesforce_recurring_imports", 5*time.Minute, false, salesforceServiceForHandler.RunRecurring)
+		go jobrun.Loop(ctx, "salesforce_activity_prune", 24*time.Hour, false, salesforceServiceForHandler.Prune)
 		// Port reply-classifier Layer 3 onto the platform provider (OpenAI-first,
 		// self-hostable). Platform-paid, never charged to org credits. Nil provider
 		// leaves Layer 3 disabled (the ambiguous middle resolves to "unknown").
@@ -2353,6 +2374,9 @@ func main() {
 
 		// On-demand Google Sheets -> leads sync
 		LeadSyncService: leadSyncServiceForHandler,
+
+		// Native Salesforce sync
+		SalesforceService: salesforceServiceForHandler,
 
 		WebsocketURI: websocketURI,
 

@@ -459,7 +459,11 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                     onClose={() => setConnectTarget(null)}
                     onConnected={(conn) => {
                         void connectionsQuery.refetch();
-                        if (conn.inbound_webhook_url) {
+                        if (conn.provider === "salesforce") {
+                            // Setup continues on the Salesforce page: rules, mapping, imports.
+                            setConnectTarget(null);
+                            go(`${STORE_BASE}/salesforce/${conn.id}`);
+                        } else if (conn.inbound_webhook_url) {
                             setInboundUrl({ provider: conn.provider, url: conn.inbound_webhook_url });
                         } else {
                             // Drop straight into management so the user can wire automations.

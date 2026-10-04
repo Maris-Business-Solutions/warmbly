@@ -140,6 +140,9 @@ const (
 	// LeadHoldSourceInboxTagging is a hold a classified reply wrote: "not now"
 	// for a while, a decline with no end.
 	LeadHoldSourceInboxTagging = "inbox_tagging"
+	// LeadHoldSourceCRM is a hold a CRM rule wrote: a lead status, a
+	// conversion or an open opportunity in Salesforce.
+	LeadHoldSourceCRM = "crm"
 )
 
 // Lead status constants for ContactCampaignProgress.Status.
@@ -820,6 +823,9 @@ const (
 	// ContactSourceAutomation is a contact an automation's "create or update
 	// contact" action wrote; the detail is the automation's name.
 	ContactSourceAutomation ContactSource = "automation"
+	// ContactSourceCRMSync is a contact imported from a CRM list view or
+	// campaign; the detail names the CRM and the list.
+	ContactSourceCRMSync ContactSource = "crm_sync"
 )
 
 // Valid reports whether the value is one the database accepts.
@@ -827,7 +833,7 @@ func (s ContactSource) Valid() bool {
 	switch s {
 	case ContactSourceUnknown, ContactSourceManual, ContactSourceCampaign, ContactSourceImport,
 		ContactSourceSheetSync, ContactSourceAPI, ContactSourceAIAssistant, ContactSourceForm,
-		ContactSourceAutomation:
+		ContactSourceAutomation, ContactSourceCRMSync:
 		return true
 	}
 	return false

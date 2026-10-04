@@ -91,7 +91,7 @@ Each action node picks a **Run** target (an integration, or Warmbly built-in) an
 | --- | --- |
 | Send a Slack / Discord message | Posts to a channel (Slack needs `#channel`) |
 | Send a webhook | HTTP request to a URL you provide |
-| Create / update HubSpot contact, Pipedrive person, Salesforce contact, Close lead | Upserts the record. In [HubSpot mode](/guides/hubspot/) contacts already sync on their own, so the HubSpot action is only needed for fields the sync does not map |
+| Create / update HubSpot contact, Pipedrive person, Salesforce record, Close lead | Upserts the record. In [HubSpot mode](/guides/hubspot/) contacts already sync on their own, so the HubSpot action is only needed for fields the sync does not map. Salesforce finds the Lead or Contact, or creates one, with the [connection's rules](/guides/salesforce/#how-people-are-matched) |
 
 Slack, Discord, and webhook actions take an optional message template. Slack and Discord arrive as a branded card in Warmbly's accent color with contact and subject fields, not a plain line.
 

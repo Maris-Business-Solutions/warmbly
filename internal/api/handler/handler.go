@@ -52,6 +52,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/ratelimit"
 	"github.com/warmbly/warmbly/internal/app/referral"
 	"github.com/warmbly/warmbly/internal/app/research"
+	"github.com/warmbly/warmbly/internal/app/salesforce"
 	"github.com/warmbly/warmbly/internal/app/segment"
 	"github.com/warmbly/warmbly/internal/app/sendingdomain"
 	"github.com/warmbly/warmbly/internal/app/sequence"
@@ -303,6 +304,10 @@ type Handler struct {
 	// On-demand Google Sheets -> leads sync. Reuses the google_sheets OAuth
 	// connection's token to read sheets and the contact import path to upsert.
 	LeadSyncService leadsync.Service
+
+	// SalesforceService is the native Salesforce sync: settings, imports, the
+	// activity log and the contact panel.
+	SalesforceService *salesforce.Service
 
 	// Public websocket URL used by frontend clients
 	WebsocketURI string

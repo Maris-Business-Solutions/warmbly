@@ -91,7 +91,7 @@ func (f *appDirFixture) listing(app uuid.UUID, slug string) *models.AppListing {
 
 func TestLiveAppDirectory(t *testing.T) {
 	_, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 255)
+	requireSchemaVersion(t, pool, 256)
 	f := newAppDirFixture(t, pool)
 	repo := NewAppDirectoryRepository(pool)
 	ctx := context.Background()

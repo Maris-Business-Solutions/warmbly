@@ -17,7 +17,7 @@ import (
 //	  go test ./internal/repository/ -run LiveOAuthModeration -v
 func TestLiveOAuthModeration(t *testing.T) {
 	_, pool := liveContactDB(t)
-	requireSchemaVersion(t, pool, 255)
+	requireSchemaVersion(t, pool, 256)
 	ctx := context.Background()
 	org, other, user, admin := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	app, app2 := uuid.New(), uuid.New()

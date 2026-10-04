@@ -437,7 +437,7 @@ export function useRealtimeEvents() {
           ['integrations', 'slack', 'status'],
         ])
         const connectionId = getString('connection_id')
-        if (connectionId) invalidate([['integrations', 'connection', connectionId]])
+        if (connectionId) invalidate([['integrations', 'connection', connectionId], ['integrations', 'salesforce', connectionId]])
         return
       }
 
@@ -510,8 +510,8 @@ export function useRealtimeEvents() {
           team: [['teams']],
           role: [['organizations']],
           automation: [['automations']],
-          // Slack settings and member links are audited as integration writes too.
-          integration: [['integrations', 'connections'], ['integrations', 'slack'], ['crm', 'settings'], ['crm', 'owners']],
+          // Slack and Salesforce settings, member links and import sources are audited as integration writes too.
+          integration: [['integrations', 'connections'], ['integrations', 'slack'], ['integrations', 'salesforce'], ['crm', 'settings'], ['crm', 'owners']],
           lead_sync_source: [['lead-sync', 'sources']],
           meeting: [['meetings'], ['meetings', 'summary']],
           subscription: [['subscription'], ['organizations', 'limits']],

@@ -66,6 +66,7 @@ type IntegrationRepository interface {
 	DeleteConnection(ctx context.Context, orgID, id uuid.UUID) error
 	MarkConnectionSynced(ctx context.Context, id uuid.UUID, status models.IntegrationStatus, displayFields json.RawMessage, errMsg string) error
 	UpdateConnectionTokens(ctx context.Context, id uuid.UUID, accessEnc, refreshEnc string, expiresAt *time.Time, scopes []string) error
+	MergeDisplayFields(ctx context.Context, id uuid.UUID, patch map[string]any) error
 	SetConnectionStatus(ctx context.Context, id uuid.UUID, status models.IntegrationStatus, health models.IntegrationHealth, detail string) error
 	ClearConnectionHealth(ctx context.Context, id uuid.UUID) error
 
@@ -392,6 +393,28 @@ func (r *integrationRepository) MarkConnectionSynced(ctx context.Context, id uui
 	return err
 }
 
+// MergeDisplayFields overlays keys onto a connection's non-secret display
+// fields, such as a Salesforce instance host that moved.
+func (r *integrationRepository) MergeDisplayFields(ctx context.Context, id uuid.UUID, patch map[string]any) error {
+	raw, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `UPDATE integration_connections SET display_fields = COALESCE(display_fields, '{}'::jsonb) || $2::jsonb, updated_at = NOW() WHERE id = $1`, id, raw)
+	return err
+}
+
+func oauthParams(p map[string]string) []byte {
+	if len(p) == 0 {
+		return []byte("{}")
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return []byte("{}")
+	}
+	return raw
+}
+
 func (r *integrationRepository) UpdateConnectionTokens(ctx context.Context, id uuid.UUID, accessEnc, refreshEnc string, expiresAt *time.Time, scopes []string) error {
 	now := time.Now().UTC()
 	_, err := r.db.Exec(ctx, `
@@ -443,10 +466,10 @@ func (r *integrationRepository) CreateOAuthState(ctx context.Context, st *models
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO integration_oauth_states (
 			id, organization_id, user_id, provider, state, code_verifier,
-			label, requested_scopes, expires_at, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			label, requested_scopes, expires_at, created_at, params
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		st.ID, st.OrganizationID, st.UserID, string(st.Provider), st.State, st.CodeVerifier,
-		st.Label, normalizeScopes(st.RequestedScopes), st.ExpiresAt, st.CreatedAt)
+		st.Label, normalizeScopes(st.RequestedScopes), st.ExpiresAt, st.CreatedAt, oauthParams(st.Params))
 	return err
 }
 
@@ -459,11 +482,15 @@ func (r *integrationRepository) TakeOAuthState(ctx context.Context, state string
 		SET used_at = NOW()
 		WHERE state = $1 AND used_at IS NULL AND expires_at > NOW()
 		RETURNING id, organization_id, user_id, provider, state, code_verifier,
-		          label, requested_scopes, used_at, expires_at, created_at`, state)
+		          label, requested_scopes, used_at, expires_at, created_at, params`, state)
 	var st models.IntegrationOAuthState
 	var provider string
+	var params []byte
 	err := row.Scan(&st.ID, &st.OrganizationID, &st.UserID, &provider, &st.State, &st.CodeVerifier,
-		&st.Label, &st.RequestedScopes, &st.UsedAt, &st.ExpiresAt, &st.CreatedAt)
+		&st.Label, &st.RequestedScopes, &st.UsedAt, &st.ExpiresAt, &st.CreatedAt, &params)
+	if err == nil && len(params) > 0 {
+		_ = json.Unmarshal(params, &st.Params)
+	}
 	if isNoRows(err) {
 		return nil, nil
 	}

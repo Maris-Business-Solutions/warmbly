@@ -32,7 +32,7 @@ The active filters show as chips you can clear one at a time or all at once. Sea
 | Provider | Category | Connect | What it does |
 | --- | --- | --- | --- |
 | HubSpot | CRM | one-click OAuth | Create or update a contact, log the reply as a note, or run the workspace's whole CRM on HubSpot ([HubSpot mode](/guides/hubspot/)) |
-| Salesforce | CRM | one-click OAuth | Upsert a contact on reply or on demand |
+| Salesforce | CRM | one-click OAuth (production, sandbox or My Domain) | Two-way sync: activity on the timeline, Lead Status writeback, opt-outs both ways, list view and Campaign imports. See [Salesforce](/guides/salesforce/) |
 | Pipedrive | CRM | one-click OAuth | Upsert a person on reply or on demand |
 | Close | CRM | API key | Upsert a lead on reply or on demand |
 | Zapier, Make, n8n | Automation | Warmbly API key | Fan events to that tool's webhook URL |
@@ -114,9 +114,10 @@ A mapping decides how a Warmbly contact projects onto provider fields. Every con
 | Provider | Default mapping |
 |----------|-----------------|
 | HubSpot | `email`, `firstname`, `lastname`, `company`, `phone` |
-| Salesforce | `Email`, `FirstName`, `LastName`, `Phone` |
 | Pipedrive | `name`, `email`, `phone` (a person) |
 | Close | `name`, `email`, `phone`, `company` (a lead) |
+
+Salesforce has its own field rules, per object and with a direction and a conflict policy; see [Salesforce field mapping](/guides/salesforce/#field-mapping).
 
 Override per connection: each row pairs a Warmbly source field with a destination name and can apply a `uppercase`, `lowercase`, or `trim` transform, or write a fixed `static` value. Custom contact fields are addressed as `custom:your_key`, and a static value can include event variables like `{{.company}}`.
 
