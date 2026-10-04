@@ -17,6 +17,7 @@ import (
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/aitools"
 	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
 )
 
@@ -65,6 +66,11 @@ func (h *Handler) ListAgentTools(c *gin.Context) {
 	inv, xerr := h.agentToolInvocation(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
+		return
+	}
+	// A member session uses the tool surface under use_ai; keys and tokens are gated per tool.
+	if !inv.IsAPIKey && !inv.OrgPerms.HasPermission(models.PermUseAI) {
+		errx.JSON(c, errx.New(errx.Forbidden, "your role does not include the AI assistant"))
 		return
 	}
 
@@ -121,6 +127,11 @@ func (h *Handler) CallAgentTool(c *gin.Context) {
 	inv, xerr := h.agentToolInvocation(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
+		return
+	}
+	// A member session uses the tool surface under use_ai; keys and tokens are gated per tool.
+	if !inv.IsAPIKey && !inv.OrgPerms.HasPermission(models.PermUseAI) {
+		errx.JSON(c, errx.New(errx.Forbidden, "your role does not include the AI assistant"))
 		return
 	}
 

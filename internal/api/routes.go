@@ -797,7 +797,7 @@ func Run(
 			// bits, the list reflects only what the caller may use, and
 			// send-class tools are never exposed.
 			agentTools := protected.Group("/ai/tools")
-			agentTools.Use(m.RequireOrganization(), m.RequireAccess(models.PermUseAI, models.APIPermAIAgent))
+			agentTools.Use(m.RequireOrganization())
 			{
 				agentTools.GET("", m.RateLimitMiddleware(models.RateLimitRead), h.ListAgentTools)
 				agentTools.POST("/:name/call", m.RateLimitMiddleware(models.RateLimitWrite), h.CallAgentTool)

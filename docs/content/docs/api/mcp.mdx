@@ -48,7 +48,7 @@ Authorization: Bearer wmbly_...
 ```
 
 <Callout type="info" title="Scope your key">
-Create a dedicated API key for each MCP client and grant it only the scopes it needs (see [Permissions](/api/permissions/)). The key needs the `AI_AGENT` scope to use `/v1/mcp` at all; combine it with the read/write scopes for the data you want the client to reach.
+Create a dedicated API key for each MCP client and grant it only the scopes it needs (see [Permissions](/api/permissions/)). Grant the read/write scopes for the data you want the client to reach, and `AI_AGENT` if it should search the web or read your playbooks.
 </Callout>
 
 ### Claude Code
@@ -91,7 +91,7 @@ Add to `.cursor/mcp.json`:
 
 ## What is exposed
 
-The server exposes exactly the tools your credential is allowed to use, whether that credential is an OAuth token or an API key. Every MCP call needs the `AI_AGENT` scope, and for an OAuth token, a member who still holds the **Use AI** permission; without it the server answers each request with a JSON-RPC error (`-32000`) and lists no tools. A credential with only read scopes sees only the read tools; one with write scopes sees those too, so an MCP client acts with precisely the permissions you granted, and nothing more.
+The server exposes exactly the tools your credential is allowed to use, whether that credential is an OAuth token or an API key. Each tool checks its own scope, and an OAuth token or API key also needs its member to hold the matching organization permission today. A credential with only read scopes sees only the read tools; one with write scopes sees those too, so an MCP client acts with precisely the permissions you granted, and nothing more.
 
 This is a subset of what the in-product assistant can do. Two categories are dashboard-only and never reachable by an API key or OAuth token: sending email (`send_reply`, `compose_email`), and workspace governance (team, workspace settings, and billing). Those routes are session-only and have no API scope to grant, so they never appear over MCP.
 

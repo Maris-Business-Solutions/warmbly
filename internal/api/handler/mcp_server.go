@@ -16,7 +16,6 @@ import (
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/aitools"
 	"github.com/warmbly/warmbly/internal/errx"
-	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
 )
 
@@ -67,11 +66,6 @@ func (h *Handler) MCPEndpoint(c *gin.Context) {
 		inv.UserID = uid
 	}
 	bindOAuthMember(c, &inv)
-	if !mcpAllowed(inv) {
-		c.JSON(http.StatusOK, rpcError(req.ID, -32000, "this credential lacks the AI_AGENT permission, which MCP needs"))
-		return
-	}
-
 	switch req.Method {
 	case "initialize":
 		c.JSON(http.StatusOK, rpcResult(req.ID, gin.H{
@@ -88,14 +82,6 @@ func (h *Handler) MCPEndpoint(c *gin.Context) {
 	default:
 		c.JSON(http.StatusOK, rpcError(req.ID, -32601, "method not found"))
 	}
-}
-
-// mcpAllowed is the AI_AGENT gate: the key's scope, and for an OAuth token its member's use_ai.
-func mcpAllowed(inv aitools.Invocation) bool {
-	if !models.HasAPIPermission(inv.APIPerms, models.APIPermAIAgent) {
-		return false
-	}
-	return !inv.ActsForMember || inv.OrgPerms.HasPermission(models.PermUseAI)
 }
 
 // mcpToolList reflects only the static tools the key's mask allows, excluding

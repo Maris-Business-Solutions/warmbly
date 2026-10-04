@@ -36,7 +36,7 @@ These same permissions are the [OAuth](/api/oauth/) scopes, lowercased: `READ_EM
 | `AI_AGENT` | 22 | 4194304 | special | Run the AI assistant and MCP tools |
 | `AI_RESEARCH` | 23 | 8388608 | special | Run AI contact research |
 
-`AI_AGENT` is the entry to the AI tool surfaces: [`/v1/mcp`](/api/mcp/) and [`/ai/tools`](/api/agent-tools/) refuse a key or OAuth token without it, and the web and playbook tools (`search_web`, `fetch_url`, `load_skill`) need it on top. It also gates the [AI skills](/api/endpoints/#ai-skills) endpoints for keys; creating, editing or deleting a playbook with a key further needs the member who created the key to hold `manage_settings`.
+`AI_AGENT` gates the web and playbook tools (`search_web`, `fetch_url`, `load_skill`) on [`/v1/mcp`](/api/mcp/) and [`/ai/tools`](/api/agent-tools/); every other tool there checks its own scope. It also gates the [AI skills](/api/endpoints/#ai-skills) endpoints for keys; creating, editing or deleting a playbook with a key further needs the member who created the key to hold `manage_settings`.
 
 `SEND_CAMPAIGNS` is intentionally separate from `WRITE_CAMPAIGNS`: editing a campaign draft and starting one that actually transmits mail are different blast radii, so a key can be granted the first without the second. An [inbox placement test](/guides/placement-tests/) sends real mail from a real mailbox too, so starting or cancelling one, and scheduling a campaign's placement monitor, takes `SEND_CAMPAIGNS`, while reading results takes `READ_ANALYTICS`.
 
