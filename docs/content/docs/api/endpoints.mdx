@@ -518,7 +518,7 @@ Each either hands out a credential that outlives the session that created it, re
 
 This applies to session callers. An API key or OAuth token has no session to confirm and is not the threat here, so it passes straight through to the route's permission gate.
 
-An account with neither a password nor two-factor authentication has nothing to confirm with. It may turn on 2FA only from a session that signed in within the last five minutes, and `POST /auth/reauth` answers it `400` with code `reauth_no_factor`. Once 2FA is on, it confirms with an authenticator code like any other account.
+A completed sign-in counts as a confirmation for the first five minutes of the session. An account with neither a password nor two-factor authentication has nothing else to confirm with, so after those five minutes `POST /auth/reauth` answers it `400` with code `reauth_no_factor` and it signs in again. Once 2FA is on, it confirms with an authenticator code like any other account.
 
 `GET /auth/config` gained two fields: `invites_required` (boolean, true when an invitation token is needed to create an account) and `docs_url` (string, the deployment's link to the accounts and access documentation, for a client to surface next to a refusal).
 

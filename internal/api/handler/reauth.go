@@ -98,7 +98,7 @@ func (h *Handler) Reauth(c *gin.Context) {
 func errReauthNoFactor() *errx.Error {
 	return errx.NewWithIdentifier(errx.BadRequest, "reauth_no_factor",
 		"This account has no password and no two-factor authentication, so there is nothing to confirm with. "+
-			"Sign out and sign in again, then turn on two-factor authentication under Settings > Security within five minutes of signing in.")
+			"Sign out and sign in again, then repeat the action within five minutes of signing in. Turning on two-factor authentication under Settings > Security gives the account a way to confirm without signing in again.")
 }
 
 // allowEnrollment gates adding an authenticator, which /auth/reauth then

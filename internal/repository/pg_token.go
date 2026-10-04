@@ -51,13 +51,13 @@ func (r *tokenRepository) GenerateSession(ctx context.Context, tx pgx.Tx, sessio
 		 created_at, expires_at, last_refreshed_at, revoked_at,
 		 access_nonce, refresh_nonce,
 		 location_city, location_region, location_country, location_country_code, location_postal_code,
-		 os_name, browser_name, auth_provider, mfa_verified
+		 os_name, browser_name, auth_provider, mfa_verified, reauth_at
 		) VALUES (
 		 $1, $2, $3,
 		 $4, $5, $6, $7,
 		 $8, $9,
 		 $10, $11, $12, $13, $14,
-		 $15, $16, $17, $18
+		 $15, $16, $17, $18, $4
 		)
 	`
 

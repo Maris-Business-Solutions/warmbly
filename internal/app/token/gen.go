@@ -182,6 +182,8 @@ func (s *tokenService) generateSession(ctx context.Context, userID uuid.UUID, em
 	issuedAt := time.Now()
 	session.LastRefreshedAt = issuedAt
 	session.CreatedAt = issuedAt
+	// A session is minted only by a completed sign-in, which is itself a fresh confirmation.
+	session.ReauthAt = &issuedAt
 
 	accessTokenExpiresAt := issuedAt.Add(AccessTokenLifeTime)
 	accessNonce, err := crypt.Nonce()
