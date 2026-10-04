@@ -39,9 +39,7 @@ const sentryPlugins = uploadToSentry
       ]
     : [];
 
-// The interface font is requested from the document head, in parallel with
-// the scripts, instead of after the stylesheet has been parsed; the app is
-// revealed once it has loaded, so text never repaints in a second face.
+// Requests the interface font from the head, in parallel with the scripts, not after the stylesheet parses.
 function preloadInterfaceFont(): Plugin {
     return {
         name: "warmbly:preload-interface-font",

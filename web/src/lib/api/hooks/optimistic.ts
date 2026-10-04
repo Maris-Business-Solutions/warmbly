@@ -1,14 +1,9 @@
-// Optimistic cache edits shared by the mutation hooks.
-//
-// A mutation patches every cached query that shows the entity before the
-// request leaves, puts the snapshot back if the server refuses, and re-reads
-// the same keys once the last overlapping write settles so the server's
-// answer wins. The patchers understand every list shape the dashboard caches:
-// a bare array, a { data, pagination } page, and infinite pages of either.
+// Optimistic cache edits: patch before the request, undo on refusal, re-read once the last overlapping write settles.
 
 import type { MutationKey, Query, QueryClient, QueryKey } from "@tanstack/react-query";
 
-export type Snapshot = [QueryKey, unknown][];
+// Each entry: the key, what was there, and what the patch wrote (absent when nothing was written).
+export type Snapshot = [QueryKey, unknown, unknown?][];
 
 interface Row {
     id: string;
@@ -31,10 +26,7 @@ function loaded(queryClient: QueryClient, keys: QueryKey[]): Query[] {
     return [...seen.values()];
 }
 
-/**
- * Cancels in-flight refetches under the keys, snapshots every loaded query
- * there and applies update to each. Returns the snapshot for restoreQueries.
- */
+/** Cancels refetches under the keys and applies update to every loaded query there; returns what restoreQueries needs. */
 export async function patchQueries(queryClient: QueryClient, keys: QueryKey[], update: Update): Promise<Snapshot> {
     // Only refetches: a cancelled first load would be left with nothing queued to retry it.
     await Promise.all(
@@ -43,16 +35,23 @@ export async function patchQueries(queryClient: QueryClient, keys: QueryKey[], u
         ),
     );
     const queries = loaded(queryClient, keys);
-    const snapshot: Snapshot = queries.map((query) => [query.queryKey, query.state.data]);
+    const snapshot: Snapshot = [];
     for (const query of queries) {
-        const next = update(query.state.data, query.queryKey);
-        if (next !== query.state.data) queryClient.setQueryData(query.queryKey, next);
+        const previous = query.state.data;
+        const next = update(previous, query.queryKey);
+        if (next === previous) continue;
+        queryClient.setQueryData(query.queryKey, next);
+        snapshot.push([query.queryKey, previous, query.state.data]);
     }
     return snapshot;
 }
 
+/** Undoes the patch where the cache still holds it; anything newer is re-read instead of overwritten. */
 export function restoreQueries(queryClient: QueryClient, snapshot: Snapshot | undefined) {
-    for (const [queryKey, data] of snapshot ?? []) queryClient.setQueryData(queryKey, data);
+    for (const [queryKey, previous, written] of snapshot ?? []) {
+        if (queryClient.getQueryData(queryKey) === written) queryClient.setQueryData(queryKey, previous);
+        else void queryClient.invalidateQueries({ queryKey, exact: true });
+    }
 }
 
 /** True while another mutation under the key is still in flight besides the caller. */
@@ -60,19 +59,22 @@ export function overlapping(queryClient: QueryClient, mutationKey: MutationKey):
     return queryClient.isMutating({ mutationKey }) > 1;
 }
 
-/**
- * Re-reads the keys once no other write under mutationKey is pending, so an
- * earlier answer cannot paint over a later optimistic edit.
- */
+// Keys a settle deferred while other writes were pending, per mutation family.
+const deferred = new Map<string, QueryKey[]>();
+
+/** Re-reads the keys once no other write in the family is pending; the last one re-reads what the others deferred. */
 export function settle(queryClient: QueryClient, mutationKey: MutationKey, keys: QueryKey[]) {
-    if (overlapping(queryClient, mutationKey)) return;
-    for (const queryKey of keys) void queryClient.invalidateQueries({ queryKey });
+    const family = JSON.stringify(mutationKey);
+    const pending = [...(deferred.get(family) ?? []), ...keys];
+    if (overlapping(queryClient, mutationKey)) {
+        deferred.set(family, pending);
+        return;
+    }
+    deferred.delete(family);
+    for (const queryKey of pending) void queryClient.invalidateQueries({ queryKey });
 }
 
-/**
- * Applies fn to the rows of any cached list shape; anything else passes
- * through. A list fn leaves untouched keeps its identity.
- */
+/** Applies fn to the rows of any cached list shape (array, page, infinite pages); a list fn leaves untouched keeps its identity. */
 export function mapRows<T extends Row>(data: unknown, fn: (rows: T[]) => T[]): unknown {
     if (Array.isArray(data)) return fn(data as T[]);
     if (!isObject(data)) return data;

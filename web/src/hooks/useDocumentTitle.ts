@@ -3,14 +3,7 @@ import { useLocation, useMatches } from "@tanstack/react-router";
 import { useCurrentOrg, useUnseenCount } from "@/stores";
 import { setFaviconBadge } from "@/lib/faviconBadge";
 
-/*
- * Dynamic document titles for the SPA. Each route declares its title in
- * router.tsx (`staticData.title`), so a route cannot exist without one. Titles
- * read "Section | Warmbly" (mirrors the marketing site's separator).
- *
- * Called once from RootLayout, so a single hook covers auth, onboarding and
- * the whole /app dashboard.
- */
+// "Section | Warmbly" from the deepest route's `staticData.title` in router.tsx.
 
 const BRAND = "Warmbly";
 

@@ -33,10 +33,7 @@ createRoot(rootEl).render(
   </StrictMode>,
 )
 
-// #root stays transparent until the stylesheet and the interface font are in
-// effect, so the first frame is the finished one: no unstyled flash and no
-// text repainting in a second face. The timeout keeps a slow font from ever
-// holding the page hidden.
+// Reveal once styles and the interface font apply, so text never repaints; the timeouts cap a slow font.
 const revealApp = () => rootEl.classList.add('app-ready')
 Promise.race([
   document.fonts?.ready ?? Promise.resolve(),

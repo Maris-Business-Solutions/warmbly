@@ -31,10 +31,9 @@ type AutomationList = { automations: Automation[] };
 async function patchList(qc: QueryClient, fn: (rows: Automation[]) => Automation[]): Promise<Snapshot> {
     await qc.cancelQueries({ queryKey: LIST_KEY, exact: true });
     const previous = qc.getQueryData<AutomationList>(LIST_KEY);
-    if (Array.isArray(previous?.automations)) {
-        qc.setQueryData<AutomationList>(LIST_KEY, { ...previous, automations: fn(previous.automations) });
-    }
-    return [[LIST_KEY, previous]];
+    if (!Array.isArray(previous?.automations)) return [];
+    qc.setQueryData<AutomationList>(LIST_KEY, { ...previous, automations: fn(previous.automations) });
+    return [[LIST_KEY, previous, qc.getQueryData(LIST_KEY)]];
 }
 
 // Optimistic on the list: the on/off pill and the name change on the click.

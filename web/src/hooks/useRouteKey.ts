@@ -1,16 +1,4 @@
-// Identity of the page the router is currently showing.
-//
-// The shell resets the content panel to the top when it changes, and must not
-// when you only move around inside one page. Default identity is the full
-// pathname, so every URL change is a new page. A route whose path also carries
-// in-page state lists those params as stable in router.tsx:
-//
-//   createRoute({ path: "unibox/{-$scope}/{-$threadId}",
-//     staticData: { stableParams: ["scope", "threadId"] } })
-//
-// Changing only a stable param keeps the page where it is, so its lists keep
-// their scroll offset and its inputs keep their text (issue #396). The router
-// uses the same list to decide when a page remounts.
+// The page being shown: its pathname, except params a route marks `stableParams` (in-page state, issue #396).
 
 import { useMatches } from "@tanstack/react-router";
 

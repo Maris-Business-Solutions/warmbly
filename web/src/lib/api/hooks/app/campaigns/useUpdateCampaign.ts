@@ -59,8 +59,9 @@ export default function useUpdateCampaign(id: string) {
             );
         },
         // Folder membership decides which lists hold the campaign at all, so only a refetch can add it.
+        // Always settles, so a re-read another campaign write deferred behind this one still runs.
         onSettled: (_data, _err, campaign) => {
-            if (campaign.folders !== undefined) settle(queryClient, campaignMutationKey, [["campaigns", "list"]]);
+            settle(queryClient, campaignMutationKey, campaign.folders !== undefined ? [["campaigns", "list"]] : []);
         },
     })
 }

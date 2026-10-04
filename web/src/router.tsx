@@ -1,6 +1,4 @@
-// The dashboard's route table. Every page is its own chunk, preloaded on hover
-// or focus of any link to it, and each route carries its tab title so the
-// title map can never drift from the routes.
+// The route table: every page is a lazy chunk preloaded on link hover, and every route carries its tab title.
 
 import {
     createRootRouteWithContext,
@@ -333,9 +331,7 @@ const apiKeysRoute = dash(appRoute, "api-keys", dashboardPages.apiKeys, "API key
 // OAuth apps moved into Settings; keep the old path working.
 const oauthAppsLegacy = forward(appRoute, "oauth-apps", "/app/settings/oauth-apps");
 
-// The store and every page in it (/connected, /category/:c, /:provider,
-// /apps/:slug) is one mounted page, so search and drawers survive navigation:
-// the page is the layout, and its index and splat children render nothing.
+// The store page is the layout and its children render nothing, so search and drawers survive moving within it.
 const integrationsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: "integrations",
@@ -387,9 +383,7 @@ const settingsChildren = [
 // Legacy /app/billing entry points.
 const billingLegacy = forward(appRoute, "billing", "/app/settings/billing");
 
-// Readable inbox URLs: /app/unibox/<scope>[/<threadId>]. Both are state inside
-// one page, so it stays mounted across them and the conversation list keeps
-// its scroll offset when a thread opens (issue #396).
+// Scope and thread are state inside one page, so the list keeps its scroll offset when a thread opens (issue #396).
 const uniboxRoute = createRoute({
     getParentRoute: () => appRoute,
     path: "unibox/{-$scope}/{-$threadId}",

@@ -1,6 +1,6 @@
 import React from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBlocker, useNavigate } from "@tanstack/react-router";
+import { useBlocker } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 
 import { useConfirm } from "@/hooks/context/confirm";
@@ -11,7 +11,6 @@ import {
 } from "@/lib/api/hooks/app/integrations/useIntegrationOAuth";
 import type { IntegrationConnection } from "@/lib/api/models/app/integrations/Integration";
 import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
-import { stringifySearch } from "@/lib/routerSearch";
 import usePipelines from "@/lib/api/hooks/app/crm/pipelines/usePipelines";
 import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 
@@ -68,7 +67,6 @@ export function useHubSpotOAuth() {
 // Asks before an in-app navigation or a reload throws away unsaved choices.
 export function useLeaveGuard(dirty: boolean, message: string) {
     const confirm = useConfirm();
-    const navigate = useNavigate();
     const allow = React.useRef(false);
 
     const blocker = useBlocker({
@@ -81,15 +79,18 @@ export function useLeaveGuard(dirty: boolean, message: string) {
         enableBeforeUnload: false,
     });
 
+    // The navigation stays held while the dialog is open, so confirming resumes it exactly (Back stays Back).
     React.useEffect(() => {
         if (blocker.status !== "blocked") return;
-        const to = blocker.next;
-        blocker.reset();
-        confirm.show(message, async () => {
-            allow.current = true;
-            navigate({ href: `${to.pathname}${stringifySearch(to.search)}` });
-        });
-    }, [blocker, confirm, message, navigate]);
+        confirm.show(
+            message,
+            async () => {
+                allow.current = true;
+                blocker.proceed();
+            },
+            () => blocker.reset(),
+        );
+    }, [blocker, confirm, message]);
 
     React.useEffect(() => {
         if (!dirty) return;

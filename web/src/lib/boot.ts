@@ -1,8 +1,4 @@
-// Everything the dashboard needs before its first paint, resolved in as few
-// round trips as the data allows: the workspace list and the session's
-// workspace together, then identity and plan together. Pages then mount with
-// their bootstrap data already cached instead of discovering it one request
-// at a time.
+// The dashboard's session, workspace, identity and plan, resolved in two parallel rounds before its first paint.
 
 import { isRedirect, redirect } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
@@ -107,8 +103,8 @@ async function runBoot(queryClient: QueryClient) {
             clearClientSession(queryClient);
             throw redirect({ to: "/auth/login", replace: true });
         }
-        // A redirect is the answer; anything else is shown by the providers,
-        // which render their own error state for a query that failed.
         if (isRedirect(err)) throw err;
+        // Anything else is shown by the providers' error states, and the next navigation boots again.
+        boot = null;
     }
 }

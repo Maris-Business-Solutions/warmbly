@@ -1,6 +1,4 @@
-// The query string as URLSearchParams, for pages whose filters and tabs live
-// in it. Setting it navigates in place: same page, no scroll reset, and a
-// history entry unless `replace` is passed.
+// The query string as URLSearchParams; setting it navigates in place, without a scroll reset.
 
 import * as React from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";

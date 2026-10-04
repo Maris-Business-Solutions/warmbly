@@ -1,6 +1,4 @@
-// What the router shows while a route loads or after it fails. The boot state
-// is the dashboard's own frame, so the first paint already looks like the app
-// and the real shell replaces it without anything moving.
+// Loading and error states for routes; the boot state is the dashboard's own empty frame, so nothing moves.
 
 import { useRouter, type ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect } from "react";

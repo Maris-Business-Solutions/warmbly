@@ -15,10 +15,9 @@ export default function useUpdateDeal() {
         mutationFn: ({ id, data }: { id: string; data: DealWrite }) => updateDeal(id, data),
         onMutate: async ({ id, data }) => {
             const before = cachedDeal(queryClient, id);
-            const keys = [...dealKeys(before?.contact_id), ["crm", "deals", "summary"]];
             const snapshot = await patchQueries(
                 queryClient,
-                keys,
+                dealKeys(before?.contact_id),
                 updateEntity<Deal>(id, (row) => applyDealWrite(queryClient, row, data)),
             );
             if (before && data.stage_id && data.stage_id !== before.stage_id) {

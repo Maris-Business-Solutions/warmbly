@@ -1,12 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import shareDeep from "./helper/shareDeep";
 
-// Defaults tuned for a dashboard: lists stay fresh for half a minute (realtime
-// events invalidate what changes), responses survive five minutes of
-// navigation so back is instant, focus does not refetch, a dropped network
-// refetches once, and one retry keeps a backend hiccup from stacking into
-// seconds of waiting. shareDeep keeps equal revived Dates, so unchanged data
-// keeps its identity across a refetch.
+// Realtime events invalidate what changes, so focus never refetches; shareDeep keeps equal revived Dates identical.
 export const queryClient = new QueryClient({
     defaultOptions: {
         queries: {

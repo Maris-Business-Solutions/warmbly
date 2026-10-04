@@ -30,8 +30,11 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { GlobalCursorsProvider } from "@/components/app/presence/GlobalCursors";
 import AgentPanel from "@/components/app/agent/AgentPanel";
 import { useRouteKey } from "@/hooks/useRouteKey";
-import { useScrollMemory } from "@/hooks/useScrollMemory";
+import { useScrollMemory, type ScrollStore } from "@/hooks/useScrollMemory";
 import { RouteFallback } from "./RouteStates";
+
+// Per history entry, kept apart so ordinary browsing never evicts a list's remembered offset.
+const entryOffsets: ScrollStore = new Map();
 
 export function AppShell() {
     useKeyboardShortcuts();
@@ -46,16 +49,12 @@ export function AppShell() {
     // The page content's scroll container, anchor for the global cursor layer.
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Pages scroll this inner container, not the window, so the shell owns
-    // its offset: a new page starts at the top, and Back or Forward lands where
-    // that history entry was left. Keyed on the route identity, not the raw
-    // pathname, so a page that keeps in-page state in the URL (the unibox's
-    // open thread) is not scrolled away from what the user was reading.
+    // A new page starts at the top and Back lands where that entry was left; in-page URL state keeps its place.
     const routeKey = useRouteKey();
     const entryKey = useLocation({ select: (l) => l.state.__TSR_key ?? l.href });
     const [scrollFor, setScrollFor] = useState({ routeKey, key: `${routeKey}@${entryKey}` });
     if (scrollFor.routeKey !== routeKey) setScrollFor({ routeKey, key: `${routeKey}@${entryKey}` });
-    useScrollMemory(scrollRef, scrollFor.key);
+    useScrollMemory(scrollRef, scrollFor.key, entryOffsets);
 
     return (
         <div className="fixed inset-0 flex flex-col">

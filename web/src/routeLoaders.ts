@@ -1,7 +1,4 @@
-// Route loaders for the dashboard pages. Each one warms the react-query cache
-// with the queries its page draws first, under the exact keys the page's hooks
-// use, so a click (or the hover preload before it) lands on a drawn page.
-// Loaders return nothing: pages keep reading through their hooks.
+// Route loaders: start each page's first queries, under its hooks' exact keys, on hover and on click.
 
 import type { QueryClient } from "@tanstack/react-query";
 import type { RouterContext } from "./router";
@@ -79,9 +76,7 @@ import { webhookDropsQuery, webhooksListQuery } from "./lib/api/hooks/app/webhoo
 import { trialStatusQuery } from "./lib/api/hooks/app/subscription/useTrialStatus";
 import { appliedDiscountsQuery } from "./lib/api/hooks/app/subscription/useAppliedDiscounts";
 
-// Loosely typed on purpose: a declared `params` would become the route's
-// inferred params, and a typed `context` cannot be checked inside the generic
-// route helper. The router still passes both; pageLoader reads them.
+// Declaring `params` here would become every route's inferred params; the router passes it anyway.
 export interface PageLoaderContext {
     context: unknown;
     location: { pathname: string; searchStr: string };
@@ -93,9 +88,7 @@ export type PageLoader = (ctx: PageLoaderContext) => Promise<void>;
 // Prefetches never reject, so nothing awaits them.
 type Prefetch = Promise<unknown> | false | null | undefined;
 
-// Navigation never waits on data: the page switches at once and draws from
-// whatever is cached while these requests (often started by the hover
-// preload) fill in. Org-scoped reads still wait for the session's workspace.
+// Navigation never waits on data; only the session's workspace is awaited, so org-scoped reads go to the right one.
 interface PageArgs {
     params: Record<string, string | undefined>;
     search: SearchParams;
@@ -353,10 +346,15 @@ function allMail(base: UniboxSearchParams): [UniboxSearchParams, string] {
     return [{ ...base, includeArchived: true }, "all"];
 }
 
+// Cold cache only: opening a thread is a new match, and a stale refetch here would reload every loaded page (#396).
 export const uniboxLoader = pageLoader((qc, { params, search }) => {
     if (!can("ACCESS_UNIBOX")) return [];
     const first = uniboxFirstSearch(params.scope ?? "inbox", search.ref || undefined);
-    return [qc.prefetchQuery(uniboxOverviewQuery), !!first && qc.prefetchInfiniteQuery(uniboxSearchQuery(...first))];
+    const list = first ? uniboxSearchQuery(...first) : null;
+    return [
+        qc.getQueryData(uniboxOverviewQuery.queryKey) === undefined && qc.prefetchQuery(uniboxOverviewQuery),
+        !!list && qc.getQueryData(list.queryKey) === undefined && qc.prefetchInfiniteQuery(list),
+    ];
 });
 
 export const membersLoader = pageLoader((qc) => [

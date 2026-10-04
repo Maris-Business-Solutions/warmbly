@@ -14,8 +14,15 @@ export function dealKeys(contactId?: string): QueryKey[] {
     return contactId ? [["crm", "deals"], ["contacts", contactId, "deals"]] : [["crm", "deals"]];
 }
 
+// Looks in the deal lists first, then only the contacts' deal panels, never every contact query.
 export function cachedDeal(queryClient: QueryClient, id: string): Deal | undefined {
-    return findEntity<Deal>(queryClient, [["crm", "deals"], ["contacts"]], id);
+    const listed = findEntity<Deal>(queryClient, [["crm", "deals"]], id);
+    if (listed) return listed;
+    const panels = queryClient
+        .getQueryCache()
+        .findAll({ predicate: (q) => q.queryKey[0] === "contacts" && q.queryKey[2] === "deals" })
+        .map((q) => q.queryKey);
+    return panels.length ? findEntity<Deal>(queryClient, panels, id) : undefined;
 }
 
 // A write as the row will read once the server has it, with the joined stage looked up from the pipelines.

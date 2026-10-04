@@ -1,6 +1,4 @@
-// Routers for tests. A suite builds the small route tree it needs, and this
-// gives it the app's search handling and the app's own remount rule, so a
-// page under test stays mounted, or remounts, exactly as it does in the app.
+// Test routers with the app's search handling and remount rule, around whatever small route tree a suite needs.
 
 import React from "react";
 import { act, render } from "@testing-library/react";

@@ -23,7 +23,7 @@ import { useWriteGuard } from "@/hooks/usePermission";
 import useCreateCategory from "@/lib/api/hooks/app/categories/useCreateCategory";
 import useDeleteCategory from "@/lib/api/hooks/app/categories/useDeleteCategory";
 import useUpdateCategory from "@/lib/api/hooks/app/categories/useUpdateCategory";
-import { previewSegment } from "@/lib/api/client/app/segments";
+import { labelCountQuery } from "@/lib/api/hooks/app/segments";
 import type Category from "@/lib/api/models/app/Category";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
@@ -51,13 +51,7 @@ export default function LabelsPage() {
 
     // One live count per category through the segment preview, so the number
     // agrees with what a "has any of" condition would match.
-    const counts = useQueries({
-        queries: categories.map((c) => ({
-            queryKey: ["segments", "preview", "category", c.id],
-            queryFn: () => previewSegment({ match: "all", conditions: [{ field: "category", operator: "in", values: [c.id] }] }),
-            staleTime: 30_000,
-        })),
-    });
+    const counts = useQueries({ queries: categories.map((c) => labelCountQuery(c.id)) });
     const countById = new Map<string, number | undefined>();
     categories.forEach((c, i) => countById.set(c.id, counts[i]?.data));
 

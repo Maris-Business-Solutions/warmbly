@@ -1,6 +1,4 @@
-// Query strings stay plain `?key=value` strings, the shape every link already
-// sent out (emails, Slack, bookmarks) uses. The router's default would JSON
-// encode values and turn `?id=123` into a number.
+// Plain `?key=value` strings, as every link already sent out uses; the router's default JSON-encodes values.
 
 export type SearchParams = Record<string, string | undefined>;
 
@@ -22,11 +20,7 @@ export function stringifySearch(search: Record<string, unknown>): string {
     return str ? `?${str}` : "";
 }
 
-/**
- * Splits a full href ("/app/unibox?scope=x#y") into the router's link fields,
- * for links whose target is a string built elsewhere (nav config, API data).
- * `<Link {...hrefTarget(url)}>` or `navigate(hrefTarget(url))`.
- */
+/** Splits a full href into link fields, for targets built elsewhere: `<Link {...hrefTarget(url)}>`. */
 export function hrefTarget(href: string): { to: string; search: SearchParams; hash?: string } {
     const hashAt = href.indexOf("#");
     const hash = hashAt >= 0 ? href.slice(hashAt + 1) : undefined;

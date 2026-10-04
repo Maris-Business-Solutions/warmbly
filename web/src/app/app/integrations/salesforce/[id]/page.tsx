@@ -6,7 +6,7 @@
 "use client";
 
 import React from "react";
-import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useBlocker, useParams } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
     ActivityIcon,
@@ -42,7 +42,6 @@ import {
 } from "@/lib/api/hooks/app/integrations/useSalesforce";
 import type { SalesforceSettings } from "@/lib/api/models/app/integrations/Salesforce";
 import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
-import { stringifySearch } from "@/lib/routerSearch";
 import { cn } from "@/lib/utils";
 
 import ProviderGlyph from "../../_components/ProviderGlyph";
@@ -71,7 +70,6 @@ export default function SalesforcePage() {
     const { id } = useParams({ from: "/app/integrations/salesforce/$id" });
     const [params, setParams] = useSearchParams();
     const tab: TabId = isTab(params.get("tab")) ? (params.get("tab") as TabId) : "overview";
-    const navigate = useNavigate();
     const confirm = useConfirm();
 
     const overview = useSalesforceOverview(id);
@@ -149,15 +147,18 @@ export default function SalesforcePage() {
         withResolver: true,
         enableBeforeUnload: false,
     });
+    // The navigation stays held while the dialog is open, so confirming resumes it exactly (Back stays Back).
     React.useEffect(() => {
         if (blocker.status !== "blocked") return;
-        const to = blocker.next;
-        blocker.reset();
-        confirm.show("You have unsaved Salesforce settings. Leave and discard them?", async () => {
-            skipGuard.current = true;
-            discard();
-            navigate({ href: to.pathname + stringifySearch(to.search) });
-        });
+        confirm.show(
+            "You have unsaved Salesforce settings. Leave and discard them?",
+            async () => {
+                skipGuard.current = true;
+                discard();
+                blocker.proceed();
+            },
+            () => blocker.reset(),
+        );
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [blocker.status]);
     React.useEffect(() => {
