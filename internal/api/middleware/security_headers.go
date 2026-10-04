@@ -7,8 +7,7 @@ import (
 )
 
 // SecurityHeaders sets the response headers that tell a browser what it may do
-// with an API response. None of them were being sent by any layer: not the Go
-// services, not the nginx images, not the edge.
+// with an API response, on every response the API serves.
 //
 // The API answers JSON, so the policy can be the strictest one there is. It
 // loads nothing, frames nothing, and may not be framed. That matters because
@@ -43,6 +42,21 @@ func SecurityHeaders() gin.HandlerFunc {
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 
+		c.Next()
+	}
+}
+
+// PageHeaders is the part of SecurityHeaders a service serving framable pages
+// can carry (the forms service): no content sniffing, a referrer policy, and
+// HSTS over TLS. Each page sets its own CSP.
+func PageHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h := c.Writer.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if requestIsHTTPS(c) {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		c.Next()
 	}
 }

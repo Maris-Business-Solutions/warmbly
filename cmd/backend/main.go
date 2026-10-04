@@ -624,11 +624,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		// The bypass token must be set explicitly. It used to fall back to a
-		// hardcoded literal whenever APP_ENV was "dev", which is the shipped
-		// default in both compose and env.example, so any deployment that
-		// turned captcha on while leaving APP_ENV alone had a universal,
-		// publicly known bypass on login, registration and password reset.
+		// The captcha bypass exists only in dev and only as an explicitly set token; there is no default.
 		turnstileBypassToken := ""
 		if cfg.Env == "dev" {
 			turnstileBypassToken = authCfg.TurnstileBypass
@@ -1945,6 +1941,11 @@ func main() {
 		// before bodies were indexed, so search covers the whole archive and not
 		// just new mail. Walks the table once, then returns.
 		go uniboxService.StartBodyTextBackfill(ctx)
+
+		// Automation signing secrets live in each connection's sealed config.
+		if m, ok := integrationServiceForHandler.(interface{ StartSigningSecretMigration(context.Context) }); ok {
+			go m.StartSigningSecretMigration(ctx)
+		}
 
 		// Danger zone: schedule + execute delayed deletions (orgs, accounts).
 		dangerZoneRepository := repository.NewDangerZoneRepository(primaryDB.Pool)

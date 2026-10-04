@@ -1,11 +1,12 @@
 // Whether Warmbly Cloud can serve this instance's root redirects: self-hosted, linked, and with room for one more.
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
+import { useInstanceAdmin } from "@/hooks/usePermission";
 import { useCloudLinkStatus } from "@/lib/api/hooks/app/cloudlink/useCloudLink";
 import type { PoolLinkRedirectOffer } from "@/lib/api/models/app/cloudlink/CloudLink";
 import type { RedirectServer } from "@/lib/api/models/app/emails/SendingDomain";
 
 export interface CloudServing {
-    /** Only a self-hosted instance picks; Warmbly Cloud always serves its own. */
+    /** Only a self-hosted instance's administrator picks, since the link is instance-wide; Warmbly Cloud always serves its own. */
     choosable: boolean;
     connected: boolean;
     offer: PoolLinkRedirectOffer | null;
@@ -15,12 +16,13 @@ export interface CloudServing {
 
 export function useCloudServing(): CloudServing {
     const auth = useAuthConfig();
-    const selfHosted = !!auth.data?.self_hosted;
-    const status = useCloudLinkStatus(selfHosted, 60_000);
-    const offer = status.data?.info?.redirects ?? null;
-    const connected = !!status.data?.connected;
+    const instanceAdmin = useInstanceAdmin();
+    const choosable = !!auth.data?.self_hosted && instanceAdmin.allowed;
+    const status = useCloudLinkStatus(choosable, 60_000);
+    const offer = choosable ? (status.data?.info?.redirects ?? null) : null;
+    const connected = choosable && !!status.data?.connected;
     return {
-        choosable: selfHosted,
+        choosable,
         connected,
         offer,
         canServe: connected && !!offer?.available && offer.used < offer.limit,

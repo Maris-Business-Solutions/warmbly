@@ -465,7 +465,7 @@ export default function AddressesPage() {
                             totalCount={stats.total}
                             canWarmup={canWarmup}
                             onAdd={() => p?.setAddEmail(true)}
-                            onConnectCloud={!cloud.connected ? () => setCloudDialog(true) : undefined}
+                            onConnectCloud={cloud.manageable && !cloud.connected ? () => setCloudDialog(true) : undefined}
                             cloudConnected={cloud.connected}
                         />
                     )}

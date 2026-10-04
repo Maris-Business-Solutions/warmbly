@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useAppStore } from "@/stores";
 import { hasPermission, PERMISSION_BITS } from "@/lib/permissions";
+import useUser from "@/lib/api/hooks/auth/useUser";
 
 export type PermissionKey = keyof typeof PERMISSION_BITS;
 
@@ -26,6 +27,16 @@ export function orgHasPermission(
     if (org.role === "owner") return true;
     if (org.permissions === undefined) return true; // unknown — assume yes until loaded
     return hasPermission(org.permissions, PERMISSION_BITS[key]);
+}
+
+const ADMIN_MANAGE_SETTINGS = 1 << 14; // mirrors AdminPermManageSettings
+
+// useInstanceAdmin reports whether the user may change instance-wide settings:
+// the manage_settings admin bit, on a session that presented a second factor.
+export function useInstanceAdmin(): { holdsAdmin: boolean; allowed: boolean } {
+    const { data: user } = useUser();
+    const holdsAdmin = ((user?.admin_permissions ?? 0) & ADMIN_MANAGE_SETTINGS) === ADMIN_MANAGE_SETTINGS;
+    return { holdsAdmin, allowed: holdsAdmin && user?.session_mfa_verified === true };
 }
 
 // Friendly label for each permission, used in the "you don't have permission"

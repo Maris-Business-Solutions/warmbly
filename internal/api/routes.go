@@ -12,6 +12,7 @@ import (
 	"github.com/warmbly/warmbly/internal/api/handler"
 	"github.com/warmbly/warmbly/internal/api/handler/grouph"
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/models"
 )
 
@@ -1646,17 +1647,19 @@ func Run(
 				poolLinkInstance.DELETE("/redirects/:domain", h.PoolLinkDeleteRedirect)
 			}
 
-			// Self-hosted side: Settings > Warmbly Cloud.
-			// Reads are member-visible (no secrets travel); linking is a settings
-			// change and per-mailbox enrollment is a mailbox change.
-			cloudLink := jwtOnly.Group("/cloud-link")
-			cloudLink.Use(m.RateLimitMiddleware(models.RateLimitWrite), m.RequireOrganization())
-			{
+			// Self-hosted side: Settings > Warmbly Cloud, registered on a self-host only.
+			// The link is one per instance, so every route takes the instance
+			// administrator (admin manage_settings, second factor); mailbox routes also
+			// take the workspace's manage_emails.
+			if config.SelfHosted() {
+				cloudLink := jwtOnly.Group("/cloud-link")
+				cloudLink.Use(m.RateLimitMiddleware(models.RateLimitWrite), m.RequireOrganization(),
+					m.AdminMiddleware(), middleware.RequireAdminPermission(models.AdminPermManageSettings))
 				cloudLink.GET("", h.CloudLinkStatus)
 				cloudLink.GET("/mailboxes", h.CloudLinkMailboxes)
-				cloudLink.POST("/connect", m.RequirePermission(models.PermManageSettings), h.CloudLinkConnectStart)
-				cloudLink.POST("/connect/poll", m.RequirePermission(models.PermManageSettings), h.CloudLinkConnectPoll)
-				cloudLink.DELETE("", m.RequirePermission(models.PermManageSettings), h.CloudLinkDisconnect)
+				cloudLink.POST("/connect", h.CloudLinkConnectStart)
+				cloudLink.POST("/connect/poll", h.CloudLinkConnectPoll)
+				cloudLink.DELETE("", h.CloudLinkDisconnect)
 				cloudLink.POST("/mailboxes/:id/enroll", m.RequirePermission(models.PermManageEmails), h.CloudLinkEnroll)
 				cloudLink.DELETE("/mailboxes/:id/enroll", m.RequirePermission(models.PermManageEmails), h.CloudLinkUnenroll)
 				cloudLink.POST("/mailboxes/:id/pause", m.RequirePermission(models.PermManageEmails), h.CloudLinkPause)

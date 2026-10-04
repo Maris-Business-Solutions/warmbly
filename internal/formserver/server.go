@@ -138,7 +138,7 @@ func (s *Server) Router(trustedProxies []string) (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.RequestLogger(), gin.Recovery())
+	r.Use(middleware.RequestLogger(), gin.Recovery(), middleware.PageHeaders())
 	// Same posture as the backend: trust no proxy unless the operator names
 	// it, so a forged X-Forwarded-For cannot dodge the submit limiter.
 	if len(trustedProxies) > 0 {

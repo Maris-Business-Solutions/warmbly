@@ -1,17 +1,21 @@
 // One view of the Warmbly Cloud pool link for the dashboard: whether this is
 // a self-hosted instance, whether it is linked, and which mailboxes the cloud
-// warms. Queries stay disabled on the hosted product.
+// warms. The link is instance-wide, so its queries run only for the instance
+// administrator (`manageable`) and stay disabled on the hosted product.
 
 import { useMemo } from "react";
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
+import { useInstanceAdmin } from "@/hooks/usePermission";
 import { useCloudLinkMailboxes, useCloudLinkStatus } from "@/lib/api/hooks/app/cloudlink/useCloudLink";
 import type { CloudLinkMailboxRow, PoolLinkPlan } from "@/lib/api/models/app/cloudlink/CloudLink";
 
 export default function useCloudPool() {
     const authConfig = useAuthConfig();
     const selfHosted = authConfig.data?.self_hosted === true;
-    const status = useCloudLinkStatus(selfHosted);
-    const connected = selfHosted && status.data?.connected === true;
+    const instanceAdmin = useInstanceAdmin();
+    const manageable = selfHosted && instanceAdmin.allowed;
+    const status = useCloudLinkStatus(manageable);
+    const connected = manageable && status.data?.connected === true;
     const mailboxes = useCloudLinkMailboxes(connected);
 
     const byId = useMemo(() => {
@@ -25,6 +29,7 @@ export default function useCloudPool() {
 
     return {
         selfHosted,
+        manageable,
         connected,
         reachable: status.data?.reachable === true,
         orgName: status.data?.link?.organization_name ?? "",
@@ -32,6 +37,6 @@ export default function useCloudPool() {
         enrolledCount,
         rowFor: (id: string) => byId.get(id),
         isEnrolled: (id: string) => byId.get(id)?.enrolled === true,
-        loading: status.isLoading || (connected && mailboxes.isLoading),
+        loading: manageable && (status.isLoading || (connected && mailboxes.isLoading)),
     };
 }

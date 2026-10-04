@@ -484,8 +484,8 @@ const salesforceAPIVersion = "v59.0"
 // captured at OAuth time and stored in the connection's display fields. LastName
 // is mandatory on the Contact object, so we fall back to the email when unset.
 func salesforceUpsertContact(ctx context.Context, token, instanceURL, email string, props map[string]any) error {
-	instanceURL = strings.TrimRight(strings.TrimSpace(instanceURL), "/")
-	if instanceURL == "" {
+	instanceURL, err := SalesforceInstanceURL(instanceURL)
+	if err != nil {
 		return fmt.Errorf("salesforce instance url unavailable; reconnect the integration")
 	}
 	if email == "" {

@@ -24,6 +24,21 @@ import (
 	"github.com/warmbly/warmbly/internal/utils/paging"
 )
 
+// integrationFailure answers a service error: an *errx.Error as itself, the
+// service's own refusals as 400, anything else as a logged internal error.
+func integrationFailure(c *gin.Context, err error) {
+	var xe *errx.Error
+	if errors.As(err, &xe) {
+		errx.JSON(c, xe)
+		return
+	}
+	if msg, ok := integration.PublicMessage(err); ok {
+		errx.JSON(c, errx.New(errx.BadRequest, msg))
+		return
+	}
+	errx.JSON(c, errx.New(errx.Internal, err.Error()))
+}
+
 // requireIntegrationActor resolves the org + user for a mutating integration
 // request and enforces the paid-plan gate. Browsing the catalog / listing
 // connections is open (so non-paid orgs see the upsell); connecting or
@@ -134,7 +149,7 @@ func (h *Handler) ConnectIntegration(c *gin.Context) {
 			errx.JSON(c, errx.New(errx.BadRequest, "This provider connects via OAuth — start the authorize flow instead."))
 			return
 		}
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	}
 	h.auditIntegration(c, userID, models.AuditActionCreate, conn.ID, string(provider))
@@ -198,7 +213,7 @@ func (h *Handler) StartIntegrationOAuth(c *gin.Context) {
 			errx.JSON(c, errx.New(errx.NotImplemented, "This provider isn't available yet — OAuth credentials are not configured on the server."))
 			return
 		}
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, resp)
@@ -239,7 +254,7 @@ func (h *Handler) FinishIntegrationOAuth(c *gin.Context) {
 			errx.JSON(c, bizErr)
 			return
 		}
-		errx.JSON(c, errx.New(errx.BadRequest, xerr.Error()))
+		integrationFailure(c, xerr)
 		return
 	}
 	h.auditIntegration(c, userID, models.AuditActionCreate, conn.ID, string(conn.Provider))
@@ -259,7 +274,7 @@ func (h *Handler) ReauthIntegration(c *gin.Context) {
 	}
 	resp, rerr := h.IntegrationService.Reauth(c.Request.Context(), orgID, userID, id)
 	if rerr != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, rerr.Error()))
+		integrationFailure(c, rerr)
 		return
 	}
 	c.JSON(http.StatusOK, resp)
@@ -344,12 +359,13 @@ func (h *Handler) ListConnectionEventSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"events": subs})
 }
 
-// automationWriteError maps a refused automation or subscription write to a 400.
-func automationWriteError(err error) *errx.Error {
+// automationWriteFailure answers a refused automation or subscription write.
+func automationWriteFailure(c *gin.Context, err error) {
 	if errors.Is(err, integration.ErrActionProviderMismatch) {
-		return errx.NewWithIdentifier(errx.BadRequest, "action_provider_mismatch", err.Error())
+		errx.JSON(c, errx.NewWithIdentifier(errx.BadRequest, "action_provider_mismatch", err.Error()))
+		return
 	}
-	return errx.New(errx.BadRequest, err.Error())
+	integrationFailure(c, err)
 }
 
 func (h *Handler) CreateConnectionEventSubscription(c *gin.Context) {
@@ -374,7 +390,7 @@ func (h *Handler) CreateConnectionEventSubscription(c *gin.Context) {
 	sub, err := h.IntegrationService.CreateEventSubscription(c.Request.Context(), orgID, connID,
 		strings.TrimSpace(p.EventType), models.IntegrationAction(strings.TrimSpace(p.Action)), p.Config, enabled)
 	if err != nil {
-		errx.JSON(c, automationWriteError(err))
+		automationWriteFailure(c, err)
 		return
 	}
 	h.auditIntegration(c, userID, models.AuditActionUpdate, connID, "event:"+p.EventType)
@@ -529,9 +545,9 @@ func (h *Handler) PushContactsToIntegration(c *gin.Context) {
 	if perr != nil {
 		switch {
 		case errors.Is(perr, integration.ErrPushReauth):
-			errx.JSON(c, errx.New(errx.Conflict, perr.Error()))
+			errx.JSON(c, errx.New(errx.Conflict, integration.ErrPushReauth.Error()))
 		default:
-			errx.JSON(c, errx.New(errx.BadRequest, perr.Error()))
+			integrationFailure(c, perr)
 		}
 		return
 	}
@@ -625,7 +641,7 @@ func (h *Handler) ReplaceConnectionFieldMappings(c *gin.Context) {
 		})
 	}
 	if err := h.IntegrationService.ReplaceFieldMappings(c.Request.Context(), orgID, connID, strings.TrimSpace(p.Object), mappings); err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	}
 	h.auditIntegration(c, userID, models.AuditActionUpdate, connID, "field_mappings")
@@ -660,7 +676,7 @@ func (h *Handler) UpdateConnectionConfig(c *gin.Context) {
 	}
 	conn, err := h.IntegrationService.UpdateConnectionConfig(c.Request.Context(), orgID, connID, p.ConfigCapabilities, strings.TrimSpace(p.SyncDirection))
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	}
 	h.auditIntegration(c, userID, models.AuditActionUpdate, connID, "config")
@@ -694,7 +710,7 @@ func (h *Handler) SetConnectionSigningKey(c *gin.Context) {
 		errx.JSON(c, errx.ErrNotFound)
 		return
 	case errors.Is(err, integration.ErrNotInboundProvider), errors.Is(err, integration.ErrInboundSigningKeyLength):
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	case err != nil:
 		errx.JSON(c, errx.InternalError())
@@ -722,7 +738,7 @@ func (h *Handler) RotateConnectionInboundURL(c *gin.Context) {
 		errx.JSON(c, errx.ErrNotFound)
 		return
 	case errors.Is(err, integration.ErrNotInboundProvider):
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	case err != nil:
 		errx.JSON(c, errx.InternalError())
@@ -747,7 +763,7 @@ func (h *Handler) GetConnectionWebhookSecret(c *gin.Context) {
 	}
 	secret, err := h.IntegrationService.WebhookSigningSecret(c.Request.Context(), orgID, connID)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -771,7 +787,7 @@ func (h *Handler) TestConnection(c *gin.Context) {
 	}
 	sent, err := h.IntegrationService.SendTestEvent(c.Request.Context(), orgID, connID)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	}
 	h.auditIntegration(c, userID, models.AuditActionUpdate, connID, "test")
@@ -827,7 +843,7 @@ func (h *Handler) CreateAutomation(c *gin.Context) {
 	}
 	a, err := h.IntegrationService.CreateAutomation(c.Request.Context(), orgID, w)
 	if err != nil {
-		errx.JSON(c, automationWriteError(err))
+		automationWriteFailure(c, err)
 		return
 	}
 	h.auditIntegrationEntity(c, userID, models.AuditActionCreate, models.AuditEntityAutomation, a.ID, a.Name)
@@ -852,7 +868,7 @@ func (h *Handler) UpdateAutomation(c *gin.Context) {
 	}
 	a, err := h.IntegrationService.UpdateAutomation(c.Request.Context(), orgID, id, w)
 	if err != nil {
-		errx.JSON(c, automationWriteError(err))
+		automationWriteFailure(c, err)
 		return
 	}
 	h.auditIntegrationEntity(c, userID, models.AuditActionUpdate, models.AuditEntityAutomation, id, a.Name)
@@ -887,7 +903,7 @@ func (h *Handler) PatchAutomationLayout(c *gin.Context) {
 		return
 	}
 	if err := h.IntegrationService.UpdateAutomationLayout(c.Request.Context(), orgID, id, w.Positions); err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		integrationFailure(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -930,7 +946,7 @@ func (h *Handler) TestAutomation(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req) // body is optional; server builds a sample if empty
 	res, derr := h.IntegrationService.DryRunAutomation(c.Request.Context(), orgID, id, req)
 	if derr != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, derr.Error()))
+		integrationFailure(c, derr)
 		return
 	}
 	c.JSON(http.StatusOK, res)
@@ -1038,7 +1054,7 @@ func (h *Handler) handleInboundBooking(c *gin.Context, provider models.Integrati
 		booking, lifecycle, err = integration.HandleCalComEvent(c.Request.Context(), h.IntegrationService.Repo(), matcher, conn.OrganizationID, body)
 	}
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		integrationFailure(c, err)
 		return
 	}
 
