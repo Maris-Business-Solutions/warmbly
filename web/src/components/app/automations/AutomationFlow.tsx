@@ -122,6 +122,7 @@ import { ExpressionReference } from "@/components/app/automations/ExpressionRefe
 import DealStagePicker from "@/components/app/crm/DealStagePicker";
 import TaskTypePicker from "@/components/app/crm/TaskTypePicker";
 import AssigneeTeamPicker, { type AssigneeValue } from "@/components/app/crm/AssigneeTeamPicker";
+import { HubSpotActionNote } from "@/components/app/crm/hubspotCrm";
 import { useAutomations } from "@/lib/api/hooks/app/automations/useAutomations";
 import ProviderGlyph from "@/app/app/integrations/_components/ProviderGlyph";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
@@ -2549,6 +2550,12 @@ function ActionEditor({
                 <NativeActionConfig action={data.action ?? ""} trigger={trigger} config={config} patchConfig={patchConfig} selfId={selfId} />
             ) : (
                 <>
+                    {data.action === "hubspot.upsert_contact" && (
+                        <HubSpotActionNote>
+                            HubSpot sync is automatic now: contacts are created and updated in HubSpot as they move
+                            through Warmbly, so this step is no longer needed. It keeps running if you leave it.
+                        </HubSpotActionNote>
+                    )}
                     {actionNeedsChannel(data.action ?? "") && (
                         <div>
                             <Label>Channel</Label>
@@ -2663,6 +2670,11 @@ function NativeActionConfig({
 
             {need === "deal" && (
                 <>
+                    <HubSpotActionNote>
+                        {action === "warmbly.create_deal"
+                            ? "The deal is created in HubSpot, in the pipeline and deal stage you pick."
+                            : "The deal moves in HubSpot too. Pipelines and deal stages are HubSpot's."}
+                    </HubSpotActionNote>
                     <div>
                         <Label>{action === "warmbly.create_deal" ? "Create the deal in" : "Move the deal to"}</Label>
                         <DealStagePicker
@@ -2719,6 +2731,9 @@ function NativeActionConfig({
 
             {need === "task" && (
                 <>
+                    <HubSpotActionNote>
+                        The task is created in HubSpot with a HubSpot task type. A member needs a HubSpot owner to be assigned.
+                    </HubSpotActionNote>
                     <div>
                         <Label>Task title</Label>
                         <TextInput

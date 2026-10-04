@@ -18,10 +18,10 @@ The data is split into groups. Every export includes **Workspace**; the rest are
 | Group | Contents |
 |-------|----------|
 | Workspace | The organization, members, roles, teams, mailboxes and their profile photos, mailbox tags, the column mappings saved by [mailbox imports](/guides/mailbox-import/), inbox vendor connections, [root redirects](/guides/sending-domains/#root-redirects), API keys, webhooks, and settings, including the website tracking site key. Always included |
-| Contacts | Contacts, labels, the column mappings saved by [contact imports](/guides/contacts-crm/#importing), segments with their manual overrides, forms with their images, submissions, personalized link tickets and funnel events, notes, activities, and the suppression list |
+| Contacts | Contacts, labels, the column mappings saved by [contact imports](/guides/contacts-crm/#importing), segments with their manual overrides, forms with their images, submissions, personalized link tickets and funnel events, notes, activities, the suppression list, and each contact's [HubSpot](/guides/hubspot/) record id, owner, lifecycle stage, lead status and company |
 | Campaigns | Campaigns, folders, sequences, senders, linked segments, attachments, the email image library, per-campaign settings, each lead's step progress with its per-link clicks and per-event opens, the colleagues [copied on each lead](/guides/campaigns/#copying-colleagues-on-one-lead), [placement monitors](/guides/placement-tests/#campaign-placement-monitors), and the [unsubscribe links](/guides/unsubscribe/) already in recipients' inboxes |
 | CRM | Pipelines, deals, tasks, and meeting bookings |
-| Automations | Automations, connected integrations, and lead sync sources |
+| Automations | Automations, connected integrations, lead sync sources, and the workspace's CRM mode: whether it runs on [HubSpot](/guides/hubspot/), its setup choices, the owner matches, and which Warmbly record is which HubSpot record |
 | Assistant | Assistant sessions and messages (including conversations held in [Slack](/guides/slack/)), skills, MCP servers, and AI settings |
 | Warmup | Warmup participation, routing rules, statistics and inbox placement history, appeals, and the standing of every penalised address, current or removed, so a move is not a way past a block |
 | Inbox | Unified inbox threads, message bodies, conversation labels, mailbox sync state, and completed automatic-tagging verdicts with their raw probabilities |
@@ -104,6 +104,7 @@ Some things belong to an instance rather than to a workspace, so they are not ap
 | An invalid workspace name | An archive's workspace name is applied only when it passes the same [naming rules](/api/error-codes/#name-refusals) as a rename. Otherwise the destination keeps its own |
 | Personal list layouts | Which columns each member shows on the contacts list and how they sort it, and how they arrange the unibox scope rail (Favorites, row order, hidden rows), belongs to the person, not the workspace. Everyone starts from the default view on the new instance and sets it up again |
 | Send plan snapshots | A campaign's precomputed "today's sending plan" is worked out from the campaign, its leads, its mailboxes and the instance's own limits, which all travel. The destination works it out again in the background, so a plan for today is current where the campaign now lives rather than a copy of what the source instance expected |
+| HubSpot sync queue and pull checkpoints | Writes queued for [HubSpot](/guides/hubspot/) and the record of how far each pull had read belong to the instance doing the work. The destination logs its own activity from the move onward and starts its own pull, which reads HubSpot afresh |
 
 An import runs as one transaction. If anything fails, nothing lands and the workspace is untouched.
 
@@ -120,6 +121,7 @@ An import runs as one transaction. If anything fails, nothing lands and the work
 - **Expect the daily send counters to be honoured.** Today's counts come across, so a mailbox cannot double its volume by being migrated mid-day.
 - **Re-authorize integrations** if you exported without credentials.
 - **Reconnect Slack, then link again.** A Slack install belongs to the Slack app of the instance that made it, and Slack sends that app's messages to that instance only. Reconnect under **Integrations > Slack** on the destination, and each member links their Slack account again (the bot offers a link button the first time they message it). Assistant conversations held in Slack arrive in the dashboard history, where you can continue them.
+- **Check HubSpot mode.** The mode, its choices and the links between Warmbly and HubSpot records travel, so the destination keeps updating the same HubSpot records instead of creating duplicates. Its token only keeps working when the archive carried credentials and the destination uses the same HubSpot app; otherwise reconnect HubSpot there. Writes still queued on the source do not travel, so let [sync health](/guides/hubspot/#sync-health-and-fixing-errors) show nothing pending before exporting. The destination starts its own pull.
 - **Rotate each webhook's signing secret.** The secret is encrypted at rest with the source instance's key, so it travels only in an export that carries credentials. Exported without them, the endpoint arrives with no secret and its deliveries will not verify at your receiver. Open each endpoint and use **Rotate secret**, then put the new value in your receiver.
 
 <Callout type="info" title="Moving from a self-hosted instance">

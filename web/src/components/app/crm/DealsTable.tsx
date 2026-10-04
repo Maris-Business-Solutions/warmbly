@@ -41,6 +41,10 @@ import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 import type SearchDeals from "@/lib/api/models/app/crm/SearchDeals";
 import type { DealSortBy } from "@/lib/api/models/app/crm/SearchDeals";
 import { EMPTY_DEAL_SEARCH } from "@/lib/api/models/app/crm/SearchDeals";
+import useMembers from "@/lib/api/hooks/app/organizations/useMembers";
+import type OrganizationMember from "@/lib/api/models/app/organizations/OrganizationMember";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { OpenInHubSpot } from "./HubSpot";
 
 const STATUS_TABS: { id: "all" | "open" | "won" | "lost"; label: string }[] = [
     { id: "all", label: "All" },
@@ -84,6 +88,15 @@ export default function DealsTable({
         for (const p of pipelines) m.set(p.id, p.name);
         return m;
     }, [pipelines]);
+
+    // HubSpot mode adds an Owner column and an "Open in HubSpot" link per row.
+    const { isHubSpot } = useCrmProvider();
+    const { data: members } = useMembers();
+    const memberByUser = React.useMemo(() => {
+        const m = new Map<string, OrganizationMember>();
+        for (const mem of members ?? []) m.set(mem.user_id, mem);
+        return m;
+    }, [members]);
 
     const statusTab: "all" | "open" | "won" | "lost" =
         filters.statuses.length === 1 ? filters.statuses[0] : "all";
@@ -160,7 +173,7 @@ export default function DealsTable({
                     Couldn’t load deals. Try again.
                 </div>
             ) : !search.isPending && deals.length === 0 ? (
-                <EmptyDeals hasFilters={total === 0 && hasAnyFilter(filters)} onClear={() => setFilters(EMPTY_DEAL_SEARCH)} />
+                <EmptyDeals hasFilters={total === 0 && hasAnyFilter(filters)} onClear={() => setFilters(EMPTY_DEAL_SEARCH)} hubspot={isHubSpot} />
             ) : (
                 <div className="flex-1 min-h-0 overflow-auto">
                     <table className="w-full border-collapse">
@@ -172,18 +185,22 @@ export default function DealsTable({
                                 <Th className="text-left">Stage</Th>
                                 <Th className="text-right">Value</Th>
                                 <Th className="text-left hidden md:table-cell">Status</Th>
-                                <Th className="text-left hidden md:table-cell">Close</Th>
+                                <Th className="text-left hidden md:table-cell">{isHubSpot ? "Close date" : "Close"}</Th>
+                                {isHubSpot && <Th className="text-left hidden md:table-cell">Deal owner</Th>}
+                                {isHubSpot && <Th className="text-right"> </Th>}
                             </tr>
                         </thead>
                         <tbody>
                             {search.isPending
-                                ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+                                ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={isHubSpot ? 9 : 7} />)
                                 : deals.map((d) => (
                                       <DealRow
                                           key={d.id}
                                           deal={d}
                                           pipelineName={pipelineName.get(d.pipeline_id)}
                                           onOpen={() => onOpenDeal(d)}
+                                          hubspot={isHubSpot}
+                                          owner={d.assigned_to ? memberByUser.get(d.assigned_to) : undefined}
                                       />
                                   ))}
                         </tbody>
@@ -226,10 +243,14 @@ function DealRow({
     deal,
     pipelineName,
     onOpen,
+    hubspot = false,
+    owner,
 }: {
     deal: Deal;
     pipelineName?: string;
     onOpen: () => void;
+    hubspot?: boolean;
+    owner?: OrganizationMember;
 }) {
     const status = STATUS_STYLE[deal.status];
     const contactLabel = deal.contact
@@ -299,8 +320,58 @@ function DealRow({
                     <span className="text-slate-300 text-[11.5px]">—</span>
                 )}
             </td>
+            {hubspot && (
+                <td className="px-3 max-w-0 hidden md:table-cell">
+                    <DealOwner deal={deal} owner={owner} />
+                </td>
+            )}
+            {hubspot && (
+                <td className="px-2 w-9 text-right">
+                    <OpenInHubSpot
+                        external={deal.external}
+                        label="Open deal in HubSpot"
+                        compact
+                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                    />
+                </td>
+            )}
         </tr>
     );
+}
+
+// The deal owner: a member, or the HubSpot owner's name when that owner is
+// not in this workspace.
+export function DealOwner({ deal, owner, compact = false }: { deal: Deal; owner?: OrganizationMember; compact?: boolean }) {
+    if (deal.assigned_to) {
+        const label = owner?.name?.trim() || owner?.email?.trim() || `Member ${deal.assigned_to.slice(0, 6)}`;
+        return (
+            <span className="inline-flex items-center gap-1.5 min-w-0" title={label}>
+                <span className="size-5 shrink-0 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[9px] font-semibold inline-flex items-center justify-center uppercase tracking-tight">
+                    {initials(label)}
+                </span>
+                {!compact && <span className="text-[11.5px] text-slate-600 truncate">{label}</span>}
+            </span>
+        );
+    }
+    const ext = deal.external?.owner_name?.trim();
+    if (ext) {
+        return (
+            <span className="inline-flex items-center gap-1.5 min-w-0" title={`${ext} (HubSpot owner, not a workspace member)`}>
+                <span className="size-5 shrink-0 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[9px] font-semibold inline-flex items-center justify-center uppercase tracking-tight">
+                    {initials(ext)}
+                </span>
+                {!compact && <span className="text-[11.5px] text-slate-600 truncate">{ext}</span>}
+            </span>
+        );
+    }
+    return compact ? null : <span className="text-slate-300 text-[11.5px]">No owner</span>;
+}
+
+function initials(label: string): string {
+    const local = label.split("@")[0] || label;
+    const parts = local.split(/[\s.\-_+]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (local.slice(0, 2) || "?").toUpperCase();
 }
 
 function PipelineFacet({
@@ -492,7 +563,7 @@ function FilterPopover({
     );
 }
 
-function EmptyDeals({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
+function EmptyDeals({ hasFilters, onClear, hubspot = false }: { hasFilters: boolean; onClear: () => void; hubspot?: boolean }) {
     return (
         <div className="px-5 py-16 text-center">
             <div className="mx-auto size-9 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center mb-3">
@@ -504,7 +575,9 @@ function EmptyDeals({ hasFilters, onClear }: { hasFilters: boolean; onClear: () 
             <p className="text-[11.5px] text-slate-400 mb-4 max-w-[40ch] mx-auto leading-relaxed">
                 {hasFilters
                     ? "Try widening or clearing the filters to see more."
-                    : "Deals you create across any pipeline show up here: searchable, sortable, and totalled across every pipeline."}
+                    : hubspot
+                      ? "Deals from your HubSpot pipelines show up here, and deals you create here are saved to HubSpot."
+                      : "Deals you create across any pipeline show up here: searchable, sortable, and totalled across every pipeline."}
             </p>
             {hasFilters && (
                 <button
@@ -530,11 +603,11 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
     );
 }
 
-function SkeletonRow() {
+function SkeletonRow({ cols = 7 }: { cols?: number }) {
     return (
         <tr className="h-11 border-b border-slate-200/60">
-            {Array.from({ length: 7 }).map((_, i) => (
-                <td key={i} className={`px-3 ${[1, 2, 5, 6].includes(i) ? "hidden md:table-cell" : ""}`}>
+            {Array.from({ length: cols }).map((_, i) => (
+                <td key={i} className={`px-3 ${[1, 2, 5, 6, 7].includes(i) ? "hidden md:table-cell" : ""}`}>
                     <div className="h-3 bg-slate-100 rounded animate-pulse" style={{ width: `${50 + ((i * 13) % 40)}%` }} />
                 </td>
             ))}

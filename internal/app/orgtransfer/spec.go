@@ -322,6 +322,12 @@ var Tables = []Table{
 		Scope: `segment_id IN (SELECT id FROM segments WHERE organization_id = $1)`,
 	},
 	{
+		Name: "crm_contact_records", Group: models.OrgDataGroupContacts,
+		Scope:         scopeOrg,
+		ResetOnImport: []string{"synced_at"},
+		Note:          "A connected CRM's view of each contact (record id, owner, lifecycle stage, lead status, company).",
+	},
+	{
 		Name: "contact_activities", Group: models.OrgDataGroupContacts,
 		Scope: scopeOrg,
 	},
@@ -535,6 +541,21 @@ var Tables = []Table{
 			{Column: "refresh_token_encrypted", Domain: KeyDomainOrgDEK},
 		},
 		ResetOnImport: []string{"last_synced_at", "last_error", "last_error_at", "health_checked_at"},
+	},
+	{
+		Name: "crm_settings", Group: models.OrgDataGroupAutomations,
+		Scope: scopeOrg,
+		Note:  "Which CRM the workspace runs on and its setup choices. The connection travels with it, so HubSpot mode resumes on the destination once its OAuth app is configured.",
+	},
+	{
+		Name: "crm_owners", Group: models.OrgDataGroupAutomations,
+		Scope: scopeOrg,
+		Note:  "The connected CRM's users and the member each one was matched to.",
+	},
+	{
+		Name: "crm_external_links", Group: models.OrgDataGroupAutomations,
+		Scope: scopeOrg,
+		Note:  "Which mirrored deal, task, note, pipeline or stage is which CRM record, so the destination updates the same records instead of creating duplicates.",
 	},
 	{
 		Name: "automations", Group: models.OrgDataGroupAutomations,
@@ -903,6 +924,8 @@ var ExcludedTables = map[string]string{
 	"api_idempotency_keys":         "A short-lived replay cache for in-flight API requests.",
 	"realtime_events":              "The websocket outbox. Every row is already delivered or expired.",
 	"integration_oauth_states":     "In-flight OAuth handshakes, valid for minutes and bound to the source instance's redirect URL.",
+	"crm_sync_jobs":                "The outbox of pending CRM writes on this instance; the destination's own events feed its outbox.",
+	"crm_sync_cursors":             "Pull checkpoints for this instance; the destination starts its own pull.",
 	"oauth_authorization_codes":    "Single-use authorization codes, valid for seconds.",
 	"scheduled_deletions":          "Instance lifecycle state. Importing a pending deletion would schedule the destination workspace for destruction.",
 	"dedicated_worker_assignments": "Worker topology, which is a property of the instance rather than the workspace.",

@@ -1,6 +1,6 @@
 ---
 title: CRM
-description: Manage pipelines, stages, deals, task types, and CRM tasks for your organization.
+description: Manage pipelines, stages, deals, task types, and CRM tasks for your organization, and run the CRM on HubSpot.
 ---
 
 The CRM endpoints model your sales pipeline: deals move through stages of a pipeline, and CRM tasks track the follow-up work attached to contacts and deals. Every route is organization-scoped and requires an active organization on the session or API key. Read access uses the **CRM** read scope (`READ_CRM` / org permission `view_contacts`), and mutations use the **CRM** write scope (`WRITE_CRM` / org permission `manage_contacts`), except team membership operations which gate on `manage_team`. See [authentication](/api/authentication/) and [permissions](/api/permissions/) for how scopes map to API keys and member roles.
@@ -1052,6 +1052,437 @@ Auth: **Scope** `WRITE_CRM` · **Org permission** `manage_contacts`
 ```json
 { "affected": 128 }
 ```
+
+## HubSpot mode
+
+A workspace can run its CRM on [HubSpot](/guides/hubspot/) instead of Warmbly's own. In HubSpot mode the endpoints above keep their shapes, and the records they return are HubSpot's, mirrored into Warmbly:
+
+- a create, update or delete of a deal, task or note is written to HubSpot before it is saved. A refusal from HubSpot comes back as an error and nothing is saved; see [CRM provider refusals](/api/error-codes/#crm-provider-refusals)
+- creating, updating or deleting a pipeline, stage or task type answers `409 crm_managed_externally`. `GET /crm/pipelines` lists only HubSpot pipelines, and `GET /crm/task-types` returns HubSpot's four types (To-do, Call, Email, LinkedIn)
+- `POST /crm/deals/search` and `POST /crm/deals/summary` cover only HubSpot pipelines when no `pipeline_ids` filter is given, so deals in Warmbly-only pipelines are left out
+- setting a deal's `status` to `won` or `lost` moves it to the pipeline's first closed stage of that kind, and moving it to a closed stage sets its `status`. `assigned_to` must be a member matched to a HubSpot owner (`400 crm_owner_unmapped`)
+
+Deals, tasks, notes and pipelines that live in HubSpot carry an `external` object, and the stages of a HubSpot pipeline carry HubSpot's stage metadata. Both are absent outside HubSpot mode.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `external.provider` | string | Always `hubspot`. |
+| `external.external_id` | string | The HubSpot record id. |
+| `external.url` | string | Where the record opens in HubSpot: the deal, the HubSpot tasks view, the note's contact, or the pipeline settings. Omitted when unknown. |
+| `external.synced_at` | string (date-time) | When the record was last written to or read from HubSpot. |
+| `external.owner_name` | string | The HubSpot owner, on a deal or task whose owner is not a workspace member (so `assigned_to` is empty). |
+| `stages[].closed` | boolean | The stage is a closed stage in HubSpot. Omitted when false. |
+| `stages[].won` | boolean | The stage is closed won. Omitted when false. |
+| `stages[].probability` | number | HubSpot's deal probability for the stage, from `0` to `1`. |
+
+```json
+{
+  "id": "1f2e3d4c-5b6a-4789-90ab-cdef01234567",
+  "name": "Acme renewal",
+  "status": "open",
+  "external": {
+    "provider": "hubspot",
+    "external_id": "18342007291",
+    "url": "https://app.hubspot.com/contacts/4711/record/0-3/18342007291",
+    "synced_at": "2026-06-10T09:30:04Z",
+    "owner_name": "Dana Kim"
+  }
+}
+```
+
+The routes below configure HubSpot mode and read HubSpot's side of a contact. Except for `GET /crm/settings`, `GET /crm/owners`, `GET /crm/sync` and `GET /crm/backfill`, each answers `409 crm_not_connected` while the workspace is not in HubSpot mode, and `501` on an instance where CRM providers are not available.
+
+## Get CRM settings
+
+`GET /crm/settings`
+
+Return the workspace's CRM mode, its setup choices and the connected HubSpot account. A workspace that never chose returns `provider: "native"` with the default choices.
+
+Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
+
+### Response
+
+```json
+{
+  "organization_id": "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+  "provider": "hubspot",
+  "connection_id": "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b",
+  "config": {
+    "activity": { "sent": true, "replies": true, "bounces": true, "unsubscribes": true, "opens": false, "clicks": false, "meetings": true },
+    "create_contacts": true,
+    "create_companies": true,
+    "write_properties": true,
+    "positive_reply": { "lead_status": "IN_PROGRESS", "lifecycle_stage": "", "create_deal": false },
+    "exit_rules": { "deal_created": true, "lifecycle_stages": ["opportunity", "customer"], "opted_out": true },
+    "guards": { "skip_lifecycle_stages": ["customer", "evangelist"], "skip_open_deals": true, "skip_other_owners": false, "skip_opted_out": true },
+    "deal_pipelines": [],
+    "display_properties": ["jobtitle"],
+    "field_map": { "first_name": "firstname", "last_name": "lastname", "company": "company", "phone": "phone" },
+    "field_direction": { "first_name": "both", "last_name": "both", "company": "both", "phone": "both" }
+  },
+  "setup_completed_at": "2026-06-01T12:04:00Z",
+  "updated_at": "2026-06-01T12:04:00Z",
+  "account": {
+    "external_id": "4711",
+    "name": "acme.com",
+    "app_url": "https://app.hubspot.com/contacts/4711",
+    "status": "connected",
+    "health": "healthy"
+  }
+}
+```
+
+`account.missing_scopes` lists the HubSpot permissions the connection lacks for HubSpot mode, when there are any.
+
+## Update CRM settings
+
+`PUT /crm/settings`
+
+Choose the CRM and store the setup choices. Switching to HubSpot creates the Warmbly contact property group in HubSpot (when `write_properties` is on) and starts the first pull in the background. Naturally safe to retry: it writes an end state.
+
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
+
+### Request body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `provider` | string | no | `native` or `hubspot`. |
+| `connection_id` | uuid | no | The workspace's HubSpot [integration connection](/api/reference/integrations/). Required once, to use HubSpot. |
+| `config` | object | no | The whole set of choices, replacing the stored one. Shape as in the response above. |
+| `complete_setup` | boolean | no | Mark the setup wizard as finished. |
+
+`config` is validated before it is stored: `field_map` keys are `first_name`, `last_name`, `email`, `company`, `phone` or `custom:<key>`; each `field_direction` entry is `push`, `pull` or `both` and names a mapped field; `deal_pipelines` (HubSpot pipeline ids, empty for all) holds at most 50 entries, `display_properties` at most 40, `field_map` at most 100, and each lifecycle stage list at most 20. `positive_reply.create_deal` needs `deal_pipeline_id` and `deal_stage_id`, which are Warmbly's ids for a mirrored pipeline and stage.
+
+```json
+{
+  "provider": "hubspot",
+  "connection_id": "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b",
+  "complete_setup": true
+}
+```
+
+### Response
+
+The settings object, as returned by `GET /crm/settings`. A connection without the permissions HubSpot mode needs answers `409 crm_reauth_required`; a `connection_id` that is not one of the workspace's HubSpot connections answers `400`.
+
+## Get CRM metadata
+
+`GET /crm/metadata`
+
+Return HubSpot's vocabulary for the setup pickers: lifecycle stages, lead statuses, task types, contact properties (hidden and calculated ones left out) and deal pipelines. Pipelines here carry HubSpot's ids, as `deal_pipelines` expects.
+
+Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
+
+### Response
+
+```json
+{
+  "lifecycle_stages": [{ "value": "lead", "label": "Lead" }, { "value": "customer", "label": "Customer" }],
+  "lead_statuses": [{ "value": "IN_PROGRESS", "label": "In Progress" }],
+  "task_types": [{ "value": "TODO", "label": "To-do" }, { "value": "CALL", "label": "Call" }],
+  "properties": [{ "name": "jobtitle", "label": "Job Title", "type": "string", "group_name": "contactinformation", "read_only": false }],
+  "pipelines": [{ "value": "default", "label": "Sales Pipeline" }]
+}
+```
+
+## List CRM owners
+
+`GET /crm/owners`
+
+List HubSpot's owners and the member each one is matched to. Owners are matched by email address unless a match was chosen by hand (`user_pinned`).
+
+Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "external_id": "82731",
+      "email": "dana@acme.com",
+      "first_name": "Dana",
+      "last_name": "Kim",
+      "user_id": "bb22cc33-dd44-4ee5-86ff-770011223344",
+      "user_pinned": false,
+      "archived": false
+    }
+  ]
+}
+```
+
+## Match a CRM owner
+
+`PUT /crm/owners/:externalId`
+
+Match a HubSpot owner to a member, or clear the match with `null`. A match set here is kept when email matching runs again. Naturally safe to retry.
+
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
+
+| Parameter | In | Type | Description |
+| --- | --- | --- | --- |
+| `externalId` | path | string | HubSpot owner id. |
+
+### Request body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `user_id` | uuid or null | yes | The member, or `null` to clear. |
+
+### Response
+
+`204 No Content`. `404` when the owner or the member is not in the workspace.
+
+## Get sync health
+
+`GET /crm/sync`
+
+Report the sync queue (pending, failed, and finished in the last 24 hours), the latest 50 failures, each pull's last run, and how many records are mirrored.
+
+Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
+
+### Response
+
+```json
+{
+  "pending": 2,
+  "failed": 1,
+  "done_24h": 418,
+  "last_synced_at": "2026-06-10T09:31:12Z",
+  "cursors": [
+    { "object_type": "deals", "cursor_at": "2026-06-10T09:30:58Z", "last_run_at": "2026-06-10T09:31:02Z" }
+  ],
+  "failures": [
+    {
+      "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+      "organization_id": "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+      "provider": "hubspot",
+      "kind": "push_deal",
+      "subject": "Acme renewal",
+      "status": "failed",
+      "attempts": 6,
+      "next_attempt_at": "2026-06-10T03:12:00Z",
+      "last_error": "HubSpot refused the change: Property \"amount\" is required",
+      "created_at": "2026-06-09T18:02:00Z",
+      "updated_at": "2026-06-10T03:12:04Z",
+      "finished_at": "2026-06-10T03:12:04Z"
+    }
+  ],
+  "counts": { "contacts": 1820, "deals": 64, "tasks": 211, "pipelines": 2, "owners": 9 }
+}
+```
+
+`cursors[].object_type` is `owners`, `pipelines`, `deals`, `tasks` or `contacts`, with `last_error` set when its last run failed.
+
+## Sync now
+
+`POST /crm/sync`
+
+Start a full pull from HubSpot in the background.
+
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
+
+### Response
+
+`202 Accepted`. A second call within 30 seconds answers `429 crm_sync_running`.
+
+## Retry or discard failed syncs
+
+`POST /crm/sync/retry` · `POST /crm/sync/discard`
+
+Requeue failed sync items, or drop them. Without a body (or with an empty `ids`) every failed item is affected. Naturally safe to retry: an item already requeued or dropped is not failed any more.
+
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
+
+### Request body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `ids` | array of uuid | no | Failed items to act on, at most 500. |
+
+### Response
+
+```json
+{ "affected": 3 }
+```
+
+## Copy Warmbly CRM data into HubSpot
+
+`GET /crm/backfill` · `POST /crm/backfill`
+
+`GET` counts the deals, tasks and notes that are not in HubSpot yet. `POST` copies the kinds you pick, once, in the background: deals move onto the first HubSpot pipeline, keeping a stage of the same name or else taking the first stage that matches their status. A copied record is never copied twice, and a second `POST` while one runs is folded into it.
+
+Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
+
+### Request body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `deals` | boolean | no | Copy deals. |
+| `tasks` | boolean | no | Copy tasks. |
+| `notes` | boolean | no | Copy notes. |
+
+At least one must be `true`.
+
+### Response
+
+`GET` returns `{ "deals": 12, "tasks": 40, "notes": 7 }`. `POST` returns `202 Accepted`; progress shows in [sync health](#get-sync-health).
+
+## Get a contact's HubSpot record
+
+`GET /crm/contacts/:id`
+
+Return HubSpot's side of a Warmbly contact as last mirrored: owner, lifecycle stage, lead status, company, opt-out and the properties chosen in `display_properties`. A contact not linked to HubSpot returns `linked: false` and nothing else.
+
+Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
+
+| Parameter | In | Type | Description |
+| --- | --- | --- | --- |
+| `id` | path | uuid | Warmbly contact ID. |
+
+### Response
+
+```json
+{
+  "provider": "hubspot",
+  "linked": true,
+  "external_id": "51234",
+  "url": "https://app.hubspot.com/contacts/4711/record/0-1/51234",
+  "owner": { "external_id": "82731", "email": "dana@acme.com", "first_name": "Dana", "last_name": "Kim", "user_pinned": false, "archived": false },
+  "lifecycle_stage": { "value": "lead", "label": "Lead" },
+  "lead_status": { "value": "IN_PROGRESS", "label": "In Progress" },
+  "company": { "external_id": "9921", "name": "Acme", "domain": "acme.com", "url": "https://app.hubspot.com/contacts/4711/record/0-2/9921" },
+  "opted_out": false,
+  "properties": [{ "name": "jobtitle", "label": "Job Title", "value": "Head of Sales" }],
+  "synced_at": "2026-06-10T09:30:04Z"
+}
+```
+
+## Refresh a contact's HubSpot record
+
+`POST /crm/contacts/:id/refresh`
+
+Pull the contact's HubSpot record, deals, tasks and notes now. An unlinked contact is looked up by email and linked when HubSpot has it; nothing is created. Debounced per contact (one pull a minute, one lookup every five minutes), so it is safe to call whenever a contact is opened.
+
+Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
+
+### Response
+
+The contact's HubSpot record, as in `GET /crm/contacts/:id`.
+
+## Link a contact to HubSpot
+
+`POST /crm/contacts/:id/link`
+
+Find the contact in HubSpot by email, or create it there when the workspace allows creating contacts, then pull its deals, tasks and notes. Naturally safe to retry: a linked contact stays linked to the same record.
+
+Auth: **Scope** `WRITE_CRM` · **Org permission** `manage_contacts`
+
+### Response
+
+The contact's HubSpot record, as in `GET /crm/contacts/:id`. `404 crm_contact_missing` when HubSpot does not have the contact and creating contacts is off.
+
+## Update a contact's HubSpot record
+
+`PATCH /crm/contacts/:id`
+
+Write the contact's owner, lifecycle stage or lead status to HubSpot, then to the mirror.
+
+Auth: **Scope** `WRITE_CRM` · **Org permission** `manage_contacts`
+
+### Request body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `owner_external_id` | string | no | HubSpot owner id. |
+| `lifecycle_stage` | string | no | A lifecycle stage value from `GET /crm/metadata`. |
+| `lead_status` | string | no | A lead status value from `GET /crm/metadata`. |
+
+Each value is at most 100 characters.
+
+### Response
+
+The updated HubSpot record, as in `GET /crm/contacts/:id`. `404 crm_contact_missing` when the contact is not linked to HubSpot.
+
+## List HubSpot lists
+
+`GET /crm/lists`
+
+List the HubSpot account's contact lists, newest first, for import. Needs HubSpot's optional list permission; a connection without it answers `409 crm_reauth_required`.
+
+Auth: **Scope** `READ_CRM` · **Org permission** `manage_contacts`
+
+| Parameter | In | Type | Description |
+| --- | --- | --- | --- |
+| `q` | query | string | Filter by list name (at most 200 characters). |
+| `cursor` | query | string | Opaque cursor from a previous page's `pagination.next_cursor`. An unrecognized one answers `400`. |
+| `limit` | query | int | Page size, 1 to 100 (default 25). |
+
+### Response
+
+```json
+{
+  "data": [
+    { "external_id": "212", "name": "Q3 webinar attendees", "size": 840, "dynamic": true, "updated_at": "2026-06-08T15:20:00Z" }
+  ],
+  "pagination": { "next_cursor": "bGlzdDoyNQ", "has_more": true }
+}
+```
+
+## Preview a HubSpot list import
+
+`POST /crm/lists/preview`
+
+Count who a list would bring in and who it skips, by reason, without writing anything.
+
+Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
+
+### Request body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `list_id` | string | yes | HubSpot list id (at most 64 characters). |
+| `apply_guards` | boolean | no | Skip the contacts the workspace's import guards exclude (`config.guards`). |
+
+### Response
+
+```json
+{
+  "list_name": "Q3 webinar attendees",
+  "total": 840,
+  "included": 772,
+  "skipped": [
+    { "reason": "opted_out", "label": "Opted out of email in HubSpot", "count": 31 },
+    { "reason": "lifecycle", "label": "Lifecycle stage is Customer", "count": 25 },
+    { "reason": "no_email", "label": "No email address", "count": 12 }
+  ],
+  "sample": [{ "email": "sam@globex.com", "first_name": "Sam", "last_name": "Lee", "company": "Globex" }],
+  "truncated": false
+}
+```
+
+`reason` is `opted_out`, `lifecycle`, `open_deal`, `other_owner`, `no_email` or `duplicate`. One import reads at most 25,000 contacts; `truncated` is `true` when the list is larger.
+
+## Import a HubSpot list
+
+`POST /crm/lists/import`
+
+Turn a list into a [contact import](/api/reference/contacts/) draft, finished in the regular import review. The body and the skip rules are those of the preview. The imported contacts are linked to their HubSpot records a few minutes later. The draft belongs to the caller (for an API key, the member who created it).
+
+Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
+
+### Response
+
+`201 Created`.
+
+```json
+{
+  "import_id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+  "preview": { "list_name": "Q3 webinar attendees", "total": 840, "included": 772, "skipped": [], "sample": [], "truncated": false }
+}
+```
+
+`400` when nobody in the list can be imported.
 
 ## Errors
 

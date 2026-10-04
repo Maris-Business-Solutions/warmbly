@@ -60,6 +60,32 @@ type CRMService interface {
 	CreateTaskType(ctx context.Context, orgID uuid.UUID, data *models.CreateCRMTaskType) (*models.CRMTaskType, *errx.Error)
 	UpdateTaskType(ctx context.Context, orgID, typeID uuid.UUID, data *models.UpdateCRMTaskType) (*models.CRMTaskType, *errx.Error)
 	DeleteTaskType(ctx context.Context, orgID, typeID uuid.UUID) *errx.Error
+
+	// SetExternal attaches the connected CRM the service writes through to.
+	SetExternal(e External)
+}
+
+// External is a connected CRM (HubSpot). While it is active for a workspace,
+// every change is written to it first and the local rows are its mirror.
+type External interface {
+	Active(ctx context.Context, orgID uuid.UUID) bool
+	PushDealCreate(ctx context.Context, orgID uuid.UUID, deal *models.Deal) *errx.Error
+	PushDealUpdate(ctx context.Context, orgID uuid.UUID, before *models.Deal, data *models.UpdateDeal) (*models.UpdateDeal, *errx.Error)
+	PushDealDelete(ctx context.Context, orgID, dealID uuid.UUID) *errx.Error
+	PushTaskCreate(ctx context.Context, orgID uuid.UUID, task *models.CRMTask) *errx.Error
+	PushTaskUpdate(ctx context.Context, orgID uuid.UUID, before *models.CRMTask, data *models.UpdateCRMTask) *errx.Error
+	PushTasksBulk(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, status, priority *string) *errx.Error
+	PushTasksDelete(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) *errx.Error
+	PushNoteCreate(ctx context.Context, orgID uuid.UUID, note *models.ContactNote) *errx.Error
+	PushNoteUpdate(ctx context.Context, orgID, noteID uuid.UUID, content string) *errx.Error
+	PushNoteDelete(ctx context.Context, orgID, noteID uuid.UUID) *errx.Error
+	TaskTypes(ctx context.Context, orgID uuid.UUID) []models.CRMTaskType
+	DecorateDeals(ctx context.Context, orgID uuid.UUID, deals []models.Deal)
+	DecorateTasks(ctx context.Context, orgID uuid.UUID, tasks []models.CRMTask)
+	DecorateNotes(ctx context.Context, orgID uuid.UUID, notes []models.ContactNote)
+	DecoratePipelines(ctx context.Context, orgID uuid.UUID, pipes []models.Pipeline)
+	PipelinesManaged() *errx.Error
+	TaskTypesManaged() *errx.Error
 }
 
 // maxTaskBulkBatch bounds an explicit id list in one bulk request body. A
@@ -68,6 +94,17 @@ const maxTaskBulkBatch = 1000
 
 type crmService struct {
 	repo repository.CRMRepository
+	ext  External
+}
+
+func (s *crmService) SetExternal(e External) { s.ext = e }
+
+// external returns the connected CRM when it runs this workspace's CRM.
+func (s *crmService) external(ctx context.Context, orgID uuid.UUID) External {
+	if s.ext != nil && s.ext.Active(ctx, orgID) {
+		return s.ext
+	}
+	return nil
 }
 
 func NewService(repo repository.CRMRepository) CRMService {
@@ -101,6 +138,13 @@ func (s *crmService) CreateNote(ctx context.Context, orgID, contactID, userID uu
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		if xerr := ext.PushNoteCreate(ctx, orgID, note); xerr != nil {
+			_ = s.repo.DeleteNote(ctx, orgID, note.ID)
+			return nil, xerr
+		}
+		ext.DecorateNotes(ctx, orgID, []models.ContactNote{*note})
+	}
 
 	// Record activity
 	_ = s.repo.RecordActivity(ctx, orgID, contactID, &userID, models.ActivityNoteAdded, map[string]interface{}{
@@ -118,6 +162,9 @@ func (s *crmService) ListNotes(ctx context.Context, orgID, contactID uuid.UUID, 
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		ext.DecorateNotes(ctx, orgID, result.Data)
+	}
 	return result, nil
 }
 
@@ -129,6 +176,11 @@ func (s *crmService) UpdateNote(ctx context.Context, orgID, noteID uuid.UUID, da
 		return nil, errx.New(errx.BadRequest, "content must be at most 10000 characters")
 	}
 
+	if ext := s.external(ctx, orgID); ext != nil {
+		if xerr := ext.PushNoteUpdate(ctx, orgID, noteID, *data.Content); xerr != nil {
+			return nil, xerr
+		}
+	}
 	note, err := s.repo.UpdateNote(ctx, orgID, noteID, *data.Content)
 	if err != nil {
 		return nil, toErrx(err)
@@ -143,6 +195,11 @@ func (s *crmService) UpdateNote(ctx context.Context, orgID, noteID uuid.UUID, da
 }
 
 func (s *crmService) DeleteNote(ctx context.Context, orgID, noteID uuid.UUID) *errx.Error {
+	if ext := s.external(ctx, orgID); ext != nil {
+		if xerr := ext.PushNoteDelete(ctx, orgID, noteID); xerr != nil {
+			return xerr
+		}
+	}
 	if err := s.repo.DeleteNote(ctx, orgID, noteID); err != nil {
 		return toErrx(err)
 	}
@@ -169,6 +226,9 @@ func (s *crmService) ListActivities(ctx context.Context, orgID, contactID uuid.U
 // =====================
 
 func (s *crmService) CreatePipeline(ctx context.Context, orgID uuid.UUID, data *models.CreatePipeline) (*models.Pipeline, *errx.Error) {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return nil, ext.PipelinesManaged()
+	}
 	if len(data.Name) == 0 || len(data.Name) > 255 {
 		return nil, errx.New(errx.BadRequest, "pipeline name must be between 1 and 255 characters")
 	}
@@ -185,6 +245,11 @@ func (s *crmService) GetPipeline(ctx context.Context, orgID, pipelineID uuid.UUI
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil && pipeline != nil {
+		one := []models.Pipeline{*pipeline}
+		ext.DecoratePipelines(ctx, orgID, one)
+		pipeline = &one[0]
+	}
 	return pipeline, nil
 }
 
@@ -193,10 +258,24 @@ func (s *crmService) ListPipelines(ctx context.Context, orgID uuid.UUID) ([]mode
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		// Only HubSpot's pipelines exist while HubSpot is the CRM.
+		ext.DecoratePipelines(ctx, orgID, pipelines)
+		kept := pipelines[:0]
+		for _, p := range pipelines {
+			if p.External != nil {
+				kept = append(kept, p)
+			}
+		}
+		pipelines = kept
+	}
 	return pipelines, nil
 }
 
 func (s *crmService) UpdatePipeline(ctx context.Context, orgID, pipelineID uuid.UUID, data *models.UpdatePipeline) (*models.Pipeline, *errx.Error) {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return nil, ext.PipelinesManaged()
+	}
 	if data.Name == nil || len(*data.Name) == 0 || len(*data.Name) > 255 {
 		return nil, errx.New(errx.BadRequest, "pipeline name must be between 1 and 255 characters")
 	}
@@ -209,6 +288,9 @@ func (s *crmService) UpdatePipeline(ctx context.Context, orgID, pipelineID uuid.
 }
 
 func (s *crmService) DeletePipeline(ctx context.Context, orgID, pipelineID uuid.UUID) *errx.Error {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return ext.PipelinesManaged()
+	}
 	if err := s.repo.DeletePipeline(ctx, orgID, pipelineID); err != nil {
 		return toErrx(err)
 	}
@@ -220,6 +302,9 @@ func (s *crmService) DeletePipeline(ctx context.Context, orgID, pipelineID uuid.
 // =====================
 
 func (s *crmService) CreateStage(ctx context.Context, orgID, pipelineID uuid.UUID, data *models.CreatePipelineStage) (*models.PipelineStage, *errx.Error) {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return nil, ext.PipelinesManaged()
+	}
 	if len(data.Name) == 0 || len(data.Name) > 255 {
 		return nil, errx.New(errx.BadRequest, "stage name must be between 1 and 255 characters")
 	}
@@ -232,6 +317,9 @@ func (s *crmService) CreateStage(ctx context.Context, orgID, pipelineID uuid.UUI
 }
 
 func (s *crmService) UpdateStage(ctx context.Context, orgID, stageID uuid.UUID, data *models.UpdatePipelineStage) (*models.PipelineStage, *errx.Error) {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return nil, ext.PipelinesManaged()
+	}
 	stage, err := s.repo.UpdateStage(ctx, orgID, stageID, data)
 	if err != nil {
 		return nil, toErrx(err)
@@ -240,6 +328,9 @@ func (s *crmService) UpdateStage(ctx context.Context, orgID, stageID uuid.UUID, 
 }
 
 func (s *crmService) DeleteStage(ctx context.Context, orgID, stageID uuid.UUID) *errx.Error {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return ext.PipelinesManaged()
+	}
 	if err := s.repo.DeleteStage(ctx, orgID, stageID); err != nil {
 		return toErrx(err)
 	}
@@ -259,6 +350,13 @@ func (s *crmService) CreateDeal(ctx context.Context, orgID uuid.UUID, data *mode
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		if xerr := ext.PushDealCreate(ctx, orgID, deal); xerr != nil {
+			_ = s.repo.DeleteDeal(ctx, orgID, deal.ID)
+			return nil, xerr
+		}
+		ext.DecorateDeals(ctx, orgID, []models.Deal{*deal})
+	}
 
 	// Record activity if deal has a contact
 	if deal.ContactID != nil {
@@ -276,6 +374,11 @@ func (s *crmService) GetDeal(ctx context.Context, orgID, dealID uuid.UUID) (*mod
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil && deal != nil {
+		one := []models.Deal{*deal}
+		ext.DecorateDeals(ctx, orgID, one)
+		deal = &one[0]
+	}
 	return deal, nil
 }
 
@@ -287,6 +390,9 @@ func (s *crmService) ListDeals(ctx context.Context, orgID uuid.UUID, pipelineID,
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		ext.DecorateDeals(ctx, orgID, result.Data)
+	}
 	return result, nil
 }
 
@@ -297,14 +403,24 @@ func (s *crmService) SearchDeals(ctx context.Context, orgID uuid.UUID, filters m
 	if offset < 0 {
 		offset = 0
 	}
+	ext := s.external(ctx, orgID)
+	if ext != nil {
+		filters = s.hubspotPipelinesOnly(ctx, orgID, filters)
+	}
 	result, err := s.repo.SearchDeals(ctx, orgID, filters, limit, offset)
 	if err != nil {
 		return nil, toErrx(err)
+	}
+	if ext != nil {
+		ext.DecorateDeals(ctx, orgID, result.Data)
 	}
 	return result, nil
 }
 
 func (s *crmService) DealsSummary(ctx context.Context, orgID uuid.UUID, filters models.SearchDeals) (*models.DealsSummary, *errx.Error) {
+	if s.external(ctx, orgID) != nil {
+		filters = s.hubspotPipelinesOnly(ctx, orgID, filters)
+	}
 	result, err := s.repo.DealsSummary(ctx, orgID, filters)
 	if err != nil {
 		return nil, toErrx(err)
@@ -315,6 +431,14 @@ func (s *crmService) DealsSummary(ctx context.Context, orgID uuid.UUID, filters 
 func (s *crmService) UpdateDeal(ctx context.Context, orgID, dealID uuid.UUID, userID *uuid.UUID, data *models.UpdateDeal) (*models.Deal, *errx.Error) {
 	// Get existing deal for activity recording
 	existingDeal, _ := s.repo.GetDeal(ctx, orgID, dealID)
+	ext := s.external(ctx, orgID)
+	if ext != nil && existingDeal != nil {
+		adjusted, xerr := ext.PushDealUpdate(ctx, orgID, existingDeal, data)
+		if xerr != nil {
+			return nil, xerr
+		}
+		data = adjusted
+	}
 
 	deal, err := s.repo.UpdateDeal(ctx, orgID, dealID, data)
 	if err != nil {
@@ -349,10 +473,20 @@ func (s *crmService) UpdateDeal(ctx context.Context, orgID, dealID uuid.UUID, us
 		}
 	}
 
+	if ext != nil {
+		one := []models.Deal{*deal}
+		ext.DecorateDeals(ctx, orgID, one)
+		deal = &one[0]
+	}
 	return deal, nil
 }
 
 func (s *crmService) DeleteDeal(ctx context.Context, orgID, dealID uuid.UUID) *errx.Error {
+	if ext := s.external(ctx, orgID); ext != nil {
+		if xerr := ext.PushDealDelete(ctx, orgID, dealID); xerr != nil {
+			return xerr
+		}
+	}
 	if err := s.repo.DeleteDeal(ctx, orgID, dealID); err != nil {
 		return toErrx(err)
 	}
@@ -363,6 +497,9 @@ func (s *crmService) GetDealsByContact(ctx context.Context, orgID, contactID uui
 	deals, err := s.repo.GetDealsByContact(ctx, orgID, contactID)
 	if err != nil {
 		return nil, toErrx(err)
+	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		ext.DecorateDeals(ctx, orgID, deals)
 	}
 	return deals, nil
 }
@@ -379,6 +516,15 @@ func (s *crmService) CreateCRMTask(ctx context.Context, orgID, userID uuid.UUID,
 	task, err := s.repo.CreateCRMTask(ctx, orgID, userID, data)
 	if err != nil {
 		return nil, toErrx(err)
+	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		if xerr := ext.PushTaskCreate(ctx, orgID, task); xerr != nil {
+			_ = s.repo.DeleteCRMTask(ctx, orgID, task.ID)
+			return nil, xerr
+		}
+		one := []models.CRMTask{*task}
+		ext.DecorateTasks(ctx, orgID, one)
+		task = &one[0]
 	}
 
 	// Record activity on contact
@@ -397,6 +543,11 @@ func (s *crmService) GetCRMTask(ctx context.Context, orgID, taskID uuid.UUID) (*
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil && task != nil {
+		one := []models.CRMTask{*task}
+		ext.DecorateTasks(ctx, orgID, one)
+		task = &one[0]
+	}
 	return task, nil
 }
 
@@ -407,6 +558,9 @@ func (s *crmService) ListCRMTasks(ctx context.Context, orgID uuid.UUID, contactI
 	result, err := s.repo.ListCRMTasks(ctx, orgID, contactID, dealID, assignedTo, status, limit, cursor)
 	if err != nil {
 		return nil, toErrx(err)
+	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		ext.DecorateTasks(ctx, orgID, result.Data)
 	}
 	return result, nil
 }
@@ -425,6 +579,9 @@ func (s *crmService) SearchTasks(ctx context.Context, orgID uuid.UUID, filters m
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		ext.DecorateTasks(ctx, orgID, result.Data)
+	}
 	return result, nil
 }
 
@@ -440,6 +597,16 @@ func (s *crmService) TasksSummary(ctx context.Context, orgID uuid.UUID, filters 
 }
 
 func (s *crmService) UpdateCRMTask(ctx context.Context, orgID, taskID uuid.UUID, userID *uuid.UUID, data *models.UpdateCRMTask) (*models.CRMTask, *errx.Error) {
+	ext := s.external(ctx, orgID)
+	if ext != nil {
+		before, err := s.repo.GetCRMTask(ctx, orgID, taskID)
+		if err != nil {
+			return nil, toErrx(err)
+		}
+		if xerr := ext.PushTaskUpdate(ctx, orgID, before, data); xerr != nil {
+			return nil, xerr
+		}
+	}
 	task, err := s.repo.UpdateCRMTask(ctx, orgID, taskID, data)
 	if err != nil {
 		return nil, toErrx(err)
@@ -453,6 +620,11 @@ func (s *crmService) UpdateCRMTask(ctx context.Context, orgID, taskID uuid.UUID,
 		})
 	}
 
+	if ext != nil {
+		one := []models.CRMTask{*task}
+		ext.DecorateTasks(ctx, orgID, one)
+		task = &one[0]
+	}
 	return task, nil
 }
 
@@ -512,6 +684,18 @@ func (s *crmService) BulkUpdateCRMTasks(ctx context.Context, orgID uuid.UUID, us
 	if xerr := s.checkTaskSelection(data.TaskSelection); xerr != nil {
 		return 0, xerr
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		ids, err := s.repo.SelectTaskIDs(ctx, orgID, data.TaskSelection, models.MaxTaskBulkSelection)
+		if err != nil {
+			return 0, toErrx(err)
+		}
+		if xerr := tooLarge(int64(len(ids))); xerr != nil {
+			return 0, xerr
+		}
+		if xerr := ext.PushTasksBulk(ctx, orgID, ids, data.Status, data.Priority); xerr != nil {
+			return 0, xerr
+		}
+	}
 	matched, affected, err := s.repo.BulkUpdateCRMTasks(ctx, orgID, userID, data.TaskSelection, data, models.MaxTaskBulkSelection)
 	if err != nil {
 		return 0, toErrx(err)
@@ -526,6 +710,18 @@ func (s *crmService) BulkDeleteCRMTasks(ctx context.Context, orgID uuid.UUID, se
 	if xerr := s.checkTaskSelection(sel); xerr != nil {
 		return 0, xerr
 	}
+	if ext := s.external(ctx, orgID); ext != nil {
+		ids, err := s.repo.SelectTaskIDs(ctx, orgID, sel, models.MaxTaskBulkSelection)
+		if err != nil {
+			return 0, toErrx(err)
+		}
+		if xerr := tooLarge(int64(len(ids))); xerr != nil {
+			return 0, xerr
+		}
+		if xerr := ext.PushTasksDelete(ctx, orgID, ids); xerr != nil {
+			return 0, xerr
+		}
+	}
 	matched, affected, err := s.repo.BulkDeleteCRMTasks(ctx, orgID, sel, models.MaxTaskBulkSelection)
 	if err != nil {
 		return 0, toErrx(err)
@@ -537,6 +733,9 @@ func (s *crmService) BulkDeleteCRMTasks(ctx context.Context, orgID uuid.UUID, se
 }
 
 func (s *crmService) ListTaskTypes(ctx context.Context, orgID uuid.UUID) ([]models.CRMTaskType, *errx.Error) {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return ext.TaskTypes(ctx, orgID), nil
+	}
 	types, err := s.repo.ListTaskTypes(ctx, orgID)
 	if err != nil {
 		return nil, toErrx(err)
@@ -545,6 +744,9 @@ func (s *crmService) ListTaskTypes(ctx context.Context, orgID uuid.UUID) ([]mode
 }
 
 func (s *crmService) CreateTaskType(ctx context.Context, orgID uuid.UUID, data *models.CreateCRMTaskType) (*models.CRMTaskType, *errx.Error) {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return nil, ext.TaskTypesManaged()
+	}
 	name := strings.TrimSpace(data.Name)
 	if name == "" || len(name) > 60 {
 		return nil, errx.New(errx.BadRequest, "task type name must be between 1 and 60 characters")
@@ -558,6 +760,9 @@ func (s *crmService) CreateTaskType(ctx context.Context, orgID uuid.UUID, data *
 }
 
 func (s *crmService) UpdateTaskType(ctx context.Context, orgID, typeID uuid.UUID, data *models.UpdateCRMTaskType) (*models.CRMTaskType, *errx.Error) {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return nil, ext.TaskTypesManaged()
+	}
 	if data.Name != nil {
 		name := strings.TrimSpace(*data.Name)
 		if name == "" || len(name) > 60 {
@@ -573,6 +778,9 @@ func (s *crmService) UpdateTaskType(ctx context.Context, orgID, typeID uuid.UUID
 }
 
 func (s *crmService) DeleteTaskType(ctx context.Context, orgID, typeID uuid.UUID) *errx.Error {
+	if ext := s.external(ctx, orgID); ext != nil {
+		return ext.TaskTypesManaged()
+	}
 	if err := s.repo.DeleteTaskType(ctx, orgID, typeID); err != nil {
 		return toErrx(err)
 	}
@@ -580,8 +788,34 @@ func (s *crmService) DeleteTaskType(ctx context.Context, orgID, typeID uuid.UUID
 }
 
 func (s *crmService) DeleteCRMTask(ctx context.Context, orgID, taskID uuid.UUID) *errx.Error {
+	if ext := s.external(ctx, orgID); ext != nil {
+		if xerr := ext.PushTasksDelete(ctx, orgID, []uuid.UUID{taskID}); xerr != nil {
+			return xerr
+		}
+	}
 	if err := s.repo.DeleteCRMTask(ctx, orgID, taskID); err != nil {
 		return toErrx(err)
 	}
 	return nil
+}
+
+// hubspotPipelinesOnly narrows a deal search to the connected CRM's pipelines
+// when it names none, so Warmbly-only deals stay out of HubSpot's board.
+func (s *crmService) hubspotPipelinesOnly(ctx context.Context, orgID uuid.UUID, f models.SearchDeals) models.SearchDeals {
+	if len(f.PipelineIDs) > 0 {
+		return f
+	}
+	pipes, xerr := s.ListPipelines(ctx, orgID)
+	if xerr != nil {
+		return f
+	}
+	f.PipelineIDs = make([]string, 0, len(pipes))
+	for _, p := range pipes {
+		f.PipelineIDs = append(f.PipelineIDs, p.ID.String())
+	}
+	if len(f.PipelineIDs) == 0 {
+		// No HubSpot pipelines mirrored yet: match nothing rather than everything.
+		f.PipelineIDs = []string{uuid.Nil.String()}
+	}
+	return f
 }

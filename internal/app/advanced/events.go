@@ -114,6 +114,21 @@ func (s *service) WireInboxAgent(a InboxAgent) {
 	s.inboxAgent = a
 }
 
+// CRMOutbox carries CRM records written here (automation and reply tasks,
+// campaign deals) to a connected CRM. Nil when the workspace has none.
+type CRMOutbox interface {
+	EnqueuePush(ctx context.Context, orgID uuid.UUID, objectType string, localID uuid.UUID)
+}
+
+// WireCRMOutbox attaches the connected-CRM outbox after construction.
+func (s *service) WireCRMOutbox(o CRMOutbox) { s.crmOutbox = o }
+
+func (s *service) pushCRM(ctx context.Context, orgID uuid.UUID, objectType string, localID uuid.UUID) {
+	if s.crmOutbox != nil {
+		s.crmOutbox.EnqueuePush(ctx, orgID, objectType, localID)
+	}
+}
+
 // WireInboxTags attaches the inbox tagging verdict store after construction.
 // No-op if never called (the reply hook guards on a nil store).
 func (s *service) WireInboxTags(repo repository.InboxTagRepository) {

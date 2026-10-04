@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/warmbly/warmbly/internal/app/cipher"
 	"github.com/warmbly/warmbly/internal/app/credits"
@@ -185,9 +186,20 @@ type Service interface {
 
 	// Repo exposes the underlying repository for the inbound webhook handlers.
 	Repo() repository.IntegrationRepository
+
+	// AccessToken returns a usable OAuth access token for one of the org's
+	// connections, refreshing it when near expiry. Used by the CRM sync engine.
+	AccessToken(ctx context.Context, orgID, connID uuid.UUID) (string, *models.IntegrationConnection, error)
+	// MarkConnectionHealth records a provider call's outcome on the connection.
+	MarkConnectionHealth(ctx context.Context, connID uuid.UUID, status models.IntegrationStatus, health models.IntegrationHealth, detail string)
+	// SetCRMModeCheck reports whether a workspace runs its CRM on HubSpot, so
+	// the legacy HubSpot action steps aside.
+	SetCRMModeCheck(check func(ctx context.Context, orgID uuid.UUID) bool)
 }
 
 type service struct {
+	refresh    singleflight.Group
+	crmMode    func(ctx context.Context, orgID uuid.UUID) bool
 	repo       repository.IntegrationRepository
 	cipher     cipher.CipherService
 	oauth      *OAuthManager
@@ -456,6 +468,9 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 	// display field so action handlers know which host to call.
 	if account.InstanceURL != "" {
 		display["instance_url"] = account.InstanceURL
+	}
+	if account.UIDomain != "" {
+		display["ui_domain"] = account.UIDomain
 	}
 	df, _ := json.Marshal(display)
 
@@ -1066,6 +1081,44 @@ func (s *service) accessTokenFor(ctx context.Context, sec *repository.Connection
 		return refreshed.AccessToken, nil
 	}
 	return refreshed.AccessToken, nil
+}
+
+// AccessToken loads, refreshes and returns a connection's OAuth token after
+// checking the connection belongs to orgID. Concurrent callers share one refresh.
+func (s *service) AccessToken(ctx context.Context, orgID, connID uuid.UUID) (string, *models.IntegrationConnection, error) {
+	v, err, _ := s.refresh.Do(connID.String(), func() (any, error) {
+		sec, err := s.repo.GetConnectionSecrets(ctx, connID)
+		if err != nil {
+			return nil, err
+		}
+		if sec == nil || sec.Conn.OrganizationID != orgID {
+			return nil, errors.New("connection not found")
+		}
+		tok, err := s.accessTokenFor(ctx, sec)
+		if err != nil {
+			return nil, err
+		}
+		conn := sec.Conn
+		return tokenResult{token: tok, conn: &conn}, nil
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	r := v.(tokenResult)
+	return r.token, r.conn, nil
+}
+
+type tokenResult struct {
+	token string
+	conn  *models.IntegrationConnection
+}
+
+func (s *service) SetCRMModeCheck(check func(ctx context.Context, orgID uuid.UUID) bool) {
+	s.crmMode = check
+}
+
+func (s *service) MarkConnectionHealth(ctx context.Context, connID uuid.UUID, status models.IntegrationStatus, health models.IntegrationHealth, detail string) {
+	_ = s.repo.SetConnectionStatus(ctx, connID, status, health, detail)
 }
 
 // --- shared helpers ---------------------------------------------------------

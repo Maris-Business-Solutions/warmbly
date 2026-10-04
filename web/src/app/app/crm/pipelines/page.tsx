@@ -52,6 +52,11 @@ import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 import type { Stage } from "@/lib/api/models/app/crm/Pipeline";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
+import { Link } from "react-router-dom";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotMark, HubSpotSyncedAt, OpenInHubSpot } from "@/components/app/crm/HubSpot";
+import { HUBSPOT_SETTINGS_PATH, HubSpotHeaderStatus } from "@/components/app/crm/hubspotCrm";
+import { formatProbability, latestSyncedAt } from "@/components/app/crm/hubspotUtils";
 
 const STAGE_COLORS = [
     { id: "slate",   bg: "bg-slate-400",   hex: "#94a3b8" },
@@ -81,6 +86,44 @@ export default function PipelinesPage() {
 
     const list = pipelines.data ?? [];
     const totalStages = list.reduce((acc, p) => acc + (p.stages?.length ?? 0), 0);
+
+    // HubSpot mode: pipelines are HubSpot's, mirrored here and edited there.
+    const { isHubSpot, appUrl } = useCrmProvider();
+    const syncedAt = isHubSpot ? latestSyncedAt(list) : undefined;
+    const editUrl = list.find((p) => p.external?.url)?.external?.url || appUrl;
+
+    if (isHubSpot) {
+        return (
+            <Page>
+                <PageTopbar eyebrow="Pipelines" subtitle="Deal pipelines from HubSpot · edit them in HubSpot">
+                    <HubSpotHeaderStatus syncedAt={syncedAt} />
+                    <OpenInHubSpot url={editUrl || undefined} label="Edit pipelines in HubSpot" />
+                </PageTopbar>
+
+                <StatStrip cols={4}>
+                    <Stat label="Pipelines" value={list.length} sub="from HubSpot" />
+                    <Stat label="Deal stages" value={totalStages} sub="across pipelines" />
+                    <Stat label="Avg stages" value={list.length ? Math.round(totalStages / list.length) : 0} sub="per pipeline" />
+                    <Stat label="Last synced" value={syncedAt ? fmtShort(syncedAt) : "—"} sub="from HubSpot" last />
+                </StatStrip>
+
+                <SectionBar label={pipelines.isPending ? "Loading…" : `${list.length} pipelines`} />
+                <PageBody className="px-5 py-5">
+                    {pipelines.isPending ? (
+                        <SkeletonStrip />
+                    ) : list.length === 0 ? (
+                        <HubSpotEmptyState />
+                    ) : (
+                        <div className="space-y-4">
+                            {list.map((p) => (
+                                <HubSpotPipelineCard key={p.id} pipeline={p} fallbackUrl={appUrl} />
+                            ))}
+                        </div>
+                    )}
+                </PageBody>
+            </Page>
+        );
+    }
 
     return (
         <Page>
@@ -120,6 +163,119 @@ export default function PipelinesPage() {
 
             <NewPipelineDialog open={newPipelineOpen} onClose={() => setNewPipelineOpen(false)} />
         </Page>
+    );
+}
+
+function fmtShort(d: Date) {
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function HubSpotEmptyState() {
+    const { needsReconnect } = useCrmProvider();
+    return (
+        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/40 p-8 text-center">
+            <div className="mx-auto size-9 rounded-md bg-white border border-slate-200 flex items-center justify-center mb-3">
+                {needsReconnect ? (
+                    <HubSpotMark className="w-4 h-4" />
+                ) : (
+                    <Loader2Icon className="w-4 h-4 text-slate-400 animate-spin" />
+                )}
+            </div>
+            <h3 className="text-[13px] font-semibold text-slate-900 mb-1">
+                {needsReconnect ? "Reconnect HubSpot to sync pipelines" : "Fetching your HubSpot pipelines..."}
+            </h3>
+            <p className="text-[12px] text-slate-500 max-w-md mx-auto mb-4 leading-relaxed">
+                {needsReconnect
+                    ? "The HubSpot connection needs attention before your deal pipelines can be mirrored here."
+                    : "Your deal pipelines and stages appear here as soon as the first sync finishes. You can choose which pipelines to mirror in HubSpot settings."}
+            </p>
+            <Link
+                to={HUBSPOT_SETTINGS_PATH}
+                className="h-7 px-3 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors"
+            >
+                <HubSpotMark className="w-3 h-3" />
+                HubSpot settings
+            </Link>
+        </div>
+    );
+}
+
+// A HubSpot pipeline, read-only: stages carry HubSpot's won, lost and
+// probability metadata, and every edit happens in HubSpot.
+function HubSpotPipelineCard({ pipeline, fallbackUrl }: { pipeline: Pipeline; fallbackUrl: string }) {
+    const sorted = [...(pipeline.stages ?? [])].sort((a, b) => a.position - b.position);
+    const url = pipeline.external?.url || fallbackUrl || undefined;
+    return (
+        <div className="rounded-md border border-slate-200 bg-white overflow-hidden">
+            <div className="h-10 px-3 border-b border-slate-200 flex items-center gap-2">
+                <HubSpotMark className="w-3 h-3" />
+                <span className="text-[12.5px] font-semibold text-slate-900 truncate">{pipeline.name}</span>
+                <span className="text-[10.5px] font-mono text-slate-400 tabular-nums shrink-0">
+                    {sorted.length} {sorted.length === 1 ? "stage" : "stages"}
+                </span>
+                <div className="ml-auto flex items-center gap-2 min-w-0">
+                    <HubSpotSyncedAt at={pipeline.external?.synced_at} className="hidden md:inline-flex" />
+                    <OpenInHubSpot url={url} label="Edit in HubSpot" className="hidden sm:inline-flex" />
+                    <OpenInHubSpot url={url} label="Edit in HubSpot" compact className="sm:hidden" />
+                </div>
+            </div>
+            <div className="p-3 flex flex-wrap items-stretch gap-2">
+                {sorted.length === 0 ? (
+                    <div className="w-full text-[11.5px] text-slate-400 italic text-center py-3">
+                        This pipeline has no deal stages in HubSpot.
+                    </div>
+                ) : (
+                    sorted.map((s, idx) => (
+                        <React.Fragment key={s.id}>
+                            <HubSpotStageCell stage={s} />
+                            {idx < sorted.length - 1 && (
+                                <div className="flex items-center text-slate-300">
+                                    <ArrowRightIcon className="w-3 h-3" />
+                                </div>
+                            )}
+                        </React.Fragment>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+}
+
+function HubSpotStageCell({ stage }: { stage: Stage }) {
+    const probability = formatProbability(stage.probability);
+    return (
+        <div className="min-w-[140px] rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+            <div className="flex items-center gap-1.5 mb-1">
+                <span
+                    className="size-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: stage.color || "#94a3b8" }}
+                />
+                <span className="text-[11.5px] font-medium text-slate-900 truncate">{stage.name}</span>
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+                {stage.closed && stage.won && (
+                    <span className="h-4 px-1.5 rounded bg-emerald-50 text-emerald-700 text-[9.5px] font-semibold uppercase tracking-[0.06em] inline-flex items-center">
+                        Closed won
+                    </span>
+                )}
+                {stage.closed && !stage.won && (
+                    <span className="h-4 px-1.5 rounded bg-red-50 text-red-700 text-[9.5px] font-semibold uppercase tracking-[0.06em] inline-flex items-center">
+                        Closed lost
+                    </span>
+                )}
+                {probability && (
+                    <span
+                        title="Deal probability in HubSpot"
+                        className="h-4 px-1.5 rounded bg-white border border-slate-200 text-slate-600 text-[9.5px] font-mono tabular-nums inline-flex items-center"
+                    >
+                        {probability}
+                    </span>
+                )}
+                <span className="text-[10px] text-slate-400 tabular-nums font-mono">
+                    {stage.deal_count ?? 0} {stage.deal_count === 1 ? "deal" : "deals"}
+                </span>
+            </div>
+        </div>
     );
 }
 

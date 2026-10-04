@@ -275,6 +275,32 @@ A batch runs every check that applies to the whole batch (the copy, the panel, t
 
 A `400` without one of these codes is a malformed request: an unknown `panel` or `tracking`, a `sequence_id` without its `campaign_id`, a missing subject or body on an ad-hoc test, a monitor `interval_days` outside `1` to `30` or an `alert_below` outside `0` to `100`, or on a batch `pace` `quick`, both or neither of `sender_account_ids` and `sender_scope`, an unknown `sender_scope.type`, `sample.mode` or `on_unavailable`, or `sample.stratify` on a sample that is not random or percent.
 
+#### CRM provider refusals
+
+Returned by the CRM endpoints while a workspace runs its CRM on [HubSpot](/guides/hubspot/). A change is written to HubSpot before it is saved in Warmbly, so each of these means nothing was changed on either side.
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `crm_not_connected` | 409 | `GET /crm/metadata`, `POST /crm/sync`, `POST /crm/backfill`, a `/crm/contacts/:id` or a `/crm/lists` call on a workspace that is not in HubSpot mode. Connect HubSpot and choose it as the CRM with `PUT /crm/settings` first |
+| `crm_reauth_required` | 409 | HubSpot revoked Warmbly's access, the connection was removed, or the connection lacks a permission HubSpot mode needs (deals, companies, owners, the contact schema, or the optional list permission for a list import). Reconnect HubSpot and approve every permission |
+| `crm_managed_externally` | 409 | A create, update or delete of a pipeline, stage or task type. They are managed in HubSpot while it is the CRM; change them there and they update in Warmbly within minutes |
+| `crm_stage_unknown` | 400 | The `pipeline_id` or `stage_id` given is not a mirrored HubSpot pipeline or stage, or a deal was marked `won` or `lost` in a pipeline with no closed stage of that kind. Also `409` from a copy into HubSpot when HubSpot has no deal pipeline to copy deals into |
+| `crm_owner_unmapped` | 400 | A deal or task was assigned to a member who is not matched to a HubSpot owner. Match them with `PUT /crm/owners/:externalId` |
+| `crm_contact_missing` | 404 | The contact is not in HubSpot, and creating HubSpot contacts is turned off in the workspace's HubSpot settings |
+| `crm_record_missing` | 404 | The record no longer exists in HubSpot; it was deleted there |
+| `crm_provider_rejected` | 422 | HubSpot refused the change. The `message` carries HubSpot's reason, such as a required property it enforces |
+| `crm_sync_running` | 429 | `POST /crm/sync` within 30 seconds of the last one. The running sync finishes in a minute or two |
+| `crm_unavailable` | 503 | HubSpot did not answer or failed. Nothing was changed; retry shortly |
+
+```json
+{
+  "error": "Conflict",
+  "message": "Pipelines are managed in HubSpot. Edit them there and they update here within minutes.",
+  "code": "crm_managed_externally",
+  "request_id": "4bbbd1b2-8f86-47dd-8a7f-9476501ad20e"
+}
+```
+
 ### 401 Unauthorized
 
 Returned when authentication fails.

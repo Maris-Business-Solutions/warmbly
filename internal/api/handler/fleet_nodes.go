@@ -297,6 +297,24 @@ var nodeEnvKeys = []string{
 	"SENTRY_DSN",
 }
 
+// consumerEnvKeys reach a consumer and never a worker. A consumer runs the
+// integration actions, refreshes their OAuth tokens and drains the CRM outbox,
+// so it reads the integration client credentials (integration.NewOAuthManager)
+// and APP_URL (the "Open in Warmbly" link written to HubSpot).
+var consumerEnvKeys = []string{
+	"APP_URL",
+	"HUBSPOT_OAUTH_CLIENT_ID",
+	"HUBSPOT_OAUTH_CLIENT_SECRET",
+	"SLACK_OAUTH_CLIENT_ID",
+	"SLACK_OAUTH_CLIENT_SECRET",
+	"GOOGLE_SHEETS_OAUTH_CLIENT_ID",
+	"GOOGLE_SHEETS_OAUTH_CLIENT_SECRET",
+	"PIPEDRIVE_OAUTH_CLIENT_ID",
+	"PIPEDRIVE_OAUTH_CLIENT_SECRET",
+	"SALESFORCE_OAUTH_CLIENT_ID",
+	"SALESFORCE_OAUTH_CLIENT_SECRET",
+}
+
 // nodeProviders translates the control plane's own crypto and blob providers
 // into the ones a node should run.
 //
@@ -372,7 +390,11 @@ func renderNodeEnv(nodeID uuid.UUID, role models.NodeRole, region string) string
 		fmt.Fprintf(&b, "NODE_BROKER_TOKEN=%s\n", v)
 	}
 
-	for _, k := range nodeEnvKeys {
+	keys := nodeEnvKeys
+	if role == models.NodeRoleConsumer {
+		keys = append(append([]string{}, nodeEnvKeys...), consumerEnvKeys...)
+	}
+	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {
 			fmt.Fprintf(&b, "%s=%s\n", k, v)
 		}

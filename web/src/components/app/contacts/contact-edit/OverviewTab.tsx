@@ -2,6 +2,7 @@
 //
 // Composition:
 //   - Suppression card (only when suppressed)
+//   - HubSpot card (HubSpot mode): owner, lifecycle stage, lead status
 //   - Engagement: six flat stat tiles with a thin ratio bar where
 //     a ratio over Sent makes sense
 //   - Latest activity rail
@@ -32,6 +33,8 @@ import { ContactSegmentsSection } from "./ContactSegmentsSection";
 import VerificationCard from "./VerificationCard";
 import OriginBadge from "@/components/app/engagement/OriginBadge";
 import { labelInk } from "@/lib/utils";
+import HubSpotContactCard from "@/components/app/crm/HubSpotContactCard";
+import useCrmProvider from "@/hooks/useCrmProvider";
 
 export default function OverviewTab({
     contact,
@@ -48,6 +51,7 @@ export default function OverviewTab({
     const confirm = useConfirm();
     const write = useWriteGuard("MANAGE_CONTACTS");
     const removeSuppression = useRemoveSuppression();
+    const { isHubSpot } = useCrmProvider();
 
     function askLift() {
         if (!supp) return;
@@ -91,6 +95,8 @@ export default function OverviewTab({
                     </button>
                 </div>
             )}
+
+            {isHubSpot && <HubSpotContactCard contactId={contact.id} density="drawer" showProperties={false} />}
 
             <Section title="Deliverability">
                 <VerificationCard contactId={contact.id} detail={detail?.verification} loading={detailLoading} />

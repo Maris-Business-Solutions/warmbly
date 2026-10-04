@@ -21,14 +21,15 @@ export type LeadStatus =
     | "undeliverable";
 
 // One contact's flow parked inside one campaign. source is "out_of_office"
-// when an auto-reply parked it, "manual" when a member did, and "cc" while the
+// when an auto-reply parked it, "manual" when a member did, "crm" when HubSpot
+// says the contact moved on (a deal, a lifecycle stage), and "cc" while the
 // contact is copied on another lead's emails (reason is that lead's address);
 // `until` absent means the hold has no end and only a resume lifts it.
 export interface LeadHold {
     since: Date;
     until?: Date | null;
     reason?: string;
-    source: "manual" | "out_of_office" | "inbox_tagging" | "cc" | string;
+    source: "manual" | "out_of_office" | "inbox_tagging" | "cc" | "crm" | string;
 }
 
 // Why a copied contact is or is not on the next email to the lead.
@@ -61,7 +62,15 @@ export function holdSummary(hold: LeadHold): string {
             ? `Copied on the emails to ${hold.reason} · none of their own are sent`
             : "Copied on another lead's emails · none of their own are sent";
     }
-    const what = hold.source === "out_of_office" ? "Out of office" : "Paused";
+    // A HubSpot hold's reason already names HubSpot ("A deal was opened in HubSpot: Acme").
+    const what =
+        hold.source === "out_of_office"
+            ? "Out of office"
+            : hold.source === "crm"
+              ? hold.reason
+                  ? "Held"
+                  : "Held by HubSpot"
+              : "Paused";
     const why = hold.reason ? ` · ${hold.reason}` : "";
     if (!hold.until) return `${what}${why} · until someone resumes it`;
     const until = new Date(hold.until).toLocaleString(undefined, {

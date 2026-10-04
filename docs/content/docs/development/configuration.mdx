@@ -507,11 +507,34 @@ Application permissions reach every mailbox in a consenting organization. We rec
 | Variable | What it does | Default |
 |---|---|---|
 | `<PROVIDER>_OAUTH_CLIENT_ID`, `<PROVIDER>_OAUTH_CLIENT_SECRET` | OAuth clients for the CRM and messaging integrations | unset |
+| `HUBSPOT_OAUTH_CLIENT_ID`, `HUBSPOT_OAUTH_CLIENT_SECRET` | Your HubSpot app. Needed on the backend and on every consumer: the consumer runs the [HubSpot mode](/guides/hubspot/) pull and sync queue and refreshes the token as it goes. The secret also verifies HubSpot's webhook signatures | unset |
 | `INTEGRATIONS_OAUTH_REDIRECT_URL` | Shared redirect URI for those flows | `BACKEND_PUBLIC_URL` (else `API_PUBLIC_URL`) plus `/integrations/oauth/callback` |
 | `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET` | The instance's own [Slack app](/development/slack-app/). Unset, the dashboard reports Slack as not set up and no workspace can connect it | unset |
 | `SLACK_SIGNING_SECRET` | Verifies every request Slack sends to the events, interactivity and slash command URLs. Without it Slack still posts notifications and inbox conversations, but the assistant, buttons and `/warmbly` are off, and those URLs answer `503` `slack_not_configured` | unset |
 
 The three Slack values come from the Slack app's **Basic Information** page. Set them on the backend and the consumer and restart both; the shipped `docker-compose.yml` passes all three to both. The request URLs are built on `BACKEND_PUBLIC_URL` when it is set, otherwise on `API_PUBLIC_URL`. See [Slack app](/development/slack-app/) for creating the app from its manifest.
+
+### HubSpot app
+
+[HubSpot mode](/guides/hubspot/) on a self-hosted instance uses a HubSpot app you create in your own HubSpot developer account:
+
+- **Redirect URL**: the value of `INTEGRATIONS_OAUTH_REDIRECT_URL`, or `BACKEND_PUBLIC_URL` (else `API_PUBLIC_URL`) plus `/integrations/oauth/callback` when it is unset
+- **Required scopes**: `oauth`, `crm.objects.contacts.read`, `crm.objects.contacts.write`, `crm.objects.companies.read`, `crm.objects.companies.write`, `crm.objects.deals.read`, `crm.objects.deals.write`, `crm.objects.owners.read`, `crm.schemas.contacts.read`, `crm.schemas.contacts.write`
+- **Optional scopes**: `crm.lists.read` (import from HubSpot lists) and `sales-email-read`. An account that cannot grant them still connects
+- **Webhooks** (optional): target URL `<backend>/api/v1/integrations/hubspot/webhooks`, subscribed to `contact.creation`, `contact.propertyChange`, `contact.deletion`, `deal.creation`, `deal.propertyChange` and `deal.deletion`. Deliveries are verified against the URL HubSpot signed, which behind a proxy is the public one, so set `BACKEND_PUBLIC_URL`. Without webhooks the consumer's one-minute pull keeps everything current
+
+`APP_URL` is also what the `warmbly_link` property on HubSpot contacts links to. A consumer that joined the fleet with `warmbly join` is handed the HubSpot variables and `APP_URL` with the rest of its environment; a worker never is.
+
+The repository's `hubspot-app/` directory is the same app as a HubSpot developer project: the app definition, the Warmbly card on contact records, the "Add to Warmbly campaign" workflow action and the webhook subscriptions. Replace `https://api.warmbly.com` with your backend URL in its `*-hsmeta.json` files and in `src/app/cards/WarmblyCard.tsx`, then upload it with the HubSpot CLI (`hs project upload` from that directory). The CLI leaves out files under a hidden directory, so upload from a path with no dot-folder in it; otherwise the card build reports its entrypoint as missing. The card and the workflow action call these public routes, each verified with the app's client secret:
+
+| Route | Called by |
+|---|---|
+| `POST /api/v1/integrations/hubspot/webhooks` | HubSpot webhooks |
+| `POST /api/v1/integrations/hubspot/app/card` | The Warmbly card, to show a contact |
+| `POST /api/v1/integrations/hubspot/app/enroll` | The card's "Add to campaign" |
+| `POST /api/v1/integrations/hubspot/app/pause` | The card's pause and resume |
+| `POST /api/v1/integrations/hubspot/actions/enroll` | The "Add to Warmbly campaign" workflow action |
+| `POST /api/v1/integrations/hubspot/actions/campaigns` | The workflow action's campaign list |
 
 ## AI and search
 

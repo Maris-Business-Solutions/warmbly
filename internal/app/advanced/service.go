@@ -143,6 +143,8 @@ type Service interface {
 	WireDispatcher(d EventDispatcher)
 	// WireNotifier attaches the in-app notification gate (reply/bounce/complaint).
 	WireNotifier(n Notifier)
+	// WireCRMOutbox attaches the connected-CRM outbox.
+	WireCRMOutbox(o CRMOutbox)
 	// WireRealtime attaches the org-scoped EMAIL_REPLIED realtime pulse.
 	WireRealtime(p ReplyRealtimePublisher)
 	// WireAutomationRunner attaches the automation runner so instant
@@ -203,6 +205,7 @@ type service struct {
 	segmentRepo          repository.SegmentRepository
 	campaignProgressRepo repository.CampaignProgressRepository
 	crmRepo              repository.CRMRepository
+	crmOutbox            CRMOutbox
 	categoryRepo         repository.GroupRepository
 	uniboxRepo           repository.UniboxRepository
 	tasksClient          tasksched.Scheduler
@@ -473,6 +476,7 @@ func (s *service) CreateContactTask(ctx context.Context, orgID, createdBy uuid.U
 	if err != nil {
 		return nil, errx.InternalError()
 	}
+	s.pushCRM(ctx, orgID, models.CRMObjectTask, task.ID)
 	if task.ContactID != nil {
 		_ = s.crmRepo.RecordActivity(ctx, orgID, *task.ContactID, &createdBy, models.ActivityTaskCreated, map[string]interface{}{
 			"task_id":    task.ID.String(),
@@ -493,6 +497,7 @@ func (s *service) CreateContactDeal(ctx context.Context, orgID uuid.UUID, create
 	if err != nil {
 		return nil, toErrx(err)
 	}
+	s.pushCRM(ctx, orgID, models.CRMObjectDeal, deal.ID)
 	if deal.ContactID != nil {
 		_ = s.crmRepo.RecordActivity(ctx, orgID, *deal.ContactID, &createdBy, models.ActivityDealCreated, map[string]interface{}{
 			"deal_id":   deal.ID.String(),
@@ -536,6 +541,7 @@ func (s *service) MoveContactDealStage(ctx context.Context, orgID, contactID, pi
 	if uerr != nil {
 		return nil, toErrx(uerr)
 	}
+	s.pushCRM(ctx, orgID, models.CRMObjectDeal, updated.ID)
 	_ = s.crmRepo.RecordActivity(ctx, orgID, contactID, nil, models.ActivityDealStageChange, map[string]interface{}{
 		"deal_id": updated.ID.String(),
 		"from":    target.StageID.String(),
@@ -1602,13 +1608,15 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		owner, parseErr := uuid.Parse(account.UserID)
 		if parseErr == nil {
 			title := replyTaskTitle(intent, sender)
-			_, _ = s.crmRepo.CreateCRMTask(ctx, *account.OrganizationID, owner, &models.CreateCRMTask{
+			if task, terr := s.crmRepo.CreateCRMTask(ctx, *account.OrganizationID, owner, &models.CreateCRMTask{
 				ContactID:  contactID,
 				Title:      title,
 				Priority:   "high",
 				DueDate:    ptrTime(time.Now().UTC().Add(24 * time.Hour)),
 				AssignedTo: &owner,
-			})
+			}); terr == nil {
+				s.pushCRM(ctx, *account.OrganizationID, models.CRMObjectTask, task.ID)
+			}
 			if actionTaken == "" {
 				actionTaken = "created_crm_task"
 			} else {
@@ -1654,6 +1662,9 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		"thread_id":        msg.ThreadID,
 		"email_account_id": emailAccountID.String(),
 		"_user_id":         account.UserID,
+		"_message_id":      msg.MessageID,
+		"_body_text":       msg.BodyText,
+		"_mailbox_email":   account.Email,
 	}
 	if senderAccountID != nil {
 		payload["sender_email_account_id"] = senderAccountID.String()
@@ -1993,6 +2004,9 @@ func (s *service) IngestDeliverabilityEvent(ctx context.Context, organizationID 
 	}
 	if req.ContactID != nil {
 		payload["contact_id"] = req.ContactID.String()
+	}
+	if req.TaskID != nil {
+		payload["_task_id"] = req.TaskID.String()
 	}
 	switch eventType {
 	case models.DeliverabilityEventBounce:

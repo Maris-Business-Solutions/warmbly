@@ -22,6 +22,8 @@ type ContactNote struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 	// Joined
 	User *User `json:"user,omitempty"`
+	// External is set when the note lives in a connected CRM.
+	External *CRMExternalRef `json:"external,omitempty"`
 }
 
 type ContactNotesResult struct {
@@ -95,6 +97,8 @@ type Pipeline struct {
 	Stages         []PipelineStage `json:"stages,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
+	// External is set when the pipeline is managed in a connected CRM.
+	External *CRMExternalRef `json:"external,omitempty"`
 }
 
 type PipelineStage struct {
@@ -106,6 +110,10 @@ type PipelineStage struct {
 	DealCount  int       `json:"deal_count,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+	// Closed, Won and Probability come from a connected CRM's stage metadata.
+	Closed      bool     `json:"closed,omitempty"`
+	Won         bool     `json:"won,omitempty"`
+	Probability *float64 `json:"probability,omitempty"`
 }
 
 type CreatePipeline struct {
@@ -164,6 +172,8 @@ type Deal struct {
 	Contact      *Contact       `json:"contact,omitempty"`
 	Stage        *PipelineStage `json:"stage,omitempty"`
 	CampaignName *string        `json:"campaign_name,omitempty"`
+	// External is set when the deal lives in a connected CRM.
+	External *CRMExternalRef `json:"external,omitempty"`
 }
 
 type DealsResult struct {
@@ -328,6 +338,8 @@ type CRMTask struct {
 	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
+	// External is set when the task lives in a connected CRM.
+	External *CRMExternalRef `json:"external,omitempty"`
 }
 
 type CRMTasksResult struct {

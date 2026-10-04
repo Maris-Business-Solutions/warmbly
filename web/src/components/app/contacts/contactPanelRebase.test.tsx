@@ -33,6 +33,10 @@ vi.mock("@/hooks/PresenceProvider", () => ({
 vi.mock("@/components/app/presence/ResourceViewers", () => ({ default: () => null }));
 vi.mock("@/components/app/integrations/BookACallButton", () => ({ default: () => null }));
 vi.mock("@/components/app/meetings/NewMeetingDialog", () => ({ default: () => null }));
+// jsdom has no layout, so the tab strip's scroll handling has nothing to measure.
+vi.mock("@/components/ui/scroll-strip", () => ({
+    default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
 
 // The tabs are covered separately; this is about the panel chrome. The Details
 // stand-in is the only way into the draft, so it exposes one edit.

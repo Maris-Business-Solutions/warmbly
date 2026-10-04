@@ -86,7 +86,7 @@ func (s *service) ApplyInboxTagActions(ctx context.Context, in InboxTagAction) [
 	if in.Plan.Task != "" && s.crmRepo != nil && contactID != nil && in.OwnerUserID != uuid.Nil {
 		owner := in.OwnerUserID
 		title := in.Plan.Task + ": " + sender
-		_, err := s.crmRepo.CreateCRMTask(ctx, in.OrganizationID, owner, &models.CreateCRMTask{
+		task, err := s.crmRepo.CreateCRMTask(ctx, in.OrganizationID, owner, &models.CreateCRMTask{
 			ContactID:  contactID,
 			Title:      models.ClampLine(title, 255),
 			Priority:   "high",
@@ -96,6 +96,7 @@ func (s *service) ApplyInboxTagActions(ctx context.Context, in InboxTagAction) [
 		if err != nil {
 			log.Warn().Err(err).Str("contact_id", contactID.String()).Msg("inbox tagging: task could not be opened")
 		} else {
+			s.pushCRM(ctx, in.OrganizationID, models.CRMObjectTask, task.ID)
 			done = append(done, inboxtag.ActionTask)
 		}
 	}

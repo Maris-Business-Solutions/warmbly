@@ -12,6 +12,7 @@
 // Tabs:
 //   - Overview  → engagement stats + suppression + profile snapshot
 //   - Activity  → merged timeline
+//   - Deals     → the contact's deals (HubSpot's in HubSpot mode)
 //   - Notes     → CRM notes CRUD
 //   - Details   → identity / categories / campaigns / custom fields
 
@@ -31,8 +32,10 @@ import BookACallButton from "@/components/app/integrations/BookACallButton";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import { usePresenceResource } from "@/hooks/PresenceProvider";
 import NewMeetingDialog from "@/components/app/meetings/NewMeetingDialog";
+import ScrollStrip from "@/components/ui/scroll-strip";
 import OverviewTab from "./contact-edit/OverviewTab";
 import ActivityTab from "./contact-edit/ActivityTab";
+import DealsTab from "./contact-edit/DealsTab";
 import NotesTab from "./contact-edit/NotesTab";
 import ResearchTab from "./contact-edit/ResearchTab";
 import DetailsTab from "./contact-edit/DetailsTab";
@@ -63,10 +66,13 @@ export default function ContactEdit({
     setActive: React.Dispatch<React.SetStateAction<string>>;
     initialTab?: ContactSlideTab;
 }) {
-    const contact = React.useMemo(
+    const listed = React.useMemo(
         () => contacts.find((c) => c.id === active),
         [contacts, active],
     );
+    // A deep link (?contact=<id>) can name someone the loaded page does not hold.
+    const fetched = useContact(active, !!active && !listed);
+    const contact = listed ?? (active ? fetched.data : undefined);
 
     return (
         <AnimatePresence>
@@ -267,6 +273,12 @@ function ContactEditPanel({
                         />
                     )}
                     {tab === "activity" && <ActivityTab contactId={contact.id} contactName={firstName || lastName ? displayName : contact.email} />}
+                    {tab === "deals" && (
+                        <DealsTab
+                            contactId={contact.id}
+                            defaultName={contact.company || (firstName || lastName ? displayName : contact.email)}
+                        />
+                    )}
                     {tab === "notes" && <NotesTab contactId={contact.id} />}
                     {tab === "research" && <ResearchTab contactId={contact.id} />}
                     {tab === "details" && (
@@ -460,15 +472,16 @@ function TabStrip({
     setTab: (t: ContactSlideTab) => void;
 }) {
     return (
-        <nav className="shrink-0 px-3 flex items-center gap-1 border-b border-slate-200 overflow-x-auto md:overflow-visible">
+        <ScrollStrip activeKey={tab} className="shrink-0 border-b border-slate-200" innerClassName="px-3 gap-1">
             {CONTACT_SLIDE_TABS.map((t) => {
                 const isActive = tab === t.id;
                 return (
                     <button
                         key={t.id}
                         type="button"
+                        data-active={isActive ? "true" : undefined}
                         onClick={() => setTab(t.id)}
-                        className={`relative h-10 px-2.5 inline-flex items-center gap-1.5 text-[12.5px] outline-none transition-colors ${
+                        className={`relative h-10 px-2.5 shrink-0 inline-flex items-center gap-1.5 text-[12.5px] whitespace-nowrap outline-none transition-colors ${
                             isActive
                                 ? "text-slate-900 font-medium"
                                 : "text-slate-500 hover:text-slate-800"
@@ -479,14 +492,14 @@ function TabStrip({
                         {isActive && (
                             <motion.span
                                 layoutId="contact-tab-underline"
-                                className="absolute left-1.5 right-1.5 -bottom-px h-0.5 rounded-full bg-sky-600"
+                                className="absolute left-1.5 right-1.5 bottom-0 h-0.5 rounded-full bg-sky-600"
                                 transition={{ type: "spring", duration: 0.3, bounce: 0.15 }}
                             />
                         )}
                     </button>
                 );
             })}
-        </nav>
+        </ScrollStrip>
     );
 }
 

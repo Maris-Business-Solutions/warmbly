@@ -1,0 +1,11 @@
+{
+  "uid": "warmbly_contact_card",
+  "type": "card",
+  "config": {
+    "name": "Warmbly",
+    "description": "Where this contact stands in Warmbly campaigns, with add, pause and resume.",
+    "location": "crm.record.sidebar",
+    "entrypoint": "/app/cards/WarmblyCard.tsx",
+    "objectTypes": ["contacts"]
+  }
+}
