@@ -128,11 +128,13 @@ func (s *Service) createOwner(ctx context.Context, address string) error {
 		return fmt.Errorf("bootstrap: creating the owner: %w", uerr)
 	}
 	// Provisioned from the environment, so nobody is at a browser to answer the wizard.
-	at, merr := s.users.MarkOnboarded(ctx, u.ID)
-	if merr != nil {
-		return fmt.Errorf("bootstrap: marking the owner onboarded: %w", merr)
+	// Not fatal: the user row now exists, so a later boot would never retry the
+	// org and admin steps below; the wizard showing once is the lesser cost.
+	if at, merr := s.users.MarkOnboarded(ctx, u.ID); merr != nil {
+		log.Printf("Warning: bootstrap could not mark %s onboarded, the dashboard will show the setup wizard first: %v", parsed.Address, merr)
+	} else {
+		u.OnboardingCompletedAt = &at
 	}
-	u.OnboardingCompletedAt = &at
 	if err := s.userSvc.SaveUser(ctx, u); err != nil {
 		return fmt.Errorf("bootstrap: saving the owner: %w", err)
 	}
