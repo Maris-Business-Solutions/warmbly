@@ -530,7 +530,7 @@ func (s *service) runLoop(ctx context.Context, inv aitools.Invocation, sess *mod
 				lastRemaining = bal
 			}
 		}
-		emit(StreamEvent{Type: evError, Code: "provider_error", Message: "The assistant hit an error. Please try again.", CreditsRemaining: lastRemaining})
+		emit(StreamEvent{Type: evError, Code: "provider_error", Message: "Remie hit an error. Please try again.", CreditsRemaining: lastRemaining})
 		return nil
 	}
 
@@ -567,7 +567,7 @@ func (s *service) runLoop(ctx context.Context, inv aitools.Invocation, sess *mod
 func (s *service) emitStop(emit func(StreamEvent), reason string, remaining int) {
 	switch reason {
 	case "out_of_credits":
-		emit(StreamEvent{Type: evError, Code: "insufficient_credits", Message: "You're out of AI credits. Add more to keep using the assistant.", CreditsRemaining: remaining})
+		emit(StreamEvent{Type: evError, Code: "insufficient_credits", Message: "You're out of AI credits. Add more to keep using Remie.", CreditsRemaining: remaining})
 	case "usage_cap":
 		emit(StreamEvent{Type: evError, Code: "usage_cap_exceeded", Message: "AI usage limit reached, please try again later.", CreditsRemaining: remaining})
 	default:
@@ -623,7 +623,7 @@ func (s *service) persist(ctx context.Context, orgID, userID, sessionID uuid.UUI
 
 func (s *service) systemPrompt(sess *models.AgentSession, voiceBlock, skillsBlock string) string {
 	var b strings.Builder
-	b.WriteString(`You are Warmbly's in-product AI assistant. You help the user manage their cold email outreach: contacts, campaigns, the unified inbox, CRM, and automations. Use the available tools to look things up and take actions. Be concise and specific.
+	b.WriteString(`You are Remie, Warmbly's in-product AI assistant. You help the user manage their cold email outreach: contacts, campaigns, the unified inbox, CRM, and automations. Use the available tools to look things up and take actions. Be concise and specific.
 
 Rules:
 - Read tools run automatically. Write actions (creating or changing data) require the user's approval, which the product handles for you; just call the tool and it will be gated.

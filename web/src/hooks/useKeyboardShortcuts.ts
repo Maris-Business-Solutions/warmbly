@@ -109,7 +109,7 @@ export const globalShortcuts: GlobalShortcut[] = [
   // ── The assistant, which is reachable while typing ───────────────────────
   {
     keys: ['Ctrl', 'i'],
-    description: 'Open / close the assistant',
+    description: 'Open / close Remie',
     group: 'assistant',
     whileTyping: true,
     available: () => checkPermission('USE_AI'),
@@ -372,7 +372,7 @@ export const shortcutGroupTitles: Record<ShortcutGroupId, string> = {
   navigation: 'Navigation',
   list: 'Lists',
   actions: 'Actions',
-  assistant: 'Assistant',
+  assistant: 'Remie',
 }
 
 const allRows: ShortcutRow[] = [...globalShortcuts, ...panelShortcuts]

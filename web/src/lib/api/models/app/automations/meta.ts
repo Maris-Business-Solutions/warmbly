@@ -235,7 +235,7 @@ export const CONTACT_SOURCES = [
     { value: "api", label: "API" },
     { value: "form", label: "Form submission" },
     { value: "automation", label: "Automation" },
-    { value: "ai_assistant", label: "AI assistant" },
+    { value: "ai_assistant", label: "Remie" },
 ];
 
 export const TRIGGER_FIELDS: Record<string, TriggerFieldDef[]> = {

@@ -1560,7 +1560,7 @@ export function sourceLabel(source?: string | null): string {
         case "api":
             return "Created via the API";
         case "ai_assistant":
-            return "Created by the AI assistant";
+            return "Created by Remie";
         case "form":
             return "Submitted a form";
         case "automation":
@@ -1635,7 +1635,7 @@ function createdLabel(source?: string | null): string {
         case "campaign":
             return "Added from campaign";
         case "ai_assistant":
-            return "Created by AI assistant";
+            return "Created by Remie";
         case "form":
             return "Submitted a form";
         case "automation":

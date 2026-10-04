@@ -26,6 +26,7 @@ import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import useTypewriter from "./useTypewriter";
 import formatUsage from "./usage";
+import AgentMark from "@/components/app/agent/AgentMark";
 
 export interface AIDraftController {
     phase: "idle" | "busy" | "review" | "question";
@@ -256,7 +257,7 @@ export default function AIDraftBar({
                         transition={{ type: "spring", stiffness: 480, damping: 34 }}
                         className="pointer-events-auto h-8 pl-3 pr-1.5 rounded-full border border-slate-200 bg-white/95 backdrop-blur shadow-[0_8px_24px_-8px_rgba(15,23,42,0.25)] flex items-center gap-2"
                     >
-                        <SparklesIcon className="w-3.5 h-3.5 text-sky-500 animate-pulse shrink-0" />
+                        <AgentMark variant="bare" size={14} state="thinking" />
                         <AnimatePresence mode="wait" initial={false}>
                             <motion.span
                                 key={stage}

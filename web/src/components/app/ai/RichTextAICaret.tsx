@@ -22,6 +22,7 @@ import buildError from "@/lib/helper/buildError";
 import formatUsage from "@/components/app/ai/usage";
 import { useAnchoredFloating, caretReference } from "@/hooks/useAnchoredFloating";
 import { passageHTML, passageText, replacePassage } from "./richTextPassage";
+import AgentMark from "@/components/app/agent/AgentMark";
 
 const CONTEXT_WINDOW = 1500;
 
@@ -260,8 +261,8 @@ export default function RichTextAICaret({ editor }: { editor: Editor }) {
                     >
                         {phase === "busy" ? (
                             <div className="flex items-center gap-2 px-3 py-2.5">
-                                <SparklesIcon className="h-3.5 w-3.5 shrink-0 animate-pulse text-sky-500" />
-                                <span className="text-[12px] font-medium text-slate-600">Writing…</span>
+                                <AgentMark variant="bare" size={14} state="thinking" />
+                                <span className="ai-shimmer-text text-[12px] font-medium">Writing…</span>
                             </div>
                         ) : phase === "applied" ? (
                             <div className="flex items-center gap-1.5 px-2.5 py-2">

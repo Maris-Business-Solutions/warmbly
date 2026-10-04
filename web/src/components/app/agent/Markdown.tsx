@@ -69,26 +69,37 @@ function inline(
     return out;
 }
 
-// Blinking insertion caret appended to streaming text so mid-generation
-// output reads as "still typing" instead of stalled.
-function Caret() {
+// Insertion caret appended to streaming text so mid-generation output reads
+// as "still typing" instead of stalled. Solid while text arrives, blinking
+// while the model is between chunks.
+function Caret({ typing }: { typing: boolean }) {
     return (
         <span
             aria-hidden
-            className="ai-caret ml-0.5 inline-block h-[1em] w-[2px] translate-y-[0.15em] rounded-sm bg-sky-500"
+            className={
+                "ai-caret ml-0.5 inline-block h-[1em] w-[2px] translate-y-[0.15em] rounded-sm bg-sky-500" +
+                (typing ? " is-typing" : "")
+            }
         />
     );
 }
+
+// Characters at the end of a still-typing paragraph that render blurred, so
+// new text resolves into place instead of popping in.
+const STREAM_TAIL = 6;
 
 export default function Markdown({
     text,
     onOpen,
     caret = false,
+    typing = false,
 }: {
     text: string;
     onOpen?: (url: string) => void;
-    // Render a blinking caret at the end of the last paragraph (streaming).
+    // Render a caret at the end of the last paragraph (streaming).
     caret?: boolean;
+    // Text is still being revealed: hold the caret and blur the newest characters.
+    typing?: boolean;
 }) {
     const blocks: React.ReactNode[] = [];
     // Fence splitting leaves prose at even indexes, code at odd ones; a
@@ -171,16 +182,27 @@ export default function Markdown({
         const last = blocks[blocks.length - 1];
         if (React.isValidElement(last) && last.type === "p") {
             const el = last as React.ReactElement<{ children?: React.ReactNode }>;
+            const kids = React.Children.toArray(el.props.children);
+            const end = kids[kids.length - 1];
+            if (typing && typeof end === "string" && end.length > 0) {
+                const cut = Math.max(0, end.length - STREAM_TAIL);
+                kids[kids.length - 1] = end.slice(0, cut);
+                kids.push(
+                    <span key="tail" className="ai-stream-tail">
+                        {end.slice(cut)}
+                    </span>,
+                );
+            }
             blocks[blocks.length - 1] = React.cloneElement(
                 el,
                 {},
-                ...React.Children.toArray(el.props.children),
-                <Caret key="caret" />,
+                ...kids,
+                <Caret key="caret" typing={typing} />,
             );
         } else {
             blocks.push(
                 <p key="caret-line">
-                    <Caret />
+                    <Caret typing={typing} />
                 </p>,
             );
         }

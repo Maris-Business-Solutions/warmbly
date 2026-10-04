@@ -7,7 +7,6 @@ import React from "react";
 import toast from "react-hot-toast";
 import {
     SparklesIcon,
-    Loader2Icon,
     ExternalLinkIcon,
     CopyIcon,
     CheckIcon,
@@ -25,6 +24,8 @@ import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { TextInput } from "@/components/ui/field";
 import useAiMetered from "@/hooks/useAiMetered";
+import { WorkingStatus } from "@/components/app/agent/AgentActivity";
+import AgentMark from "@/components/app/agent/AgentMark";
 
 export default function ResearchTab({ contactId }: { contactId: string }) {
     const research = useContactResearch(contactId);
@@ -34,9 +35,14 @@ export default function ResearchTab({ contactId }: { contactId: string }) {
 
     const runs = research.data?.data ?? [];
     const latest = runs.find((r) => r.status === "succeeded" || r.status === "nothing_found");
-    const inFlight = runs.some((r) => r.status === "queued" || r.status === "running");
+    const pendingRun = runs.find((r) => r.status === "queued" || r.status === "running");
+    const inFlight = !!pendingRun;
+    // The timer counts from the queued run when there is one, else from the click.
+    const [clickedAt, setClickedAt] = React.useState<number | null>(null);
+    const since = pendingRun ? new Date(pendingRun.created_at).getTime() : clickedAt;
 
     async function runResearch() {
+        setClickedAt(Date.now());
         try {
             await toast.promise(run.mutateAsync(objective.trim()), {
                 loading: "Researching…",
@@ -78,7 +84,7 @@ export default function ResearchTab({ contactId }: { contactId: string }) {
                         className="h-7 px-3 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0"
                     >
                         {run.isPending || inFlight ? (
-                            <Loader2Icon className="w-3 h-3 animate-spin" />
+                            <AgentMark variant="bare" size={13} state="thinking" className="!text-white" />
                         ) : (
                             <SparklesIcon className="w-3 h-3" />
                         )}
@@ -87,8 +93,14 @@ export default function ResearchTab({ contactId }: { contactId: string }) {
                 </div>
             </div>
 
+            {(run.isPending || inFlight) && (
+                <div className="rounded-md border border-slate-200 px-3 py-2.5">
+                    <WorkingStatus label="Researching this contact" since={since} />
+                </div>
+            )}
+
             {research.isPending ? (
-                <div className="h-24 rounded bg-slate-100 animate-pulse" />
+                <div className="h-24 rounded skeleton-shimmer" />
             ) : !latest ? (
                 <EmptyResearch />
             ) : (

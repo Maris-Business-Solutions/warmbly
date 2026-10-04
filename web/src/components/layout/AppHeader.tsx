@@ -11,10 +11,12 @@
 // This component is purely the row. Layout (where it sits) is decided by
 // AppShell, not here.
 
+import { useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronRight, Menu, Search } from "lucide-react";
 import { Logo } from "@/components/svg";
 import AgentMark from "@/components/app/agent/AgentMark";
+import RemieTip from "@/components/app/agent/RemieTip";
 import { useAppStore } from "@/stores";
 import { ConnectionIndicator } from "@/components/shared/ConnectionIndicator";
 import { usePermission } from "@/hooks/usePermission";
@@ -194,9 +196,8 @@ function Crumb({ children }: { children: React.ReactNode }) {
     return <div className="flex items-center gap-2 min-w-0">{children}</div>;
 }
 
-// The assistant toggle, with a live status badge so background work is never
-// invisible: pulsing sky while a run streams, amber when a tool waits for
-// approval, solid sky when a finished response hasn't been read yet.
+// Remie's toggle. Working, waiting on an approval and finishing all show on the
+// blob itself, the dot marks an unread reply, and tips hang off it (RemieTip).
 function AssistantButton() {
     const open = useAppStore((s) => s.aiAssistantOpen);
     const minimized = useAppStore((s) => s.agentMinimized);
@@ -204,6 +205,8 @@ function AssistantButton() {
     const setMinimized = useAppStore((s) => s.setAgentMinimized);
     const tabs = useAppStore((s) => s.agentTabs);
     const canAI = usePermission("USE_AI");
+    const lastRunOk = useAppStore((s) => s.agentLastRunOk);
+    const anchor = useRef<HTMLDivElement>(null);
 
     if (!canAI) return null;
 
@@ -212,7 +215,9 @@ function AssistantButton() {
     const unseen = tabs.some((t) => t.unseen);
 
     return (
-        <ShortcutTooltip label="AI assistant" combo="mod+I" side="bottom">
+        // Relative so Remie's tip bubble can hang off the blob.
+        <div ref={anchor} className="relative">
+        <ShortcutTooltip label="Ask Remie" combo="mod+I" side="bottom">
         <button
             onClick={() => {
                 if (open && minimized) {
@@ -225,23 +230,21 @@ function AssistantButton() {
                     setOpen(true);
                 }
             }}
-            aria-label="AI assistant"
-            className="relative flex items-center justify-center size-7 rounded-md text-slate-500 hover:text-sky-700 hover:bg-sky-50 transition-colors"
+            aria-label="Ask Remie"
+            className="group relative flex items-center justify-center size-7 rounded-md hover:bg-sky-50 transition-colors"
         >
-            <AgentMark className="w-4 h-4" />
-            {(running || pending || unseen) && (
-                <span
-                    className={
-                        "absolute top-0.5 right-0.5 size-1.5 rounded-full ring-2 ring-white " +
-                        (running
-                            ? "bg-sky-500 animate-pulse"
-                            : pending
-                              ? "bg-amber-500"
-                              : "bg-sky-500")
-                    }
-                />
+            <AgentMark
+                size={20}
+                celebrate={lastRunOk}
+                state={pending ? "attention" : running ? "thinking" : "idle"}
+            />
+            {/* Working and waiting show on the mark itself; the dot is an unread reply. */}
+            {unseen && !running && !pending && (
+                <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-sky-500 ring-2 ring-white" />
             )}
         </button>
         </ShortcutTooltip>
+        <RemieTip anchor={anchor} />
+        </div>
     );
 }

@@ -40,7 +40,7 @@ export default function ConnectionsSettingsPage() {
     return (
         <SectionShell
             title="Connections"
-            description="Connect external MCP servers to give the AI assistant extra tools. Warmbly discovers each server's tools; you review and enable them. The assistant always asks before running an external tool."
+            description="Connect external MCP servers to give Remie extra tools. Warmbly discovers each server's tools; you review and enable them. Remie always asks before running an external tool."
             actions={
                 canManage ? (
                     <button
@@ -59,7 +59,7 @@ export default function ConnectionsSettingsPage() {
                     <div className="h-16 rounded bg-slate-100 animate-pulse" />
                 ) : rows.length === 0 ? (
                     <p className="text-[12px] text-slate-500 leading-relaxed">
-                        No connections yet. Add an MCP server to extend what the assistant can do.
+                        No connections yet. Add an MCP server to extend what Remie can do.
                     </p>
                 ) : (
                     <div className="space-y-3">
@@ -89,7 +89,7 @@ function ServerCard({ server, canManage }: { server: MCPServer; canManage: boole
         }
     }
     function remove() {
-        confirm.show(`Disconnect "${server.name}"? Its tools will be removed from the assistant.`, async () => {
+        confirm.show(`Disconnect "${server.name}"? Its tools will be removed from Remie.`, async () => {
             await del.mutateAsync(server.id);
             toast.success("Disconnected");
         });

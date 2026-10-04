@@ -29,7 +29,7 @@ export default async function streamAgentRun(
         });
     } catch (e) {
         if ((e as Error)?.name === "AbortError") return;
-        onEvent({ type: "error", message: "Could not reach the assistant." });
+        onEvent({ type: "error", message: "Could not reach Remie." });
         return;
     }
 
@@ -40,10 +40,10 @@ export default async function streamAgentRun(
             onEvent({
                 type: "error",
                 code: j.code,
-                message: j.message || "The assistant is unavailable.",
+                message: j.message || "Remie is unavailable.",
             });
         } catch {
-            onEvent({ type: "error", message: "The assistant is unavailable." });
+            onEvent({ type: "error", message: "Remie is unavailable." });
         }
         return;
     }

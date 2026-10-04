@@ -244,7 +244,7 @@ function WorkspaceSettings({ org: currentOrg }: { org: StoreOrganization | null 
 
             <Section
                 eyebrow="AI voice profile"
-                description="Grounds every AI writing surface (assistant, reply drafts, research openers) so drafts sound like you and know what you sell. All optional."
+                description="Grounds every AI writing surface (Remie, reply drafts, research openers) so drafts sound like you and know what you sell. All optional."
             >
                 <Row
                     label="What you sell"
@@ -310,12 +310,12 @@ function WorkspaceSettings({ org: currentOrg }: { org: StoreOrganization | null 
             </Section>
 
             <Section
-                eyebrow="AI assistant"
-                description="How the assistant's conversation history works across the team."
+                eyebrow="Remie"
+                description="How conversations with Remie work across the team."
             >
                 <ToggleRow
                     label="Shared history"
-                    description="Every member with the Use AI permission sees and can continue every assistant conversation in this workspace, instead of only their own. Turning it on exposes existing conversations to the whole team."
+                    description="Every member with the Use AI permission sees and can continue every Remie conversation in this workspace, instead of only their own. Turning it on exposes existing conversations to the whole team."
                     checked={sharedHistory}
                     onChange={onToggleSharedHistory}
                     disabled={!canManageSettings}
