@@ -212,6 +212,13 @@ func (h *Handler) GetUniboxIncoming(c *gin.Context) {
 		}
 	}
 
+	scoped, xerr := allowedMailboxFilter(c, params.EmailAccountIDs)
+	if xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
+	params.EmailAccountIDs = scoped
+
 	resp, xerr := h.UniboxService.Search(c.Request.Context(), *orgID, params)
 	if xerr != nil {
 		errx.Handle(c, xerr)
@@ -247,6 +254,11 @@ func (h *Handler) GetUniboxEmail(c *gin.Context) {
 	mid, err := uuid.Parse(mailID)
 	if err != nil {
 		errx.Handle(c, errx.ErrUser)
+		return
+	}
+
+	if xerr := h.uniboxMessagesAllowed(c, *orgID, []uuid.UUID{mid}, nil); xerr != nil {
+		errx.Handle(c, xerr)
 		return
 	}
 
@@ -298,6 +310,10 @@ func (h *Handler) GetUniboxThread(c *gin.Context) {
 			errx.Handle(c, errx.ErrUuid)
 			return
 		}
+		if xerr := mailboxAllowed(c, parsed); xerr != nil {
+			errx.Handle(c, xerr)
+			return
+		}
 		eid = parsed
 	}
 
@@ -321,6 +337,7 @@ func (h *Handler) GetUniboxThread(c *gin.Context) {
 		errx.Handle(c, xerr)
 		return
 	}
+	keepAllowedMessages(c, resp)
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -345,6 +362,11 @@ func (h *Handler) GetUniboxThreadLabels(c *gin.Context) {
 	}
 	if threadID == "" {
 		errx.Handle(c, errx.New(errx.BadRequest, "thread_id is required"))
+		return
+	}
+
+	if xerr := h.uniboxMessagesAllowed(c, *orgID, nil, []string{threadID}); xerr != nil {
+		errx.Handle(c, xerr)
 		return
 	}
 
@@ -379,6 +401,11 @@ func (h *Handler) SetUniboxThreadLabels(c *gin.Context) {
 		return
 	}
 
+	if xerr := h.uniboxMessagesAllowed(c, *orgID, nil, []string{req.ThreadID}); xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
+
 	labels, xerr := h.UniboxService.SetThreadLabels(c.Request.Context(), *orgID, uid, req.ThreadID, req.CategoryIDs)
 	if xerr != nil {
 		errx.Handle(c, xerr)
@@ -409,6 +436,15 @@ func (h *Handler) UniboxMarkSeen(c *gin.Context) {
 		return
 	}
 
+	if data.Folder != "" && len(restrictedMailboxes(c)) > 0 {
+		errx.Handle(c, errx.New(errx.Forbidden, "an API key limited to specific mailboxes cannot mark a whole folder; name the messages or threads"))
+		return
+	}
+	if xerr := h.uniboxMessagesAllowed(c, *orgID, data.EmailIDs, data.ThreadIDs); xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
+
 	resp, xerr := h.UniboxService.MarkSeenBulk(c.Request.Context(), *orgID, &data)
 	if xerr != nil {
 		errx.Handle(c, xerr)
@@ -436,6 +472,11 @@ func (h *Handler) UniboxMoveFolder(c *gin.Context) {
 	var data models.MoveFolder
 	if err := c.ShouldBindJSON(&data); err != nil {
 		errx.Handle(c, errx.InvalidBody(err))
+		return
+	}
+
+	if xerr := h.uniboxMessagesAllowed(c, *orgID, data.EmailIDs, data.ThreadIDs); xerr != nil {
+		errx.Handle(c, xerr)
 		return
 	}
 
@@ -472,11 +513,21 @@ func (h *Handler) GetUnseenCount(c *gin.Context) {
 	var emailAccountID *uuid.UUID
 	if emailIDStr := c.Query("email_id"); emailIDStr != "" {
 		if id, err := uuid.Parse(emailIDStr); err == nil {
+			if xerr := mailboxAllowed(c, id); xerr != nil {
+				errx.Handle(c, xerr)
+				return
+			}
 			emailAccountID = &id
 		}
 	}
 
-	count, xerr := h.UniboxService.GetUnseenCount(c.Request.Context(), *orgID, emailAccountID)
+	var count int64
+	var xerr *errx.Error
+	if allowed := restrictedMailboxes(c); emailAccountID == nil && len(allowed) > 0 {
+		count, xerr = h.UniboxService.UnseenCountForMailboxes(c.Request.Context(), *orgID, allowed)
+	} else {
+		count, xerr = h.UniboxService.GetUnseenCount(c.Request.Context(), *orgID, emailAccountID)
+	}
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -641,6 +692,16 @@ func (h *Handler) GetUniboxOverview(c *gin.Context) {
 		return
 	}
 
+	if allowed := restrictedMailboxes(c); len(allowed) > 0 {
+		resp, xerr := h.UniboxService.OverviewForMailboxes(c.Request.Context(), *orgID, allowed)
+		if xerr != nil {
+			errx.Handle(c, xerr)
+			return
+		}
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
 	resp, xerr := h.UniboxService.Overview(c.Request.Context(), *orgID, uid)
 	if xerr != nil {
 		errx.Handle(c, xerr)
@@ -694,6 +755,10 @@ func (h *Handler) CreateUniboxSnooze(c *gin.Context) {
 		return
 	}
 	threads := req.threads()
+	if xerr := h.uniboxMessagesAllowed(c, *orgID, nil, threads); xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
 	rows, xerr := h.UniboxService.Snooze(c.Request.Context(), *orgID, uid, threads, req.SnoozedUntil)
 	if xerr != nil {
 		errx.Handle(c, xerr)

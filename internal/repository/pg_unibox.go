@@ -109,6 +109,12 @@ type UniboxRepository interface {
 	// Overview powers the scope rail + top metric strip. Single call
 	// so the client doesn't fan out N+M queries for each mailbox/tag.
 	Overview(ctx context.Context, orgID uuid.UUID) (*models.UniboxOverview, error)
+	OverviewForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (*models.UniboxOverview, error)
+	// MessageMailboxes lists the mailboxes holding the named messages and every
+	// message in the named conversations, within the organization.
+	MessageMailboxes(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, threadIDs []string) ([]uuid.UUID, error)
+	// UnseenCountForMailboxes is GetUnseenCount over a set of mailboxes.
+	UnseenCountForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (int64, error)
 
 	// Conversation labels, workspace-scoped like the inbox they hang off.
 	// SetThreadLabels replaces the full label set on a thread (idempotent PUT
@@ -866,6 +872,46 @@ func (r *uniboxRepository) GetUnseenCount(ctx context.Context, orgID uuid.UUID, 
 	return count, err
 }
 
+func (r *uniboxRepository) UnseenCountForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (int64, error) {
+	query := `SELECT COUNT(DISTINCT COALESCE(NULLIF(ue.thread_id, ''), ue.id::text))
+		FROM unibox_emails ue
+		WHERE ue.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
+		  AND ue.email_id = ANY($2::uuid[])
+		  AND ue.seen = FALSE
+		  AND ue.folder = '` + models.FolderInbox + `'
+		  AND NOT EXISTS (
+			SELECT 1 FROM unibox_snoozes s
+			WHERE s.organization_id = $1 AND s.user_id = ue.user_id
+			  AND s.thread_id = ue.thread_id
+			  AND s.snoozed_until > NOW()
+		  )
+		  AND NOT ` + automatedThreadSQL("ue.thread_id", "ue.automated", "$1")
+	var count int64
+	err := r.db.QueryRow(ctx, query, orgID, accountIDs).Scan(&count)
+	return count, err
+}
+
+func (r *uniboxRepository) MessageMailboxes(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, threadIDs []string) ([]uuid.UUID, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT email_id FROM unibox_emails
+		WHERE email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
+		  AND (id = ANY($2::uuid[]) OR COALESCE(NULLIF(thread_id, ''), id::text) = ANY($3::text[]))
+	`, orgID, ids, threadIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 func (r *uniboxRepository) MarkSeen(ctx context.Context, userID, id uuid.UUID, seen bool) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE unibox_emails SET seen = $1, updated_at = NOW() WHERE user_id = $2 AND id = $3`,
@@ -1502,6 +1548,32 @@ func (r *uniboxRepository) ListSnoozes(ctx context.Context, orgID, userID uuid.U
 // than N+M queries from the client.
 
 func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*models.UniboxOverview, error) {
+	return r.overview(ctx, orgID, nil)
+}
+
+// OverviewForMailboxes is Overview over only the named mailboxes, for a
+// credential limited to them.
+func (r *uniboxRepository) OverviewForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (*models.UniboxOverview, error) {
+	if len(accountIDs) == 0 {
+		return nil, errors.New("accountIDs required")
+	}
+	return r.overview(ctx, orgID, accountIDs)
+}
+
+func (r *uniboxRepository) overview(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (*models.UniboxOverview, error) {
+	// A uuid renders as hex and dashes only, so the list inlines safely and
+	// keeps every query's placeholders as they are.
+	onlyMailboxes := func(col string) string {
+		if len(accountIDs) == 0 {
+			return ""
+		}
+		ids := make([]string, len(accountIDs))
+		for i, id := range accountIDs {
+			ids[i] = "'" + id.String() + "'"
+		}
+		return " AND " + col + " IN (" + strings.Join(ids, ", ") + ")"
+	}
+	mailboxes := "(SELECT id FROM email_accounts WHERE organization_id = $1" + onlyMailboxes("id") + ")"
 	now := time.Now().UTC()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	weekStart := todayStart.AddDate(0, 0, -6)
@@ -1539,7 +1611,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 					  AND s.snoozed_until > NOW()
 				) AS is_snoozed
 			FROM unibox_emails e
-			WHERE e.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
+			WHERE e.email_id IN `+mailboxes+`
 			  AND e.folder NOT IN `+foldersOutsideAllMail+`
 		),
 		threads AS (
@@ -1598,7 +1670,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 			COUNT(DISTINCT COALESCE(NULLIF(e.thread_id, ''), e.id::text)) FILTER (WHERE NOT e.seen) AS unread,
 			COUNT(DISTINCT COALESCE(NULLIF(e.thread_id, ''), e.id::text))                            AS total
 		FROM unibox_emails e
-		WHERE e.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
+		WHERE e.email_id IN `+mailboxes+`
 		  AND NOT EXISTS (
 			SELECT 1 FROM unibox_snoozes s
 			WHERE s.organization_id = $1 AND s.user_id = e.user_id
@@ -1649,7 +1721,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 		LEFT JOIN unibox_emails ue ON ue.email_id = ea.id AND ue.user_id = ea.user_id
 			AND ue.folder NOT IN `+foldersOutsideWorkingViews+`
 			AND NOT `+automatedThreadSQL("ue.thread_id", "ue.automated", "$1")+`
-		WHERE ea.organization_id = $1
+		WHERE ea.organization_id = $1`+onlyMailboxes("ea.id")+`
 		GROUP BY ea.id, ea.email, ea.name
 		ORDER BY ea.email ASC
 	`, orgID)
@@ -1689,7 +1761,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 				)) AS total
 		FROM tags t
 		LEFT JOIN email_tags et ON et.tag_id = t.id
-		LEFT JOIN email_accounts ea ON ea.id = et.email_id AND ea.organization_id = t.organization_id
+		LEFT JOIN email_accounts ea ON ea.id = et.email_id AND ea.organization_id = t.organization_id`+onlyMailboxes("ea.id")+`
 		LEFT JOIN unibox_emails ue ON ue.email_id = ea.id
 			AND ue.folder NOT IN `+foldersOutsideWorkingViews+`
 			AND NOT `+automatedThreadSQL("ue.thread_id", "ue.automated", "$1")+`
@@ -1724,7 +1796,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 		WITH thread_state AS (
 			SELECT e.thread_id, bool_or(NOT e.seen) AS has_unread
 			FROM unibox_emails e
-			WHERE e.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
+			WHERE e.email_id IN `+mailboxes+`
 			  AND e.folder NOT IN `+foldersOutsideWorkingViews+`
 			  AND NOT EXISTS (
 				SELECT 1 FROM unibox_snoozes s

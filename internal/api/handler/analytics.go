@@ -243,6 +243,12 @@ func (h *Handler) GetAllAccountStatuses(c *gin.Context) {
 		limit = n
 	}
 
+	emailIDs, scopeErr := allowedMailboxFilter(c, emailIDs)
+	if scopeErr != nil {
+		errx.JSON(c, scopeErr)
+		return
+	}
+
 	result, xerr := h.AnalyticsService.GetAccountStatusesPage(c.Request.Context(), *orgID, emailIDs, c.Query("cursor"), int32(limit))
 	if xerr != nil {
 		errx.Handle(c, xerr)

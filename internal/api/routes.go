@@ -1044,7 +1044,7 @@ func Run(
 				analytics.GET("/campaigns/:id/daily", h.GetCampaignDailyStats)
 				analytics.GET("/campaigns/:id/hourly", h.GetCampaignHourlyStats)
 				analytics.GET("/accounts", h.GetAllAccountStatuses)
-				analytics.GET("/accounts/:id", h.GetAccountStatus)
+				analytics.GET("/accounts/:id", middleware.RequireAPIKeyEmailAccountParam("id"), h.GetAccountStatus)
 				analytics.GET("/usage", h.GetUsageOverview)
 			}
 

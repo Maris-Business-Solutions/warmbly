@@ -168,6 +168,10 @@ func (h *Handler) CreateCampaign(c *gin.Context) {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
+	if xerr := sendersAllowed(c, data.Senders); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
 
 	resp, err := h.CampaignService.Create(c.Request.Context(), userIDStr, orgID, &data)
 	if err != nil {
@@ -500,6 +504,16 @@ func (h *Handler) ListCampaignSenders(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": senders})
 }
 
+// sendersAllowed refuses a sender pool naming a mailbox outside the caller's allowlist.
+func sendersAllowed(c *gin.Context, senders []models.CampaignSenderInput) *errx.Error {
+	for _, s := range senders {
+		if xerr := mailboxAllowed(c, s.EmailAccountID); xerr != nil {
+			return xerr
+		}
+	}
+	return nil
+}
+
 // ReplaceCampaignSenders atomically replaces a campaign's explicit sender pool.
 // PUT /campaigns/:id/senders
 func (h *Handler) ReplaceCampaignSenders(c *gin.Context) {
@@ -514,6 +528,10 @@ func (h *Handler) ReplaceCampaignSenders(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		errx.JSON(c, errx.InvalidBody(err))
+		return
+	}
+	if xerr := sendersAllowed(c, body.Senders); xerr != nil {
+		errx.JSON(c, xerr)
 		return
 	}
 

@@ -32,6 +32,43 @@ func (s *uniboxService) Overview(ctx context.Context, orgID, _ uuid.UUID) (*mode
 	return o, nil
 }
 
+// OverviewForMailboxes counts only the named mailboxes. It is never shared.
+func (s *uniboxService) OverviewForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (*models.UniboxOverview, *errx.Error) {
+	o, err := s.uniboxRepository.OverviewForMailboxes(ctx, orgID, accountIDs)
+	if err != nil {
+		errs.CaptureException(err)
+		return nil, errx.InternalError()
+	}
+	if len(o.Mailboxes) > OverviewMaxMailboxes {
+		o.Mailboxes = o.Mailboxes[:OverviewMaxMailboxes]
+	}
+	if len(o.Tags) > OverviewMaxTags {
+		o.Tags = o.Tags[:OverviewMaxTags]
+	}
+	o.ScheduledPendingMax = int64(config.MaxPendingScheduledSendsPerOrg)
+	return o, nil
+}
+
+// UnseenCountForMailboxes is GetUnseenCount over a set of mailboxes.
+func (s *uniboxService) UnseenCountForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (int64, *errx.Error) {
+	n, err := s.uniboxRepository.UnseenCountForMailboxes(ctx, orgID, accountIDs)
+	if err != nil {
+		errs.CaptureException(err)
+		return 0, errx.InternalError()
+	}
+	return n, nil
+}
+
+// MessageMailboxes lists the mailboxes the named messages and conversations sit in.
+func (s *uniboxService) MessageMailboxes(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, threadIDs []string) ([]uuid.UUID, *errx.Error) {
+	out, err := s.uniboxRepository.MessageMailboxes(ctx, orgID, ids, nonEmpty(threadIDs))
+	if err != nil {
+		errs.CaptureException(err)
+		return nil, errx.InternalError()
+	}
+	return out, nil
+}
+
 // ForgetOverview drops the organization's shared overview after a unibox write.
 func (s *uniboxService) ForgetOverview(orgID uuid.UUID) {
 	if s.overview != nil {

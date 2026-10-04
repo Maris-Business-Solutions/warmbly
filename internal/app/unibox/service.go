@@ -60,6 +60,13 @@ type UniboxService interface {
 	Overview(ctx context.Context, orgID, userID uuid.UUID) (*models.UniboxOverview, *errx.Error)
 	// ForgetOverview makes the next Overview for the organization compute afresh.
 	ForgetOverview(orgID uuid.UUID)
+	// OverviewForMailboxes and UnseenCountForMailboxes count only the named
+	// mailboxes, for a credential limited to them.
+	OverviewForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (*models.UniboxOverview, *errx.Error)
+	UnseenCountForMailboxes(ctx context.Context, orgID uuid.UUID, accountIDs []uuid.UUID) (int64, *errx.Error)
+	// MessageMailboxes lists the mailboxes the named messages and
+	// conversations sit in, within the organization.
+	MessageMailboxes(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, threadIDs []string) ([]uuid.UUID, *errx.Error)
 
 	// Conversation labels. SetThreadLabels replaces a thread's full
 	// label set (idempotent); ListThreadLabels reads the current set.

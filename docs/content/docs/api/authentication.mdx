@@ -167,6 +167,13 @@ Limit API keys to specific email accounts:
 }
 ```
 
+A restricted key only reaches those mailboxes and their mail, and naming any other mailbox answers `403`:
+
+- **Unibox reads.** `GET /unibox` lists only their conversations, `GET /unibox/thread` returns only their messages, `GET /unibox/count` and `GET /unibox/overview` count only them, and `GET /unibox/:id`, thread labels and agent drafts are refused or left out for mail in any other mailbox.
+- **Unibox writes.** Reply, compose (an automatic pick chooses among the listed mailboxes), drafts, agent-draft approval and discard, `PATCH /unibox/seen`, `PATCH /unibox/folder` and snoozes refuse a message or conversation with mail in another mailbox. Marking a whole folder read (`folder` on `PATCH /unibox/seen`) is refused, since it reaches every mailbox.
+- **Campaigns and analytics.** A sender pool (`senders` on `POST /campaigns`, `PUT /campaigns/:id/senders`) may only name listed mailboxes, `GET /analytics/accounts` lists only them, and `GET /analytics/accounts/:id` refuses any other.
+- **Advisor.** Applying or undoing a fix is refused when the fix changes another mailbox.
+
 ## Key expiration
 
 Set an expiration date for temporary access:
