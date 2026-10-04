@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/url"
 	"strings"
@@ -352,7 +353,8 @@ func (s *Service) authenticateClient(ctx context.Context, clientID, clientSecret
 	if app.IsPublic {
 		return app, nil
 	}
-	if clientSecret == "" || app.ClientSecretHash == "" || hashToken(clientSecret) != app.ClientSecretHash {
+	if clientSecret == "" || app.ClientSecretHash == "" ||
+		subtle.ConstantTimeCompare([]byte(hashToken(clientSecret)), []byte(app.ClientSecretHash)) != 1 {
 		return nil, errInvalidClient("invalid client credentials")
 	}
 	return app, nil

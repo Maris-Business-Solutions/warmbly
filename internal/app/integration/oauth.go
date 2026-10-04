@@ -463,6 +463,14 @@ func identifySalesforce(ctx context.Context, m *OAuthManager, tok *oauth2.Token)
 	if idURL == "" {
 		return "", "", nil, nil
 	}
+	// The bearer token is sent to this URL, so it must be a Salesforce host.
+	u, err := url.Parse(idURL)
+	if err != nil || u.User != nil {
+		return "", "", nil, errors.New("salesforce identity url is not a salesforce host")
+	}
+	if _, err := SalesforceInstanceURL(u.Scheme + "://" + u.Host); err != nil {
+		return "", "", nil, errors.New("salesforce identity url is not a salesforce host")
+	}
 	var out struct {
 		OrganizationID string `json:"organization_id"`
 		Username       string `json:"username"`
@@ -557,10 +565,7 @@ func scopesFromToken(tok *oauth2.Token, requested []string) []string {
 
 func randomURLToken(n int) string {
 	buf := make([]byte, n)
-	if _, err := rand.Read(buf); err != nil {
-		// rand.Read essentially never fails; degrade to a time-seeded value
-		// only to keep the flow alive rather than panic.
-		return base64.RawURLEncoding.EncodeToString([]byte(time.Now().UTC().String()))
-	}
+	// crypto/rand crashes the program rather than return an error, so there is no weak fallback.
+	_, _ = rand.Read(buf)
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
