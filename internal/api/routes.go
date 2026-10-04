@@ -1016,19 +1016,18 @@ func Run(
 			{
 				apiKeys.GET("", h.ListAPIKeys)
 				// A new key is a durable credential that outlives the session
-				// that made it, so a session caller confirms first. A key or
-				// OAuth caller has no session to confirm and passes through to
-				// the permission gate.
-				apiKeys.POST("", middleware.RequireFreshAuth(), h.CreateAPIKey)
+				// that made it, so a session caller confirms first. A key caller
+				// has no session to confirm; an OAuth app token never manages keys.
+				apiKeys.POST("", middleware.RefuseOAuth(), middleware.RequireFreshAuth(), h.CreateAPIKey)
 				apiKeys.GET("/permissions", h.ListAPIPermissions)
 				apiKeys.GET("/usage/summary", h.GetAPIKeyUsageSummary)
 				apiKeys.GET("/usage/analytics", h.GetAPIKeyAnalytics)
 				apiKeys.GET("/:id", h.GetAPIKey)
-				apiKeys.PATCH("/:id", h.UpdateAPIKey)
-				apiKeys.DELETE("/:id", h.RevokeAPIKey)
+				apiKeys.PATCH("/:id", middleware.RefuseOAuth(), h.UpdateAPIKey)
+				apiKeys.DELETE("/:id", middleware.RefuseOAuth(), h.RevokeAPIKey)
 				// Revoking ends a key; deleting removes the row and its usage
 				// logs. Separate paths so neither can be reached by accident.
-				apiKeys.DELETE("/:id/permanent", h.DeleteAPIKey)
+				apiKeys.DELETE("/:id/permanent", middleware.RefuseOAuth(), h.DeleteAPIKey)
 				apiKeys.GET("/:id/analytics", h.GetAPIKeyAnalytics)
 				apiKeys.GET("/:id/logs", h.ListAPIKeyUsageLogs)
 			}
@@ -1236,11 +1235,11 @@ func Run(
 			}
 
 			// OAuth 2.1 authorization server. Registering/editing apps is a
-			// developer-credentials action (the manage-api-keys family); the
-			// authorize + authorized-apps flows are session-only (a human consents
-			// in their browser, so they never accept a long-lived API key).
+			// developer-credentials action (the manage-api-keys family) that an
+			// OAuth app token never reaches; the authorize + authorized-apps flows
+			// are session-only (a human consents in their browser).
 			oauthApps := protected.Group("/oauth/applications")
-			oauthApps.Use(m.RequireOrganization(), m.RequireAccess(models.PermManageAPIKeys, models.APIPermAPIKeys), m.RateLimitMiddleware(models.RateLimitWrite))
+			oauthApps.Use(m.RequireOrganization(), middleware.RefuseOAuth(), m.RequireAccess(models.PermManageAPIKeys, models.APIPermAPIKeys), m.RateLimitMiddleware(models.RateLimitWrite))
 			{
 				oauthApps.GET("", h.ListOAuthApplications)
 				oauthApps.POST("", h.CreateOAuthApplication)
@@ -1267,16 +1266,21 @@ func Run(
 			// /applications/:id) so it doesn't collide with the :id param route and
 			// can be called during creation, before an app id exists.
 			oauthLogo := protected.Group("/oauth/application-logo")
-			oauthLogo.Use(m.RequireOrganization(), m.RequireAccess(models.PermManageAPIKeys, models.APIPermAPIKeys), m.RateLimitMiddleware(models.RateLimitWrite))
+			oauthLogo.Use(m.RequireOrganization(), middleware.RefuseOAuth(), m.RequireAccess(models.PermManageAPIKeys, models.APIPermAPIKeys), m.RateLimitMiddleware(models.RateLimitWrite))
 			oauthLogo.POST("", h.UploadOAuthAppLogo)
 
 			oauthFlow := jwtOnly.Group("/oauth")
 			oauthFlow.Use(m.RequireOrganization(), m.RateLimitMiddleware(models.RateLimitWrite))
 			{
 				oauthFlow.GET("/authorize/details", h.OAuthAuthorizeDetails)
-				oauthFlow.POST("/authorize", h.OAuthAuthorize)
+				// Approving hands a third party a standing credential, so the session confirms first.
+				oauthFlow.POST("/authorize", middleware.RequireFreshAuth(), h.OAuthAuthorize)
 				oauthFlow.GET("/authorized-apps", h.ListAuthorizedApps)
 				oauthFlow.DELETE("/authorized-apps/:id", h.RevokeAuthorizedApp)
+				// Every member's app authorizations, for the people who manage the workspace's credentials.
+				workspaceApps := m.RequireAnyAccess(models.APIPermAPIKeys, models.PermManageAPIKeys, models.PermManageSettings)
+				oauthFlow.GET("/workspace-authorizations", workspaceApps, h.ListWorkspaceAuthorizations)
+				oauthFlow.DELETE("/workspace-authorizations/:id/members/:userId", workspaceApps, h.RevokeWorkspaceAuthorization)
 			}
 
 			// On-demand Google Sheets -> leads sync (org-scoped). A saved "sync

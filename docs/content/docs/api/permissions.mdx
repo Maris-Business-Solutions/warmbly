@@ -56,9 +56,36 @@ High-volume operations. These can touch large numbers of rows in a single reques
 
 Realtime subscriptions, webhooks, integrations, warmup routing, AI assistant / MCP access, AI contact research, and self-service key management. Grant individually.
 
+## What a role can delegate
+
+An API key or an OAuth grant acts for a member of the workspace, so it never holds a permission that member's role does not cover. Each API permission maps to the [team role permission](/guides/team-roles/) it needs; the workspace owner covers every one.
+
+| API permission | Member needs |
+|----------------|--------------|
+| `READ_EMAILS`, `READ_CAMPAIGNS`, `READ_TEMPLATES` | `view_campaigns` |
+| `READ_CONTACTS`, `READ_CRM` | `view_contacts` |
+| `READ_UNIBOX`, `WRITE_UNIBOX` | `access_unibox` |
+| `READ_ANALYTICS`, `READ_AUDIT_LOGS` | `view_analytics` |
+| `WRITE_EMAILS` | `manage_emails` |
+| `WRITE_CAMPAIGNS`, `WRITE_TEMPLATES`, `BULK_CAMPAIGNS` | `manage_campaigns` |
+| `WRITE_CONTACTS`, `WRITE_CRM`, `BULK_CONTACTS` | `manage_contacts` |
+| `SEND_CAMPAIGNS` | `send_campaigns` |
+| `WEBHOOKS`, `WARMUP_ROUTING` | `manage_settings` |
+| `API_KEYS` | `manage_api_keys` |
+| `INTEGRATIONS` | `use_integrations` |
+| `AI_AGENT` | `use_ai` |
+| `AI_RESEARCH` | `view_contacts` and `use_ai` |
+| `REALTIME_SUBSCRIBE` | any member |
+
+Where it applies:
+
+- **Creating or editing an API key** from the dashboard refuses a permission outside the member's role with `403` `api_key_permissions_exceed_caller`.
+- **Creating or editing an API key with an API key** keeps the result inside the calling key: no permission it lacks, and when the calling key is limited to some mailboxes or IP addresses, the new or edited key must be limited to a subset of them. The same `403` `api_key_permissions_exceed_caller` answers otherwise.
+- **An OAuth grant** carries only the requested scopes the approving member's role covers, re-checked against the member's current role on every request. See [OAuth scopes](/api/oauth/#scopes). `API_KEYS` is never granted to an OAuth app, and OAuth tokens cannot create, edit, revoke or delete API keys (`403` `oauth_token_not_allowed`).
+
 ## Preset combinations
 
-Both presets are returned by `GET /api-keys/permissions` for convenience.
+Both presets are returned by `GET /api-keys/permissions` for convenience. The same response carries `grantable`, the mask the caller may put on a key (its role's reach, or the calling key's own permissions), and `app_scopes`, the mask an OAuth app may request.
 
 ### Read only (688159)
 

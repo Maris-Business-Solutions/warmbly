@@ -366,23 +366,25 @@ Changing Advisor settings (`PATCH /advisor/settings`) is JWT only, alongside the
 | Method | Path | API Permission |
 |--------|------|----------------|
 | GET | `/api-keys` | `API_KEYS` |
-| POST | `/api-keys` | `API_KEYS`, JWT only |
+| POST | `/api-keys` | `API_KEYS`, not OAuth tokens |
 | GET | `/api-keys/permissions` | `API_KEYS` |
 | GET | `/api-keys/:id` | `API_KEYS` |
-| PATCH | `/api-keys/:id` | `API_KEYS` |
-| DELETE | `/api-keys/:id` | `API_KEYS` |
-| DELETE | `/api-keys/:id/permanent` | `API_KEYS` |
+| PATCH | `/api-keys/:id` | `API_KEYS`, not OAuth tokens |
+| DELETE | `/api-keys/:id` | `API_KEYS`, not OAuth tokens |
+| DELETE | `/api-keys/:id/permanent` | `API_KEYS`, not OAuth tokens |
 | DELETE | `/api-keys/self` | none |
 
 `DELETE /api-keys/:id/permanent` deletes a key that has already been revoked or has expired, taking its usage logs with it. A key that could still authenticate gets a `409`, because revoking is what records that a credential was ended and why. See [Ending a key](/api/authentication/).
 
-`POST /api-keys` requires a recent confirmation (`POST /auth/reauth`) when called from a signed-in session, because a key outlives the session that made it and a stolen browser token should not be able to leave one behind. An API key or OAuth token calling it is unaffected: it has no session and no second factor to present, it was itself minted from a confirmed session, and the `API_KEYS` scope is the explicit grant that governs it. Automation and the CLI keep working.
+`POST /api-keys` requires a recent confirmation (`POST /auth/reauth`) when called from a signed-in session, because a key outlives the session that made it and a stolen browser token should not be able to leave one behind. An API key calling it is unaffected: it has no session and no second factor to present, it was itself minted from a confirmed session, and the `API_KEYS` scope is the explicit grant that governs it. Automation and the CLI keep working.
+
+Creating, editing, revoking and deleting keys is for a signed-in member or an API key; an OAuth app token gets `403` `oauth_token_not_allowed`. A new or edited key stays within its creator: a member cannot give it a permission their role does not cover, and an API key cannot give it a permission, mailbox or IP address the calling key does not have (`403` `api_key_permissions_exceed_caller`). See [what a role can delegate](/api/permissions/#what-a-role-can-delegate). `GET /api-keys/permissions` reports the caller's bound as `grantable`.
 
 `DELETE /api-keys/self` revokes the key the request was made with, and is the one route here that needs no scope. A credential must always be able to end itself: requiring `API_KEYS` to sign out would leave a read-only key on a laptop someone is handing back live, which is what [`warmbly auth logout`](/api/cli/) promises to prevent. A JWT caller gets a `400`: there is no key in that request to end, only a session, which `POST /auth/logout` ends.
 
 ### OAuth apps
 
-Registering and managing the OAuth apps your workspace owns. The flow itself (authorize, token, revoke) is listed under JWT only and Public below.
+Registering and managing the OAuth apps your workspace owns. The flow itself (authorize, token, revoke) is listed under JWT only and Public below. Every route here, and `POST /oauth/application-logo`, refuses an OAuth app token with `403` `oauth_token_not_allowed`.
 
 | Method | Path | API Permission |
 |--------|------|----------------|
@@ -498,6 +500,8 @@ These changes require the session to have confirmed the account holder within th
 | Action | Route |
 |--------|-------|
 | Create an API key | `POST /api-keys` |
+| Approve an app on the OAuth consent screen | `POST /oauth/authorize` |
+| Approve a CLI sign-in | `POST /auth/cli/codes/:code/approve` |
 | Add a passkey | `POST /auth/passkey/register/begin`, `/finish` |
 | Remove a passkey | `DELETE /auth/passkey/credentials/:id` |
 | Turn on two-factor authentication | `POST /auth/2fa/enroll/start`, `/confirm` (see below for accounts with no password) |
@@ -582,8 +586,9 @@ Alongside them, `api_url` is this API's own public base (for a copyable example 
   None of these takes an `Idempotency-Key`; the retry behavior of each is stated above. Changes to vendor connections, grants and redirects publish `AUDIT_CREATED` with `entity_type` `mailbox_vendor`, `mailbox_grant` or `domain_redirect`. Error codes are under [mailbox source refusals](/api/error-codes/#mailbox-source-refusals)
 - `POST /emails/onboarding/oauth/reauth/:id`, `PUT /emails/onboarding/smtp-imap/:id` (reconnect an existing mailbox after a credential change; JWT permission `MANAGE_EMAILS`)
 - `POST /emails/onboarding/app-password/:id` (JWT permission `MANAGE_EMAILS`): move a mailbox off per-mailbox Google sign-in onto Gmail's IMAP and SMTP with `app_password`, a 16-letter Google app password (spaces are ignored). The password is checked against Gmail's servers before anything is stored, with the same refusals as an SMTP/IMAP connect; on success the mailbox becomes `smtp_imap` in place, keeps its imported mail, campaigns and warmup, and answers `200` with the mailbox. `409` `mailbox_not_google_signin` for any other mailbox, including one already switched, so a repeat changes nothing and takes no `Idempotency-Key`; `400` `app_password_invalid` when the value is not 16 letters. Publishes `AUDIT_CREATED` with `entity_type` `email_account`
-- `GET /oauth/authorize/details`, `POST /oauth/authorize` (the consent flow: a human approves a third-party app)
+- `GET /oauth/authorize/details`, `POST /oauth/authorize` (the consent flow: a human approves a third-party app, and the grant carries only the scopes the member's role covers). `POST /oauth/authorize` requires a recent confirmation (`POST /auth/reauth`), like creating an API key
 - `GET /oauth/authorized-apps`, `DELETE /oauth/authorized-apps/:id` (apps the user has authorized)
+- `GET /oauth/workspace-authorizations`, `DELETE /oauth/workspace-authorizations/:id/members/:userId` (every member's authorized apps, and revoking one; JWT permission `MANAGE_API_KEYS` or `MANAGE_SETTINGS`). A revoke succeeds when there is nothing to revoke and publishes `AUDIT_CREATED` with `entity_type` `oauth_authorization`
 - `POST /getaway` (websocket bootstrap)
 - `GET /realtime/info`
 - `GET /me/danger-zone`, `POST /me/danger-zone/delete`, `DELETE /me/danger-zone/delete`

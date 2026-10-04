@@ -41,6 +41,7 @@ func (h *Handler) agentToolInvocation(c *gin.Context) (aitools.Invocation, *errx
 	if uid, err := middleware.GetUserUUID(c); err == nil {
 		inv.UserID = uid
 	}
+	bindOAuthMember(c, &inv)
 	return inv, nil
 }
 

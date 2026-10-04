@@ -13,4 +13,8 @@ export interface APIPermissionsResponse {
         read_only: number;
         full_access: number;
     };
+    // What the caller may put on a key: its role's reach, or the calling key's own permissions.
+    grantable: number;
+    // What a third-party OAuth app may request.
+    app_scopes: number;
 }

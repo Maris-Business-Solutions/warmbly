@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/app/aitools"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 )
@@ -15,6 +16,11 @@ func (h *Handler) hasAccess(c *gin.Context, orgPerm models.OrganizationPermissio
 	case middleware.AuthTypeAPIKey, middleware.AuthTypeOAuth:
 		if !models.HasAPIPermission(middleware.GetAPIKeyPermissions(c), apiPerm) {
 			return errx.New(errx.Forbidden, "insufficient API key permissions")
+		}
+		if middleware.GetAuthType(c) == middleware.AuthTypeOAuth {
+			if perms, ok := middleware.GetMemberPermissions(c); !ok || !perms.HasPermission(orgPerm) {
+				return errx.New(errx.Forbidden, "the member who authorized this app does not have this permission")
+			}
 		}
 		return nil
 	default:
@@ -38,6 +44,46 @@ func (h *Handler) hasAccess(c *gin.Context, orgPerm models.OrganizationPermissio
 		}
 		return nil
 	}
+}
+
+// bindOAuthMember holds an OAuth caller's tools to its member's permissions as well as its scopes.
+func bindOAuthMember(c *gin.Context, inv *aitools.Invocation) {
+	if middleware.GetAuthType(c) != middleware.AuthTypeOAuth {
+		return
+	}
+	inv.ActsForMember = true
+	inv.OrgPerms, _ = middleware.GetMemberPermissions(c)
+}
+
+// apiKeyCeiling is the widest permission set the caller may put on an API key.
+func (h *Handler) apiKeyCeiling(c *gin.Context) (uint64, *errx.Error) {
+	if middleware.GetAuthType(c) == middleware.AuthTypeAPIKey {
+		return middleware.GetAPIKeyPermissions(c), nil
+	}
+	member, xerr := h.callerMember(c)
+	if xerr != nil {
+		return 0, xerr
+	}
+	return models.APIPermissionsFor(member), nil
+}
+
+// callerMember is the caller's membership in the request's workspace, or nil.
+func (h *Handler) callerMember(c *gin.Context) (*models.OrganizationMember, *errx.Error) {
+	if m := middleware.GetAuthMember(c); m != nil {
+		return m, nil
+	}
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		return nil, errx.ErrNoOrganization
+	}
+	userID, err := middleware.GetUserUUID(c)
+	if err != nil {
+		return nil, errx.ErrUnauthorized
+	}
+	if h.OrganizationService == nil {
+		return nil, errx.ErrForbidden
+	}
+	return h.OrganizationService.GetMembership(c.Request.Context(), *orgID, userID)
 }
 
 // mailboxAllowed enforces an API key's mailbox allow-list on an account id

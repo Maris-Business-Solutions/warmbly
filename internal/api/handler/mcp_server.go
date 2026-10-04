@@ -60,6 +60,7 @@ func (h *Handler) MCPEndpoint(c *gin.Context) {
 	if uid, err := middleware.GetUserUUID(c); err == nil {
 		inv.UserID = uid
 	}
+	bindOAuthMember(c, &inv)
 
 	switch req.Method {
 	case "initialize":

@@ -55,6 +55,18 @@ func (e *DeveloperBlockedError) Error() string {
 // ErrAppSuspended is returned when the owner edits an app an operator suspended.
 var ErrAppSuspended = errors.New("this app is suspended by the instance's administrators")
 
+// ErrAppNotFound is returned when the workspace owns no app with that id.
+var ErrAppNotFound = errors.New("application not found")
+
+// ValidationError is a refusal written for the developer; any other error from a write is a server fault.
+type ValidationError struct{ msg string }
+
+func (e *ValidationError) Error() string { return e.msg }
+
+func invalidf(format string, args ...any) error {
+	return &ValidationError{msg: fmt.Sprintf(format, args...)}
+}
+
 // appName applies the shared naming rules: an app name is shown to every
 // workspace that sees its consent screen or its directory listing.
 func appName(raw string) (string, error) {
@@ -154,9 +166,9 @@ func (s *Service) RegisterApplication(ctx context.Context, orgID, userID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	scopes := w.Scopes & models.AllAPIPermissionsMask
+	scopes := w.Scopes & models.AppGrantableScopes
 	if scopes == 0 {
-		return nil, fmt.Errorf("select at least one scope")
+		return nil, invalidf("select at least one scope")
 	}
 	clientID, err := randomToken(models.OAuthClientIDPrefix)
 	if err != nil {
@@ -208,7 +220,7 @@ func (s *Service) UpdateApplication(ctx context.Context, orgID, userID, id uuid.
 		return nil, err
 	}
 	if app == nil {
-		return nil, fmt.Errorf("application not found")
+		return nil, ErrAppNotFound
 	}
 	if app.SuspendedAt != nil {
 		return nil, ErrAppSuspended
@@ -229,16 +241,16 @@ func (s *Service) UpdateApplication(ctx context.Context, orgID, userID, id uuid.
 	if err != nil {
 		return nil, err
 	}
-	scopes := w.Scopes & models.AllAPIPermissionsMask
+	scopes := w.Scopes & models.AppGrantableScopes
 	if scopes == 0 {
-		return nil, fmt.Errorf("select at least one scope")
+		return nil, invalidf("select at least one scope")
 	}
 	// The logo has its own endpoints; an update without one keeps the current logo.
 	logo := app.LogoURL
 	if v := strings.TrimSpace(w.LogoURL); v != "" {
 		logo = v
 	}
-	faceChanged := app.Name != name || app.LogoURL != logo || app.WebsiteURL != website || app.Scopes != scopes
+	faceChanged := app.Name != name || app.LogoURL != logo || app.WebsiteURL != website || app.Scopes&models.AppGrantableScopes != scopes
 	// A blocked developer keeps a working app but cannot change what other workspaces see of it.
 	if faceChanged {
 		if err := s.CheckDeveloperAccess(ctx, orgID, userID); err != nil {
@@ -260,7 +272,7 @@ func (s *Service) UpdateApplication(ctx context.Context, orgID, userID, id uuid.
 	}
 	if faceChanged && s.listings != nil {
 		if err := s.listings.Unfeature(ctx, orgID, id); err != nil {
-			return nil, fmt.Errorf("the app was saved but its directory listing could not be updated")
+			return nil, errx.NewPublic(errx.Internal, "the app was saved but its directory listing could not be updated")
 		}
 	}
 	// Re-materialize the app's per-org endpoints from the new config (URL/events).
@@ -280,10 +292,10 @@ func applyWebhookConfig(app *models.OAuthApplication, w models.OAuthApplicationW
 		return nil
 	}
 	if err := webhook.ValidateOutboundURL(url); err != nil {
-		return fmt.Errorf("webhook url: %w", err)
+		return invalidf("webhook url: %v", err)
 	}
 	if !whdomain.HostAllowed(hostOf(url), app.AllowedWebhookDomains) {
-		return fmt.Errorf("webhook url host must be within the app's allowed webhook domains")
+		return invalidf("webhook url host must be within the app's allowed webhook domains")
 	}
 	for _, e := range w.WebhookEvents {
 		e = strings.TrimSpace(e)
@@ -291,7 +303,7 @@ func applyWebhookConfig(app *models.OAuthApplication, w models.OAuthApplicationW
 			continue
 		}
 		if !models.IsValidWebhookEventType(e) {
-			return fmt.Errorf("unknown webhook event type: %s", e)
+			return invalidf("unknown webhook event type: %s", e)
 		}
 		app.WebhookEvents = append(app.WebhookEvents, e)
 	}
@@ -360,7 +372,7 @@ func (s *Service) WebhookSecret(ctx context.Context, orgID, id uuid.UUID) (strin
 		return "", err
 	}
 	if app == nil {
-		return "", fmt.Errorf("application not found")
+		return "", ErrAppNotFound
 	}
 	return app.WebhookSecret, nil
 }
@@ -373,7 +385,7 @@ func (s *Service) RotateWebhookSecret(ctx context.Context, orgID, id uuid.UUID) 
 		return "", err
 	}
 	if app == nil {
-		return "", fmt.Errorf("application not found")
+		return "", ErrAppNotFound
 	}
 	app.WebhookSecret = genWebhookSecret()
 	if err := s.repo.UpdateApplication(ctx, app); err != nil {
@@ -391,7 +403,7 @@ func (s *Service) RotateSecret(ctx context.Context, orgID, id uuid.UUID) (string
 		return "", err
 	}
 	if app == nil {
-		return "", fmt.Errorf("application not found")
+		return "", ErrAppNotFound
 	}
 	secret, err := randomToken(models.OAuthClientSecretPrefix)
 	if err != nil {
@@ -416,6 +428,11 @@ func (s *Service) AllowedWebhookDomains(ctx context.Context, appID uuid.UUID) ([
 
 func (s *Service) ListAuthorizedApps(ctx context.Context, orgID, userID uuid.UUID) ([]models.OAuthAuthorizedApp, error) {
 	return s.repo.ListAuthorizedApps(ctx, orgID, userID)
+}
+
+// ListWorkspaceAuthorizations is every member's live app authorizations in the workspace.
+func (s *Service) ListWorkspaceAuthorizations(ctx context.Context, orgID uuid.UUID) ([]models.OAuthMemberAuthorization, error) {
+	return s.repo.ListWorkspaceAuthorizations(ctx, orgID)
 }
 
 func (s *Service) RevokeAuthorization(ctx context.Context, orgID, userID, appID uuid.UUID) error {
@@ -451,19 +468,19 @@ func validateRedirectURIs(uris []string) ([]string, error) {
 		}
 		parsed, err := url.Parse(u)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return nil, fmt.Errorf("invalid redirect URI: %s", u)
+			return nil, invalidf("invalid redirect URI: %s", u)
 		}
 		if parsed.Fragment != "" {
-			return nil, fmt.Errorf("a redirect URI must not contain a fragment: %s", u)
+			return nil, invalidf("a redirect URI must not contain a fragment: %s", u)
 		}
 		if parsed.Scheme != "https" && !isLoopbackRedirect(parsed) {
-			return nil, fmt.Errorf("a redirect URI must use https: %s", u)
+			return nil, invalidf("a redirect URI must use https: %s", u)
 		}
 		seen[u] = true
 		out = append(out, u)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("at least one redirect URI is required")
+		return nil, invalidf("at least one redirect URI is required")
 	}
 	return out, nil
 }
@@ -480,7 +497,7 @@ func isLoopbackRedirect(u *url.URL) bool {
 func validateWebhookDomains(domains []string) ([]string, error) {
 	out, err := whdomain.NormalizeList(domains)
 	if err != nil {
-		return nil, err
+		return nil, invalidf("%v", err)
 	}
 	return out, nil
 }

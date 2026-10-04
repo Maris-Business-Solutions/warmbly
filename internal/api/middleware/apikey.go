@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/app/apikey"
+	"github.com/warmbly/warmbly/internal/app/oauth"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 )
@@ -162,12 +163,86 @@ func (h *Handler) validateOAuthToken(c *gin.Context, token string) {
 		c.Abort()
 		return
 	}
+	setOAuthCaller(c, claims)
+	c.Next()
+}
+
+// setOAuthCaller puts an OAuth token's identity on the request. The granting member's
+// membership rides along, so every gate holds the token to that member's role as well as its scopes.
+func setOAuthCaller(c *gin.Context, claims *oauth.AccessClaims) {
 	c.Set(AuthTypeKey, AuthTypeOAuth)
 	c.Set(APIKeyPermissionsKey, claims.Scopes)
 	c.Set(UserIDKey, claims.UserID.String())
 	c.Set(OrganizationIDKey, claims.OrganizationID)
 	c.Set(OAuthApplicationIDKey, claims.ApplicationID)
-	c.Next()
+	if claims.Member != nil {
+		c.Set(SessionMemberKey, claims.Member)
+	}
+}
+
+// RefuseOAuth keeps OAuth app tokens off routes that mint or manage credentials.
+func RefuseOAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetString(AuthTypeKey) == AuthTypeOAuth {
+			errx.JSON(c, errx.NewWithIdentifier(errx.Forbidden, "oauth_token_not_allowed",
+				"OAuth app tokens cannot manage API keys or OAuth apps. Use the dashboard or an API key."))
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// GetMemberPermissions returns the caller's membership permissions resolved at authentication
+// (a session or an OAuth token), with the owner holding all of them.
+func GetMemberPermissions(c *gin.Context) (models.OrganizationPermission, bool) {
+	v, ok := c.Get(SessionMemberKey)
+	if !ok {
+		return 0, false
+	}
+	m, ok := v.(*models.OrganizationMember)
+	if !ok || m == nil {
+		return 0, false
+	}
+	if m.IsOwner() {
+		return models.AllPermissions, true
+	}
+	return m.Permissions, true
+}
+
+// GetAuthMember returns the caller's membership resolved at authentication (session or OAuth token), or nil.
+func GetAuthMember(c *gin.Context) *models.OrganizationMember {
+	if v, ok := c.Get(SessionMemberKey); ok {
+		if m, ok := v.(*models.OrganizationMember); ok {
+			return m
+		}
+	}
+	return nil
+}
+
+// oauthMemberAllows reports whether an OAuth caller's member holds any of perms; other callers pass.
+func (h *Handler) oauthMemberAllows(c *gin.Context, perms ...models.OrganizationPermission) (bool, *errx.Error) {
+	if c.GetString(AuthTypeKey) != AuthTypeOAuth || h.OrganizationService == nil {
+		return true, nil
+	}
+	userID, err := GetUserUUID(c)
+	if err != nil {
+		return false, errx.ErrUnauthorized
+	}
+	orgID := GetOrganizationID(c)
+	if orgID == nil {
+		return false, errx.New(errx.BadRequest, "no organization selected")
+	}
+	for _, p := range perms {
+		has, xerr := h.memberHasPermission(c, *orgID, userID, p)
+		if xerr != nil {
+			return false, xerr
+		}
+		if has {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (h *Handler) validateJWT(c *gin.Context, token string) {
@@ -236,6 +311,11 @@ func (h *Handler) RequireAccess(orgPerm models.OrganizationPermission, apiPerm u
 				c.Abort()
 				return
 			}
+			if allowed, xerr := h.oauthMemberAllows(c, orgPerm); xerr != nil || !allowed {
+				errx.JSON(c, orNotPermitted(xerr))
+				c.Abort()
+				return
+			}
 			c.Next()
 		default:
 			// JWT path: defer to the org-permission gate, which refuses when it cannot check.
@@ -272,6 +352,14 @@ func (h *Handler) RequireAccess(orgPerm models.OrganizationPermission, apiPerm u
 	}
 }
 
+// orNotPermitted is the lookup failure when there is one, and the member's missing permission otherwise.
+func orNotPermitted(xerr *errx.Error) *errx.Error {
+	if xerr != nil {
+		return xerr
+	}
+	return errx.New(errx.Forbidden, "the member who authorized this app does not have this permission")
+}
+
 // RequireAccessWithQuery applies RequireAccess only when the request carries
 // the named query parameter.
 func (h *Handler) RequireAccessWithQuery(param string, orgPerm models.OrganizationPermission, apiPerm uint64) gin.HandlerFunc {
@@ -303,6 +391,11 @@ func (h *Handler) RequireAnyAccess(apiPerm uint64, orgPerms ...models.Organizati
 			permissions, ok := perms.(uint64)
 			if !ok || !models.HasAPIPermission(permissions, apiPerm) {
 				errx.Handle(c, errx.New(errx.Forbidden, "insufficient API key permissions"))
+				c.Abort()
+				return
+			}
+			if allowed, xerr := h.oauthMemberAllows(c, orgPerms...); xerr != nil || !allowed {
+				errx.JSON(c, orNotPermitted(xerr))
 				c.Abort()
 				return
 			}

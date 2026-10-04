@@ -71,6 +71,8 @@ Roles are workspace data. Every workspace starts with three seeded roles that ar
 
 How the seeded roles map: **Viewer** holds only the two view permissions plus analytics. **Manager** adds everything operational (manage campaigns, contacts, sequences, mailboxes, send, unibox, integrations, AI). **Admin** adds team, settings, billing, and API keys. **Owner** is Admin plus ownership transfer.
 
+A role also bounds what its members hand to software. An API key a member creates, and an app a member authorizes over OAuth, only gets the [API permissions their role covers](/api/permissions/#what-a-role-can-delegate), and an app's access shrinks with the member's role if it changes later. Members with **Manage API keys** or **Manage settings** can see every member's authorized apps under **Settings > OAuth apps > Authorized apps** and revoke any of them.
+
 ## Custom roles
 
 On **Roles & access**, click **New role**: a name (up to 50 characters, and only "owner" is reserved), a color, and an optional description. Pick a template under **Start from** to copy a permission bundle, then toggle individual permissions. Assign it from the roster or the invite flow.

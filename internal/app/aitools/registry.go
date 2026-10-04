@@ -28,6 +28,8 @@ type Invocation struct {
 	// IsAPIKey selects which permission mask gates the tool: API-key callers
 	// (MCP, developer sockets) are gated on APIPerms; JWT callers on OrgPerms.
 	IsAPIKey bool
+	// ActsForMember marks an OAuth token: it also needs OrgPerms, its member's permissions.
+	ActsForMember bool
 	// IP / UserAgent flow into the audit trail for write-class tools.
 	IP        string
 	UserAgent string
@@ -60,6 +62,9 @@ type Tool struct {
 func (t Tool) allowed(inv Invocation) bool {
 	if inv.IsAPIKey {
 		if t.JWTOnly {
+			return false
+		}
+		if inv.ActsForMember && inv.OrgPerms&t.RequiredOrgPerm != t.RequiredOrgPerm {
 			return false
 		}
 		return t.RequiredAPIPerm == 0 || models.HasAPIPermission(inv.APIPerms, t.RequiredAPIPerm)

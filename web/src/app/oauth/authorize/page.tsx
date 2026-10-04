@@ -1,13 +1,13 @@
 // OAuth 2.1 consent screen. The third-party app redirects the user's browser
 // here with the standard authorize params; we validate them via the API, show
-// the app + the scopes it wants, and on approval mint a code and bounce the
-// browser back to the app's redirect URI.
+// the app + the scopes the member's role lets it have, and on approval (after a
+// recent sign-in) mint a code and bounce the browser back to the app's redirect URI.
 
 "use client";
 
 import React from "react";
 import { useSearchParams } from "react-router-dom";
-import { CheckIcon, ExternalLinkIcon, ShieldCheckIcon } from "lucide-react";
+import { CheckIcon, ExternalLinkIcon, MinusIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react";
 
 import getAuthorizeDetails from "@/lib/api/client/app/oauth/getAuthorizeDetails";
 import authorizeConsent from "@/lib/api/client/app/oauth/authorizeConsent";
@@ -137,9 +137,20 @@ export default function OAuthConsentPage() {
                         {info.name.charAt(0)}
                     </div>
                 )}
-                <h1 className="text-[15px] font-semibold text-slate-900">{info.name}</h1>
+                <div className="flex items-center gap-1.5">
+                    <h1 className="text-[15px] font-semibold text-slate-900">{info.name}</h1>
+                    {!info.verified && (
+                        <span
+                            title="Warmbly has not reviewed this app. Only continue if you trust who made it."
+                            className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-700 ring-1 ring-amber-200"
+                        >
+                            <ShieldAlertIcon className="h-3 w-3" />
+                            Unverified app
+                        </span>
+                    )}
+                </div>
                 <p className="text-center text-[12.5px] text-slate-500">
-                    wants to access your Warmbly workspace
+                    wants to access the <span className="font-medium text-slate-700">{info.organization_name}</span> workspace
                 </p>
                 {info.website_url && (
                     <a
@@ -164,6 +175,22 @@ export default function OAuthConsentPage() {
                         </li>
                     ))}
                 </ul>
+                {info.withheld_scopes.length > 0 && (
+                    <div className="mt-4">
+                        <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400 mb-2">Not included</div>
+                        <p className="mb-1.5 text-[11.5px] leading-relaxed text-slate-500">
+                            The app also asked for these, but your role in this workspace does not include them, so it will not get them.
+                        </p>
+                        <ul className="space-y-1.5">
+                            {info.withheld_scopes.map((s) => (
+                                <li key={s} className="flex items-start gap-2 text-[12.5px] text-slate-400">
+                                    <MinusIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                    <span className="capitalize">{s.replace(/_/g, " ")}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </div>
 
             <div className="flex items-center gap-2 border-t border-slate-100 px-6 py-4">

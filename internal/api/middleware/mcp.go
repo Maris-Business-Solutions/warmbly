@@ -45,11 +45,7 @@ func (h *Handler) mcpValidateOAuth(c *gin.Context, token string) {
 		mcpChallenge(c)
 		return
 	}
-	c.Set(AuthTypeKey, AuthTypeOAuth)
-	c.Set(APIKeyPermissionsKey, claims.Scopes)
-	c.Set(UserIDKey, claims.UserID.String())
-	c.Set(OrganizationIDKey, claims.OrganizationID)
-	c.Set(OAuthApplicationIDKey, claims.ApplicationID)
+	setOAuthCaller(c, claims)
 	c.Next()
 }
 

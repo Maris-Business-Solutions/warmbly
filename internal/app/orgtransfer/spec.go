@@ -253,6 +253,10 @@ var Tables = []Table{
 		Scope: scopeOrg,
 		// A suspension is the source operator's decision; the destination's operators make their own.
 		ResetOnImport: []string{"suspended_at", "suspended_reason", "suspended_by"},
+		// The app's webhook signing secret is sealed under the instance key, like each endpoint's copy.
+		Secrets: []SecretColumn{
+			{Column: "webhook_secret", Domain: KeyDomainInstance},
+		},
 	},
 	{
 		Name: "oauth_access_grants", Group: models.OrgDataGroupCore,

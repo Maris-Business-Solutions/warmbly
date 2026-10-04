@@ -78,9 +78,15 @@ export default function RegisterAppDialog({ onClose }: { onClose: () => void }) 
     const [secretCopied, setSecretCopied] = React.useState(false);
 
     const presets = perms.data?.presets;
+    // Key management is never offered to an app, so only the scopes an app may hold are listed.
+    const appScopes = perms.data?.app_scopes ?? 0;
+    const appPerms = React.useMemo(
+        () => (perms.data?.permissions ?? []).filter((p) => (appScopes & p.value) === p.value),
+        [perms.data, appScopes],
+    );
     React.useEffect(() => {
-        if (presets && preset !== "custom" && scopes === 0) setScopes(presets[preset]);
-    }, [presets, preset, scopes]);
+        if (presets && preset !== "custom" && scopes === 0) setScopes(presets[preset] & appScopes);
+    }, [presets, preset, scopes, appScopes]);
 
     const redirectList = redirects.map((r) => r.trim()).filter(Boolean);
     const redirectErrors = redirects.map(redirectProblem);
@@ -305,7 +311,7 @@ export default function RegisterAppDialog({ onClose }: { onClose: () => void }) 
                                                             type="button"
                                                             onClick={() => {
                                                                 setPreset(key);
-                                                                if (key !== "custom" && presets) setScopes(presets[key]);
+                                                                if (key !== "custom" && presets) setScopes(presets[key] & appScopes);
                                                             }}
                                                             className={cn(
                                                                 "rounded-md border px-2.5 py-2 text-left transition-colors",
@@ -319,13 +325,13 @@ export default function RegisterAppDialog({ onClose }: { onClose: () => void }) 
                                                 </div>
                                                 {preset === "custom" ? (
                                                     <PermissionList
-                                                        permissions={perms.data?.permissions ?? []}
+                                                        permissions={appPerms}
                                                         mask={scopes}
                                                         onToggle={(v) => setScopes((m) => (m & v ? m & ~v : m | v))}
                                                     />
                                                 ) : (
                                                     <p className="mt-2 text-[11.5px] text-slate-500">
-                                                        {summarize(perms.data?.permissions ?? [], scopes)}
+                                                        {summarize(appPerms, scopes)}
                                                     </p>
                                                 )}
                                                 {showErrors && scopes === 0 && <p className="mt-1 text-[11.5px] text-rose-600">Choose at least one permission.</p>}

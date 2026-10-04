@@ -153,6 +153,8 @@ const (
 	// Operator moderation of an OAuth app, and a block on who may register them.
 	AuditEntityOAuthApplication    AuditEntityType = "oauth_application"
 	AuditEntityOAuthDeveloperBlock AuditEntityType = "oauth_developer_block"
+	// A member's authorization of an OAuth app, revoked by a workspace admin.
+	AuditEntityOAuthAuthorization AuditEntityType = "oauth_authorization"
 
 	// Inbox placement: a test or batch started or cancelled, and a campaign's
 	// scheduled test set up, changed or removed.

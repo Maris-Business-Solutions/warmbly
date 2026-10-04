@@ -139,6 +139,23 @@ func checkAppLogo(ctx context.Context, store storage.Store, orgID uuid.UUID, log
 	return nil
 }
 
+// hostedAppLogo reports whether logoURL is an app logo this instance stored, read without a fetch.
+func hostedAppLogo(store storage.Store, logoURL string) bool {
+	pu, ok := store.(storage.PublicURLer)
+	if !ok || store == nil || logoURL == "" {
+		return false
+	}
+	base := pu.PublicURL("")
+	if !strings.HasPrefix(logoURL, base) {
+		return false
+	}
+	key := strings.TrimPrefix(logoURL, base)
+	if !strings.HasPrefix(key, appLogoPrefix) || strings.Contains(key, "..") || pu.PublicURL(key) != logoURL {
+		return false
+	}
+	return strings.HasSuffix(key, ".png") || strings.HasSuffix(key, ".jpg")
+}
+
 // appLogoTarget resolves the workspace and the app it owns for a logo change.
 func (h *Handler) appLogoTarget(c *gin.Context) (uuid.UUID, *models.OAuthApplication, bool) {
 	orgID := middleware.GetOrganizationID(c)

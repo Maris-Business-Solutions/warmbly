@@ -785,7 +785,8 @@ func main() {
 
 		integrationRepository := repository.NewIntegrationRepository(primaryDB.Pool)
 		// OAuth 2.1 authorization server (third-party app registration + token flow).
-		oauthService = oauth.NewService(repository.NewOAuthRepository(primaryDB.Pool), cache)
+		oauthRepository := repository.NewOAuthRepositorySealed(primaryDB.Pool, credEncrypter)
+		oauthService = oauth.NewService(oauthRepository, cache)
 		// Enforce the per-app webhook-domain allowlist on app-scoped endpoints (at
 		// write time, and re-checked at delivery time via the worker below).
 		webhookService.WireAppDomainResolver(oauthService.AllowedWebhookDomains)
@@ -796,7 +797,7 @@ func main() {
 		appDirectoryRepo := repository.NewAppDirectoryRepository(primaryDB.Pool)
 		oauthService.WireListingGuard(appDirectoryRepo)
 		oauthService.WireAdmin(repository.NewOAuthAdminRepository(primaryDB.Pool))
-		appDirectoryService = appdirectory.NewService(appDirectoryRepo, repository.NewOAuthRepository(primaryDB.Pool))
+		appDirectoryService = appdirectory.NewService(appDirectoryRepo, oauthRepository)
 		// integrationServiceForHandler is constructed after cipherService below —
 		// OAuth/secret sealing depends on the envelope-encryption service.
 		contactRepoForHandler = contactRepostory

@@ -55,6 +55,8 @@ Warmbly does not keep it on either instance. If you lose it, the credentials ins
 
 Leave the option off and the credential fields travel empty. Everything else imports normally, and each mailbox arrives marked for reconnection: open it on the destination and sign in again, exactly like connecting it the first time.
 
+Webhook signing secrets follow the same rule, including the one an [OAuth app](/api/oauth/#receiving-events-as-an-app-webhooks) signs its deliveries with. Without the option, rotate the app's webhook secret on the destination before relying on its deliveries.
+
 ## Importing
 
 Choose the archive file, enter its passphrase if it has one, and select **Check this archive**. Nothing is written yet. Warmbly reads the file and reports:

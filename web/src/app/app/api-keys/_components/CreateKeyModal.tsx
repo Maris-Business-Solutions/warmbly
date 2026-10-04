@@ -104,18 +104,24 @@ function ConfigureStep({
     const [expiresIn, setExpiresIn] = React.useState<"never" | "30" | "90" | "365">("never");
     const [allowedIPsRaw, setAllowedIPsRaw] = React.useState("");
     const [advanced, setAdvanced] = React.useState(false);
+    // A key never holds more than its creator could do, so only those permissions are offered.
+    const available = React.useMemo(() => {
+        const data = perms.data;
+        if (!data) return [];
+        return data.permissions.filter((p) => (data.grantable & p.value) === p.value);
+    }, [perms.data]);
 
     // Default the bitmask to whatever the read_only preset says, once perms load.
     React.useEffect(() => {
         if (perms.data && permissionsBitmask === 0 && preset !== "custom") {
-            setPermissionsBitmask(presetMask(preset, perms.data.presets));
+            setPermissionsBitmask(presetMask(preset, perms.data.presets) & perms.data.grantable);
         }
     }, [perms.data, preset, permissionsBitmask]);
 
     function switchPreset(p: Preset) {
         setPreset(p);
         if (p !== "custom" && perms.data) {
-            setPermissionsBitmask(presetMask(p, perms.data.presets));
+            setPermissionsBitmask(presetMask(p, perms.data.presets) & perms.data.grantable);
         }
     }
 
@@ -228,13 +234,13 @@ function ConfigureStep({
                                 Retry
                             </button>
                         </div>
-                    ) : (perms.data?.permissions?.length ?? 0) === 0 ? (
+                    ) : available.length === 0 ? (
                         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-[11.5px] text-slate-500">
                             No permissions available for this account.
                         </div>
                     ) : (
                         <PermissionMatrix
-                            permissions={perms.data!.permissions}
+                            permissions={available}
                             bitmask={permissionsBitmask}
                             onToggle={togglePermission}
                         />

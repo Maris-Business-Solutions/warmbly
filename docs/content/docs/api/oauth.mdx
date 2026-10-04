@@ -13,8 +13,10 @@ In the dashboard, open **Settings -> OAuth apps** and register an application. Y
 
 - a **name**, optional description, logo, and website (shown on the consent screen),
 - one or more **redirect URIs** (where users are sent back after they approve), matched exactly and required to be HTTPS, except loopback URLs for native apps,
-- the **scopes** your app may request,
+- the **scopes** your app may request (any permission except `API_KEYS`, which stays with people and API keys),
 - optionally, **allowed webhook domains** (see below).
+
+Managing apps (`/oauth/applications/*` and `/oauth/application-logo`) is for a signed-in member or an API key. An OAuth access token is refused there with `403` `oauth_token_not_allowed`, so an app can never register apps, rotate secrets, or read webhook secrets.
 
 You receive a **client ID** and a **client secret**, shown only once. Keep the secret server-side and use it to authenticate the token exchange.
 
@@ -69,7 +71,15 @@ For a public client the token exchange sends no `client_secret`, only the PKCE `
 
 ## Scopes
 
-OAuth scopes are the same permissions as API keys, lowercased (for example `read_campaigns`, `write_contacts`). A token can only ever carry scopes that the app was registered with. See the [permission reference](/api/permissions/) for the full list. The issued access token authenticates API calls with exactly those permissions, through the same gates as an API key.
+OAuth scopes are the same permissions as API keys, lowercased (for example `read_campaigns`, `write_contacts`). See the [permission reference](/api/permissions/) for the full list. A token carries the intersection of three sets:
+
+- the scopes the app was registered with,
+- the scopes the authorize request asked for (all of the app's scopes when `scope` is empty),
+- the scopes the approving member's role covers, per the [role mapping](/api/permissions/#what-a-role-can-delegate). `api_keys` is never granted to an app.
+
+So an app asking a Viewer for `write_contacts` gets only the read scopes that Viewer holds. The consent screen lists what will be granted and, separately, what was asked for but is outside the member's role. The `scope` in the token response is the granted set, which may be narrower than what you asked for ([RFC 6749 section 3.3](https://www.rfc-editor.org/rfc/rfc6749#section-3.3)). When the member's role covers none of the requested scopes, the consent screen refuses with `access_denied`.
+
+The cap follows the member, not just the moment of consent. Every request with the token is checked against the member's role as it is now: demote them and the token loses what the new role does not cover; a call that needs a permission they no longer hold answers `403`. A refresh whose member holds none of the granted scopes answers `invalid_grant`.
 
 ## The flow
 
@@ -96,7 +106,7 @@ https://app.warmbly.com/oauth/authorize
 
 ### 2. The user approves
 
-Warmbly shows the app, the scopes it wants, and an authorize or deny choice. On approval the browser is redirected back to your `redirect_uri` with a single-use code:
+Warmbly shows the app, the workspace that will receive access, the scopes it will get, and an authorize or deny choice. An app is marked **Unverified app** unless it is a registered (not self-registered) app the instance features in its [community directory](#publish-to-the-community-directory). Approving asks the member to confirm it is them when they have not signed in or re-authenticated in the last few minutes, because the approval hands your app a standing credential. On approval the browser is redirected back to your `redirect_uri` with a single-use code:
 
 ```
 https://yourapp.com/oauth/callback?code=wmac_...&state=<your-state>
@@ -139,7 +149,7 @@ curl "https://api.warmbly.com/v1/campaigns" \
 
 ### 5. Refresh when it expires
 
-Access tokens last one hour. Exchange the refresh token for a new pair before or after expiry. Refresh tokens **rotate**: the old one stops working the moment a new pair is issued, so always store the latest one.
+Access tokens last one hour. Exchange the refresh token for a new pair before or after expiry. Refresh tokens **rotate**: the old one stops working the moment a new pair is issued, so always store the latest one. Presenting the same refresh token twice at once (two workers refreshing in parallel, or a replay) lets one exchange win and **revokes the grant**, so the user has to authorize again ([RFC 9700 section 4.14.2](https://www.rfc-editor.org/rfc/rfc9700#section-4.14.2)). Serialize refreshes per grant.
 
 ```bash
 curl -X POST "https://api.warmbly.com/v1/oauth/token" \
@@ -160,15 +170,24 @@ curl -X POST "https://api.warmbly.com/v1/oauth/revoke" \
   -d client_secret=wmcs_...
 ```
 
-Users can also revoke your app themselves under **Settings -> OAuth apps -> Authorized apps**, which invalidates every token issued to it for that workspace. A user who is removed from a workspace loses every authorization they granted in it the same way, so expect `invalid_grant` on the next refresh.
+Users can also revoke your app themselves, and members who manage the workspace's credentials (`manage_api_keys` or `manage_settings`) can revoke any member's authorization under **Settings -> OAuth apps -> Authorized apps**. Either invalidates every token that member's authorization issued. A user who is removed from a workspace loses every authorization they granted in it the same way, so expect `invalid_grant` on the next refresh.
+
+#### Workspace authorizations
+
+Session-only endpoints for the people who manage a workspace's credentials. Both need **org permission** `manage_api_keys` or `manage_settings`.
+
+- `GET /oauth/workspace-authorizations` returns `{"authorizations": [...]}`: one row per app and member, with `application_id`, `name`, `logo_url`, `website_url`, `user_id`, `user_email`, `user_name`, `scopes`, `authorized_at` and `last_used_at`. Only live grants are listed (not revoked, refresh token not expired).
+- `DELETE /oauth/workspace-authorizations/{application_id}/members/{user_id}` revokes that member's grants for the app and returns `{"revoked": true}`. It succeeds when there is nothing to revoke, so it is safe to retry.
 
 ## Token lifetimes
 
 | Token | Lifetime | Notes |
 | --- | --- | --- |
 | Authorization code | 10 minutes | Single use, PKCE-bound |
-| Access token | 1 hour | Bearer, carries the granted scopes |
-| Refresh token | 90 days | Rotates on every use |
+| Access token | 1 hour | Bearer, carries the granted scopes, capped by the member's current role |
+| Refresh token | 90 days | Rotates on every use; a reused one revokes the grant |
+
+A grant whose refresh token has expired no longer counts as an install: it does not receive app webhooks and is not counted in directory installs or listed among authorized apps.
 
 ## Discovery
 
@@ -224,7 +243,7 @@ Set `webhook_url` and `webhook_events` when creating or updating your app via `P
 | `webhook_url` | string | The HTTPS URL events are delivered to. Its host must be within the app's `allowed_webhook_domains` (a 400 is returned otherwise). Set to empty to opt out of app-level webhook delivery. |
 | `webhook_events` | string[] | The event names the app subscribes to. An empty or omitted array subscribes to all non-firehose events permitted by the org's granted scopes. |
 
-The signing secret is server-generated and shared across the whole app: one secret, used to sign deliveries from every org install. Reveal or rotate it using the dedicated endpoints below.
+The signing secret is server-generated and shared across the whole app: one secret, used to sign deliveries from every org install. It is stored encrypted under the instance's credential key, like each endpoint's own copy. Reveal or rotate it using the dedicated endpoints below.
 
 ```json
 {
@@ -403,6 +422,7 @@ Removes the listing and its link. Workspaces that installed the app keep their g
 
 ## Security notes
 
+- A token never acts beyond the approving member's current role, and never manages API keys or OAuth apps.
 - Redirect URIs are matched exactly, so register every callback you use.
 - Always send and verify `state`.
 - PKCE is required for public clients and recommended for confidential apps; when used, only `S256` is accepted.

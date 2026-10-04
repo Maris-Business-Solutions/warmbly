@@ -43,7 +43,7 @@ import {
 } from "@/lib/api/hooks/app/oauth/useOAuthApps";
 import { useWebhookEventCatalog } from "@/lib/api/hooks/app/webhooks/useWebhooks";
 import listOAuthAppWebhookDeliveries from "@/lib/api/client/app/oauth/listOAuthAppWebhookDeliveries";
-import { useAuthorizedApps, useRevokeAuthorizedApp } from "@/lib/api/hooks/app/oauth/useAuthorizedApps";
+import { useRevokeWorkspaceAuthorization, useWorkspaceAuthorizations } from "@/lib/api/hooks/app/oauth/useAuthorizedApps";
 import type { OAuthApplication } from "@/lib/api/models/app/oauth/OAuthApp";
 import type {
     WebhookDelivery,
@@ -87,7 +87,9 @@ function ScopePicker({ value, onChange }: { value: number; onChange: (v: number)
     const perms = useAPIPermissions();
     const grouped = React.useMemo(() => {
         const g: Record<string, APIPermission[]> = {};
+        const appScopes = perms.data?.app_scopes ?? 0;
         for (const p of perms.data?.permissions ?? []) {
+            if ((appScopes & p.value) !== p.value) continue;
             (g[p.category] ??= []).push(p);
         }
         return g;
@@ -770,29 +772,29 @@ function EditModal({ app, onClose }: { app: OAuthApplication; onClose: () => voi
 }
 
 function AuthorizedTab() {
-    const authorized = useAuthorizedApps();
-    const revoke = useRevokeAuthorizedApp();
+    const authorized = useWorkspaceAuthorizations();
+    const revoke = useRevokeWorkspaceAuthorization();
     const confirm = useConfirm();
-    const apps = authorized.data?.authorized_apps ?? [];
+    const apps = authorized.data?.authorizations ?? [];
 
     if (apps.length === 0) {
-        return <EmptyBlock title="No authorized apps" body="Apps your workspace connects to via OAuth will appear here." />;
+        return <EmptyBlock title="No authorized apps" body="Apps anyone in this workspace connects via OAuth will appear here." />;
     }
     return (
         <div className="space-y-2">
             {apps.map((a) => (
-                <div key={a.application_id} className="flex items-center gap-3 rounded-lg border border-slate-200 p-3">
+                <div key={`${a.application_id}:${a.user_id}`} className="flex items-center gap-3 rounded-lg border border-slate-200 p-3">
                     <AppLogo name={a.name} url={a.logo_url} size="md" />
                     <div className="min-w-0 flex-1">
                         <div className="text-[13px] font-semibold text-slate-800 truncate">{a.name}</div>
-                        <div className="text-[11.5px] text-slate-400">
-                            Authorized {new Date(a.authorized_at).toLocaleDateString()}
+                        <div className="text-[11.5px] text-slate-400 truncate">
+                            Authorized by {a.user_name || a.user_email || "a former member"} on {new Date(a.authorized_at).toLocaleDateString()}
                         </div>
                     </div>
                     <button
                         onClick={() =>
-                            confirm.show(`Revoke "${a.name}"? Its tokens stop working immediately.`, async () => {
-                                await revoke.mutateAsync(a.application_id);
+                            confirm.show(`Revoke "${a.name}" for ${a.user_name || a.user_email || "this member"}? Its tokens stop working immediately.`, async () => {
+                                await revoke.mutateAsync({ applicationId: a.application_id, userId: a.user_id });
                             })
                         }
                         className="h-7 px-2.5 rounded-md border border-slate-200 text-[12px] text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
