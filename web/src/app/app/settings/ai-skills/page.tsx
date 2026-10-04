@@ -42,7 +42,7 @@ export default function SkillsSettingsPage() {
     return (
         <SectionShell
             title="AI skills"
-            description="Reusable playbooks your AI features follow. Write down how your team qualifies leads, handles objections, or books meetings, and the assistant, research, and reply drafts use them."
+            description="Reusable playbooks your AI features follow. Write down how your team qualifies leads, handles objections, or books meetings, and Remie, research, and reply drafts use them."
             actions={
                 canManage ? (
                     <button

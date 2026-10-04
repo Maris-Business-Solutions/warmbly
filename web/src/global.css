@@ -307,10 +307,128 @@ svg.loading circle {
   background-size: 220% 100%;
   animation: ai-shimmer 1.6s linear infinite;
 }
+/* A soft blur over the newest streamed characters. */
+.ai-stream-tail {
+  filter: blur(1.6px);
+  -webkit-mask-image: linear-gradient(90deg, #000 20%, rgba(0, 0, 0, 0.2));
+  mask-image: linear-gradient(90deg, #000 20%, rgba(0, 0, 0, 0.2));
+}
+/* The assistant mark (AgentMark): a soft blue blob with light swirling inside, or
+   a bare pixel spark for inline loaders. Colors and the swirl angle are
+   registered properties, so a state change fades and the swirl can turn. */
+@property --amo-a { syntax: "<color>"; inherits: true; initial-value: #7dd3fc; }
+@property --amo-b { syntax: "<color>"; inherits: true; initial-value: #0ea5e9; }
+@property --amo-c { syntax: "<color>"; inherits: true; initial-value: #2563eb; }
+@property --amo-angle { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+.amo {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+  color: #0ea5e9;
+  transition: --amo-a 0.6s, --amo-b 0.6s, --amo-c 0.6s, color 0.4s,
+    scale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.amo-body {
+  position: absolute;
+  inset: 6%;
+  overflow: hidden;
+  border-radius: 46% 54% 52% 48% / 52% 46% 54% 48%;
+  box-shadow: 0 0.1em 0.3em -0.08em color-mix(in srgb, var(--amo-b) 70%, transparent);
+  animation: amo-blob 5s ease-in-out infinite;
+}
+.amo-swirl {
+  position: absolute;
+  inset: -30%;
+  background: conic-gradient(from var(--amo-angle), var(--amo-a), var(--amo-b), var(--amo-c), var(--amo-a));
+  filter: blur(0.1em);
+  animation: amo-turn 7s linear infinite;
+}
+.amo-shine {
+  position: absolute;
+  left: var(--amo-sx, 22%);
+  top: var(--amo-sy, 16%);
+  width: 32%;
+  height: 22%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(255 255 255 / 0.9), rgb(255 255 255 / 0));
+  rotate: -28deg;
+  transition: left 0.3s ease-out, top 0.3s ease-out;
+}
+.amo-muted { --amo-a: #e2e8f0; --amo-b: #94a3b8; --amo-c: #cbd5e1; color: #94a3b8; }
+.dark .amo-muted { --amo-a: #62666d; --amo-b: #35373c; --amo-c: #26272b; color: #62666d; }
+.amo-attention { --amo-a: #fcd34d; --amo-b: #f59e0b; --amo-c: #ea580c; color: #f59e0b; }
+.amo-done { --amo-a: #6ee7b7; --amo-b: #10b981; --amo-c: #0d9488; color: #10b981; }
+.amo-thinking .amo-body { animation-duration: 1.6s; }
+.amo-thinking .amo-swirl { animation-duration: 1.2s; }
+.amo-b.amo-attention { animation: amo-hop 1.4s ease-in-out infinite; }
+.amo-b.amo-done { animation: amo-happy 0.7s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.amo-muted .amo-body { animation-duration: 9s; }
+.amo-muted .amo-shine { opacity: 0.6; }
+.group:hover .amo { scale: 1.1; }
+.group:active .amo { scale: 0.9; }
+.amo.amo-jelly { animation: amo-jelly 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.amo.amo-boop { animation: amo-boop 0.28s ease-out; }
+@keyframes amo-blob {
+  0%, 100% { border-radius: 46% 54% 52% 48% / 52% 46% 54% 48%; transform: scale(1, 1); }
+  33% { border-radius: 58% 42% 46% 54% / 44% 56% 46% 56%; transform: scale(1.04, 0.97); }
+  66% { border-radius: 42% 58% 56% 44% / 56% 44% 58% 42%; transform: scale(0.97, 1.04); }
+}
+@keyframes amo-turn {
+  from { --amo-angle: 0deg; }
+  to { --amo-angle: 360deg; }
+}
+@keyframes amo-jelly {
+  0%, 100% { scale: 1; }
+  30% { scale: 1.22 0.84; }
+  55% { scale: 0.9 1.12; }
+  75% { scale: 1.06 0.96; }
+}
+@keyframes amo-boop {
+  0%, 100% { scale: 1; }
+  40% { scale: 1.16 0.88; }
+}
+@keyframes amo-hop {
+  0%, 55%, 100% { translate: 0 0; }
+  18% { translate: 0 -0.16em; }
+  32% { translate: 0 0; }
+  42% { translate: 0 -0.06em; }
+}
+@keyframes amo-happy {
+  0%, 100% { scale: 1; translate: 0 0; }
+  30% { scale: 1.18 0.88; translate: 0 0; }
+  55% { scale: 0.94 1.1; translate: 0 -0.14em; }
+}
+/* The bare pixel spark, for inline loaders. */
+.amo-grid { position: relative; display: grid; }
+.amo-px {
+  border-radius: 24%;
+  background: currentColor;
+  opacity: var(--o, 0);
+  transition: opacity 0.22s ease;
+}
+@keyframes amo-pulse {
+  0%, 100% { opacity: var(--o); }
+  50% { opacity: calc(var(--o) * 0.35); }
+}
+@keyframes amo-chase {
+  0%, 100% { opacity: 0.2; }
+  12% { opacity: 1; }
+  45% { opacity: 0.2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .amo, .amo *, .amo.amo-jelly, .amo.amo-boop { animation: none !important; }
+}
+/* The caret holds still while text is arriving and blinks only while waiting. */
+.ai-caret.is-typing {
+  animation: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .ai-shimmer-text { animation: none; background: none; color: #64748b; }
   .ai-caret { animation: none; }
   .ai-sheen { animation: none; background: rgba(14, 165, 233, 0.06); }
+  .ai-stream-tail { filter: none; -webkit-mask-image: none; mask-image: none; }
 }
 
 /* A light sweep across live status text, tinted from the text's own colour. */

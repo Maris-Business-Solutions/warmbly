@@ -30,6 +30,7 @@ import ShortcutTooltip, { Kbd } from "@/components/ui/shortcut-tooltip";
 import textareaRangeRect, { type RangeRect } from "./textareaRange";
 import useTypewriter from "./useTypewriter";
 import formatUsage from "./usage";
+import AgentMark from "@/components/app/agent/AgentMark";
 
 // Context window around the caret sent with freeform prompts, so long drafts
 // don't blow past the endpoint's prompt cap.
@@ -405,7 +406,7 @@ export default function TextareaAICaret({
                     >
                         {phase === "busy" ? (
                             <div className="px-3 py-2.5 flex items-center gap-2">
-                                <SparklesIcon className="w-3.5 h-3.5 text-sky-500 animate-pulse shrink-0" />
+                                <AgentMark variant="bare" size={14} state="thinking" />
                                 <span className="ai-shimmer-text text-[12px] font-medium">Writing…</span>
                                 <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-slate-400">
                                     <Kbd combo="esc" variant="light" /> cancel

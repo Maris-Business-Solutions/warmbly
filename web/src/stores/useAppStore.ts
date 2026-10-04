@@ -38,6 +38,14 @@ export const useAppStore = create<AppStore>()(
       }),
       {
         name: 'warmbly-storage',
+        // v1: Remie opens as a floating window. A docked value stored before
+        // that was the old default, not a choice, so it is reset once.
+        version: 1,
+        migrate: (persisted, version) => {
+          const p = (persisted ?? {}) as Partial<AppStore>
+          if (version < 1) p.agentFloating = true
+          return p as AppStore
+        },
         // Rehydration does not go through the slice setters, so re-clamp the
         // stored values that have bounds. Without this a value from an older build
         // (or a hand-edited one) renders as `width: NaNpx`.

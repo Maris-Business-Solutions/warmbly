@@ -24,7 +24,7 @@ const REASON_LABELS: Record<string, string> = {
     writing_assistant: "Writing assistant",
     writing_edit: "Selection edits",
     reply_draft: "Reply drafts",
-    agent_iteration: "Dashboard assistant",
+    agent_iteration: "Remie",
     inbox_agent_draft: "Inbox agent",
     research_run: "Contact research",
     automation_ai: "Automation AI",

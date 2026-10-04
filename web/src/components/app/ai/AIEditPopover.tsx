@@ -21,6 +21,7 @@ import {
     SmileIcon,
     BriefcaseIcon,
 } from "lucide-react";
+import AgentMark from "@/components/app/agent/AgentMark";
 
 export interface AIQuickAction {
     key: string;
@@ -110,7 +111,7 @@ export default function AIEditPopover({
     if (phase === "busy") {
         return (
             <div style={{ width: AI_CARD_WIDTH }} className="px-3 py-2.5 flex items-center gap-2">
-                <SparklesIcon className="w-3.5 h-3.5 text-sky-500 animate-pulse shrink-0" />
+                <AgentMark variant="bare" size={14} state="thinking" />
                 <span className="ai-shimmer-text text-[12px] font-medium">Rewriting…</span>
                 <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-slate-400">
                     <Kbd combo="esc" variant="light" /> cancel
