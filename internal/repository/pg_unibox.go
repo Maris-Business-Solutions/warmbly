@@ -1761,10 +1761,10 @@ func (r *uniboxRepository) overview(ctx context.Context, orgID uuid.UUID, accoun
 				)) AS total
 		FROM tags t
 		LEFT JOIN email_tags et ON et.tag_id = t.id
-		LEFT JOIN email_accounts ea ON ea.id = et.email_id AND ea.organization_id = t.organization_id`+onlyMailboxes("ea.id")+`
+		LEFT JOIN email_accounts ea ON ea.id = et.email_id AND ea.organization_id = t.organization_id
 		LEFT JOIN unibox_emails ue ON ue.email_id = ea.id
 			AND ue.folder NOT IN `+foldersOutsideWorkingViews+`
-			AND NOT `+automatedThreadSQL("ue.thread_id", "ue.automated", "$1")+`
+			AND NOT `+automatedThreadSQL("ue.thread_id", "ue.automated", "$1")+onlyMailboxes("ue.email_id")+`
 		WHERE t.organization_id = $1
 		GROUP BY t.id, t.title, t.color, t.position
 		ORDER BY t.position ASC, t.title ASC
