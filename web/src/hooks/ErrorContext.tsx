@@ -7,7 +7,7 @@
 // session replay and every product event belong to that account and that
 // workspace. See lib/observability.
 import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "@tanstack/react-router";
 import { useUserProfile } from "./context/user";
 import { useAppStore } from "@/stores";
 import { noteStep, setErrorIdentity } from "@/lib/observability";
@@ -15,7 +15,7 @@ import { noteStep, setErrorIdentity } from "@/lib/observability";
 export function ErrorContext() {
     const { user } = useUserProfile();
     const organization = useAppStore((s) => s.currentOrganization);
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
 
     const userId = user?.id ?? null;
     const email = user?.email ?? null;

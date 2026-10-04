@@ -4,7 +4,7 @@
 // provider losing reputation. Live through the child tests' events.
 
 import React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { ArrowLeftIcon, ArrowUpRightIcon, AtSignIcon, Grid3x3Icon, Loader2Icon, MailIcon, ServerIcon, SquareIcon } from "lucide-react";
 import toast from "react-hot-toast";
@@ -62,7 +62,7 @@ const TRACKING_LABEL: Record<PlacementTracking, string> = {
 const MATRIX_ROWS = 100;
 
 export default function PlacementBatchPage() {
-    const { id = "" } = useParams();
+    const { id = "" } = useParams({ from: "/app/placement/batches/$id" });
     const q = usePlacementBatch(id);
     const err = q.error as unknown as AppError | null;
 
@@ -70,7 +70,8 @@ export default function PlacementBatchPage() {
         <div className="flex flex-col min-h-full bg-white">
             <div className="px-3 sm:px-5 pt-3 sm:pt-4">
                 <Link
-                    to="/app/placement?tab=batches"
+                    to="/app/placement"
+                    search={{ tab: "batches" }}
                     className="inline-flex items-center gap-1 h-6 -ml-1.5 px-1.5 mb-1 rounded-md text-[11.5px] text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                 >
                     <ArrowLeftIcon className="w-3 h-3" />
@@ -150,7 +151,7 @@ function Detail({ batch }: { batch: PlacementBatchDetail }) {
                         {batch.finished_at && <span>Finished {fmtDate(batch.finished_at)}</span>}
                         {batch.credits_spent > 0 && <span>Paid {batch.credits_spent.toLocaleString()} credits</span>}
                         {batch.campaign_id && (
-                            <Link to={`/app/campaigns/${batch.campaign_id}/steps`} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
+                            <Link to="/app/campaigns/$id/steps" params={{ id: batch.campaign_id }} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
                                 {campaign.data?.name ?? "Campaign"}
                                 <ArrowUpRightIcon className="w-3 h-3" />
                             </Link>
@@ -363,7 +364,7 @@ function SendersTab({ batch }: { batch: PlacementBatchDetail }) {
                                     key={s.id}
                                     sender={s}
                                     showResults={showResults}
-                                    onOpen={s.test_ids.length > 0 ? () => navigate(`/app/placement/${s.test_ids[0]}`) : undefined}
+                                    onOpen={s.test_ids.length > 0 ? () => navigate({ to: "/app/placement/$id", params: { id: s.test_ids[0] } }) : undefined}
                                 />
                             ))}
                         </tbody>

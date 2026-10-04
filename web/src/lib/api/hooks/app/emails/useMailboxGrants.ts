@@ -1,7 +1,7 @@
 // Admin grants and their directories, under their own root so a mailbox
 // invalidation does not refetch them; the mailbox_grant audit spine keeps
 // every teammate's view live.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import switchToAppPassword from "@/lib/api/client/app/emails/switchToAppPassword";
 import {
     checkGrant,
@@ -45,13 +45,17 @@ export function useGrants(enabled = true) {
 }
 
 // Mailboxes on the retiring per-mailbox Google sign-in; a backend without the route answers 404 and reads as none.
+export const signinMigrationQuery = queryOptions({
+    queryKey: SIGNIN_MIGRATION_KEY,
+    queryFn: getSigninMigration,
+    staleTime: 60_000,
+    retry: false,
+});
+
 export function useSigninMigration(enabled = true) {
     return useQuery({
-        queryKey: SIGNIN_MIGRATION_KEY,
-        queryFn: getSigninMigration,
+        ...signinMigrationQuery,
         enabled,
-        staleTime: 60_000,
-        retry: false,
     });
 }
 

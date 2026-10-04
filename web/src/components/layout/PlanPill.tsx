@@ -4,7 +4,7 @@
 // drawn from `lib/plans.PLAN_ACCENT_CLASSES` so the marketing site
 // and the dashboard always agree on what "Starter" looks like.
 
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { SparklesIcon } from "lucide-react";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import useCloudPool from "@/hooks/useCloudPool";

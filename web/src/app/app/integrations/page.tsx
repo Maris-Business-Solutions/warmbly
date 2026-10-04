@@ -9,7 +9,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import {
     AlertTriangleIcon,
     ArrowRightIcon,
@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { Page, PageTopbar, TopbarAction } from "@/components/layout/Page";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import ScrollStrip from "@/components/ui/scroll-strip";
 import { useCommunityApps } from "@/lib/api/hooks/app/integrations/useCommunityApps";
 import useIntegrationCatalog from "@/lib/api/hooks/app/integrations/useIntegrationCatalog";
@@ -38,6 +39,7 @@ import type {
     IntegrationConnection,
     IntegrationProvider,
 } from "@/lib/api/models/app/integrations/Integration";
+import { hrefTarget } from "@/lib/routerSearch";
 import { cn } from "@/lib/utils";
 
 import ConnectDialog from "./_components/ConnectDialog";
@@ -98,8 +100,8 @@ const GAPS: { category: IntegrationCategory; prefer?: IntegrationProvider }[] = 
 ];
 
 export default function IntegrationsPage() {
-    const params = useParams();
-    const splat = params["*"] ?? "";
+    // Mounted for both /app/integrations and its splat, so read the splat loosely.
+    const splat = useParams({ strict: false })._splat ?? "";
     const route = parseRoute(splat);
     if (!route) return <Navigate to={STORE_BASE} replace />;
     return <IntegrationsStore route={route} routeKey={splat} />;
@@ -184,7 +186,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
     const connectedCount = React.useMemo(() => allItems.filter(isConnected).length, [allItems, isConnected]);
 
     function go(path: string) {
-        navigate(path);
+        navigate(hrefTarget(path));
     }
 
     // HubSpot and Pipedrive have their own home (connect, CRM setup and
@@ -366,7 +368,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
 
                 <p className="text-[12.5px] text-slate-500">
                     Don’t see your tool? Connect it through Zapier, Make or n8n, or{" "}
-                    <Link to={`${STORE_BASE}/build`} className="text-sky-700 hover:text-sky-800">
+                    <Link to="/app/integrations/$" params={{ _splat: "build" }} className="text-sky-700 hover:text-sky-800">
                         build your own
                     </Link>
                     .
@@ -442,6 +444,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                                     <Link
                                         key={it.key}
                                         to={it.to}
+                                        activeOptions={{ exact: true, includeSearch: false }}
                                         data-active={active === it.key ? "true" : undefined}
                                         className={cn(
                                             "h-8 px-2.5 rounded-md text-[12.5px] whitespace-nowrap inline-flex items-center transition-colors",

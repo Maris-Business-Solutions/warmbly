@@ -2,7 +2,7 @@
 // manual look at where a message lands. Remembers the last pick.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { CheckSquare } from "@/components/ui/check-square";
 import { PopoverMenu, PopoverMenuContent, PopoverMenuTrigger } from "@/components/ui/popover-menu";
 import { usePermission } from "@/hooks/usePermission";

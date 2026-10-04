@@ -1,6 +1,6 @@
 // Sending domains under their own root; the email_account, domain_redirect
 // and mailbox_vendor audit spine keeps every teammate's view live.
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     bulkDomainSetup,
     deleteDomainRedirect,
@@ -28,12 +28,16 @@ export const SENDING_DOMAINS_KEY = ["sending-domains"] as const;
 // Separate from the list on purpose: each read probes DNS, and every mailbox audit would re-run it.
 const SUGGESTION_KEY = "tracking-suggestion";
 
+export const sendingDomainsQuery = queryOptions({
+    queryKey: [...SENDING_DOMAINS_KEY, "list"],
+    queryFn: listSendingDomains,
+    staleTime: 15_000,
+});
+
 export function useSendingDomains(enabled = true) {
     return useQuery({
-        queryKey: [...SENDING_DOMAINS_KEY, "list"],
-        queryFn: listSendingDomains,
+        ...sendingDomainsQuery,
         enabled,
-        staleTime: 15_000,
     });
 }
 

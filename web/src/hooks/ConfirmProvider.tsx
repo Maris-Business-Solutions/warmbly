@@ -15,16 +15,27 @@ export default function ConfirmProvider({ children }: { children: React.ReactNod
     const [visible, setVisible] = React.useState<boolean>(false);
     const [loading, setLoading] = React.useState<boolean>(false);
     const submitRef = React.useRef<() => void | Promise<void>>(null);
+    const cancelRef = React.useRef<(() => void) | null>(null);
     const [text, setText] = React.useState<string>("");
 
     const show = React.useCallback(
-        (text: string, onSubmit: () => void | Promise<void>) => {
+        (text: string, onSubmit: () => void | Promise<void>, onCancel?: () => void) => {
             setText(text);
             submitRef.current = onSubmit;
+            cancelRef.current = onCancel ?? null;
             setVisible(true);
         },
         [],
     );
+
+    // Every way of closing without confirming: Escape, the backdrop, the X and Cancel.
+    const dismiss = React.useCallback(() => {
+        if (loading) return;
+        setVisible(false);
+        const cancel = cancelRef.current;
+        cancelRef.current = null;
+        cancel?.();
+    }, [loading]);
 
     const onConfirm = async () => {
         if (loading || !submitRef.current) return;
@@ -36,6 +47,7 @@ export default function ConfirmProvider({ children }: { children: React.ReactNod
             // so on many pages the popup never disappeared.)
             setVisible(false);
             submitRef.current = null;
+            cancelRef.current = null;
         } catch {
             // Keep the dialog open on failure so the user can retry or cancel;
             // the caller surfaces the error (toast). Loading is cleared below.
@@ -47,11 +59,11 @@ export default function ConfirmProvider({ children }: { children: React.ReactNod
     React.useEffect(() => {
         if (!visible) return;
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && !loading) setVisible(false);
+            if (e.key === "Escape") dismiss();
         };
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
-    }, [visible, loading]);
+    }, [visible, dismiss]);
 
     return (
         <ConfirmContext.Provider value={{ show, setShow: setVisible, setLoading }}>
@@ -64,7 +76,7 @@ export default function ConfirmProvider({ children }: { children: React.ReactNod
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.15 }}
-                        onClick={() => !loading && setVisible(false)}
+                        onClick={dismiss}
                         className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] px-4"
                     >
                         <motion.div
@@ -91,7 +103,7 @@ export default function ConfirmProvider({ children }: { children: React.ReactNod
                                 </span>
                                 <button
                                     type="button"
-                                    onClick={() => !loading && setVisible(false)}
+                                    onClick={dismiss}
                                     disabled={loading}
                                     aria-label="Close"
                                     className="ml-auto size-7 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 inline-flex items-center justify-center transition-colors disabled:opacity-50"
@@ -107,7 +119,7 @@ export default function ConfirmProvider({ children }: { children: React.ReactNod
                             <div className="px-3 h-12 border-t border-slate-200 flex items-center gap-1.5">
                                 <button
                                     type="button"
-                                    onClick={() => !loading && setVisible(false)}
+                                    onClick={dismiss}
                                     disabled={loading}
                                     className="ml-auto h-7 px-2.5 rounded-md text-[12px] text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors disabled:opacity-50"
                                 >

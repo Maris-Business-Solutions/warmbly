@@ -1,6 +1,6 @@
 // A CRM before it is connected: what HubSpot or Pipedrive mode does, and one button.
 
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
     ArrowLeftIcon,

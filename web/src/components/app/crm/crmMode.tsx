@@ -2,7 +2,7 @@
 // where the records live, the owner-mapping hint and the automation note.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AlertTriangleIcon } from "lucide-react";
 import useCrmProvider from "@/hooks/useCrmProvider";
 import useCrmSyncHealth from "@/lib/api/hooks/app/crm/provider/useCrmSyncHealth";

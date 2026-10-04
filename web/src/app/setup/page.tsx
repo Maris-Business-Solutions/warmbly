@@ -13,7 +13,8 @@
 // token there is no way into the instance at all.
 
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     AlertCircleIcon,
@@ -71,7 +72,7 @@ export default function SetupPage() {
         queryClient.setQueryData<AuthConfig>(["auth", "config"], (prev) =>
             prev ? { ...prev, setup_required: false } : prev,
         );
-        navigate("/auth/login");
+        navigate({ to: "/auth/login" });
     }
 
     async function onSubmit(e: React.FormEvent) {
@@ -120,7 +121,7 @@ export default function SetupPage() {
                 // UserProvider retries and redirects on a genuine failure.
             }
             toast.success("This instance is yours.");
-            navigate("/app/emails");
+            navigate({ to: "/app/emails" });
         } catch (err) {
             setFailure(err as AppError);
         } finally {

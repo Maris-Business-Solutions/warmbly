@@ -37,7 +37,7 @@ import {
     type UnsubscribeSettings,
 } from "@/lib/api/models/app/outreach/OutreachSettings";
 import { TextInput } from "@/components/ui/field";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import TaggingQuestions from "./TaggingQuestions";
 import LanguagePicker from "./LanguagePicker";
 

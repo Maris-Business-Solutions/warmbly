@@ -4,7 +4,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { Loader2Icon, RefreshCcwIcon, SendIcon, ShieldAlertIcon } from "lucide-react";
 import toast from "react-hot-toast";
 

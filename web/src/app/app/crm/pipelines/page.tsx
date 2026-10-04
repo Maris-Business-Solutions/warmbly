@@ -52,7 +52,7 @@ import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 import type { Stage } from "@/lib/api/models/app/crm/Pipeline";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import useCrmProvider from "@/hooks/useCrmProvider";
 import { CrmMark, CrmSyncedAt, OpenInCrm } from "@/components/app/crm/crmProviders";
 import { CrmHeaderStatus } from "@/components/app/crm/crmMode";

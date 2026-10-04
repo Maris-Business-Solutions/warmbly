@@ -54,7 +54,7 @@ import {
     type MeetingsSearch,
 } from "@/lib/api/models/app/integrations/Integration";
 import { cn } from "@/lib/utils";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import useCrmProvider from "@/hooks/useCrmProvider";
 import { CrmMark } from "@/components/app/crm/crmProviders";
 

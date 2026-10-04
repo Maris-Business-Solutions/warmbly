@@ -4,7 +4,7 @@
 // its own endpoint, apart from the campaign's save bar.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AlertTriangleIcon, ArrowUpRightIcon, Layers3Icon, Loader2Icon } from "lucide-react";
 import toast from "react-hot-toast";
 import { Label, NumberInput } from "@/components/ui/field";
@@ -206,7 +206,8 @@ export function PlacementMonitorSection({ campaignId }: { campaignId: string }) 
                                 {m.last_run_at ? fmtDate(m.last_run_at) : "Not yet"}
                                 {m.last_test_id && (
                                     <Link
-                                        to={`/app/placement/${m.last_test_id}`}
+                                        to="/app/placement/$id"
+                                        params={{ id: m.last_test_id }}
                                         className="ml-1.5 inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800"
                                     >
                                         View
@@ -247,7 +248,8 @@ export function PlacementMonitorSection({ campaignId }: { campaignId: string }) 
                     </button>
                 )}
                 <Link
-                    to={`/app/placement?campaign_id=${campaignId}`}
+                    to="/app/placement"
+                    search={{ campaign_id: campaignId }}
                     className="inline-flex items-center gap-1 text-[12px] text-sky-700 hover:text-sky-800"
                 >
                     This campaign&apos;s placement tests

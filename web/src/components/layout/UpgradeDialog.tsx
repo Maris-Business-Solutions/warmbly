@@ -9,7 +9,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import toast from "react-hot-toast";
 import {
@@ -357,7 +357,8 @@ export default function UpgradeDialog({
                             <div className="md:ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
                                 {access.isOwner && (
                                     <Link
-                                        to="/app/settings/billing/plans"
+                                        to="/app/settings/billing/{-$tab}"
+                                        params={{ tab: "plans" }}
                                         onClick={onClose}
                                         className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-slate-900 transition-colors"
                                     >

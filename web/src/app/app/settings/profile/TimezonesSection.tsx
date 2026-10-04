@@ -2,7 +2,7 @@
 // only), the workspace's (the default everything else falls back to), and
 // the per-campaign and per-mailbox zones, each editable inline.
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, ChevronDownIcon, ClockIcon, InboxIcon, MegaphoneIcon, UsersIcon } from "lucide-react";
@@ -213,7 +213,7 @@ function CampaignZoneRow({ campaign, workspaceZone, fallback }: { campaign: Camp
     return (
         <li className="flex items-center gap-3 px-3.5 py-2">
             <div className="min-w-0 flex-1 flex items-center gap-2">
-                <Link to={`/app/campaigns/${campaign.id}/schedule`} className="truncate text-[12.5px] text-slate-800 hover:text-sky-700 hover:underline">
+                <Link to="/app/campaigns/$id/schedule" params={{ id: campaign.id }} className="truncate text-[12.5px] text-slate-800 hover:text-sky-700 hover:underline">
                     {campaign.name || "Untitled campaign"}
                 </Link>
                 <span className={cn("shrink-0 px-1.5 py-px rounded text-[10px] font-medium ring-1", CAMPAIGN_TONE[campaign.status] ?? CAMPAIGN_TONE.draft)}>

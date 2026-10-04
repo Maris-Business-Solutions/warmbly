@@ -11,7 +11,7 @@
 // One combined "open rate" would divide opens we can see by sends we never
 // measured, so the denominator is stated on the card instead.
 
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { EyeIcon, InboxIcon, MailIcon, ReplyIcon } from "lucide-react";
 
 import { EmptyBlock, SectionBar, Stat, StatStrip } from "@/components/layout/Page";
@@ -79,7 +79,8 @@ export default function DirectMailSection({ period }: { period: string }) {
         <>
             <SectionBar label="Direct mail">
                 <Link
-                    to="/app/unibox/sent"
+                    to="/app/unibox/{-$scope}/{-$threadId}"
+                    params={{ scope: "sent", threadId: undefined }}
                     className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-900 transition-colors"
                 >
                     Open sent mail

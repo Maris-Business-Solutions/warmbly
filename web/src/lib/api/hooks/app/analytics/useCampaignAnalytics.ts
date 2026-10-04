@@ -1,12 +1,17 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import getCampaignAnalytics from "@/lib/api/client/app/analytics/getCampaignAnalytics";
 
 // A null window is all time. The key stays under ["analytics","campaigns",id]
 // so realtime invalidation of the campaign refreshes every window.
-export default function useCampaignAnalytics(id: string, window: { from: string; to: string } | null = null) {
-    return useQuery({
+export const campaignAnalyticsQuery = (id: string, window: { from: string; to: string } | null = null) =>
+    queryOptions({
         queryKey: ["analytics", "campaigns", id, window?.from ?? "all", window?.to ?? "all"],
         queryFn: () => getCampaignAnalytics(id, window),
+    });
+
+export default function useCampaignAnalytics(id: string, window: { from: string; to: string } | null = null) {
+    return useQuery({
+        ...campaignAnalyticsQuery(id, window),
         enabled: !!id,
         placeholderData: keepPreviousData,
     })

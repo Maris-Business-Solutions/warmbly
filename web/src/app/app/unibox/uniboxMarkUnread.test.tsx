@@ -6,7 +6,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { screen, act, fireEvent, waitFor } from "@testing-library/react";
-import type * as ReactRouterDom from "react-router-dom";
+import type * as TanStackRouter from "@tanstack/react-router";
 import {
     installLayoutShims,
     mount,
@@ -33,8 +33,8 @@ vi.mock("@/lib/api/client/Request", () => ({
         return route(String(cfg?.url ?? ""));
     },
 }));
-vi.mock("react-router-dom", async (orig) => {
-    const actual = (await orig()) as typeof ReactRouterDom;
+vi.mock("@tanstack/react-router", async (orig) => {
+    const actual = (await orig()) as typeof TanStackRouter;
     return {
         ...actual,
         useNavigate: () => {

@@ -10,7 +10,7 @@
 // the <withBoundary> helper to opt a page in.
 
 import React from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation, useRouter } from "@tanstack/react-router";
 import { AlertTriangleIcon, RefreshCcwIcon } from "lucide-react";
 import { captureException } from "@/lib/observability";
 import { SENTRY_RELEASE } from "@/lib/information";
@@ -63,8 +63,8 @@ export class ErrorBoundary extends React.Component<BoundaryProps, State> {
     }
 }
 
-function BoundaryFallback({ error, info, reset }: { error: Error; info: React.ErrorInfo | null; reset: () => void }) {
-    const navigate = useNavigate();
+export function BoundaryFallback({ error, info, reset }: { error: Error; info: Pick<React.ErrorInfo, "componentStack"> | null; reset: () => void }) {
+    const router = useRouter();
     return (
         <div className="flex flex-col min-h-full bg-white">
             <div className="min-h-12 md:h-12 px-5 py-1.5 md:py-0 border-b border-slate-200 flex flex-wrap md:flex-nowrap items-center gap-3 gap-y-1.5 shrink-0 bg-white">
@@ -77,7 +77,7 @@ function BoundaryFallback({ error, info, reset }: { error: Error; info: React.Er
                 </span>
                 <div className="ml-auto flex items-center gap-1.5">
                     <button
-                        onClick={() => navigate(-1)}
+                        onClick={() => router.history.back()}
                         className="h-7 px-2.5 rounded-md border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-[12px] font-medium transition-colors"
                     >
                         Back
@@ -122,7 +122,7 @@ function BoundaryFallback({ error, info, reset }: { error: Error; info: React.Er
 }
 
 /**
- * RouteBoundary — react-router compatible: resets the boundary on
+ * RouteBoundary resets the boundary on
  * pathname change so navigating away from a broken page recovers
  * automatically.
  */

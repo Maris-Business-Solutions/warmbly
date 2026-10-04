@@ -1,6 +1,6 @@
 import React from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBlocker, useNavigate } from "react-router-dom";
+import { useBlocker } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 
 import { useConfirm } from "@/hooks/context/confirm";
@@ -69,26 +69,30 @@ export function useCrmOAuth() {
 // Asks before an in-app navigation or a reload throws away unsaved choices.
 export function useLeaveGuard(dirty: boolean, message: string) {
     const confirm = useConfirm();
-    const navigate = useNavigate();
     const allow = React.useRef(false);
 
-    const blocker = useBlocker(
-        React.useCallback(
-            ({ currentLocation, nextLocation }: { currentLocation: { pathname: string }; nextLocation: { pathname: string } }) =>
-                dirty && !allow.current && currentLocation.pathname !== nextLocation.pathname,
+    const blocker = useBlocker({
+        shouldBlockFn: React.useCallback(
+            ({ current, next }: { current: { pathname: string }; next: { pathname: string } }) =>
+                dirty && !allow.current && current.pathname !== next.pathname,
             [dirty],
         ),
-    );
+        withResolver: true,
+        enableBeforeUnload: false,
+    });
 
+    // The navigation stays held while the dialog is open, so confirming resumes it exactly (Back stays Back).
     React.useEffect(() => {
-        if (blocker.state !== "blocked") return;
-        const to = blocker.location;
-        blocker.reset();
-        confirm.show(message, async () => {
-            allow.current = true;
-            navigate(`${to.pathname}${to.search}${to.hash}`);
-        });
-    }, [blocker, confirm, message, navigate]);
+        if (blocker.status !== "blocked") return;
+        confirm.show(
+            message,
+            async () => {
+                allow.current = true;
+                blocker.proceed();
+            },
+            () => blocker.reset(),
+        );
+    }, [blocker, confirm, message]);
 
     React.useEffect(() => {
         if (!dirty) return;

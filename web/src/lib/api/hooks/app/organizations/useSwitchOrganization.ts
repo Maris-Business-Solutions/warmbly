@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import switchOrganization from "@/lib/api/client/app/organizations/switchOrganization";
+import { markOrgSynced } from "@/lib/boot";
 
 interface UseSwitchOrganizationOptions {
     // How to reconcile the query cache after the server session switch lands:
@@ -35,7 +36,8 @@ export default function useSwitchOrganization({ mode = "reset" }: UseSwitchOrgan
 
     return useMutation({
         mutationFn: (id: string) => switchOrganization(id),
-        onSuccess: () => {
+        onSuccess: (_data, id) => {
+            markOrgSynced(id);
             if (mode === "sync") {
                 queryClient.invalidateQueries({
                     predicate: (q) => {

@@ -3,7 +3,7 @@
 // change in the background, so the bar and the numbers animate as they land.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { AlertTriangleIcon, ArrowRightIcon, CoinsIcon, ShieldCheckIcon } from "lucide-react";
 

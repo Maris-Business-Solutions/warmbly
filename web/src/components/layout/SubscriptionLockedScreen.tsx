@@ -4,7 +4,7 @@
 // one way to run the product, not the reason to be here.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { ArrowRightIcon, CheckIcon, CloudIcon, InboxIcon, SparklesIcon } from "lucide-react";
 import { getPlan } from "@/lib/plans";

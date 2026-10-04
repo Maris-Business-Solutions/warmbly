@@ -6,7 +6,7 @@
 "use client";
 
 import React from "react";
-import { Link, useBlocker, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useBlocker, useParams } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
     ActivityIcon,
@@ -27,6 +27,7 @@ import toast from "react-hot-toast";
 import ScrollStrip from "@/components/ui/scroll-strip";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import { useConfirm } from "@/hooks/context/confirm";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { usePresenceResource } from "@/hooks/PresenceProvider";
 import {
     useFinishIntegrationOAuth,
@@ -66,10 +67,9 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
 const isTab = (v: string | null): v is TabId => !!v && TABS.some((t) => t.id === v);
 
 export default function SalesforcePage() {
-    const { id = "" } = useParams<{ id: string }>();
+    const { id } = useParams({ from: "/app/integrations/salesforce/$id" });
     const [params, setParams] = useSearchParams();
     const tab: TabId = isTab(params.get("tab")) ? (params.get("tab") as TabId) : "overview";
-    const navigate = useNavigate();
     const confirm = useConfirm();
 
     const overview = useSalesforceOverview(id);
@@ -138,24 +138,29 @@ export default function SalesforcePage() {
 
     // Leaving with unsaved edits asks first. Tab switches stay on this path.
     const skipGuard = React.useRef(false);
-    const blocker = useBlocker(
-        React.useCallback(
-            ({ currentLocation, nextLocation }: { currentLocation: { pathname: string }; nextLocation: { pathname: string } }) =>
-                !skipGuard.current && dirtyRef.current && currentLocation.pathname !== nextLocation.pathname,
+    const blocker = useBlocker({
+        shouldBlockFn: React.useCallback(
+            ({ current, next }: { current: { pathname: string }; next: { pathname: string } }) =>
+                !skipGuard.current && dirtyRef.current && current.pathname !== next.pathname,
             [],
         ),
-    );
+        withResolver: true,
+        enableBeforeUnload: false,
+    });
+    // The navigation stays held while the dialog is open, so confirming resumes it exactly (Back stays Back).
     React.useEffect(() => {
-        if (blocker.state !== "blocked") return;
-        const to = blocker.location;
-        blocker.reset();
-        confirm.show("You have unsaved Salesforce settings. Leave and discard them?", async () => {
-            skipGuard.current = true;
-            discard();
-            navigate(to.pathname + to.search + to.hash);
-        });
+        if (blocker.status !== "blocked") return;
+        confirm.show(
+            "You have unsaved Salesforce settings. Leave and discard them?",
+            async () => {
+                skipGuard.current = true;
+                discard();
+                blocker.proceed();
+            },
+            () => blocker.reset(),
+        );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [blocker.state]);
+    }, [blocker.status]);
     React.useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
             if (dirtyRef.current) {

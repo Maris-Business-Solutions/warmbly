@@ -3,7 +3,8 @@
 // Standalone on the auth screen's sky: enter code, review, done.
 
 import React from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { AnimatePresence, motion } from "framer-motion";
 import { REGEXP_ONLY_DIGITS_AND_CHARS } from "input-otp";
 import toast from "react-hot-toast";
@@ -49,8 +50,8 @@ const slideTransition = { duration: 0.28, ease: [0.16, 1, 0.3, 1] as const };
 
 export default function ConnectPage() {
     if (!getToken()) {
-        const next = encodeURIComponent(window.location.pathname + window.location.search);
-        return <Navigate to={`/auth/login?next=${next}`} replace />;
+        const next = window.location.pathname + window.location.search;
+        return <Navigate to="/auth/login" search={{ next }} replace />;
     }
     // Outside the /app layout, so approving (which needs a fresh confirmation) brings its own prompt.
     return (

@@ -1,4 +1,4 @@
-import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
+import { infiniteQueryOptions, useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
 import getCampaigns from "@/lib/api/client/app/campaigns/getCampaigns";
 import useAllPages from "@/lib/api/hooks/useAllPages";
 import type GetCampaigns from "@/lib/api/models/app/campaigns/GetCampaigns";
@@ -16,12 +16,8 @@ interface UseCampaignsProps {
     all?: boolean;
 }
 
-export default function useCampaigns({ query, folder, limit = CAMPAIGNS_PAGE_LIMIT, enabled = true, all = true }: UseCampaignsProps) {
-    // Send counts on these cards move on realtime invalidation, so the long
-    // staleTime below is free while the socket is up and strands the list for
-    // five minutes when it is not. Poll only in that second case.
-    const refetchInterval = useRealtimeFallbackInterval(enabled);
-    const queryResult = useInfiniteQuery<
+export const campaignsListQuery = ({ query, folder, limit = CAMPAIGNS_PAGE_LIMIT }: Pick<UseCampaignsProps, "query" | "folder" | "limit">) =>
+    infiniteQueryOptions<
         GetCampaigns,
         Error,
         InfiniteData<GetCampaigns, string | null>,
@@ -39,6 +35,15 @@ export default function useCampaigns({ query, folder, limit = CAMPAIGNS_PAGE_LIM
         },
         staleTime: 5 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
+    });
+
+export default function useCampaigns({ query, folder, limit = CAMPAIGNS_PAGE_LIMIT, enabled = true, all = true }: UseCampaignsProps) {
+    // Send counts on these cards move on realtime invalidation, so the long
+    // staleTime below is free while the socket is up and strands the list for
+    // five minutes when it is not. Poll only in that second case.
+    const refetchInterval = useRealtimeFallbackInterval(enabled);
+    const queryResult = useInfiniteQuery({
+        ...campaignsListQuery({ query, folder, limit }),
         refetchInterval,
         enabled,
     });

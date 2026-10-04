@@ -1,7 +1,7 @@
 // Workspace warmup placement on the deliverability page: inbox vs spam over
 // time, per recipient provider, and every mailbox ranked worst first.
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 import { EmptyBlock, SectionBar, Stat, StatStrip } from "@/components/layout/Page";
 import useWarmupPlacement from "@/lib/api/hooks/app/analytics/useWarmupPlacement";
@@ -141,7 +141,7 @@ export default function WarmupPlacementSection({ days }: { days: number }) {
             ) : (
                 <div className="divide-y divide-slate-200/60">
                     {shown.map((m) => (
-                        <MailboxRow key={m.email_account_id} m={m} onOpen={() => navigate(`/app/emails?mailbox=${m.email_account_id}&tab=deliverability`)} />
+                        <MailboxRow key={m.email_account_id} m={m} onOpen={() => navigate({ to: "/app/emails", search: { mailbox: m.email_account_id, tab: "deliverability" } })} />
                     ))}
                     {listed.length > PAGE && (
                         <button

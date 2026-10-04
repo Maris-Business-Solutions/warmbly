@@ -3,7 +3,7 @@
 // account dialog) and closes; without an opener it explains what happened.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { CheckIcon, XIcon } from "lucide-react";
 import { Logo } from "@/components/svg";
 

@@ -6,7 +6,7 @@
 "use client";
 
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
     AlertTriangleIcon,
     ArrowRightIcon,
@@ -111,7 +111,7 @@ export default function ConnectionDetail({
     const isSlack = conn.provider === "slack";
     // HubSpot and Pipedrive have their own home: CRM mode, mapping, rules.
     const crmHome = conn.provider === "hubspot" || conn.provider === "pipedrive" ? CRM_INFO[conn.provider as ExternalCrm] : null;
-    const onCrmHome = useLocation().pathname.startsWith(crmHome?.settingsPath ?? "/app/integrations/__none__");
+    const onCrmHome = useLocation({ select: (l) => !!crmHome && l.pathname.startsWith(crmHome.settingsPath) });
 
     async function handleReauth() {
         setBusy(true);

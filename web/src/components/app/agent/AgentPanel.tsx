@@ -12,7 +12,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
     XIcon,
     ArrowUpIcon,
@@ -38,6 +38,7 @@ import { capturePointerDrag, useResizablePane } from "@/hooks/useResizablePane";
 import { dispatchPanelShortcut } from "@/hooks/useKeyboardShortcuts";
 import useAiMetered from "@/hooks/useAiMetered";
 import { cn } from "@/lib/utils";
+import { hrefTarget, parseSearch } from "@/lib/routerSearch";
 import { useAppStore } from "@/stores";
 import {
     AGENT_FLOAT_MIN_W,
@@ -182,7 +183,7 @@ export default function AgentPanel() {
     );
 
     const openUrl = React.useCallback(
-        (u: string) => navigate(stripOrigin(u)),
+        (u: string) => navigate(hrefTarget(stripOrigin(u))),
         [navigate],
     );
 
@@ -201,7 +202,7 @@ export default function AgentPanel() {
     // ?agent_session=<id> (the "Open in Warmbly" link from Slack) opens that
     // conversation, then leaves the URL as it was without the parameter.
     React.useEffect(() => {
-        const params = new URLSearchParams(location.search);
+        const params = new URLSearchParams(location.searchStr);
         const sid = params.get("agent_session");
         if (sid === null) return;
         if (canAI && /^[0-9a-f-]{36}$/i.test(sid)) {
@@ -211,8 +212,8 @@ export default function AgentPanel() {
         }
         params.delete("agent_session");
         const rest = params.toString();
-        navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "", hash: location.hash }, { replace: true });
-    }, [location.search, location.pathname, location.hash, canAI, navigate, setOpen, setMinimized]);
+        navigate({ to: location.pathname, search: parseSearch(rest), hash: location.hash || undefined, replace: true });
+    }, [location.searchStr, location.pathname, location.hash, canAI, navigate, setOpen, setMinimized]);
 
     // Opening (or restoring from the dock) with no tabs starts a fresh
     // conversation; focus lands in the composer once the slide-in starts.

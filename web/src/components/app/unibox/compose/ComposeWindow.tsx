@@ -15,7 +15,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import {
     CheckIcon,
@@ -147,7 +147,7 @@ export default function ComposeWindow() {
     const session = useComposeStore((s) => s.session);
 
     // Navigation collapses the window to the corner bar; the draft follows you.
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const lastPath = React.useRef(pathname);
     React.useEffect(() => {
         if (lastPath.current === pathname) return;

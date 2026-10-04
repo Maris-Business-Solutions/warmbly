@@ -9,7 +9,8 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent, cleanup } from "@testing-library/react";
-import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
+import { useLocation } from "@tanstack/react-router";
+import { createPassthroughRouter, renderRouter } from "@/test/routerHarness";
 import {
     dispatchPanelShortcut,
     globalShortcuts,
@@ -37,18 +38,26 @@ function Provider({ actions }: { actions: ShortcutActions }) {
 }
 
 function mount(ui?: React.ReactNode) {
-    return render(
-        <MemoryRouter initialEntries={["/app/start"]}>
-            <Shortcuts />
-            {ui}
-            <Routes>
-                <Route path="*" element={<Location />} />
-            </Routes>
-        </MemoryRouter>,
+    return renderRouter(
+        createPassthroughRouter(
+            <>
+                <Shortcuts />
+                {ui}
+                <Location />
+            </>,
+            "/app/start",
+        ),
     );
 }
 
 const path = () => screen.getByTestId("path").textContent;
+
+// Navigation commits asynchronously; let any that a key started land before reading the path.
+async function settle() {
+    await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+    });
+}
 
 function press(key: string, init: Partial<KeyboardEventInit> = {}, target?: Element) {
     act(() => {
@@ -95,28 +104,31 @@ describe("the shortcut registry (#484)", () => {
 });
 
 describe("navigation sequences", () => {
-    it("routes `g k` to API keys instead of losing it to the `k` branch", () => {
+    it("routes `g k` to API keys instead of losing it to the `k` branch", async () => {
         // The regression: `k` had a single-press handler that returned before
         // the sequence could ever resolve, so this one route of eleven was dead.
-        mount(<Provider actions={{ listMove: vi.fn() }} />);
+        await mount(<Provider actions={{ listMove: vi.fn() }} />);
 
         press("g");
         press("k");
+        await settle();
         expect(path()).toBe("/app/api-keys");
     });
 
-    it("still routes the other letters", () => {
-        mount();
+    it("still routes the other letters", async () => {
+        await mount();
         press("g");
         press("u");
+        await settle();
         expect(path()).toBe("/app/unibox");
     });
 
-    it("leaves a modifier combo alone mid-sequence", () => {
-        mount();
+    it("leaves a modifier combo alone mid-sequence", async () => {
+        await mount();
         press("g");
         // Half a second of `g` must not turn the command palette into a route.
         press("k", { ctrlKey: true });
+        await settle();
         expect(path()).toBe("/app/start");
         expect(useAppStore.getState().commandPaletteOpen).toBe(true);
         // ...and the abandoned sequence goes with it, so the next letter is
@@ -124,36 +136,38 @@ describe("navigation sequences", () => {
         expect(useAppStore.getState().keySequence).toEqual([]);
     });
 
-    it("swallows a letter that completes no sequence", () => {
-        mount();
+    it("swallows a letter that completes no sequence", async () => {
+        await mount();
         press("g");
         // `n` composes on its own; mid-sequence it must not, or every mistyped
         // route pops a compose window.
         press("n");
         expect(useComposeStore.getState().open).toBe(false);
+        await settle();
         expect(path()).toBe("/app/start");
         expect(useAppStore.getState().keySequence).toEqual([]);
     });
 });
 
 describe("list shortcuts", () => {
-    it("do nothing, and are not shown, when no list is on screen", () => {
-        mount();
+    it("do nothing, and are not shown, when no list is on screen", async () => {
+        await mount();
         expect(visibleShortcuts("list")).toEqual([]);
 
         // The old failure mode was the opposite: shown, pressed, nothing.
         press("j");
         press("k");
         press("Enter");
+        await settle();
         expect(path()).toBe("/app/start");
     });
 
-    it("reach the list that registered them", () => {
+    it("reach the list that registered them", async () => {
         const listMove = vi.fn();
         const listEdge = vi.fn();
         const listOpen = vi.fn();
         const listDeselect = vi.fn();
-        mount(<Provider actions={{ listMove, listEdge, listOpen, listDeselect }} />);
+        await mount(<Provider actions={{ listMove, listEdge, listOpen, listDeselect }} />);
 
         expect(visibleShortcuts("list").map((r) => r.keys.join(""))).toEqual([
             "j",
@@ -179,9 +193,9 @@ describe("list shortcuts", () => {
         expect(listDeselect).toHaveBeenCalled();
     });
 
-    it("leaves Enter to whatever the user has focused", () => {
+    it("leaves Enter to whatever the user has focused", async () => {
         const listOpen = vi.fn();
-        mount(
+        await mount(
             <>
                 <Provider actions={{ listOpen }} />
                 <button type="button">Send</button>
@@ -192,9 +206,9 @@ describe("list shortcuts", () => {
         expect(listOpen).not.toHaveBeenCalled();
     });
 
-    it("leaves Escape to the innermost layer", () => {
+    it("leaves Escape to the innermost layer", async () => {
         const listDeselect = vi.fn();
-        mount(
+        await mount(
             <>
                 <Provider actions={{ listDeselect }} />
                 <div role="dialog" aria-label="Confirm" />
@@ -205,13 +219,13 @@ describe("list shortcuts", () => {
         expect(listDeselect).not.toHaveBeenCalled();
     });
 
-    it("suspends while the screen says something else owns the keyboard", () => {
+    it("suspends while the screen says something else owns the keyboard", async () => {
         const listMove = vi.fn();
         function Suspended() {
             useShortcutActions({ listMove }, { suspended: true });
             return null;
         }
-        mount(<Suspended />);
+        await mount(<Suspended />);
 
         press("j");
         expect(listMove).not.toHaveBeenCalled();
@@ -220,8 +234,8 @@ describe("list shortcuts", () => {
 });
 
 describe("focus search", () => {
-    it("finds the shared search primitive's input", () => {
-        mount(<input data-search-input="" data-testid="search" />);
+    it("finds the shared search primitive's input", async () => {
+        await mount(<input data-search-input="" data-testid="search" />);
 
         const row = visibleShortcuts("actions").find((r) => r.keys[0] === "/");
         expect(row).toBeTruthy();
@@ -230,9 +244,9 @@ describe("focus search", () => {
         expect(document.activeElement).toBe(screen.getByTestId("search"));
     });
 
-    it("prefers the screen's own search box over the first one in the DOM", () => {
+    it("prefers the screen's own search box over the first one in the DOM", async () => {
         const focusSearch = vi.fn();
-        mount(
+        await mount(
             <>
                 <input data-search-input="" data-testid="search" />
                 <Provider actions={{ focusSearch }} />
@@ -244,17 +258,17 @@ describe("focus search", () => {
         expect(document.activeElement).not.toBe(screen.getByTestId("search"));
     });
 
-    it("is hidden on a screen with nothing to search", () => {
+    it("is hidden on a screen with nothing to search", async () => {
         // The original bug in one line: the handler queried an attribute that
         // no element in the app carried.
-        mount();
+        await mount();
         expect(visibleShortcuts("actions").some((r) => r.keys[0] === "/")).toBe(false);
     });
 });
 
 describe("typing", () => {
-    it("ignores bare keys in an input but keeps the modifier combos", () => {
-        mount(<input data-testid="field" />);
+    it("ignores bare keys in an input but keeps the modifier combos", async () => {
+        await mount(<input data-testid="field" />);
         const field = screen.getByTestId("field");
 
         press("b", {}, field);
@@ -264,8 +278,8 @@ describe("typing", () => {
         expect(useAppStore.getState().commandPaletteOpen).toBe(true);
     });
 
-    it("collapses the nav on a bare `b`", () => {
-        mount();
+    it("collapses the nav on a bare `b`", async () => {
+        await mount();
         press("b");
         expect(useAppStore.getState().navCollapsed).toBe(true);
     });

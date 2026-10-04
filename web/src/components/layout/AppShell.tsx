@@ -15,8 +15,8 @@
 // where it meets the chrome's inner corner. Reads as one continuous
 // frame around a clean work surface.
 
-import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { Outlet, useLocation } from "@tanstack/react-router";
 import SubscriptionGate from "./SubscriptionGate";
 import { SkyChrome } from "./SkyChrome";
 import { AppHeader } from "./AppHeader";
@@ -30,6 +30,11 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { GlobalCursorsProvider } from "@/components/app/presence/GlobalCursors";
 import AgentPanel from "@/components/app/agent/AgentPanel";
 import { useRouteKey } from "@/hooks/useRouteKey";
+import { useScrollMemory, type ScrollStore } from "@/hooks/useScrollMemory";
+import { RouteFallback } from "./RouteStates";
+
+// Per history entry, kept apart so ordinary browsing never evicts a list's remembered offset.
+const entryOffsets: ScrollStore = new Map();
 
 export function AppShell() {
     useKeyboardShortcuts();
@@ -44,16 +49,12 @@ export function AppShell() {
     // The page content's scroll container, anchor for the global cursor layer.
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Pages scroll this inner container, not the window, so nothing resets the
-    // offset between routes: navigating from halfway down a long list used to
-    // land mid-page on the next one. Reset before paint so it never flashes.
-    // Keyed on the route identity, not the raw pathname, so a page that keeps
-    // in-page state in the URL (the unibox's open thread) is not scrolled away
-    // from what the user was reading.
+    // A new page starts at the top and Back lands where that entry was left; in-page URL state keeps its place.
     const routeKey = useRouteKey();
-    useLayoutEffect(() => {
-        scrollRef.current?.scrollTo({ top: 0, left: 0 });
-    }, [routeKey]);
+    const entryKey = useLocation({ select: (l) => l.state.__TSR_key ?? l.href });
+    const [scrollFor, setScrollFor] = useState({ routeKey, key: `${routeKey}@${entryKey}` });
+    if (scrollFor.routeKey !== routeKey) setScrollFor({ routeKey, key: `${routeKey}@${entryKey}` });
+    useScrollMemory(scrollRef, scrollFor.key, entryOffsets);
 
     return (
         <div className="fixed inset-0 flex flex-col">
@@ -83,13 +84,9 @@ export function AppShell() {
                         <GlobalCursorsProvider scrollRef={scrollRef}>
                             <div ref={scrollRef} className="h-full overflow-auto">
                                 <RouteBoundary>
-                                    {/* Router navigations run inside a
-                                        transition, so a page that suspends with
-                                        no boundary above it commits an empty
-                                        content area and stays that way until
-                                        the query lands (only a reload fixes
-                                        it). This is that boundary. */}
-                                    <Suspense key={routeKey} fallback={<RouteFallback />}>
+                                    {/* Catches a suspend above the route's own
+                                        boundary (SubscriptionGate). */}
+                                    <Suspense fallback={<RouteFallback />}>
                                         <SubscriptionGate>
                                             <Outlet />
                                         </SubscriptionGate>
@@ -105,18 +102,6 @@ export function AppShell() {
             <CommandPalette />
             {/* Right-side AI assistant, persistent across routes. */}
             <AgentPanel />
-        </div>
-    );
-}
-
-// RouteFallback is what a suspending page shows while its data loads. Same
-// hairline chrome as the pages themselves so the panel never goes blank.
-function RouteFallback() {
-    return (
-        <div className="px-5 pt-5 space-y-4" role="status" aria-label="Loading">
-            <div className="h-6 w-56 bg-slate-100 rounded-md animate-pulse" />
-            <div className="h-3 w-40 bg-slate-100 rounded animate-pulse" />
-            <div className="h-56 bg-slate-100 rounded-md animate-pulse" />
         </div>
     );
 }

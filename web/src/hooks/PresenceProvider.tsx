@@ -6,7 +6,7 @@ import React, {
     useMemo,
     useRef,
 } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from '@tanstack/react-router';
 import { useSocket } from './context/socket';
 import { useUserProfile } from './context/user';
 import { useAppStore } from '@/stores';
@@ -35,7 +35,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     const setPresenceState = useAppStore((s) => s.setPresenceState);
     const applyPresenceDiff = useAppStore((s) => s.applyPresenceDiff);
     const clearPresence = useAppStore((s) => s.clearPresence);
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
 
     const activityRef = useRef<{ page: string | null; resource: string | null; action: string | null }>({
         page: null,

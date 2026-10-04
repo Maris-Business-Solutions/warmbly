@@ -1,6 +1,7 @@
 import type React from "react";
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import useResetPasswordConfirm from "@/lib/api/hooks/auth/useResetPasswordConfirm";
 import { usePasswordStrength } from "@/hooks/usePasswordStrength";
 import toast from "react-hot-toast";
@@ -40,7 +41,7 @@ export function useResetPasswordConfirmForm() {
                 resetConfirm.mutateAsync({ session, password, turnstile: turnstileToken }),
                 { loading: "Loading...", success: "Password successfully changed", error: (err: AppError) => buildError(err) }
             );
-            navigate("/auth/login?action=1");
+            navigate({ to: "/auth/login", search: { action: "1" } });
         } finally { setPending(false); }
     };
 

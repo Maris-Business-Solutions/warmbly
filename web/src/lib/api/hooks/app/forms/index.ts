@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     createForm,
     deleteForm,
@@ -23,12 +23,17 @@ import type { FormStatsRange } from "@/lib/api/models/app/forms/FormStats";
 // Every form read lives under ["forms"]: the realtime spine invalidates that
 // prefix on any form mutation, and FORM_SUBMISSION_CREATED events refresh
 // counters and submission lists live.
+export const formsListQuery = queryOptions({ queryKey: ["forms", "list"], queryFn: listForms });
+
 export function useForms(enabled = true) {
-    return useQuery({ queryKey: ["forms", "list"], queryFn: listForms, enabled });
+    return useQuery({ ...formsListQuery, enabled });
 }
 
+export const formQuery = (id: string | undefined) =>
+    queryOptions({ queryKey: ["forms", id], queryFn: () => getForm(id as string) });
+
 export function useForm(id: string | undefined) {
-    return useQuery({ queryKey: ["forms", id], queryFn: () => getForm(id as string), enabled: !!id });
+    return useQuery({ ...formQuery(id), enabled: !!id });
 }
 
 export function useFormsConfig() {

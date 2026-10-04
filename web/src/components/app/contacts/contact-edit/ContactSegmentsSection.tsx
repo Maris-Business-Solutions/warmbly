@@ -3,7 +3,7 @@
 
 import React from "react";
 import { CheckIcon, Loader2Icon, MinusIcon, RotateCcwIcon } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 
 import { useWriteGuard } from "@/hooks/usePermission";
@@ -64,7 +64,8 @@ export function ContactSegmentsSection({ contactId }: { contactId: string }) {
                                 <li key={s.id} className="px-3 h-9 flex items-center gap-2">
                                     <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
                                     <Link
-                                        to={`/app/contacts/segments/${s.id}`}
+                                        to="/app/contacts/segments/$id"
+                                        params={{ id: s.id }}
                                         className={cn("text-[12px] truncate hover:underline", s.member ? "text-slate-900" : "text-slate-400")}
                                     >
                                         {s.name}

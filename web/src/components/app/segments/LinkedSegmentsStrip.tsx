@@ -1,7 +1,7 @@
 // A campaign's linked segments on its Leads tab: one chip per segment with its
 // live lead count, click to filter the list to it.
 
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, LayersIcon, Loader2Icon, UserPlusIcon } from "lucide-react";
 
 import type { CampaignSegmentLink } from "@/lib/api/models/app/segments/Segment";
@@ -74,7 +74,8 @@ export default function LinkedSegmentsStrip({
                                 )}
                             </button>
                             <Link
-                                to={`/app/contacts/segments/${l.segment_id}`}
+                                to="/app/contacts/segments/$id"
+                                params={{ id: l.segment_id }}
                                 aria-label={`Open the ${l.name} segment`}
                                 title="Open segment"
                                 className={cn(

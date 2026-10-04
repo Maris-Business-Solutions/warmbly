@@ -9,7 +9,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2Icon, SendIcon } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import cancelScheduled from "@/lib/api/client/app/unibox/cancelScheduled";
@@ -91,7 +91,7 @@ export default function OutboxIndicator() {
                 toast.success("Send cancelled, back to your draft");
             } else if (entry.kind === "reply" && entry.reply) {
                 useOutboxStore.getState().setReplyRestore(entry.reply);
-                navigate(`/app/unibox/all/${encodeURIComponent(entry.reply.threadId)}`);
+                navigate({ to: "/app/unibox/{-$scope}/{-$threadId}", params: { scope: "all", threadId: entry.reply.threadId } });
                 toast.success("Send cancelled, back to your reply");
             } else {
                 toast.success("Send cancelled");

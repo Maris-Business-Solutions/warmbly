@@ -28,9 +28,12 @@ const STALL_FRAMES = 30;
 /** Bound on remembered lists, so a session of filter-typing can't grow it. */
 const MAX_KEYS = 40;
 
-const positions = new Map<string, number>();
+/** Where a set of containers was left; a caller with its own churn passes its own store. */
+export type ScrollStore = Map<string, number>;
 
-function remember(key: string, top: number): void {
+const lists: ScrollStore = new Map();
+
+function remember(positions: ScrollStore, key: string, top: number): void {
     // Re-insert so the map's iteration order is least-recently-used first.
     positions.delete(key);
     positions.set(key, top);
@@ -44,6 +47,7 @@ function remember(key: string, top: number): void {
 export function useScrollMemory(
     ref: React.RefObject<HTMLElement | null>,
     key: string,
+    positions: ScrollStore = lists,
 ): void {
     // The offset we are still trying to reach; null means "not restoring",
     // which is also what tells the scroll listener it may record again.
@@ -108,7 +112,7 @@ export function useScrollMemory(
             stalled.current = 0;
             if (!frame.current) frame.current = requestAnimationFrame(step);
         },
-        [ref, key, step],
+        [ref, key, step, positions],
     );
 
     React.useLayoutEffect(() => {
@@ -119,7 +123,7 @@ export function useScrollMemory(
             // A hidden container reports 0 for everything; recording that would
             // overwrite the very offset we are holding on to.
             if (pending.current != null || el.clientHeight === 0) return;
-            remember(key, el.scrollTop);
+            remember(positions, key, el.scrollTop);
         };
         // Any deliberate move hands control back to the user for good.
         const onUserScroll = () => stop();
@@ -152,7 +156,7 @@ export function useScrollMemory(
             el.removeEventListener("keydown", onUserScroll);
             el.removeEventListener("pointerdown", onUserScroll);
         };
-    }, [ref, key, arm, stop]);
+    }, [ref, key, arm, stop, positions]);
 
     // ResizeObserver is allowed to skip an element with no box, so a pane that
     // is hidden and shown again may never report the round trip. Every render

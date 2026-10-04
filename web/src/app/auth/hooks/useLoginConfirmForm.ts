@@ -1,6 +1,7 @@
 import type React from "react";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { useQueryClient } from "@tanstack/react-query";
 import useLoginConfirm from "@/lib/api/hooks/auth/useLoginConfirm";
 import { saveTokens } from "@/lib/auth";
@@ -43,7 +44,7 @@ export function useLoginConfirmForm() {
             } catch {
                 // UserProvider re-attempts and redirects to login on a real failure.
             }
-            navigate("/app/emails");
+            navigate({ to: "/app/emails" });
         } finally { setPending(false); }
     };
 

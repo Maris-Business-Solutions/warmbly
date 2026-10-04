@@ -157,13 +157,13 @@ describe("unibox scroll position", SUITE, () => {
         await scrollTo(900);
 
         await act(async () => {
-            await router.navigate("/app/analytics");
+            await router.navigate({ to: "/app/analytics" });
         });
         await settle();
         expect(screen.queryByText("Somewhere else")).toBeTruthy();
 
         await act(async () => {
-            await router.navigate("/app/unibox/week");
+            await router.navigate({ to: "/app/unibox/{-$scope}/{-$threadId}", params: { scope: "week", threadId: undefined } });
         });
         await settle();
 

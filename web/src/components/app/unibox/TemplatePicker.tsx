@@ -4,7 +4,7 @@
 // and error states. The host mounts it inside its own PopoverMenu.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { FileTextIcon, SearchIcon, SettingsIcon, XIcon } from "lucide-react";
 import type useTemplates from "@/lib/api/hooks/app/templates/useTemplates";
 import type Template from "@/lib/api/models/app/templates/Template";

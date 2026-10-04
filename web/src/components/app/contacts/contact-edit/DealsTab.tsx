@@ -2,7 +2,7 @@
 // provider mode these are the CRM's deals and every change is written there.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import { CheckIcon, ChevronDownIcon, CircleDollarSignIcon, Loader2Icon, MegaphoneIcon, PlusIcon, XIcon } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -179,9 +179,10 @@ function DealRow({
                     <span className="text-[11px] text-slate-400">Closes {fmtAbsolute(deal.expected_close_date)}</span>
                 )}
                 {owner && <span className="text-[11px] text-slate-400 truncate">Owner {owner}</span>}
-                {deal.campaign_name && (
+                {deal.campaign_name && deal.campaign_id && (
                     <Link
-                        to={`/app/campaigns/${deal.campaign_id}`}
+                        to="/app/campaigns/$id"
+                        params={{ id: deal.campaign_id }}
                         className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-sky-700 min-w-0 transition-colors"
                     >
                         <MegaphoneIcon className="w-3 h-3 shrink-0" />

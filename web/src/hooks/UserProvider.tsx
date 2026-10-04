@@ -13,7 +13,7 @@ import useRoles from '@/lib/api/hooks/app/admin/roles/useRoles';
 import useTimezones from '@/lib/api/hooks/app/useTimezones';
 import type { AppError } from '@/lib/api/client/normalizeError';
 import { AuthError } from '@/lib/errors/auth';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from '@tanstack/react-router';
 import type Access from '@/lib/api/models/app/admin/Access';
 import type Timezone from '@/lib/api/models/app/Timezone';
 import type User from '@/lib/api/models/auth/User';

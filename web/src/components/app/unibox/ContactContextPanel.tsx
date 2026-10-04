@@ -28,7 +28,7 @@ import {
     CheckSquareIcon,
     XIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { TextInput } from "@/components/ui/field";
 import NewMeetingDialog from "@/components/app/meetings/NewMeetingDialog";
 import BookACallButton from "@/components/app/integrations/BookACallButton";
@@ -224,7 +224,8 @@ export default function ContactContextPanel({
                                     </Badge>
                                 )}
                                 <Link
-                                    to={`/app/contacts?contact=${encodeURIComponent(contact.id)}`}
+                                    to="/app/contacts"
+                                    search={{ contact: contact.id }}
                                     className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-slate-400 hover:text-sky-700 transition-colors"
                                 >
                                     Open contact
@@ -354,7 +355,8 @@ function CampaignsSection({
                         {fallback.map((c) => (
                             <Link
                                 key={c.id}
-                                to={`/app/campaigns/${c.id}/leads`}
+                                to="/app/campaigns/$id/leads"
+                                params={{ id: c.id }}
                                 className="inline-flex items-center gap-1 h-5 px-1.5 rounded bg-white border border-slate-200 hover:border-sky-300 text-[10.5px] text-slate-600 hover:text-sky-700 transition-colors"
                             >
                                 <MegaphoneIcon className="w-2.5 h-2.5 text-slate-400" />
@@ -377,7 +379,8 @@ function CampaignsSection({
                             <div className="flex items-center gap-1.5 min-w-0">
                                 <MegaphoneIcon className="w-3 h-3 text-slate-400 shrink-0" />
                                 <Link
-                                    to={`/app/campaigns/${s.campaign_id}/leads`}
+                                    to="/app/campaigns/$id/leads"
+                                    params={{ id: s.campaign_id }}
                                     title={s.campaign_name}
                                     className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-800 hover:text-sky-700 transition-colors"
                                 >

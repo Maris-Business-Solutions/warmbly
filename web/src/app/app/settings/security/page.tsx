@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { RowLink, Section, SectionShell } from "../_components/SectionShell";
 import PasskeyManager from "./PasskeyManager";
 import SessionManager from "./SessionManager";
@@ -31,7 +31,7 @@ export default function SecuritySettingsPage() {
                     title="Sign-in alerts"
                     description="Get notified when your account is accessed from a new device. Turn email delivery on under Notifications."
                     cta="Configure"
-                    onClick={() => navigate("/app/settings/notifications")}
+                    onClick={() => navigate({ to: "/app/settings/notifications" })}
                 />
             </Section>
 

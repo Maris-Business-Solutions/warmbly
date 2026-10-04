@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import type {
     AdvisorEntityIndex,
@@ -41,12 +41,17 @@ export function useAdvisorSummary(enabled = true) {
     });
 }
 
-export function useAdvisorFindings(query: AdvisorFindingsQuery = {}, enabled = true) {
-    return useQuery<AdvisorFinding[]>({
+export const advisorFindingsQuery = (query: AdvisorFindingsQuery = {}) =>
+    queryOptions<AdvisorFinding[]>({
         queryKey: [...ADVISOR_KEY, "findings", query],
         queryFn: () => getAdvisorFindings(query),
-        enabled,
         staleTime: 60_000,
+    });
+
+export function useAdvisorFindings(query: AdvisorFindingsQuery = {}, enabled = true) {
+    return useQuery({
+        ...advisorFindingsQuery(query),
+        enabled,
     });
 }
 
@@ -54,6 +59,10 @@ export function useAdvisorFindings(query: AdvisorFindingsQuery = {}, enabled = t
 // run: a page that fetched only what fits on screen would leave rows below the
 // fold silently unflagged, which is worse than not flagging at all.
 export const SURFACE_FETCH_LIMIT = 200;
+
+/** The whole-surface query useAdvisorEntityIndex and AdvisorSummaryBar share. */
+export const advisorSurfaceQuery = (surface: AdvisorSurface) =>
+    advisorFindingsQuery({ surface, limit: SURFACE_FETCH_LIMIT });
 
 // useAdvisorEntityIndex gives a list page one request for the whole surface and
 // an index every row reads its own advice from. Rows must never fetch: twenty

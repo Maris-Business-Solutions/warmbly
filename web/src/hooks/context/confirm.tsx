@@ -1,7 +1,8 @@
 import { useContext, createContext } from "react";
 
 interface ConfirmContextValue {
-    show: (text: string, onSubmit: () => void | Promise<void>) => void,
+    /** onCancel runs when the dialog is dismissed without confirming. */
+    show: (text: string, onSubmit: () => void | Promise<void>, onCancel?: () => void) => void,
     setLoading: React.Dispatch<React.SetStateAction<boolean>>,
     setShow: React.Dispatch<React.SetStateAction<boolean>>,
 }
