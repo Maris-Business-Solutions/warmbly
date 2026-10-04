@@ -788,7 +788,7 @@ func Run(
 
 			// REST tool surface for non-MCP agents (Hermes/OpenAI-style function
 			// calling). No route-level permission gate on purpose, matching the
-			// advisor apply path and the MCP endpoint: the registry enforces each
+			// MCP endpoint: the registry enforces each
 			// tool's own permission bits, the list reflects only what the caller
 			// may use, and send-class tools are never exposed.
 			agentTools := protected.Group("/ai/tools")
@@ -798,11 +798,9 @@ func Run(
 				agentTools.POST("/:name/call", m.RateLimitMiddleware(models.RateLimitWrite), h.CallAgentTool)
 			}
 
-			// Advisor. Reads are an analytics read of the org's sending
-			// posture. Apply/undo carry no gate here on purpose: the fix runs
-			// through the AI tool registry, which enforces whatever permission
-			// the underlying change actually needs, so a viewer sees the advice
-			// and gets a clean 403 if they try to apply it.
+			// Advisor. Every route is an analytics read of the org's sending
+			// posture; apply/undo then run the fix through the AI tool registry
+			// as the caller, which enforces the permission the change needs.
 			advisorGroup := protected.Group("/advisor")
 			advisorGroup.Use(m.RequireOrganization())
 			{
@@ -814,8 +812,8 @@ func Run(
 				advisorWrite.Use(m.RateLimitMiddleware(models.RateLimitWrite))
 				{
 					advisorWrite.POST("/refresh", m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.RefreshAdvisor)
-					advisorWrite.POST("/recommendations/:id/apply", h.ApplyAdvisorFinding)
-					advisorWrite.POST("/recommendations/:id/undo", h.UndoAdvisorFinding)
+					advisorWrite.POST("/recommendations/:id/apply", m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.ApplyAdvisorFinding)
+					advisorWrite.POST("/recommendations/:id/undo", m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.UndoAdvisorFinding)
 					advisorWrite.POST("/recommendations/:id/snooze", m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.SnoozeAdvisorFinding)
 					advisorWrite.POST("/recommendations/:id/dismiss", m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.DismissAdvisorFinding)
 					advisorWrite.POST("/recommendations/:id/feedback", m.RequireAccess(models.PermViewAnalytics, models.APIPermReadAnalytics), h.SubmitAdvisorFeedback)
