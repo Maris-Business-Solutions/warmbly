@@ -20,6 +20,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/app/integration"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/repository"
 )
 
 func sign(secret string, ts int64, body []byte) string {
@@ -346,6 +347,15 @@ func TestRouteChannel(t *testing.T) {
 	}
 }
 
+// fakeSlackRepo stores link codes nowhere, so a test with APP_URL set runs too.
+type fakeSlackRepo struct {
+	repository.SlackRepository
+}
+
+func (fakeSlackRepo) CreateLinkCode(context.Context, []byte, models.SlackLinkCode) error {
+	return nil
+}
+
 // fakeSlack records each Web API call's method and JSON body.
 func fakeSlack(t *testing.T) (*Service, *[]string, *[]map[string]any) {
 	t.Helper()
@@ -365,7 +375,7 @@ func fakeSlack(t *testing.T) (*Service, *[]string, *[]map[string]any) {
 	}))
 	t.Cleanup(srv.Close)
 	c := &Client{http: srv.Client(), base: srv.URL + "/", maxWait: time.Second}
-	return &Service{Notifier: &Notifier{client: c}}, &methods, &bodies
+	return &Service{Notifier: &Notifier{client: c, repo: fakeSlackRepo{}}, guard: newGuard(nil)}, &methods, &bodies
 }
 
 // An ephemeral reply to a top-level mention must not name a thread: Slack

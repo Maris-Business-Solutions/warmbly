@@ -223,6 +223,10 @@ func (d Deps) listIntegrations(ctx context.Context, inv Invocation, _ json.RawMe
 		out.Connected = append(out.Connected, connected{Provider: string(c.Provider), Label: c.Label, Account: c.ExternalAccountName, Status: string(c.Status)})
 	}
 	for _, e := range d.Automations.Catalog(ctx) {
+		// An app this instance has no credentials for cannot be connected.
+		if !e.Configured {
+			continue
+		}
 		out.Available = append(out.Available, available{Provider: string(e.Provider), Name: e.Name, Category: string(e.Category)})
 	}
 	return jsonResult(out)
@@ -238,6 +242,9 @@ func (d Deps) integrationConnectLink(ctx context.Context, _ Invocation, args jso
 	p := strings.TrimSpace(in.Provider)
 	for _, e := range d.Automations.Catalog(ctx) {
 		if string(e.Provider) == p {
+			if !e.Configured {
+				return "", errors.New(e.Name + " is not set up on this Warmbly instance yet: an admin has to add its app credentials first")
+			}
 			return jsonResult(map[string]string{
 				"name": e.Name,
 				"url":  d.link("/app/integrations/" + url.PathEscape(p) + "?connect=1"),

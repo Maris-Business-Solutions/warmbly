@@ -84,7 +84,10 @@ func (integrationsStub) ListConnections(context.Context, uuid.UUID) ([]models.In
 }
 
 func (integrationsStub) Catalog(context.Context) []models.IntegrationCatalogEntry {
-	return []models.IntegrationCatalogEntry{{Provider: models.IntegrationSlack, Name: "Slack"}}
+	return []models.IntegrationCatalogEntry{
+		{Provider: models.IntegrationSlack, Name: "Slack", Configured: true},
+		{Provider: models.IntegrationHubSpot, Name: "HubSpot"},
+	}
 }
 
 // Integrations are visible with either permission the Integrations page accepts.
@@ -103,5 +106,12 @@ func TestListIntegrationsGate(t *testing.T) {
 	}
 	if _, err := r.Call(ctx, Invocation{OrgID: uuid.New(), OrgPerms: models.PermUseIntegrations}, "integration_connect_link", json.RawMessage(`{"provider":"slack"}`)); !errors.Is(err, ErrToolForbidden) {
 		t.Fatalf("connecting needs Manage settings, got %v", err)
+	}
+	admin := Invocation{OrgID: uuid.New(), OrgPerms: models.PermManageSettings}
+	if _, err := r.Call(ctx, admin, "integration_connect_link", json.RawMessage(`{"provider":"slack"}`)); err != nil {
+		t.Fatalf("a set-up app gets a link, got %v", err)
+	}
+	if _, err := r.Call(ctx, admin, "integration_connect_link", json.RawMessage(`{"provider":"hubspot"}`)); err == nil {
+		t.Fatal("an app this instance has no credentials for got a connect link")
 	}
 }

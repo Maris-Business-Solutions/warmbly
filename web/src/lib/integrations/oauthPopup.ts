@@ -12,21 +12,39 @@ export interface OAuthPopupResult {
 
 const POPUP_MESSAGE_SOURCE = "warmbly-integration-oauth";
 
-export function openOAuthPopup(authUrl: string): Promise<OAuthPopupResult> {
+function popupFeatures(): string {
+    const width = 600;
+    const height = 720;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    return `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes`;
+}
+
+const POPUP_BLOCKED = "Popup blocked. Allow popups for this site and try again.";
+
+// Opens the window inside the click, before start() is awaited: a browser
+// blocks a popup opened after the click's activation has lapsed.
+export async function authorizeInPopup(start: () => Promise<string>): Promise<OAuthPopupResult> {
+    const popup = window.open("about:blank", "warmbly_oauth", popupFeatures());
+    if (!popup) throw new Error(POPUP_BLOCKED);
+    let url: string;
+    try {
+        url = await start();
+    } catch (err) {
+        popup.close();
+        throw err;
+    }
+    return openOAuthPopup(url, popup);
+}
+
+export function openOAuthPopup(authUrl: string, reserved?: Window): Promise<OAuthPopupResult> {
     return new Promise((resolve, reject) => {
-        const width = 600;
-        const height = 720;
-        const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-        const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-        const popup = window.open(
-            authUrl,
-            "warmbly_oauth",
-            `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes`,
-        );
+        const popup = reserved ?? window.open(authUrl, "warmbly_oauth", popupFeatures());
         if (!popup) {
-            reject(new Error("Popup blocked. Allow popups for this site and try again."));
+            reject(new Error(POPUP_BLOCKED));
             return;
         }
+        if (reserved) reserved.location.href = authUrl;
 
         let settled = false;
         const cleanup = () => {

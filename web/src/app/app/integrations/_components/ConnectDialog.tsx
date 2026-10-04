@@ -25,7 +25,7 @@ import { OptionSelect } from "@/components/app/campaigns/preferences/components/
 import { useConfirm } from "@/hooks/context/confirm";
 import useConnectIntegration from "@/lib/api/hooks/app/integrations/useConnectIntegration";
 import { useFinishIntegrationOAuth, useStartIntegrationOAuth } from "@/lib/api/hooks/app/integrations/useIntegrationOAuth";
-import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
+import { authorizeInPopup } from "@/lib/integrations/oauthPopup";
 import type { IntegrationCatalogEntry, IntegrationConnection } from "@/lib/api/models/app/integrations/Integration";
 import { cn } from "@/lib/utils";
 
@@ -200,9 +200,11 @@ export default function ConnectDialog({
                     ? { environment: sfHost.includes(".sandbox.") ? ("sandbox" as const) : ("production" as const), domain: sfHost }
                     : { environment: sfEnv }
                 : {};
-            const { url } = await startOAuth.mutateAsync({ provider: entry.provider, label: "", ...sf });
-            goTo("waiting");
-            const { code, state } = await openOAuthPopup(url);
+            const { code, state } = await authorizeInPopup(async () => {
+                const { url } = await startOAuth.mutateAsync({ provider: entry.provider, label: "", ...sf });
+                goTo("waiting");
+                return url;
+            });
             if (!alive.current) return;
             const conn = await finishOAuth.mutateAsync({ code, state });
             if (!alive.current) return;
