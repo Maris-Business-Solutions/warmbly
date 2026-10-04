@@ -82,8 +82,11 @@ type Service interface {
 
 	// Cloud-managed mailboxes for linked instances (oauth.go).
 	StartOAuth(ctx context.Context, inst *models.PoolLinkInstance, req models.PoolLinkOAuthStartRequest) (*models.PoolLinkOAuthStartResponse, *errx.Error)
-	// CompleteOAuthCallback finishes a brokered consent; returns "" when the state is not brokered.
-	CompleteOAuthCallback(ctx context.Context, provider, code, state, providerErr string) string
+	// DescribeOAuthConsent and ContinueOAuth back the cloud page shown before the provider opens.
+	DescribeOAuthConsent(ctx context.Context, state string) (*models.PoolLinkOAuthConsent, *errx.Error)
+	ContinueOAuth(ctx context.Context, state, binding string) (string, *errx.Error)
+	// CompleteOAuthCallback finishes a brokered consent and returns where to send the browser.
+	CompleteOAuthCallback(ctx context.Context, provider, code, state, providerErr, binding string) (string, *errx.Error)
 	FinishOAuth(ctx context.Context, inst *models.PoolLinkInstance, session string) (*models.PoolLinkMailboxState, *errx.Error)
 	AccessToken(ctx context.Context, inst *models.PoolLinkInstance, remoteID uuid.UUID) (*models.PoolLinkAccessToken, *errx.Error)
 	ListWorkspaceMailboxes(ctx context.Context, inst *models.PoolLinkInstance) ([]models.PoolLinkWorkspaceMailbox, *errx.Error)

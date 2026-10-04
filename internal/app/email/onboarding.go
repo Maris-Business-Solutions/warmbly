@@ -152,15 +152,11 @@ func (s *emailService) OAuthFinish(ctx context.Context, userID, code, state stri
 		return nil, false, xerr
 	}
 
-	// The verifier proves this is the same party that started the flow. Absent
-	// only for a state written before PKCE existed, where the exchange has to
-	// go ahead without it or an in-flight consent dies on deploy.
-	var exchangeOpts []oauth2.AuthCodeOption
-	if sess.CodeVerifier != "" {
-		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(sess.CodeVerifier))
+	// The verifier proves this is the same party that started the flow.
+	if sess.CodeVerifier == "" {
+		return nil, false, errx.ErrEmailOnboardState
 	}
-
-	tok, err := cfg.Exchange(ctx, code, exchangeOpts...)
+	tok, err := cfg.Exchange(ctx, code, oauth2.VerifierOption(sess.CodeVerifier))
 	if err != nil {
 		return nil, false, errx.ErrEmailOnboardExchange
 	}

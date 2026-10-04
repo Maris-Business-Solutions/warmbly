@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"strconv"
@@ -281,17 +282,23 @@ func (h *Handler) IntegrationOAuthCallback(c *gin.Context) {
 	// must not be able to read the code out of it. Falling back to "*" when the
 	// origin is unconfigured would reinstate exactly that, so an unconfigured
 	// origin delivers nothing instead.
-	originBlob, _ := json.Marshal(callbackTargetOrigin())
+	origin := callbackTargetOrigin()
+	originBlob, _ := json.Marshal(origin)
+	notice := "Finishing connection… you can close this window."
+	if origin == "" {
+		notice = callbackNoOriginNotice
+	}
 	html := `<!doctype html><html><head><meta charset="utf-8"><title>Connecting…</title></head>
 <body style="font-family:system-ui;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <div style="text-align:center">
-<p style="font-size:14px">Finishing connection… you can close this window.</p>
+<p style="font-size:14px">` + template.HTMLEscapeString(notice) + `</p>
 </div>
 <script>
 (function(){
   var msg = ` + string(blob) + `;
   var origin = ` + string(originBlob) + `;
-  try { if (window.opener && origin) { window.opener.postMessage(msg, origin); } } catch (e) {}
+  if (!origin) { return; }
+  try { if (window.opener) { window.opener.postMessage(msg, origin); } } catch (e) {}
   setTimeout(function(){ window.close(); }, 300);
 })();
 </script>

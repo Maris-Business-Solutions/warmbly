@@ -144,8 +144,10 @@ type EmailService interface {
 	// errors it just fixed, which is what clears the mailbox's error banner.
 	WireAccountErrors(repo repository.EmailAccountErrorRepository)
 	// Brokered OAuth (cloud side): consent on this deployment's OAuth app for a linked instance.
-	OAuthAuthorizeURL(provider models.InboxProvider, state string) (string, *errx.Error)
-	OAuthConnectWithCode(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, code string) (*models.Email, *errx.Error)
+	// OAuthAuthorizeURL carries the S256 challenge of verifier; OAuthConnectWithCode redeems with it.
+	OAuthAuthorizeURL(provider models.InboxProvider, state, verifier string) (string, *errx.Error)
+	OAuthCallbackOrigin(provider models.InboxProvider) (string, *errx.Error)
+	OAuthConnectWithCode(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, code, verifier string) (*models.Email, *errx.Error)
 	// OAuthAccessToken is a live access token for an OAuth mailbox, refreshed when near expiry.
 	OAuthAccessToken(ctx context.Context, accountID uuid.UUID) (*oauth2.Token, *errx.Error)
 	// LoadAccountOntoWorker assigns a worker if needed and ships the mailbox

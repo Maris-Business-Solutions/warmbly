@@ -2,6 +2,7 @@ package email
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,19 +16,39 @@ import (
 
 // Brokered OAuth: consent on this deployment's OAuth app for a linked instance; the grant stays here.
 
-func (s *emailService) OAuthAuthorizeURL(provider models.InboxProvider, state string) (string, *errx.Error) {
+func (s *emailService) OAuthAuthorizeURL(provider models.InboxProvider, state, verifier string) (string, *errx.Error) {
 	cfg, xerr := s.oauthConfigFor(provider)
 	if xerr != nil {
 		return "", xerr
 	}
-	return cfg.AuthCodeURL(state, authCodeOptions(provider, "")...), nil
+	if verifier == "" {
+		return "", errx.InternalError()
+	}
+	opts := append(authCodeOptions(provider, ""), oauth2.S256ChallengeOption(verifier))
+	return cfg.AuthCodeURL(state, opts...), nil
 }
 
-func (s *emailService) OAuthConnectWithCode(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, code string) (*models.Email, *errx.Error) {
+// OAuthCallbackOrigin is the scheme and host the provider redirects back to.
+func (s *emailService) OAuthCallbackOrigin(provider models.InboxProvider) (string, *errx.Error) {
+	cfg, xerr := s.oauthConfigFor(provider)
+	if xerr != nil {
+		return "", xerr
+	}
+	u, err := url.Parse(cfg.RedirectURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", errx.InternalError()
+	}
+	return u.Scheme + "://" + u.Host, nil
+}
+
+func (s *emailService) OAuthConnectWithCode(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, code, verifier string) (*models.Email, *errx.Error) {
 	ctx, cancel := detach(ctx, connectBudget)
 	defer cancel()
 	if code = strings.TrimSpace(code); code == "" {
 		return nil, errx.ErrEmailOnboardCode
+	}
+	if verifier == "" {
+		return nil, errx.ErrEmailOnboardState
 	}
 	allowance, xerr := s.guardInboxLimit(ctx, orgID)
 	if xerr != nil {
@@ -37,7 +58,7 @@ func (s *emailService) OAuthConnectWithCode(ctx context.Context, userID string, 
 	if xerr != nil {
 		return nil, xerr
 	}
-	tok, err := cfg.Exchange(ctx, code)
+	tok, err := cfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, errx.ErrEmailOnboardExchange
 	}

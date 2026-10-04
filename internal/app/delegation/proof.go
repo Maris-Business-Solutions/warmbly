@@ -3,6 +3,7 @@ package delegation
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -35,6 +36,9 @@ type ConsentState struct {
 	UserID uuid.UUID `json:"user_id"`
 	Domain string    `json:"domain,omitempty"`
 	Admin  string    `json:"admin,omitempty"`
+	// Verifier is the sign-in's PKCE verifier and Nonce the ID token must echo; neither leaves the server.
+	Verifier string `json:"verifier,omitempty"`
+	Nonce    string `json:"nonce,omitempty"`
 }
 
 // TXTLookup reads a domain's TXT records, for the DNS proof.
@@ -48,6 +52,25 @@ func newState(prefix string) (string, error) {
 		return "", err
 	}
 	return prefix + base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// newSigninState is a consent state carrying a fresh PKCE verifier and OIDC nonce.
+func newSigninState(orgID, userID uuid.UUID) (ConsentState, error) {
+	nonce, err := newState("")
+	if err != nil {
+		return ConsentState{}, err
+	}
+	return ConsentState{OrgID: orgID, UserID: userID, Verifier: oauth2.GenerateVerifier(), Nonce: nonce}, nil
+}
+
+// signinOptions adds the S256 challenge and nonce of a consent state to an authorization URL.
+func signinOptions(st ConsentState, extra ...oauth2.AuthCodeOption) []oauth2.AuthCodeOption {
+	return append(extra, oauth2.S256ChallengeOption(st.Verifier), oauth2.SetAuthURLParam("nonce", st.Nonce))
+}
+
+// nonceMatches holds an ID token to the nonce its sign-in was started with.
+func nonceMatches(claims map[string]any, st ConsentState) bool {
+	return st.Nonce != "" && subtle.ConstantTimeCompare([]byte(claimString(claims, "nonce")), []byte(st.Nonce)) == 1
 }
 
 func (s *Service) takeState(ctx context.Context, prefix, state string, orgID, userID uuid.UUID) (ConsentState, *errx.Error) {
@@ -144,14 +167,19 @@ func (s *Service) StartGoogle(ctx context.Context, orgID, userID uuid.UUID, doma
 	if err != nil {
 		return nil, errx.InternalError()
 	}
-	if err := s.states.Put(ctx, "mailbox_grant_state:"+state, ConsentState{OrgID: orgID, UserID: userID, Domain: domain, Admin: admin}, stateTTL); err != nil {
+	st, err := newSigninState(orgID, userID)
+	if err != nil {
+		return nil, errx.InternalError()
+	}
+	st.Domain, st.Admin = domain, admin
+	if err := s.states.Put(ctx, "mailbox_grant_state:"+state, st, stateTTL); err != nil {
 		return nil, errx.InternalError()
 	}
 	out.Method, out.State = "signin", state
-	out.URL = s.googleSignin.AuthCodeURL(state,
+	out.URL = s.googleSignin.AuthCodeURL(state, signinOptions(st,
 		oauth2.SetAuthURLParam("hd", domain),
 		oauth2.SetAuthURLParam("login_hint", admin),
-		oauth2.SetAuthURLParam("prompt", "select_account"))
+		oauth2.SetAuthURLParam("prompt", "select_account"))...)
 	return out, nil
 }
 
@@ -176,14 +204,17 @@ func (s *Service) FinishGoogle(ctx context.Context, orgID, userID uuid.UUID, in 
 			return nil, xerr
 		}
 		domain, admin = st.Domain, st.Admin
-		if !s.googleSigninEnabled() || strings.TrimSpace(in.Code) == "" {
+		if !s.googleSigninEnabled() || strings.TrimSpace(in.Code) == "" || st.Verifier == "" {
 			return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDState, "The Google sign-in did not complete. Start again.")
 		}
-		tok, err := s.googleSignin.Exchange(ctx, in.Code)
+		tok, err := s.googleSignin.Exchange(ctx, in.Code, oauth2.VerifierOption(st.Verifier))
 		if err != nil {
 			return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDState, "Google did not accept the sign-in. Start again.")
 		}
 		claims, ok := idTokenClaims(tok)
+		if ok && !nonceMatches(claims, st) {
+			return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDState, "Google did not accept the sign-in. Start again.")
+		}
 		verified, _ := claims["email_verified"].(bool)
 		if !ok || !verified || !strings.EqualFold(claimString(claims, "email"), admin) || !strings.EqualFold(claimString(claims, "hd"), domain) {
 			return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDProof, "Sign in as "+admin+", the administrator you entered, on "+domain+".")
@@ -254,11 +285,15 @@ func (s *Service) microsoftSigninConfig() *oauth2.Config {
 
 // MicrosoftSigninURL is where the callback sends an administrator once
 // Microsoft reports the consent; the sign-in carries the same state.
-func (s *Service) MicrosoftSigninURL(state string) string {
-	if !s.microsoftEnabled() || !strings.HasPrefix(state, microsoftStatePrefix) {
+func (s *Service) MicrosoftSigninURL(ctx context.Context, state string) string {
+	if !s.microsoftEnabled() || !strings.HasPrefix(state, microsoftStatePrefix) || s.states == nil {
 		return ""
 	}
-	return s.microsoftSigninConfig().AuthCodeURL(state)
+	st, ok := s.states.Peek(ctx, "mailbox_grant_state:"+state)
+	if !ok || st.Verifier == "" {
+		return ""
+	}
+	return s.microsoftSigninConfig().AuthCodeURL(state, signinOptions(st)...)
 }
 
 // StartMicrosoft opens Microsoft's admin consent page, the only v2.0 route
@@ -274,7 +309,11 @@ func (s *Service) StartMicrosoft(ctx context.Context, orgID, userID uuid.UUID) (
 	if err != nil {
 		return "", "", errx.InternalError()
 	}
-	if err := s.states.Put(ctx, "mailbox_grant_state:"+state, ConsentState{OrgID: orgID, UserID: userID}, stateTTL); err != nil {
+	st, err := newSigninState(orgID, userID)
+	if err != nil {
+		return "", "", errx.InternalError()
+	}
+	if err := s.states.Put(ctx, "mailbox_grant_state:"+state, st, stateTTL); err != nil {
 		return "", "", errx.InternalError()
 	}
 	q := url.Values{}
@@ -292,17 +331,21 @@ func (s *Service) FinishMicrosoft(ctx context.Context, orgID, userID uuid.UUID, 
 	if !s.microsoftEnabled() {
 		return nil, notConfigured("Microsoft 365")
 	}
-	if _, xerr := s.takeState(ctx, microsoftStatePrefix, state, orgID, userID); xerr != nil {
+	st, xerr := s.takeState(ctx, microsoftStatePrefix, state, orgID, userID)
+	if xerr != nil {
 		return nil, xerr
 	}
-	if strings.TrimSpace(code) == "" {
+	if strings.TrimSpace(code) == "" || st.Verifier == "" {
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDMicrosoftConsent, "Microsoft did not complete the consent. Start again as a Global Administrator.")
 	}
-	tok, err := s.microsoftSigninConfig().Exchange(context.WithValue(ctx, oauth2.HTTPClient, s.http), code)
+	tok, err := s.microsoftSigninConfig().Exchange(context.WithValue(ctx, oauth2.HTTPClient, s.http), code, oauth2.VerifierOption(st.Verifier))
 	if err != nil {
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDMicrosoftConsent, "Microsoft did not accept the consent. Start again as a Global Administrator.")
 	}
 	claims, ok := idTokenClaims(tok)
+	if ok && !nonceMatches(claims, st) {
+		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDMicrosoftConsent, "Microsoft did not accept the consent. Start again as a Global Administrator.")
+	}
 	tenant := claimString(claims, "tid")
 	if _, err := uuid.Parse(tenant); !ok || err != nil {
 		return nil, errx.NewWithIdentifier(errx.BadRequest, ErrIDMicrosoftConsent, "Microsoft did not say which organization consented. Start again.")

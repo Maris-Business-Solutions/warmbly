@@ -39,11 +39,13 @@ The whole flow takes about a minute. A code expires after 15 minutes if nobody a
 
 ## Google and Microsoft mailboxes: sign in through Warmbly Cloud
 
-On a linked instance, signing in one mailbox under **Add account > Google** or **Add account > Microsoft** no longer needs an OAuth client of your own. The sign-in window opens on Warmbly's verified Google and Microsoft apps, and when you approve:
+On a linked instance, signing in one mailbox under **Add account > Google** or **Add account > Microsoft** no longer needs an OAuth client of your own. The sign-in window opens on a Warmbly Cloud page first. It names the address of the instance asking and the Cloud workspace the mailbox will join; press **Continue** and Warmbly's verified Google or Microsoft app takes over. If you did not start the sign-in yourself, close that page: the mailbox would join the workspace it names. When you approve:
 
 - the mailbox is created in your Warmbly Cloud workspace, where its sign-in lives, and starts warming in the pool right away
 - your instance gets a mirror of the mailbox with no credential on it. Campaigns, replies and the unibox work from your server as before; to send and sync, the instance asks the cloud for a short-lived access token (about an hour, cached) using its link token
 - the refresh grant never leaves the cloud. Removing the mailbox from either side, unlinking the instance, or the cloud blocking the mailbox stops the instance sending from it within the hour
+
+The sign-in only completes in the browser that pressed **Continue**, and Cloud only ever sends it back to the address the instance registered when it was linked (its `APP_URL`). An instance linked before it had an address set cannot use this until you set `APP_URL`, disconnect it and link it again. The exchange with Google or Microsoft is protected with PKCE, so an authorization code is useless to anyone but Cloud.
 
 These mailboxes show the blue **Cloud** badge with "Signed in through Warmbly Cloud". The `BOX_GOOGLE_*` and `BOX_OUTLOOK_*` variables are still honoured when set, but an instance without them can now connect Google and Microsoft mailboxes as long as it is linked.
 

@@ -117,6 +117,9 @@ func Run(
 	// back to the SPA opener which then calls /emails/onboarding/oauth/finish.
 	r.GET("/addresses/google/callback", h.EmailOAuthCallbackGmail)
 	r.GET("/addresses/outlook/callback", h.EmailOAuthCallbackOutlook)
+	// A linked instance's brokered sign-in opens here first: the page names who is asking and binds the browser.
+	r.GET("/addresses/connect", m.PublicIPRateLimitMiddleware(), h.PoolLinkOAuthConsentPage)
+	r.GET("/addresses/connect/continue", m.PublicIPRateLimitMiddleware(), h.PoolLinkOAuthContinue)
 
 	// Public OAuth callback bouncer for third-party integrations (HubSpot,
 	// Slack, Google, Pipedrive, …). The provider redirects here; the page
@@ -1606,7 +1609,7 @@ func Run(
 			cliAuth.Use(m.RateLimitMiddleware(models.RateLimitWrite))
 			{
 				cliAuth.GET("/codes/:code", h.CLIAuthDescribeCode)
-				cliAuth.POST("/codes/:code/approve", h.CLIAuthApproveCode)
+				cliAuth.POST("/codes/:code/approve", middleware.RequireFreshAuth(), h.CLIAuthApproveCode)
 				cliAuth.POST("/codes/:code/deny", h.CLIAuthDenyCode)
 			}
 			// The linked instance's own surface, authenticated by its token.

@@ -80,12 +80,22 @@ type States interface {
 	Put(ctx context.Context, key string, v ConsentState, ttl time.Duration) error
 	// Take reads and removes; a second Take of the same key fails.
 	Take(ctx context.Context, key string) (ConsentState, bool)
+	// Peek reads without removing.
+	Peek(ctx context.Context, key string) (ConsentState, bool)
 }
 
 type redisStates struct{ c *cache.Cache }
 
 func (r redisStates) Put(ctx context.Context, key string, v ConsentState, ttl time.Duration) error {
 	return r.c.SetJSON(ctx, key, v, ttl)
+}
+
+func (r redisStates) Peek(ctx context.Context, key string) (ConsentState, bool) {
+	var v ConsentState
+	if err := r.c.GetJSON(ctx, key, &v); err != nil {
+		return v, false
+	}
+	return v, true
 }
 
 func (r redisStates) Take(ctx context.Context, key string) (ConsentState, bool) {

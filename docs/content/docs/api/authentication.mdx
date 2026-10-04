@@ -30,7 +30,7 @@ All three produce the same thing: a `wmbly_` key with a scope bitmask, listed un
 `warmbly auth login` uses a device-code handshake, so the terminal never handles your password and the browser never handles the key:
 
 1. The CLI calls `POST /v1/auth/cli/code` with the scopes it wants and the machine's hostname. It gets back a `device_code` it keeps, a `user_code` it prints, and a `verification_uri_complete` it opens.
-2. You approve at `app.warmbly.com/cli`, choosing which workspace the key belongs to. The approval is what mints the key, so it requires the `MANAGE_API_KEYS` organization permission.
+2. You approve at `app.warmbly.com/cli`, choosing which workspace the key belongs to. The approval is what mints the key, so it requires the `MANAGE_API_KEYS` organization permission and a recent sign-in, and the key is capped to the scopes your role in that workspace allows.
 3. The CLI polls `POST /v1/auth/cli/poll` and receives the key exactly once, on the first poll after approval.
 
 Codes expire after ten minutes, both halves are per-IP rate limited, and the `device_code` is stored hashed. Anything else can drive the same flow: it is two public endpoints and a browser.

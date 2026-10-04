@@ -128,11 +128,20 @@ func (f *fakeStore) ListSigninRetiring(context.Context, uuid.UUID) ([]models.Mig
 	return f.retiring, nil
 }
 
-type memStates struct{ m map[string]ConsentState }
+type memStates struct {
+	m map[string]ConsentState
+	// issued keeps every state ever put, so the fake token endpoint can answer for a verifier.
+	issued []ConsentState
+}
 
 func (s *memStates) Put(_ context.Context, k string, v ConsentState, _ time.Duration) error {
 	s.m[k] = v
+	s.issued = append(s.issued, v)
 	return nil
+}
+func (s *memStates) Peek(_ context.Context, k string) (ConsentState, bool) {
+	v, ok := s.m[k]
+	return v, ok
 }
 func (s *memStates) Take(_ context.Context, k string) (ConsentState, bool) {
 	v, ok := s.m[k]
@@ -154,6 +163,32 @@ type fakeProviders struct {
 	// rolesInGraph moves the roles from the ID token to the Graph access token, issued for graphTenant (empty: the consent tenant).
 	rolesInGraph bool
 	graphTenant  string
+	// states lets the token endpoints echo the nonce of the sign-in a verifier belongs to.
+	states *memStates
+	// wrongNonce makes the next ID tokens carry a nonce no sign-in was started with.
+	wrongNonce bool
+}
+
+// pkceNonce answers for the code_verifier a token request presents: the nonce of its sign-in, or false.
+func (f *fakeProviders) pkceNonce(r *http.Request) (string, bool) {
+	v := r.Form.Get("code_verifier")
+	if v == "" || f.states == nil {
+		return "", false
+	}
+	for _, st := range f.states.issued {
+		if st.Verifier == v {
+			if f.wrongNonce {
+				return "another", true
+			}
+			return st.Nonce, true
+		}
+	}
+	return "", false
+}
+
+func refusePKCE(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusBadRequest)
+	_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"code_verifier does not match"}`))
 }
 
 func fakeIDToken(claims map[string]any) string {
@@ -198,11 +233,22 @@ func newProviders(t *testing.T) *fakeProviders {
 	})
 	mux.HandleFunc("/gsignin/token", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
+		nonce, ok := f.pkceNonce(r)
+		if !ok {
+			refusePKCE(w)
+			return
+		}
 		writeJSON(w, map[string]any{"access_token": "x", "token_type": "Bearer", "expires_in": 3600,
-			"id_token": fakeIDToken(map[string]any{"email": f.signinEmail, "email_verified": true, "hd": f.signinHD})})
+			"id_token": fakeIDToken(map[string]any{"email": f.signinEmail, "email_verified": true, "hd": f.signinHD, "nonce": nonce})})
 	})
 	mux.HandleFunc("/ms/organizations/oauth2/v2.0/token", func(w http.ResponseWriter, r *http.Request) {
-		id, access := map[string]any{"tid": f.consentTenant, "wids": f.roles()}, "x"
+		_ = r.ParseForm()
+		nonce, ok := f.pkceNonce(r)
+		if !ok {
+			refusePKCE(w)
+			return
+		}
+		id, access := map[string]any{"tid": f.consentTenant, "wids": f.roles(), "nonce": nonce}, "x"
 		if f.rolesInGraph {
 			tid := f.graphTenant
 			if tid == "" {
@@ -283,8 +329,9 @@ func newTestService(t *testing.T) (*Service, *fakeProviders, *memGrants, *fakeMa
 	mb := &fakeMailboxes{}
 	st := &fakeStore{}
 	testTXT.records = map[string][]string{}
+	p.states = &memStates{m: map[string]ConsentState{}}
 	s := NewService(Deps{
-		Repo: grants, Mailboxes: mb, Store: st, States: &memStates{m: map[string]ConsentState{}},
+		Repo: grants, Mailboxes: mb, Store: st, States: p.states,
 		GoogleKey:         serviceAccountKey(t, p.URL+"/google/token"),
 		MicrosoftClientID: "app-id", MicrosoftSecret: "secret", MicrosoftRedirect: "https://api.example/addresses/outlook/callback",
 		GoogleSignin: &oauth2.Config{ClientID: "gid", ClientSecret: "gsecret", RedirectURL: "https://api.example/addresses/google/callback",
@@ -419,7 +466,8 @@ func microsoftGrant(t *testing.T, s *Service, p *fakeProviders, org uuid.UUID) *
 	if xerr != nil || stateOf(u) != state || !strings.Contains(u, "/organizations/v2.0/adminconsent?") || !strings.Contains(u, "scope=https%3A%2F%2Fgraph.microsoft.com%2F.default") || strings.Contains(u, "prompt=") {
 		t.Fatalf("start = %s, %v", u, xerr)
 	}
-	if in := s.MicrosoftSigninURL(state); stateOf(in) != state || !strings.Contains(in, "/organizations/oauth2/v2.0/authorize?") || strings.Contains(in, "prompt=") {
+	if in := s.MicrosoftSigninURL(context.Background(), state); stateOf(in) != state || !strings.Contains(in, "/organizations/oauth2/v2.0/authorize?") || strings.Contains(in, "prompt=") ||
+		!strings.Contains(in, "code_challenge_method=S256") || !strings.Contains(in, "nonce=") {
 		t.Fatalf("sign-in after consent = %s", in)
 	}
 	p.consentTenant = "11111111-1111-1111-1111-111111111111"
@@ -588,7 +636,28 @@ func TestMicrosoftAdminRoleReadFromTheGraphToken(t *testing.T) {
 
 func TestMicrosoftSigninURLOnlyForItsOwnState(t *testing.T) {
 	s, _, _, _, _ := newTestService(t)
-	if u := s.MicrosoftSigninURL("gac_x"); u != "" {
+	if u := s.MicrosoftSigninURL(context.Background(), "gac_x"); u != "" {
 		t.Fatalf("a Google state got a Microsoft sign-in: %s", u)
+	}
+	if u := s.MicrosoftSigninURL(context.Background(), "mac_unknown"); u != "" {
+		t.Fatalf("a state nobody started got a sign-in: %s", u)
+	}
+}
+
+func TestSigninsRequirePKCEAndNonce(t *testing.T) {
+	s, p, _, _, _ := newTestService(t)
+	org, user := uuid.New(), uuid.New()
+	start, xerr := s.StartGoogle(context.Background(), org, user, "acme.io", "admin@acme.io")
+	if xerr != nil || !strings.Contains(start.URL, "code_challenge_method=S256") || !strings.Contains(start.URL, "nonce=") {
+		t.Fatalf("google start = %+v, %v", start, xerr)
+	}
+	p.signinEmail, p.signinHD, p.wrongNonce = "admin@acme.io", "acme.io", true
+	if _, xerr := s.FinishGoogle(context.Background(), org, user, GoogleFinish{State: start.State, Code: "code"}); xerr == nil || xerr.Identifier != ErrIDState {
+		t.Fatalf("a google ID token with another nonce = %v", xerr)
+	}
+	_, state, _ := s.StartMicrosoft(context.Background(), org, user)
+	p.consentTenant = "11111111-1111-1111-1111-111111111111"
+	if _, xerr := s.FinishMicrosoft(context.Background(), org, user, state, "code"); xerr == nil || xerr.Identifier != ErrIDMicrosoftConsent {
+		t.Fatalf("a microsoft ID token with another nonce = %v", xerr)
 	}
 }

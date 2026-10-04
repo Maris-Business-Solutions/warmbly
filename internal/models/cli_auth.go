@@ -22,15 +22,18 @@ const (
 
 // CLIAuthCode is what the approving member is shown before deciding.
 type CLIAuthCode struct {
-	ID             uuid.UUID         `json:"id"`
-	UserCode       string            `json:"user_code"`
-	ClientName     string            `json:"client_name"`
-	Hostname       string            `json:"hostname"`
-	CLIVersion     string            `json:"cli_version"`
-	Scopes         uint64            `json:"scopes"`
-	ScopeNames     []string          `json:"scope_names"`
-	Status         CLIAuthCodeStatus `json:"status"`
-	OrganizationID *uuid.UUID        `json:"organization_id,omitempty"`
+	ID         uuid.UUID `json:"id"`
+	UserCode   string    `json:"user_code"`
+	ClientName string    `json:"client_name"`
+	Hostname   string    `json:"hostname"`
+	CLIVersion string    `json:"cli_version"`
+	Scopes     uint64    `json:"scopes"`
+	ScopeNames []string  `json:"scope_names"`
+	// GrantedScopes is what approving into ?organization_id= would mint, capped to the caller's role.
+	GrantedScopes     *uint64           `json:"granted_scopes,omitempty"`
+	GrantedScopeNames []string          `json:"granted_scope_names,omitempty"`
+	Status            CLIAuthCodeStatus `json:"status"`
+	OrganizationID    *uuid.UUID        `json:"organization_id,omitempty"`
 	// APIKeyID is set only on the approval response: the key that was minted.
 	APIKeyID  *uuid.UUID `json:"api_key_id,omitempty"`
 	ExpiresAt time.Time  `json:"expires_at"`

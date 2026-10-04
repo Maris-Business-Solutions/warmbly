@@ -2,6 +2,8 @@ package poollink
 
 import (
 	"context"
+	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"strings"
@@ -15,16 +17,20 @@ import (
 	"github.com/warmbly/warmbly/internal/infrastructure/cache"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/crypt"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
+	"golang.org/x/oauth2"
 )
 
 // Cloud-managed mailboxes: the consent runs on this deployment's OAuth app,
 // the grant stays here, and the instance sends with brokered access tokens.
 
 var (
-	ErrOAuthReturnURL    = errx.NewWithIdentifier(errx.BadRequest, "pool_link_return_url", "The return URL must be an absolute http(s) URL on the linked instance.")
+	ErrOAuthReturnURL    = errx.NewWithIdentifier(errx.BadRequest, "pool_link_return_url", "The return URL must be an http(s) URL on the address this instance registered when it was linked.")
+	ErrOAuthInstanceURL  = errx.NewWithIdentifier(errx.Unprocessable, "pool_link_instance_url", "This instance was linked without its own address, so Warmbly Cloud has nowhere to send a sign-in back to. Set APP_URL on the instance, then disconnect it and link it again.")
 	ErrOAuthPending      = errx.NewWithIdentifier(errx.Conflict, "pool_link_oauth_pending", "The sign-in has not completed yet.")
 	ErrOAuthSession      = errx.NewWithIdentifier(errx.NotFound, "pool_link_oauth_session", "That sign-in session is unknown or has expired. Start again.")
+	ErrOAuthBrowser      = errx.NewWithIdentifier(errx.BadRequest, "pool_link_oauth_browser", "The sign-in was not continued from the Warmbly Cloud page that started it, in this browser. Start again from your instance.")
 	ErrMailboxNotManaged = errx.NewWithIdentifier(errx.Forbidden, "pool_link_not_managed", "This mailbox's credential is held by the instance, not by Warmbly Cloud.")
 	ErrMailboxBlocked    = errx.NewWithIdentifier(errx.Forbidden, "pool_link_mailbox_blocked", "Warmbly Cloud has blocked this mailbox for hurting the pool. Sending from it is suspended until it is reviewed.")
 	ErrMailboxInactive   = errx.NewWithIdentifier(errx.Forbidden, "pool_link_mailbox_inactive", "This mailbox is not active on Warmbly Cloud. Reconnect it to keep sending.")
@@ -35,6 +41,9 @@ var (
 // BrokerStatePrefix marks a consent state as brokered so the callback can route it.
 const BrokerStatePrefix = "pl_"
 
+// BrokerConsentPath is the cloud page that names the requesting instance before the provider opens.
+const BrokerConsentPath = "/addresses/connect"
+
 const brokerTTL = 10 * time.Minute
 
 type brokerState struct {
@@ -42,6 +51,10 @@ type brokerState struct {
 	Provider   string    `json:"provider"`
 	ReturnURL  string    `json:"return_url"`
 	Session    string    `json:"session"`
+	// Verifier is the PKCE verifier; it never leaves the cloud.
+	Verifier string `json:"verifier"`
+	// Binding is the browser cookie set by the consent page; the callback requires it.
+	Binding string `json:"binding,omitempty"`
 }
 
 type brokerResult struct {
@@ -60,13 +73,23 @@ func (s *service) WireCache(c *cache.Cache) { s.cache = c }
 func brokerStateKey(state string) string     { return "poollink:oauth:state:" + state }
 func brokerSessionKey(session string) string { return "poollink:oauth:session:" + session }
 
-// returnURLAllowed: absolute http(s), and on the instance's own host when one is known.
-func returnURLAllowed(raw, instanceURL string) bool {
-	u, err := url.Parse(raw)
+// instanceOrigin parses the address an instance registered when it was linked.
+func instanceOrigin(instanceURL string) (*url.URL, bool) {
+	u, err := url.Parse(strings.TrimSpace(instanceURL))
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return nil, false
+	}
+	return u, true
+}
+
+// returnURLAllowed: same scheme and host as the instance's registered address, never anywhere else.
+func returnURLAllowed(raw, instanceURL string) bool {
+	iu, ok := instanceOrigin(instanceURL)
+	if !ok {
 		return false
 	}
-	if iu, err := url.Parse(instanceURL); err == nil && iu.Host != "" && !strings.EqualFold(iu.Host, u.Host) {
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil || !strings.EqualFold(u.Scheme, iu.Scheme) || !strings.EqualFold(u.Host, iu.Host) {
 		return false
 	}
 	return true
@@ -83,6 +106,9 @@ func (s *service) StartOAuth(ctx context.Context, inst *models.PoolLinkInstance,
 	if req.Provider == models.InboxProviderGoogle && !config.GoogleOAuthConnect() {
 		return nil, errx.ErrEmailOnboardGoogleOAuthDisabled
 	}
+	if _, ok := instanceOrigin(inst.URL); !ok {
+		return nil, ErrOAuthInstanceURL
+	}
 	if !returnURLAllowed(req.ReturnURL, inst.URL) {
 		return nil, ErrOAuthReturnURL
 	}
@@ -93,6 +119,10 @@ func (s *service) StartOAuth(ctx context.Context, inst *models.PoolLinkInstance,
 	if plan.MailboxLimit != nil && plan.Enrolled >= *plan.MailboxLimit {
 		return nil, ErrMailboxLimit
 	}
+	origin, xerr := s.emailSvc.OAuthCallbackOrigin(req.Provider)
+	if xerr != nil {
+		return nil, xerr
+	}
 	nonce, err := crypt.Nonce()
 	if err != nil {
 		return nil, errx.InternalError()
@@ -102,32 +132,103 @@ func (s *service) StartOAuth(ctx context.Context, inst *models.PoolLinkInstance,
 		return nil, errx.InternalError()
 	}
 	state := BrokerStatePrefix + nonce
-	authURL, xerr := s.emailSvc.OAuthAuthorizeURL(req.Provider, state)
-	if xerr != nil {
-		return nil, xerr
-	}
-	st := brokerState{InstanceID: inst.ID, Provider: string(req.Provider), ReturnURL: req.ReturnURL, Session: session}
+	st := brokerState{InstanceID: inst.ID, Provider: string(req.Provider), ReturnURL: req.ReturnURL, Session: session, Verifier: oauth2.GenerateVerifier()}
 	if err := s.cache.SetJSON(ctx, brokerStateKey(state), st, brokerTTL); err != nil {
 		return nil, errx.InternalError()
 	}
 	if err := s.cache.SetJSON(ctx, brokerSessionKey(session), brokerResult{InstanceID: inst.ID, Pending: true}, brokerTTL); err != nil {
 		return nil, errx.InternalError()
 	}
-	return &models.PoolLinkOAuthStartResponse{URL: authURL, Session: session}, nil
+	// Only the consent page hands out the provider URL, to the browser that continues there.
+	consentURL := origin + BrokerConsentPath + "?" + url.Values{"state": {state}}.Encode()
+	return &models.PoolLinkOAuthStartResponse{URL: consentURL, Session: session}, nil
 }
 
-// CompleteOAuthCallback finishes a brokered consent; every outcome redirects to the instance.
-func (s *service) CompleteOAuthCallback(ctx context.Context, provider, code, state, providerErr string) string {
-	if s.cache == nil {
-		return ""
+func (s *service) peekBrokerState(ctx context.Context, state string) (*brokerState, *errx.Error) {
+	if s.cache == nil || !strings.HasPrefix(state, BrokerStatePrefix) {
+		return nil, ErrOAuthSession
 	}
 	var st brokerState
 	if err := s.cache.GetJSON(ctx, brokerStateKey(state), &st); err != nil {
-		return ""
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrOAuthSession
+		}
+		return nil, errx.InternalError()
 	}
-	_ = s.cache.Del(ctx, brokerStateKey(state)).Err()
-	if st.Provider != provider {
-		return ""
+	return &st, nil
+}
+
+// DescribeOAuthConsent names who is asking, for the page shown before the provider opens.
+func (s *service) DescribeOAuthConsent(ctx context.Context, state string) (*models.PoolLinkOAuthConsent, *errx.Error) {
+	st, xerr := s.peekBrokerState(ctx, state)
+	if xerr != nil {
+		return nil, xerr
+	}
+	inst, err := s.repo.GetInstance(ctx, st.InstanceID)
+	if err != nil {
+		return nil, errx.InternalError()
+	}
+	if inst == nil || inst.RevokedAt != nil {
+		return nil, ErrInstanceRevoked
+	}
+	iu, ok := instanceOrigin(inst.URL)
+	if !ok {
+		return nil, ErrOAuthInstanceURL
+	}
+	out := &models.PoolLinkOAuthConsent{
+		Provider:     models.InboxProvider(st.Provider),
+		InstanceName: displayname.Displayable(inst.Name),
+		InstanceHost: iu.Host,
+	}
+	if org, xerr := s.orgs.Get(ctx, inst.OrganizationID); xerr == nil && org != nil {
+		out.WorkspaceName = displayname.Displayable(org.Name)
+	}
+	return out, nil
+}
+
+// ContinueOAuth binds the round trip to the browser that chose to continue and returns the provider URL.
+func (s *service) ContinueOAuth(ctx context.Context, state, binding string) (string, *errx.Error) {
+	if len(binding) < 16 {
+		return "", ErrOAuthBrowser
+	}
+	st, xerr := s.peekBrokerState(ctx, state)
+	if xerr != nil {
+		return "", xerr
+	}
+	st.Binding = binding
+	raw, err := json.Marshal(st)
+	if err != nil {
+		return "", errx.InternalError()
+	}
+	// XX with KEEPTTL never revives a state the callback already consumed.
+	if err := s.cache.SetArgs(ctx, brokerStateKey(state), raw, redis.SetArgs{Mode: "XX", KeepTTL: true}).Err(); err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", ErrOAuthSession
+		}
+		return "", errx.InternalError()
+	}
+	return s.emailSvc.OAuthAuthorizeURL(models.InboxProvider(st.Provider), state, st.Verifier)
+}
+
+// CompleteOAuthCallback finishes a brokered consent; every completed outcome redirects to the instance.
+func (s *service) CompleteOAuthCallback(ctx context.Context, provider, code, state, providerErr, binding string) (string, *errx.Error) {
+	if s.cache == nil {
+		return "", ErrOAuthSession
+	}
+	raw, err := s.cache.GetDel(ctx, brokerStateKey(state)).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", ErrOAuthSession
+		}
+		return "", errx.InternalError()
+	}
+	var st brokerState
+	if err := json.Unmarshal(raw, &st); err != nil || st.Provider != provider || st.Verifier == "" {
+		return "", ErrOAuthSession
+	}
+	if !bindingMatches(st.Binding, binding) {
+		s.storeBrokerResult(ctx, st.Session, brokerResult{InstanceID: st.InstanceID, ErrorCode: ErrOAuthBrowser.Identifier, ErrorText: ErrOAuthBrowser.Message})
+		return "", ErrOAuthBrowser
 	}
 	res := brokerResult{InstanceID: st.InstanceID}
 	if providerErr != "" {
@@ -142,9 +243,7 @@ func (s *service) CompleteOAuthCallback(ctx context.Context, provider, code, sta
 	} else {
 		res.RemoteID = remoteID
 	}
-	if err := s.cache.SetJSON(ctx, brokerSessionKey(st.Session), res, brokerTTL); err != nil {
-		log.Error().Err(err).Msg("pool link: could not store brokered consent result")
-	}
+	s.storeBrokerResult(ctx, st.Session, res)
 	q := url.Values{"session": {st.Session}}
 	if res.ErrorCode != "" {
 		q.Set("status", "error")
@@ -157,7 +256,17 @@ func (s *service) CompleteOAuthCallback(ctx context.Context, provider, code, sta
 	if strings.Contains(st.ReturnURL, "?") {
 		sep = "&"
 	}
-	return st.ReturnURL + sep + q.Encode()
+	return st.ReturnURL + sep + q.Encode(), nil
+}
+
+func bindingMatches(want, got string) bool {
+	return want != "" && subtle.ConstantTimeCompare([]byte(want), []byte(got)) == 1
+}
+
+func (s *service) storeBrokerResult(ctx context.Context, session string, res brokerResult) {
+	if err := s.cache.SetJSON(ctx, brokerSessionKey(session), res, brokerTTL); err != nil {
+		log.Error().Err(err).Msg("pool link: could not store brokered consent result")
+	}
 }
 
 func (s *service) connectBrokered(ctx context.Context, st brokerState, code string) (uuid.UUID, *errx.Error) {
@@ -173,7 +282,7 @@ func (s *service) connectBrokered(ctx context.Context, st brokerState, code stri
 		return uuid.Nil, xerr
 	}
 	orgID := inst.OrganizationID
-	acc, xerr := s.emailSvc.OAuthConnectWithCode(ctx, userID, &orgID, models.InboxProvider(st.Provider), code)
+	acc, xerr := s.emailSvc.OAuthConnectWithCode(ctx, userID, &orgID, models.InboxProvider(st.Provider), code, st.Verifier)
 	if xerr != nil {
 		return uuid.Nil, xerr
 	}

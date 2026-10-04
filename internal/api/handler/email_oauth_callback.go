@@ -36,7 +36,7 @@ var callbackPage = template.Must(template.New("oauth-cb").Parse(`<!doctype html>
   .err{color:#b91c1c;margin-top:6px;font-size:12px}
 </style></head>
 <body><div class="wrap"><div class="card">
-  <div class="t">{{.Status}}</div>
+  <div class="t" id="status">{{.Status}}</div>
   {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
 </div></div>
 <script>
@@ -49,14 +49,15 @@ var callbackPage = template.Must(template.New("oauth-cb").Parse(`<!doctype html>
     error: {{.Error}}
   };
   var origin = {{.AppOrigin}};
-  var delivered = false;
-  try {
-    if (window.opener) {
-      window.opener.postMessage(payload, origin || "*");
-      delivered = true;
-    }
-  } catch (e) { /* ignore */ }
-  if (!delivered) {
+  var hasOpener = false;
+  try { hasOpener = !!window.opener; } catch (e) { /* ignore */ }
+  if (hasOpener && !origin) {
+    document.getElementById("status").textContent = {{.NoOriginNotice}};
+    return;
+  }
+  if (hasOpener) {
+    try { window.opener.postMessage(payload, origin); } catch (e) { /* ignore */ }
+  } else {
     var q = "provider=" + encodeURIComponent(payload.provider || "") +
       "&code=" + encodeURIComponent(payload.code || "") +
       "&state=" + encodeURIComponent(payload.state || "") +
@@ -69,20 +70,20 @@ var callbackPage = template.Must(template.New("oauth-cb").Parse(`<!doctype html>
 </body></html>`))
 
 type callbackData struct {
-	Provider  string
-	Code      string
-	State     string
-	Error     string
-	Status    string
-	AppOrigin string
+	Provider       string
+	Code           string
+	State          string
+	Error          string
+	Status         string
+	AppOrigin      string
+	NoOriginNotice string
 }
 
-// callbackTargetOrigin is the postMessage target the authorization code is
-// handed to. An empty value makes the bridge fall back to "*", which posts the
-// code to whatever origin the opener happens to have, so derive it from APP_URL
-// when APP_ORIGIN is unset rather than leaving a wildcard on a stock install.
-// APP_ORIGIN stays the explicit override for a dashboard served somewhere other
-// than APP_URL.
+// callbackNoOriginNotice is shown instead of handing a code to an opener whose origin is unknown.
+const callbackNoOriginNotice = "This instance has no dashboard address configured, so the sign-in cannot be handed back. Ask the operator to set APP_URL, then try again."
+
+// callbackTargetOrigin is the one origin an authorization code is posted to:
+// APP_ORIGIN when set, else the origin of APP_URL. Empty delivers nothing.
 func callbackTargetOrigin() string {
 	if v := strings.TrimSpace(os.Getenv("APP_ORIGIN")); v != "" {
 		return v
@@ -107,18 +108,22 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 	state := c.Query("state")
 	providerErr := c.Query("error")
 
-	// A brokered consent has no opener on our origin; it completes here and redirects to the instance.
+	// A brokered consent completes here, only in the browser the consent page bound it to.
 	if h.PoolLinkService != nil && strings.HasPrefix(state, poollink.BrokerStatePrefix) {
-		if to := h.PoolLinkService.CompleteOAuthCallback(c.Request.Context(), provider, code, state, providerErr); to != "" {
-			c.Redirect(http.StatusFound, to)
+		binding, _ := c.Cookie(brokerCookieName)
+		to, xerr := h.PoolLinkService.CompleteOAuthCallback(c.Request.Context(), provider, code, state, providerErr, binding)
+		if xerr != nil {
+			renderBrokerNotice(c, xerr)
 			return
 		}
+		c.Redirect(http.StatusFound, to)
+		return
 	}
 
 	// Microsoft reports an admin consent with no code; the admin grant then needs a sign-in, same state.
 	if strings.HasPrefix(state, delegation.MicrosoftStatePrefix) && providerErr == "" && code == "" &&
 		strings.EqualFold(c.Query("admin_consent"), "true") && h.DelegationService != nil {
-		if to := h.DelegationService.MicrosoftSigninURL(state); to != "" {
+		if to := h.DelegationService.MicrosoftSigninURL(c.Request.Context(), state); to != "" {
 			c.Redirect(http.StatusFound, to)
 			return
 		}
@@ -131,12 +136,13 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 	}
 
 	data := callbackData{
-		Provider:  provider,
-		Code:      code,
-		State:     state,
-		Error:     providerErr,
-		Status:    "Connecting your mailbox… this window will close.",
-		AppOrigin: callbackTargetOrigin(),
+		Provider:       provider,
+		Code:           code,
+		State:          state,
+		Error:          providerErr,
+		Status:         "Connecting your mailbox… this window will close.",
+		AppOrigin:      callbackTargetOrigin(),
+		NoOriginNotice: callbackNoOriginNotice,
 	}
 	if strings.HasPrefix(state, delegation.GoogleStatePrefix) {
 		data.Status = "Signed in. Finishing in Warmbly… this window will close."
@@ -160,7 +166,7 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 	_ = callbackPage.Execute(c.Writer, data)
 }
 
-var adminApprovalPage = template.Must(template.New("oauth-admin-approval").Parse(`<!doctype html>
+var noticePage = template.Must(template.New("oauth-notice").Parse(`<!doctype html>
 <html><head><meta charset="utf-8"><title>{{.Title}}</title>
 <style>
   html,body{margin:0;height:100%;font:14px/1.5 -apple-system,Segoe UI,Inter,sans-serif;color:#0f172a;background:#f8fafc}
@@ -184,8 +190,13 @@ func renderAdminApproval(c *gin.Context, approved bool) {
 		data.Title = "Not approved"
 		data.Body = "Microsoft did not record the approval. Open the link again and sign in as a Global Administrator, Cloud Application Administrator or Application Administrator."
 	}
+	renderNotice(c, http.StatusOK, data.Title, data.Body)
+}
+
+// renderNotice is a standalone page with a title and one sentence, and nothing to run.
+func renderNotice(c *gin.Context, status int, title, body string) {
 	c.Header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.Status(http.StatusOK)
-	_ = adminApprovalPage.Execute(c.Writer, data)
+	c.Status(status)
+	_ = noticePage.Execute(c.Writer, struct{ Title, Body string }{title, body})
 }

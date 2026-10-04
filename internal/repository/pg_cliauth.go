@@ -19,7 +19,8 @@ type CLIAuthRepository interface {
 	GetCodeByUserCode(ctx context.Context, userCode string) (*models.CLIAuthCode, error)
 	// ApproveCode stores the minted secret for the next poll; false when the
 	// code is no longer pending, which is what makes approval single-use.
-	ApproveCode(ctx context.Context, userCode string, orgID, approvedBy, apiKeyID uuid.UUID, secret string) (bool, error)
+	// scopes is what the key was actually minted with, which the next poll reports.
+	ApproveCode(ctx context.Context, userCode string, orgID, approvedBy, apiKeyID uuid.UUID, secret string, scopes uint64) (bool, error)
 	DenyCode(ctx context.Context, userCode string) (bool, error)
 	// ClaimCode hands the secret out exactly once, clearing it in the same statement.
 	ClaimCode(ctx context.Context, deviceCodeHash string) (*models.CLIAuthCode, string, error)
@@ -73,13 +74,13 @@ func (r *cliAuthRepository) GetCodeByUserCode(ctx context.Context, userCode stri
 	return c, nil
 }
 
-func (r *cliAuthRepository) ApproveCode(ctx context.Context, userCode string, orgID, approvedBy, apiKeyID uuid.UUID, secret string) (bool, error) {
+func (r *cliAuthRepository) ApproveCode(ctx context.Context, userCode string, orgID, approvedBy, apiKeyID uuid.UUID, secret string, scopes uint64) (bool, error) {
 	query := `
 		UPDATE cli_auth_codes
-		SET status = 'approved', organization_id = $2, approved_by = $3, api_key_id = $4, api_key_secret = $5
+		SET status = 'approved', organization_id = $2, approved_by = $3, api_key_id = $4, api_key_secret = $5, scopes = $6
 		WHERE user_code = $1 AND status = 'pending' AND expires_at > NOW()
 	`
-	tag, err := r.db.Exec(ctx, query, userCode, orgID, approvedBy, apiKeyID, secret)
+	tag, err := r.db.Exec(ctx, query, userCode, orgID, approvedBy, apiKeyID, secret, int64(scopes))
 	if err != nil {
 		db.CaptureError(err, query, nil, "exec")
 		return false, err

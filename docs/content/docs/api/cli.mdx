@@ -136,7 +136,7 @@ warmbly auth login
 
 It asks two questions: which instance (the hosted service, or a hostname of your own), and how (a browser approval, or pasting a key you already have).
 
-The browser path shows an eight character code, opens `app.warmbly.com/cli`, and waits. You approve there, choosing which workspace the CLI is signing in to. The approval creates **one API key named for your machine**, which appears under Settings > API keys and is revocable there or with `warmbly auth logout`. The terminal never handles your password, and the browser never handles the key.
+The browser path shows an eight character code, opens `app.warmbly.com/cli`, and waits. You approve there, choosing which workspace the CLI is signing in to. The client name and machine name on that screen are whatever the terminal reported, so check that the code matches the one your terminal printed. Because approving creates a lasting credential, the screen asks you to confirm it is you (password or second factor) if you have not done so in the last few minutes, the same as creating an API key. The approval creates **one API key named for your machine**, which appears under Settings > API keys and is revocable there or with `warmbly auth logout`. The terminal never handles your password, and the browser never handles the key.
 
 ```
   Your code: K4TM-9RQD
@@ -157,7 +157,7 @@ warmbly auth login --scopes read-only
 
 ### Scopes
 
-The CLI asks for full access by default, and the approval screen lists exactly what that means before you agree. Narrow it with `--scopes`:
+The CLI asks for full access by default. The key it gets never carries more than your role in the chosen workspace allows: the approval screen lists the scopes the key will actually have for that workspace, and anything the CLI asked for beyond your role is left out. If your role allows none of them, the approval is refused with `cli_auth_scopes_role`. Narrow the request with `--scopes`:
 
 ```bash
 warmbly auth login --scopes read-only
