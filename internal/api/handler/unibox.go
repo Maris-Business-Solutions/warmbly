@@ -688,8 +688,13 @@ func (h *Handler) CreateUniboxSnooze(c *gin.Context) {
 		return
 	}
 
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.Handle(c, errx.ErrNoOrganization)
+		return
+	}
 	threads := req.threads()
-	rows, xerr := h.UniboxService.Snooze(c.Request.Context(), uid, threads, req.SnoozedUntil)
+	rows, xerr := h.UniboxService.Snooze(c.Request.Context(), *orgID, uid, threads, req.SnoozedUntil)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -734,7 +739,12 @@ func (h *Handler) DeleteUniboxSnooze(c *gin.Context) {
 		return
 	}
 
-	if xerr := h.UniboxService.Unsnooze(c.Request.Context(), uid, threads); xerr != nil {
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.Handle(c, errx.ErrNoOrganization)
+		return
+	}
+	if xerr := h.UniboxService.Unsnooze(c.Request.Context(), *orgID, uid, threads); xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
@@ -827,7 +837,12 @@ func (h *Handler) ListUniboxSnoozes(c *gin.Context) {
 		return
 	}
 
-	resp, xerr := h.UniboxService.ListSnoozes(c.Request.Context(), uid)
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.Handle(c, errx.ErrNoOrganization)
+		return
+	}
+	resp, xerr := h.UniboxService.ListSnoozes(c.Request.Context(), *orgID, uid)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return

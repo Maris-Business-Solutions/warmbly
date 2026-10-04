@@ -105,7 +105,6 @@ const (
 	orgCampaigns   = `(SELECT id FROM campaigns WHERE organization_id = $1)`
 	orgContacts    = `(SELECT id FROM contacts WHERE organization_id = $1)`
 	orgTasks       = `(SELECT id FROM tasks WHERE email_account_id IN ` + orgMailboxes + ` AND task_type <> 'placement')`
-	orgThreads     = `(SELECT DISTINCT thread_id FROM unibox_emails WHERE email_id IN ` + orgMailboxes + `)`
 	orgPipelines   = `(SELECT id FROM pipelines WHERE organization_id = $1)`
 	orgInvitations = `(SELECT id FROM organization_invitations WHERE organization_id = $1)`
 	orgTeams       = `(SELECT id FROM teams WHERE organization_id = $1)`
@@ -713,7 +712,7 @@ var Tables = []Table{
 	},
 	{
 		Name: "unibox_snoozes", Group: models.OrgDataGroupInbox,
-		Scope: `thread_id IN ` + orgThreads,
+		Scope: scopeOrg,
 	},
 	{
 		Name: "inbox_tag_results", Group: models.OrgDataGroupInbox,

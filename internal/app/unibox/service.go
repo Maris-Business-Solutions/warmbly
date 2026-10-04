@@ -52,9 +52,9 @@ type UniboxService interface {
 
 	// Snooze hides conversations until `until`. Unsnooze drops the rows. Both
 	// take a set so the list's selection bar is one call, not one per row.
-	Snooze(ctx context.Context, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, *errx.Error)
-	Unsnooze(ctx context.Context, userID uuid.UUID, threadIDs []string) *errx.Error
-	ListSnoozes(ctx context.Context, userID uuid.UUID) ([]models.UniboxSnooze, *errx.Error)
+	Snooze(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, *errx.Error)
+	Unsnooze(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string) *errx.Error
+	ListSnoozes(ctx context.Context, orgID, userID uuid.UUID) ([]models.UniboxSnooze, *errx.Error)
 
 	// Overview powers the scope rail + top metric strip in one call.
 	Overview(ctx context.Context, orgID, userID uuid.UUID) (*models.UniboxOverview, *errx.Error)

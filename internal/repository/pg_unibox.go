@@ -96,15 +96,15 @@ type UniboxRepository interface {
 	ProcessPendingWarmupVerification(ctx context.Context, id uuid.UUID, process func(*models.JobEventNewEmail) error) error
 	UpdatePendingEmail(ctx context.Context, userID, id uuid.UUID, update func(*models.EmailMessageStoreData)) (bool, error)
 
-	// Snooze: per (user, thread). UpsertSnooze adopts the new
+	// Snooze: per (organization, user, thread). UpsertSnooze adopts the new
 	// snoozed_until even if one already exists; DeleteSnooze removes
 	// the row outright (instant un-snooze). ListSnoozes returns the
 	// active set for the user.
 	// The bulk forms back the conversation list's selection bar, so filing a
 	// screenful of mail is one round trip rather than one per row.
-	UpsertSnoozes(ctx context.Context, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, error)
-	DeleteSnoozes(ctx context.Context, userID uuid.UUID, threadIDs []string) error
-	ListSnoozes(ctx context.Context, userID uuid.UUID) ([]models.UniboxSnooze, error)
+	UpsertSnoozes(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, error)
+	DeleteSnoozes(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string) error
+	ListSnoozes(ctx context.Context, orgID, userID uuid.UUID) ([]models.UniboxSnooze, error)
 
 	// Overview powers the scope rail + top metric strip. Single call
 	// so the client doesn't fan out N+M queries for each mailbox/tag.
@@ -356,7 +356,7 @@ func (r *uniboxRepository) GetIncoming(ctx context.Context, userID uuid.UUID, li
 		if err == nil {
 			query += fmt.Sprintf(`
 				AND (internal_date, id) < (
-					SELECT internal_date, id FROM unibox_emails WHERE id = $%d
+					SELECT internal_date, id FROM unibox_emails WHERE id = $%d AND user_id = $1
 				)`, argPos)
 			args = append(args, cursorID)
 			argPos++
@@ -471,7 +471,8 @@ func (r *uniboxRepository) GetByThread(ctx context.Context, orgID, emailID uuid.
 		if err == nil {
 			query += fmt.Sprintf(`
 				AND (internal_date, id) > (
-					SELECT internal_date, id FROM unibox_emails WHERE id = $%d
+					SELECT internal_date, id FROM unibox_emails
+					WHERE id = $%d AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
 				)`, argPos)
 			args = append(args, cursorID)
 			argPos++
@@ -564,7 +565,7 @@ func (r *uniboxRepository) GetBySender(ctx context.Context, userID uuid.UUID, se
 		if err == nil {
 			query += fmt.Sprintf(`
 				AND (internal_date, id) < (
-					SELECT internal_date, id FROM unibox_emails WHERE id = $%d
+					SELECT internal_date, id FROM unibox_emails WHERE id = $%d AND user_id = $1
 				)`, argPos)
 			args = append(args, cursorID)
 			argPos++
@@ -634,7 +635,7 @@ func (r *uniboxRepository) Search(ctx context.Context, orgID uuid.UUID, params *
 		inner += `
 			AND NOT EXISTS (
 				SELECT 1 FROM unibox_snoozes s
-				WHERE s.user_id = ue.user_id
+				WHERE s.organization_id = $1 AND s.user_id = ue.user_id
 				  AND s.thread_id = ue.thread_id
 				  AND s.snoozed_until > NOW()
 			)`
@@ -642,7 +643,7 @@ func (r *uniboxRepository) Search(ctx context.Context, orgID uuid.UUID, params *
 		inner += `
 			AND EXISTS (
 				SELECT 1 FROM unibox_snoozes s
-				WHERE s.user_id = ue.user_id
+				WHERE s.organization_id = $1 AND s.user_id = ue.user_id
 				  AND s.thread_id = ue.thread_id
 				  AND s.snoozed_until > NOW()
 			)`
@@ -825,7 +826,8 @@ func (r *uniboxRepository) Search(ctx context.Context, orgID uuid.UUID, params *
 		if err == nil {
 			query += fmt.Sprintf(`
 				AND (b.internal_date, b.id) < (
-					SELECT internal_date, id FROM unibox_emails WHERE id = $%d
+					SELECT internal_date, id FROM unibox_emails
+					WHERE id = $%d AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
 				)`, argPos)
 			args = append(args, cursorID)
 			argPos++
@@ -848,7 +850,7 @@ func (r *uniboxRepository) GetUnseenCount(ctx context.Context, orgID uuid.UUID, 
 		  AND ue.folder = '` + models.FolderInbox + `'
 		  AND NOT EXISTS (
 			SELECT 1 FROM unibox_snoozes s
-			WHERE s.user_id = ue.user_id
+			WHERE s.organization_id = $1 AND s.user_id = ue.user_id
 			  AND s.thread_id = ue.thread_id
 			  AND s.snoozed_until > NOW()
 		  )
@@ -1431,18 +1433,18 @@ func (r *uniboxRepository) LatestMessageIDInThread(ctx context.Context, orgID uu
 
 // ── Snoozes ────────────────────────────────────────────────────────────
 
-func (r *uniboxRepository) UpsertSnoozes(ctx context.Context, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, error) {
+func (r *uniboxRepository) UpsertSnoozes(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string, until time.Time) ([]models.UniboxSnooze, error) {
 	if len(threadIDs) == 0 {
 		return nil, errors.New("threadIDs required")
 	}
 	rows, err := r.db.Query(ctx, `
-		INSERT INTO unibox_snoozes (user_id, thread_id, snoozed_until, created_at, updated_at)
-		SELECT $1, t, $3, NOW(), NOW() FROM unnest($2::text[]) AS t
-		ON CONFLICT (user_id, thread_id) DO UPDATE SET
+		INSERT INTO unibox_snoozes (organization_id, user_id, thread_id, snoozed_until, created_at, updated_at)
+		SELECT $4, $1, t, $3, NOW(), NOW() FROM unnest($2::text[]) AS t
+		ON CONFLICT (organization_id, user_id, thread_id) DO UPDATE SET
 			snoozed_until = EXCLUDED.snoozed_until,
 			updated_at    = NOW()
 		RETURNING id, user_id, thread_id, snoozed_until, created_at, updated_at
-	`, userID, threadIDs, until)
+	`, userID, threadIDs, until, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -1459,24 +1461,24 @@ func (r *uniboxRepository) UpsertSnoozes(ctx context.Context, userID uuid.UUID, 
 	return out, rows.Err()
 }
 
-func (r *uniboxRepository) DeleteSnoozes(ctx context.Context, userID uuid.UUID, threadIDs []string) error {
+func (r *uniboxRepository) DeleteSnoozes(ctx context.Context, orgID, userID uuid.UUID, threadIDs []string) error {
 	if len(threadIDs) == 0 {
 		return nil
 	}
 	_, err := r.db.Exec(ctx,
-		`DELETE FROM unibox_snoozes WHERE user_id = $1 AND thread_id = ANY($2)`,
-		userID, threadIDs,
+		`DELETE FROM unibox_snoozes WHERE organization_id = $3 AND user_id = $1 AND thread_id = ANY($2)`,
+		userID, threadIDs, orgID,
 	)
 	return err
 }
 
-func (r *uniboxRepository) ListSnoozes(ctx context.Context, userID uuid.UUID) ([]models.UniboxSnooze, error) {
+func (r *uniboxRepository) ListSnoozes(ctx context.Context, orgID, userID uuid.UUID) ([]models.UniboxSnooze, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, user_id, thread_id, snoozed_until, created_at, updated_at
 		FROM unibox_snoozes
-		WHERE user_id = $1 AND snoozed_until > NOW()
+		WHERE organization_id = $2 AND user_id = $1 AND snoozed_until > NOW()
 		ORDER BY snoozed_until ASC
-	`, userID)
+	`, userID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -1532,7 +1534,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 				e.folder = 'archive' AS is_archived,
 				EXISTS (
 					SELECT 1 FROM unibox_snoozes s
-					WHERE s.user_id = e.user_id
+					WHERE s.organization_id = $1 AND s.user_id = e.user_id
 					  AND s.thread_id = e.thread_id
 					  AND s.snoozed_until > NOW()
 				) AS is_snoozed
@@ -1599,7 +1601,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 		WHERE e.email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)
 		  AND NOT EXISTS (
 			SELECT 1 FROM unibox_snoozes s
-			WHERE s.user_id = e.user_id
+			WHERE s.organization_id = $1 AND s.user_id = e.user_id
 			  AND s.thread_id = e.thread_id
 			  AND s.snoozed_until > NOW()
 		  )
@@ -1636,12 +1638,12 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 			COUNT(DISTINCT COALESCE(NULLIF(ue.thread_id, ''), ue.id::text)) FILTER (WHERE ue.id IS NOT NULL AND NOT ue.seen
 				AND NOT EXISTS (
 					SELECT 1 FROM unibox_snoozes s
-					WHERE s.user_id = ea.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
+					WHERE s.organization_id = $1 AND s.user_id = ea.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
 				)) AS unread,
 			COUNT(DISTINCT COALESCE(NULLIF(ue.thread_id, ''), ue.id::text)) FILTER (WHERE ue.id IS NOT NULL
 				AND NOT EXISTS (
 					SELECT 1 FROM unibox_snoozes s
-					WHERE s.user_id = ea.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
+					WHERE s.organization_id = $1 AND s.user_id = ea.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
 				)) AS total
 		FROM email_accounts ea
 		LEFT JOIN unibox_emails ue ON ue.email_id = ea.id AND ue.user_id = ea.user_id
@@ -1678,12 +1680,12 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 			COUNT(DISTINCT COALESCE(NULLIF(ue.thread_id, ''), ue.id::text)) FILTER (WHERE ue.id IS NOT NULL AND NOT ue.seen
 				AND NOT EXISTS (
 					SELECT 1 FROM unibox_snoozes s
-					WHERE s.user_id = ue.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
+					WHERE s.organization_id = $1 AND s.user_id = ue.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
 				)) AS unread,
 			COUNT(DISTINCT COALESCE(NULLIF(ue.thread_id, ''), ue.id::text)) FILTER (WHERE ue.id IS NOT NULL
 				AND NOT EXISTS (
 					SELECT 1 FROM unibox_snoozes s
-					WHERE s.user_id = ue.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
+					WHERE s.organization_id = $1 AND s.user_id = ue.user_id AND s.thread_id = ue.thread_id AND s.snoozed_until > NOW()
 				)) AS total
 		FROM tags t
 		LEFT JOIN email_tags et ON et.tag_id = t.id
@@ -1726,7 +1728,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 			  AND e.folder NOT IN `+foldersOutsideWorkingViews+`
 			  AND NOT EXISTS (
 				SELECT 1 FROM unibox_snoozes s
-				WHERE s.user_id = e.user_id AND s.thread_id = e.thread_id AND s.snoozed_until > NOW()
+				WHERE s.organization_id = $1 AND s.user_id = e.user_id AND s.thread_id = e.thread_id AND s.snoozed_until > NOW()
 			  )
 			GROUP BY e.thread_id
 		)
