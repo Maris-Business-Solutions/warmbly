@@ -42,6 +42,10 @@ type SlackRepository interface {
 	// deleted and the link written only when userID is an accepted member.
 	ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID) (*models.SlackUserLink, error)
 	PurgeExpiredLinkCodes(ctx context.Context) (int64, error)
+	// LinkInstaller links the member who connected Slack to the Slack account
+	// that approved the install, when neither is linked yet and the member is
+	// an accepted member of the org. Nil when nothing was written.
+	LinkInstaller(ctx context.Context, orgID, connectionID uuid.UUID, teamID, slackUserID string, userID uuid.UUID) (*models.SlackUserLink, error)
 
 	GetAgentThread(ctx context.Context, connectionID uuid.UUID, channelID, threadTS string) (*models.SlackAgentThread, error)
 	GetAgentThreadByID(ctx context.Context, id uuid.UUID) (*models.SlackAgentThread, error)
@@ -248,6 +252,26 @@ func (r *slackRepository) ConsumeLinkCode(ctx context.Context, codeHash []byte, 
 		return nil, err
 	}
 	return r.oneLink(ctx, `WHERE l.organization_id = $1 AND l.id = $2`, c.OrganizationID, id)
+}
+
+func (r *slackRepository) LinkInstaller(ctx context.Context, orgID, connectionID uuid.UUID, teamID, slackUserID string, userID uuid.UUID) (*models.SlackUserLink, error) {
+	var id uuid.UUID
+	err := r.DB.QueryRow(ctx, `INSERT INTO slack_user_links
+		(organization_id, connection_id, slack_team_id, slack_user_id, user_id)
+		SELECT $1, $2, $3, $4, $5
+		WHERE EXISTS (SELECT 1 FROM organization_members
+			WHERE organization_id = $1 AND user_id = $5 AND accepted_at IS NOT NULL)
+		AND EXISTS (SELECT 1 FROM integration_connections
+			WHERE id = $2 AND organization_id = $1 AND provider = 'slack' AND external_account_id = $3)
+		ON CONFLICT DO NOTHING
+		RETURNING id`, orgID, connectionID, teamID, slackUserID, userID).Scan(&id)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return r.oneLink(ctx, `WHERE l.organization_id = $1 AND l.id = $2`, orgID, id)
 }
 
 func (r *slackRepository) PurgeExpiredLinkCodes(ctx context.Context) (int64, error) {

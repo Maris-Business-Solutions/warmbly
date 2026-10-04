@@ -435,6 +435,9 @@ func (s *service) runLoop(ctx context.Context, inv aitools.Invocation, sess *mod
 	sess.Context.FreeModel = freeModel
 
 	policies, _ := s.repo.GetToolPolicies(ctx, inv.OrgID)
+	if strictApproval(ctx) {
+		policies = nil
+	}
 
 	var (
 		stopReason    string
@@ -638,6 +641,13 @@ Rules:
 	}
 	if sess.Context.Page == PageSlack {
 		b.WriteString(slackSurfaceRules)
+		if ch := strings.TrimPrefix(sess.Context.Resource, "slack:"); ch != "" && ch != sess.Context.Resource {
+			if strings.HasPrefix(ch, "D") {
+				b.WriteString("\n- This conversation is a direct message with the user, not a channel.")
+			} else {
+				fmt.Fprintf(&b, "\n- This conversation is in the Slack channel with id %s. When the user says \"here\" or \"this channel\", they mean it.", ch)
+			}
+		}
 	} else if sess.Context.Page != "" || sess.Context.Resource != "" {
 		fmt.Fprintf(&b, "\n\nThe user is currently on page %q", sess.Context.Page)
 		if sess.Context.Resource != "" {
@@ -650,6 +660,19 @@ Rules:
 		b.WriteString(skillsBlock)
 	}
 	return b.String()
+}
+
+type strictApprovalKey struct{}
+
+// WithStrictApproval makes every write in a run ask, even one the workspace
+// always allows: for runs that read text other people wrote.
+func WithStrictApproval(ctx context.Context) context.Context {
+	return context.WithValue(ctx, strictApprovalKey{}, true)
+}
+
+func strictApproval(ctx context.Context) bool {
+	v, _ := ctx.Value(strictApprovalKey{}).(bool)
+	return v
 }
 
 // PageSlack marks a session answered in Slack rather than the dashboard.

@@ -1,4 +1,4 @@
-// Slack app endpoints: the three request URLs Slack calls (verified against
+// Slack app endpoints: the two request URLs Slack calls (verified against
 // SLACK_SIGNING_SECRET before anything is parsed) and the dashboard's Slack
 // panel (status, channels, settings, member links).
 package handler
@@ -59,13 +59,6 @@ func (h *Handler) SlackEvents(c *gin.Context) {
 func (h *Handler) SlackInteractivity(c *gin.Context) {
 	h.slackIngress(c, func(ctx context.Context, body []byte) (any, error) {
 		return h.SlackService.HandleInteractivity(ctx, body)
-	})
-}
-
-// SlackCommands — POST /api/v1/integrations/slack/commands
-func (h *Handler) SlackCommands(c *gin.Context) {
-	h.slackIngress(c, func(ctx context.Context, body []byte) (any, error) {
-		return h.SlackService.HandleCommand(ctx, body)
 	})
 }
 

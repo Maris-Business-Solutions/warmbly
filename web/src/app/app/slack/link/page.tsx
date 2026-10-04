@@ -43,7 +43,7 @@ export default function SlackLinkPage() {
         body = (
             <Problem
                 title="This link is missing its code"
-                body="Open the link from the message the Warmbly app sent you in Slack, or run /warmbly link to get a new one."
+                body="Open the link from the message the Warmbly app sent you in Slack, or mention @Warmbly to get a new one."
             />
         );
     } else if (linked) {
@@ -62,7 +62,7 @@ export default function SlackLinkPage() {
                 title={expired ? "This link has expired or was already used" : "Could not open this link"}
                 body={
                     expired
-                        ? "Links from Slack work once and only for a short time. Run /warmbly link in Slack to get a new one."
+                        ? "Links from Slack work once and only for a short time. Mention @Warmbly in Slack to get a new one."
                         : errorMessage(e, "Try again in a moment.")
                 }
             />

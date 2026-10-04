@@ -1684,6 +1684,8 @@ func main() {
 			aware.WireReplyObserver(slackService)
 		}
 		organizationService.WireMemberRemoval(slackService.OnMemberRemoved)
+		integrationServiceForHandler.SetSlackInstallHook(slackService)
+		aitools.RegisterSlackTools(aiToolRegistry, slackService, auditService)
 		slackService.StartMaintenance(ctx)
 		// The classified intent lands on the contact's progress for the
 		// reply_intent branch condition.

@@ -78,7 +78,6 @@ func Run(
 	// SLACK_SIGNING_SECRET before its body is parsed.
 	r.POST("/api/v1/integrations/slack/events", h.SlackEvents)
 	r.POST("/api/v1/integrations/slack/interactivity", h.SlackInteractivity)
-	r.POST("/api/v1/integrations/slack/commands", h.SlackCommands)
 	// HubSpot app webhooks: one URL for every portal, authenticated by the
 	// X-HubSpot-Signature-v3 HMAC over the client secret.
 	r.POST("/api/v1/integrations/hubspot/webhooks", h.HubSpotWebhook)

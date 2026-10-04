@@ -81,18 +81,27 @@ func blocks(in ...Block) []Block {
 
 // linkPrompt asks an unlinked Slack member to connect their Warmbly account.
 func linkPrompt(linkURL, lead string) Message {
+	return linkPromptFor(linkURL, lead, false)
+}
+
+// linkPromptFor is linkPrompt; held says a question waits for the link.
+func linkPromptFor(linkURL, lead string, held bool) Message {
 	if lead == "" {
 		lead = "Link your Warmbly account so I can answer as you, with your workspace permissions."
 	}
 	if linkURL == "" {
 		return Message{Text: lead, Blocks: blocks(sectionBlock(lead + " Ask your Warmbly admin to set the dashboard address (APP_URL) for this instance."))}
 	}
+	expiry := "The link works once and expires in 15 minutes."
+	if held {
+		expiry += " I'll answer your question as soon as you've linked."
+	}
 	return Message{
 		Text: lead,
 		Blocks: blocks(
 			sectionBlock(lead),
 			buttonsBlock(urlButton("Link your Warmbly account", linkURL)),
-			contextBlock("The link works once and expires in 15 minutes."),
+			contextBlock(expiry),
 		),
 	}
 }

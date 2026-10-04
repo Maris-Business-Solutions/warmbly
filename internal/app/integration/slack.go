@@ -26,6 +26,7 @@ var SlackBotScopes = []string{
 	"im:read",
 	"im:write",
 	"mpim:history",
+	"reactions:write",
 }
 
 // Config keys SlackSettings owns inside config_capabilities.

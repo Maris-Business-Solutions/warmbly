@@ -170,7 +170,7 @@ func (s *Service) requireLinked(ctx context.Context, p *interaction) *actor {
 			}
 			channel, dm = dmChannel, true
 		}
-		s.promptLink(ctx, a, channel, p.Message.ThreadTS, dm)
+		s.promptLink(ctx, a, &ask{Channel: channel, ThreadTS: p.Message.ThreadTS, InThread: p.Message.ThreadTS != "", DM: dm})
 		return nil
 	}
 	return a
@@ -256,7 +256,7 @@ func (s *Service) handleNotificationDraft(ctx context.Context, p *interaction, v
 	s.runTurn(ctx, agentTurn{
 		conn: a.conn, token: a.token, link: a.link, inv: invocation(a.member, a.link),
 		channel: channel, threadTS: ts, messageID: "slack:action:" + ts + ":" + actionTS,
-		text: text, dm: strings.HasPrefix(channel, "D"), reassign: true,
+		text: text, dm: strings.HasPrefix(channel, "D"), reassign: true, quotesOthers: true,
 	})
 }
 
@@ -294,6 +294,7 @@ func (s *Service) askAboutMessage(ctx context.Context, p *interaction) {
 	turn := agentTurn{
 		conn: a.conn, token: a.token, link: a.link, inv: invocation(a.member, a.link),
 		channel: channel, threadTS: threadTS, messageID: "slack:shortcut:" + p.TriggerID, text: question,
+		quotesOthers: true,
 	}
 	if useDM {
 		dm, ts, err := s.startDMThread(ctx, a, "You asked about a message. Here is what I found.")

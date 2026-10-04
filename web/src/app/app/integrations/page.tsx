@@ -40,7 +40,7 @@ import type {
 } from "@/lib/api/models/app/integrations/Integration";
 import { cn } from "@/lib/utils";
 
-import ConnectDrawer from "./_components/ConnectDrawer";
+import ConnectDialog from "./_components/ConnectDialog";
 import ConnectionDetail from "./_components/ConnectionDetail";
 import InboundUrlDialog from "./_components/InboundUrlDialog";
 import AppCard from "./_components/store/AppCard";
@@ -162,6 +162,17 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
         }
         return out.slice(0, 4);
     }, [liveConnections, entryByProvider, catalog]);
+
+    // ?connect=1 (a link from the assistant) opens the connect popup once.
+    const wantsConnect = route.kind === "builtin" && searchParams.get("connect") === "1";
+    React.useEffect(() => {
+        if (!wantsConnect || route.kind !== "builtin" || catalogQuery.isPending || connectionsQuery.isPending) return;
+        const entry = entryByProvider[route.provider];
+        if (entry && isUsable(entry) && !connByProvider[route.provider]) setConnectTarget(entry);
+        const next = new URLSearchParams(searchParams);
+        next.delete("connect");
+        setSearchParams(next, { replace: true });
+    }, [wantsConnect, route, catalogQuery.isPending, connectionsQuery.isPending, entryByProvider, connByProvider, searchParams, setSearchParams]);
 
     const isConnected = React.useCallback(
         (item: StoreItem) => (item.kind === "builtin" ? !!connByProvider[item.entry.provider] : item.app.installed),
@@ -454,25 +465,29 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                 </div>
             </div>
 
-            {connectTarget && (
-                <ConnectDrawer
-                    entry={connectTarget}
-                    onClose={() => setConnectTarget(null)}
-                    onConnected={(conn) => {
-                        void connectionsQuery.refetch();
-                        if (conn.provider === "salesforce") {
-                            // Setup continues on the Salesforce page: rules, mapping, imports.
-                            setConnectTarget(null);
-                            go(`${STORE_BASE}/salesforce/${conn.id}`);
-                        } else if (conn.inbound_webhook_url) {
-                            setInboundUrl({ provider: conn.provider, url: conn.inbound_webhook_url });
-                        } else {
-                            // Drop straight into management so the user can wire automations.
-                            setManageTarget(conn);
-                        }
-                    }}
-                />
-            )}
+            <AnimatePresence>
+                {connectTarget && (
+                    <ConnectDialog
+                        key={connectTarget.provider}
+                        entry={connectTarget}
+                        existing={connections.filter((c) => c.provider === connectTarget.provider)}
+                        onClose={() => setConnectTarget(null)}
+                        onConnected={() => void connectionsQuery.refetch()}
+                        onSetup={(conn) => {
+                            if (conn.inbound_webhook_url) {
+                                setInboundUrl({ provider: conn.provider, url: conn.inbound_webhook_url });
+                            } else if (conn.provider === "hubspot") {
+                                go(`${STORE_BASE}/hubspot`);
+                            } else if (conn.provider === "salesforce") {
+                                // Setup continues on the Salesforce page: rules, mapping, imports.
+                                go(`${STORE_BASE}/salesforce/${conn.id}`);
+                            } else {
+                                setManageTarget(conn);
+                            }
+                        }}
+                    />
+                )}
+            </AnimatePresence>
             {manageTarget && (
                 <ConnectionDetail
                     connection={manageTarget}

@@ -164,13 +164,32 @@ func (s *Service) resolveActor(ctx context.Context, teamID, slackUserID string) 
 	return a
 }
 
+// ask is one request for the assistant, kept whole so it can be answered
+// after its author links their account.
+type ask struct {
+	Channel   string `json:"channel"`
+	ThreadTS  string `json:"thread_ts"`
+	TS        string `json:"ts"`
+	Text      string `json:"text"`
+	MessageID string `json:"message_id"`
+	DM        bool   `json:"dm"`
+	Mention   bool   `json:"mention"`
+	InThread  bool   `json:"in_thread"`
+	ExtShared bool   `json:"ext_shared"`
+}
+
 // tell answers one member: in the DM thread, or ephemerally in a channel.
-func (s *Service) tell(ctx context.Context, token, channel, threadTS, user string, dm bool, m Message) {
-	m.Channel, m.ThreadTS = channel, threadTS
+func (s *Service) tell(ctx context.Context, token, user string, q *ask, m Message) {
+	m.Channel = q.Channel
 	var err error
-	if dm {
+	if q.DM {
+		m.ThreadTS = q.ThreadTS
 		_, err = s.client.PostMessage(ctx, token, m)
 	} else {
+		// Slack only shows an ephemeral thread reply in a thread that already exists.
+		if q.InThread {
+			m.ThreadTS = q.ThreadTS
+		}
 		m.User = user
 		err = s.client.PostEphemeral(ctx, token, m)
 	}
@@ -179,17 +198,44 @@ func (s *Service) tell(ctx context.Context, token, channel, threadTS, user strin
 	}
 }
 
-// promptLink tells an unlinked member how to link, or why they must again.
-func (s *Service) promptLink(ctx context.Context, a *actor, channel, threadTS string, dm bool) {
+// promptLink tells an unlinked member how to link, or why they must again. A
+// question that came with it is held and answered once the link is made.
+func (s *Service) promptLink(ctx context.Context, a *actor, q *ask) {
+	if a.unknown {
+		s.tell(ctx, a.token, a.userID, q, plainMessage("I couldn't check your Warmbly account just now. Please try again in a moment."))
+		return
+	}
 	lead := ""
 	if a.gone {
 		lead = "Your Warmbly membership changed, so this Slack account is no longer linked. Link it again to keep using Warmbly here."
 	}
-	if a.unknown {
-		s.tell(ctx, a.token, channel, threadTS, a.userID, dm, plainMessage("I couldn't check your Warmbly account just now. Please try again in a moment."))
+	linkURL, code := s.mintLink(ctx, a.conn, a.teamID, a.userID)
+	held := code != "" && strings.TrimSpace(q.Text) != "" && s.holdAsk(ctx, a.conn.OrganizationID, code, q)
+	prompt := linkPromptFor(linkURL, lead, held)
+	if q.DM {
+		s.tell(ctx, a.token, a.userID, q, prompt)
 		return
 	}
-	s.tell(ctx, a.token, channel, threadTS, a.userID, dm, linkPrompt(s.mintLinkURL(ctx, a.conn, a.teamID, a.userID), lead))
+	// The link is single use, so it goes to a DM, never into the channel.
+	dm, err := s.client.OpenDM(ctx, a.token, a.userID)
+	if err == nil {
+		prompt.Channel = dm
+		_, err = s.client.PostMessage(ctx, a.token, prompt)
+	}
+	if err != nil {
+		log.Warn().Err(err).Msg("slack: link prompt DM failed")
+		s.tell(ctx, a.token, a.userID, q, prompt)
+		return
+	}
+	if !held {
+		s.tell(ctx, a.token, a.userID, q, plainMessage("I sent you a link in a DM to connect your Warmbly account."))
+		return
+	}
+	note := plainMessage("<@" + a.userID + "> I need to know which Warmbly account is yours first. I sent you a link in a DM, and I'll answer here as soon as you've linked.")
+	note.Channel, note.ThreadTS = q.Channel, q.ThreadTS
+	if _, err := s.client.PostMessage(ctx, a.token, note); err != nil {
+		log.Warn().Err(err).Msg("slack: link note failed")
+	}
 }
 
 func inboxContext(uniboxThreadID string) string {
@@ -198,44 +244,62 @@ func inboxContext(uniboxThreadID string) string {
 		" in the Warmbly unified inbox. When the question is about that conversation, read it with get_thread first. Never send email unless I explicitly ask.\n\n"
 }
 
-// onUserMessage routes a DM, a mention, or a follow-up in a thread the
-// author owns to the assistant.
+// onUserMessage turns a DM, a mention or a thread follow-up into an ask.
 func (s *Service) onUserMessage(ctx context.Context, env *eventEnvelope, ev *innerEvent, mention bool) {
+	dm := ev.ChannelType == "im" || (ev.ChannelType == "" && strings.HasPrefix(ev.Channel, "D"))
 	a := s.resolveActor(ctx, env.TeamID, ev.User)
 	if a == nil {
+		if mention || dm {
+			log.Info().Str("team_id", env.TeamID).Msg("slack: request from a team with no usable connection")
+		}
 		return
 	}
-	botID := s.botUserID(ctx, env.TeamID, a.token)
-	if botID != "" && ev.User == botID {
-		return
-	}
-	dm := ev.ChannelType == "im" || (ev.ChannelType == "" && strings.HasPrefix(ev.Channel, "D"))
-	inThread := ev.ThreadTS != "" && ev.ThreadTS != ev.TS
 	threadTS := ev.ThreadTS
 	if threadTS == "" {
 		threadTS = ev.TS
 	}
+	s.handleAsk(ctx, a, ask{
+		Channel: ev.Channel, ThreadTS: threadTS, TS: ev.TS, Text: ev.Text,
+		MessageID: "slack:" + env.EventID, DM: dm, Mention: mention,
+		InThread: ev.ThreadTS != "" && ev.ThreadTS != ev.TS, ExtShared: env.IsExtSharedChannel,
+	})
+}
+
+// handleAsk routes an ask to the assistant: a DM, a mention, or a follow-up
+// in a thread the author owns. A mention in a teammate's thread hands the
+// thread to the person who mentioned.
+func (s *Service) handleAsk(ctx context.Context, a *actor, q ask) {
+	botID := s.botUserID(ctx, a.teamID, a.token)
+	if botID != "" && a.userID == botID {
+		return
+	}
 
 	// An inbox thread is team discussion: only a mention reaches the assistant.
 	var inbox *models.SlackInboxThread
-	if !dm && inThread {
-		inbox, _ = s.repo.GetInboxThreadBySlack(ctx, a.conn.ID, ev.Channel, threadTS)
-		if inbox != nil && !mention {
+	if !q.DM && q.InThread {
+		inbox, _ = s.repo.GetInboxThreadBySlack(ctx, a.conn.ID, q.Channel, q.ThreadTS)
+		if inbox != nil && !q.Mention {
 			return
 		}
 	}
 
-	row, err := s.repo.GetAgentThread(ctx, a.conn.ID, ev.Channel, threadTS)
+	row, err := s.repo.GetAgentThread(ctx, a.conn.ID, q.Channel, q.ThreadTS)
 	if err != nil {
+		log.Warn().Err(err).Msg("slack: reading the thread map failed")
+		if q.DM || q.Mention {
+			s.tell(ctx, a.token, a.userID, &q, plainMessage(errGenericAnswer))
+		}
 		return
 	}
 	facts := routeFacts{
-		DM: dm, Mention: mention, MentionsBot: mentionsUser(ev.Text, botID), InThread: inThread,
-		ExtShared: env.IsExtSharedChannel, Settings: settingsFrom(a.conn),
+		DM: q.DM, Mention: q.Mention, MentionsBot: mentionsUser(q.Text, botID), InThread: q.InThread,
+		ExtShared: q.ExtShared, Settings: settingsFrom(a.conn),
 	}
 	owner := row != nil && a.link != nil && row.OrganizationID == a.link.OrganizationID && row.UserID == a.link.UserID
 	if row != nil && inbox == nil {
 		facts.ThreadMapped, facts.OwnerIsAuthor = true, owner
+		// Unlinked authors are asked to link first; routing runs again after.
+		facts.SameOrg = a.link == nil || row.OrganizationID == a.link.OrganizationID
 	}
 	route := decideRoute(facts)
 	switch route {
@@ -243,29 +307,32 @@ func (s *Service) onUserMessage(ctx context.Context, env *eventEnvelope, ev *inn
 		return
 	case routeAgent:
 	default:
-		s.tell(ctx, a.token, ev.Channel, threadTS, ev.User, dm, plainMessage(refusalText(route)))
+		log.Info().Str("team_id", a.teamID).Int("route", int(route)).Msg("slack: request refused")
+		s.tell(ctx, a.token, a.userID, &q, plainMessage(refusalText(route)))
 		return
 	}
 	if a.link == nil {
-		s.promptLink(ctx, a, ev.Channel, threadTS, dm)
+		s.promptLink(ctx, a, &q)
 		return
 	}
-	text := stripBotMention(ev.Text, botID)
+	text := stripBotMention(q.Text, botID)
 	if text == "" {
-		s.tell(ctx, a.token, ev.Channel, threadTS, ev.User, dm, plainMessage("Ask me anything about your campaigns, replies, contacts or mailboxes."))
+		s.tell(ctx, a.token, a.userID, &q, plainMessage("Ask me anything about your campaigns, replies, contacts or mailboxes."))
 		return
 	}
+	takeover := row != nil && inbox == nil && !owner
 	prefix := ""
-	if inThread && (row == nil || !owner) {
-		prefix = s.threadContext(ctx, a.token, ev.Channel, threadTS, ev.TS)
+	if q.InThread && (row == nil || !owner) {
+		prefix = s.threadContext(ctx, a.token, q.Channel, q.ThreadTS, q.TS)
 	}
 	if inbox != nil {
 		prefix = inboxContext(inbox.UniboxThreadID) + prefix
 	}
 	s.runTurn(ctx, agentTurn{
 		conn: a.conn, token: a.token, link: a.link, inv: invocation(a.member, a.link),
-		channel: ev.Channel, threadTS: threadTS, messageID: "slack:" + env.EventID,
-		text: prefix + text, dm: dm, reassign: inbox != nil,
+		channel: q.Channel, threadTS: q.ThreadTS, messageID: q.MessageID,
+		text: prefix + text, dm: q.DM, reassign: inbox != nil || takeover, ackTS: q.TS,
+		quotesOthers: prefix != "",
 	})
 }
 
@@ -283,6 +350,6 @@ func (s *Service) onAssistantThreadStarted(ctx context.Context, env *eventEnvelo
 		log.Warn().Err(err).Msg("slack: suggested prompts failed")
 	}
 	if a.link == nil {
-		s.promptLink(ctx, a, at.ChannelID, at.ThreadTS, true)
+		s.promptLink(ctx, a, &ask{Channel: at.ChannelID, ThreadTS: at.ThreadTS, DM: true})
 	}
 }

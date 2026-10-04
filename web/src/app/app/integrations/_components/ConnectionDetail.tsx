@@ -50,7 +50,7 @@ import { useAutomations } from "@/lib/api/hooks/app/automations/useAutomations";
 import type { IntegrationAction } from "@/lib/api/models/app/integrations/Integration";
 import { cn } from "@/lib/utils";
 
-import { Drawer, SectionLabel } from "./ConnectDrawer";
+import { Drawer, SectionLabel } from "./Drawer";
 import FieldMapEditor from "./FieldMapEditor";
 import InboundUrlDialog from "./InboundUrlDialog";
 import { SlackStatusBanner, SlackTabBar, SlackTabContent, type SlackTab } from "./SlackPanel";
