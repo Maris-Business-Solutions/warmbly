@@ -500,13 +500,21 @@ These changes require the session to have confirmed the account holder within th
 | Create an API key | `POST /api-keys` |
 | Add a passkey | `POST /auth/passkey/register/begin`, `/finish` |
 | Remove a passkey | `DELETE /auth/passkey/credentials/:id` |
+| Turn on two-factor authentication | `POST /auth/2fa/enroll/start`, `/confirm` (see below for accounts with no password) |
 | Transfer a workspace | `POST /organization/transfer-ownership` |
+| Invite a member or change a member's role | `POST /organization/members/invite`, `PATCH /organization/members/:id` |
+| Export or import a whole workspace | `POST /organization/current/export`, `POST /organization/current/import` |
 | Schedule a workspace or account for deletion | `POST /organization/current/danger-zone/delete`, `POST /me/danger-zone/delete` |
+| Approve a self-hosted instance's warmup pool link | `POST /pool-link/codes/:code/approve` |
+| Reveal or rotate a signing secret | `POST /webhooks/:id/rotate-secret`, `GET /integrations/connections/:id/webhook-secret`, `POST /oauth/applications/:id/rotate-secret`, `GET /oauth/applications/:id/webhook-secret`, `POST /oauth/applications/:id/webhook-secret/rotate` |
 | Record, use or remove an admin grant over a whole domain | `POST /emails/grants/google/finish`, `POST /emails/grants/microsoft/finish`, `POST /emails/grants/:id/connect`, `DELETE /emails/grants/:id` |
+| Admin panel: issue a fleet join token, grant admin permissions, export or import any workspace | `POST /admin/fleet/join-token`, `POST /admin/admins/:userId/grant`, `POST /admin/organizations/:id/exports`, `POST /admin/organizations/:id/imports` |
 
-Each either hands out a credential that outlives the session that created it, cannot be reversed by the person it was done to, or reaches a whole domain's mail. Without a confirmation they answer `403` with code `reauth_required`; confirm with `POST /auth/reauth` (password or a current two-factor code) and retry. See [error codes](/api/error-codes/#confirmation-required).
+Each either hands out a credential that outlives the session that created it, reveals a secret, changes who can get in, cannot be reversed by the person it was done to, or reaches a whole domain's mail. Without a confirmation they answer `403` with code `reauth_required`; confirm with `POST /auth/reauth` (password or a current two-factor code) and retry. See [error codes](/api/error-codes/#confirmation-required).
 
 This applies to session callers. An API key or OAuth token has no session to confirm and is not the threat here, so it passes straight through to the route's permission gate.
+
+An account with neither a password nor two-factor authentication has nothing to confirm with. It may turn on 2FA only from a session that signed in within the last five minutes, and `POST /auth/reauth` answers it `400` with code `reauth_no_factor`. Once 2FA is on, it confirms with an authenticator code like any other account.
 
 `GET /auth/config` gained two fields: `invites_required` (boolean, true when an invitation token is needed to create an account) and `docs_url` (string, the deployment's link to the accounts and access documentation, for a client to surface next to a refusal).
 

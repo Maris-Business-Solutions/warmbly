@@ -2,12 +2,14 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/token"
 	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/argon2"
 )
 
@@ -56,9 +58,7 @@ func (h *Handler) Reauth(c *gin.Context) {
 	// turn a stolen token into a permanent API key. Say what to do rather than
 	// refusing a credential the account does not have.
 	if !h.hasReauthFactor(c, uid) {
-		errx.Handle(c, errx.NewWithIdentifier(errx.BadRequest, "reauth_no_factor",
-			"This account has no password and no two-factor authentication, so there is nothing to confirm with. "+
-				"Turn on two-factor authentication under Settings > Security, or set a password, then try again."))
+		errx.Handle(c, errReauthNoFactor())
 		return
 	}
 
@@ -91,6 +91,46 @@ func (h *Handler) Reauth(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, reauthResponse{ValidForSeconds: int(token.ReauthWindow.Seconds())})
+}
+
+// errReauthNoFactor answers an account with nothing to confirm with. Its way to
+// a factor is enrolling 2FA, which a fresh sign-in unlocks.
+func errReauthNoFactor() *errx.Error {
+	return errx.NewWithIdentifier(errx.BadRequest, "reauth_no_factor",
+		"This account has no password and no two-factor authentication, so there is nothing to confirm with. "+
+			"Sign out and sign in again, then turn on two-factor authentication under Settings > Security within five minutes of signing in.")
+}
+
+// allowEnrollment gates adding an authenticator, which /auth/reauth then
+// accepts. See enrollmentGate.
+func (h *Handler) allowEnrollment(c *gin.Context, uid uuid.UUID) bool {
+	session := middleware.GetSession(c)
+	if session == nil {
+		errx.JSON(c, errx.ErrUnauthorized)
+		return false
+	}
+	if xerr := enrollmentGate(session, time.Now(), func() bool { return h.hasReauthFactor(c, uid) }); xerr != nil {
+		errx.JSON(c, xerr)
+		return false
+	}
+	return true
+}
+
+// enrollmentGate passes a recent reauth; otherwise an account with a factor
+// must confirm, and one with none passes only on a session signed in within
+// the reauth window, since a fresh sign-in is the only proof it can give.
+func enrollmentGate(session *models.Session, now time.Time, hasFactor func() bool) *errx.Error {
+	if session.ReauthAt != nil && now.Sub(*session.ReauthAt) <= token.ReauthWindow {
+		return nil
+	}
+	if hasFactor() {
+		return errx.NewWithIdentifier(errx.Forbidden, "reauth_required",
+			"Confirm it is you before making this change.")
+	}
+	if now.Sub(session.CreatedAt) <= token.ReauthWindow {
+		return nil
+	}
+	return errReauthNoFactor()
 }
 
 // hasReauthFactor reports whether the account has anything to re-authenticate

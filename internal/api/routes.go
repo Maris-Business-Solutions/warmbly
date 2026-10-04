@@ -443,6 +443,7 @@ func Run(
 
 		// 2FA enrollment + management (user-scoped, behind a live session).
 		protectedAuth.GET("/2fa/status", h.TwoFAStatus)
+		// Enrollment needs a fresh proof of identity; allowEnrollment checks it in the handler.
 		protectedAuth.POST("/2fa/enroll/start", h.TwoFAEnrollStart)
 		protectedAuth.POST("/2fa/enroll/confirm", h.TwoFAEnrollConfirm)
 		protectedAuth.DELETE("/2fa", h.TwoFADisable)
@@ -1138,7 +1139,7 @@ func Run(
 				webhooks.GET("/throttle-drops", h.ListWebhookDrops)
 				webhooks.PATCH("/:id", h.UpdateWebhookEndpoint)
 				webhooks.DELETE("/:id", h.DeleteWebhookEndpoint)
-				webhooks.POST("/:id/rotate-secret", h.RotateWebhookSecret)
+				webhooks.POST("/:id/rotate-secret", middleware.RequireFreshAuth(), h.RotateWebhookSecret)
 				webhooks.POST("/:id/verify", h.VerifyWebhookEndpoint)
 				webhooks.GET("/:id/deliveries", h.ListWebhookDeliveries)
 			}
@@ -1170,7 +1171,7 @@ func Run(
 				integrations.GET("/connections/:id/field-mappings", read, h.ListConnectionFieldMappings)
 				integrations.PUT("/connections/:id/field-mappings", write, h.ReplaceConnectionFieldMappings)
 				integrations.GET("/connections/:id/runs", read, h.ListConnectionSyncRuns)
-				integrations.GET("/connections/:id/webhook-secret", write, h.GetConnectionWebhookSecret)
+				integrations.GET("/connections/:id/webhook-secret", write, middleware.RequireFreshAuth(), h.GetConnectionWebhookSecret)
 				integrations.PUT("/connections/:id/signing-key", write, h.SetConnectionSigningKey)
 				integrations.POST("/connections/:id/rotate-inbound-url", write, h.RotateConnectionInboundURL)
 				integrations.POST("/connections/:id/test", write, h.TestConnection)
@@ -1245,7 +1246,7 @@ func Run(
 				oauthApps.GET("/:id", h.GetOAuthApplication)
 				oauthApps.PATCH("/:id", h.UpdateOAuthApplication)
 				oauthApps.DELETE("/:id", h.DeleteOAuthApplication)
-				oauthApps.POST("/:id/rotate-secret", h.RotateOAuthApplicationSecret)
+				oauthApps.POST("/:id/rotate-secret", middleware.RequireFreshAuth(), h.RotateOAuthApplicationSecret)
 				// The app's logo, stored and set by the server like the workspace logo.
 				oauthApps.POST("/:id/logo", h.UploadOAuthApplicationLogo)
 				oauthApps.DELETE("/:id/logo", h.DeleteOAuthApplicationLogo)
@@ -1255,8 +1256,8 @@ func Run(
 				oauthApps.DELETE("/:id/listing", h.DeleteOAuthAppListing)
 				// App-level webhook subscription: secret reveal/rotate + delivery
 				// observability (the per-org endpoints and the cross-org delivery log).
-				oauthApps.GET("/:id/webhook-secret", h.GetOAuthAppWebhookSecret)
-				oauthApps.POST("/:id/webhook-secret/rotate", h.RotateOAuthAppWebhookSecret)
+				oauthApps.GET("/:id/webhook-secret", middleware.RequireFreshAuth(), h.GetOAuthAppWebhookSecret)
+				oauthApps.POST("/:id/webhook-secret/rotate", middleware.RequireFreshAuth(), h.RotateOAuthAppWebhookSecret)
 				oauthApps.GET("/:id/webhook-endpoints", h.ListOAuthAppWebhookEndpoints)
 				oauthApps.GET("/:id/webhook-deliveries", h.ListOAuthAppWebhookDeliveries)
 			}
@@ -1462,8 +1463,8 @@ func Run(
 				org.GET("/current/limits", m.RequireOrganization(), h.GetOrganizationLimits)
 
 				org.GET("/members", m.RequireOrganization(), h.GetMembers)
-				org.POST("/members/invite", m.RequireOrganization(), m.RequirePermission(models.PermManageTeam), h.InviteMember)
-				org.PATCH("/members/:id", m.RequireOrganization(), m.RequirePermission(models.PermManageTeam), h.UpdateMemberRole)
+				org.POST("/members/invite", m.RequireOrganization(), m.RequirePermission(models.PermManageTeam), middleware.RequireFreshAuth(), h.InviteMember)
+				org.PATCH("/members/:id", m.RequireOrganization(), m.RequirePermission(models.PermManageTeam), middleware.RequireFreshAuth(), h.UpdateMemberRole)
 				org.DELETE("/members/:id", m.RequireOrganization(), m.RequirePermission(models.PermManageTeam), h.RemoveMember)
 
 				// Custom roles: named permission sets assignable to members.
@@ -1487,13 +1488,13 @@ func Run(
 				// credentials is the most sensitive artifact this product
 				// produces, and an import rewrites the workspace.
 				org.GET("/current/transfer/groups", m.RequireOrganization(), h.GetOrgTransferGroups)
-				org.POST("/current/export", m.RequireOrganization(), h.CreateOrgExport)
+				org.POST("/current/export", m.RequireOrganization(), middleware.RequireFreshAuth(), h.CreateOrgExport)
 				org.GET("/current/export", m.RequireOrganization(), h.ListOrgExports)
 				org.GET("/current/export/:id", m.RequireOrganization(), h.GetOrgExport)
 				org.GET("/current/export/:id/download", m.RequireOrganization(), h.DownloadOrgExport)
 				org.DELETE("/current/export/:id", m.RequireOrganization(), h.DeleteOrgExport)
 				org.POST("/current/import/preflight", m.RequireOrganization(), h.PreflightOrgImport)
-				org.POST("/current/import", m.RequireOrganization(), h.CreateOrgImport)
+				org.POST("/current/import", m.RequireOrganization(), middleware.RequireFreshAuth(), h.CreateOrgImport)
 				org.GET("/current/import", m.RequireOrganization(), h.ListOrgImports)
 				org.GET("/current/import/:id", m.RequireOrganization(), h.GetOrgImport)
 
@@ -1590,7 +1591,7 @@ func Run(
 			poolLink.Use(m.RateLimitMiddleware(models.RateLimitWrite))
 			{
 				poolLink.GET("/codes/:code", h.PoolLinkDescribeCode)
-				poolLink.POST("/codes/:code/approve", h.PoolLinkApproveCode)
+				poolLink.POST("/codes/:code/approve", middleware.RequireFreshAuth(), h.PoolLinkApproveCode)
 				poolLink.POST("/codes/:code/deny", h.PoolLinkDenyCode)
 				// The pool plan is not in the public plan list, so the
 				// dashboard has no other way to learn its price or reach a
@@ -1929,7 +1930,7 @@ func Run(
 		// Fleet placement: capacity per worker, the control loops' decision
 		// log, and isolated-egress reservations.
 		adminRoutes.GET("/fleet/nodes", middleware.RequireAdminPermission(models.AdminPermViewWorkers), h.AdminFleetNodes)
-		adminRoutes.POST("/fleet/join-token", middleware.RequireAdminPermission(models.AdminPermManageWorkers), h.AdminFleetIssueJoinToken)
+		adminRoutes.POST("/fleet/join-token", middleware.RequireAdminPermission(models.AdminPermManageWorkers), middleware.RequireFreshAuth(), h.AdminFleetIssueJoinToken)
 		adminRoutes.PATCH("/fleet/nodes/:id", middleware.RequireAdminPermission(models.AdminPermManageWorkers), h.AdminFleetPatchNode)
 		adminRoutes.DELETE("/fleet/nodes/:id", middleware.RequireAdminPermission(models.AdminPermManageWorkers), h.AdminFleetDeleteNode)
 		adminRoutes.GET("/fleet/release", middleware.RequireAdminPermission(models.AdminPermViewWorkers), h.AdminFleetRelease)
@@ -1944,13 +1945,13 @@ func Run(
 		// Settings > Data, driven by the operator for any workspace.
 		adminRoutes.GET("/transfers", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListTransfers)
 		adminRoutes.GET("/organizations/:id/exports", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListOrgExports)
-		adminRoutes.POST("/organizations/:id/exports", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminCreateOrgExport)
+		adminRoutes.POST("/organizations/:id/exports", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), middleware.RequireFreshAuth(), h.AdminCreateOrgExport)
 		adminRoutes.GET("/organizations/:id/exports/:exportId", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminGetOrgExport)
 		adminRoutes.GET("/organizations/:id/exports/:exportId/download", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminDownloadOrgExport)
 		adminRoutes.DELETE("/organizations/:id/exports/:exportId", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminDeleteOrgExport)
 		adminRoutes.GET("/organizations/:id/imports", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListOrgImports)
 		adminRoutes.POST("/organizations/:id/imports/preflight", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminPreflightOrgImport)
-		adminRoutes.POST("/organizations/:id/imports", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), h.AdminCreateOrgImport)
+		adminRoutes.POST("/organizations/:id/imports", middleware.RequireAdminPermission(models.AdminPermManageOrganizations), middleware.RequireFreshAuth(), h.AdminCreateOrgImport)
 
 		// Per-workspace developer surface: keys and webhook endpoints.
 		adminRoutes.GET("/organizations/:id/api-keys", middleware.RequireAdminPermission(models.AdminPermViewOrganizations), h.AdminListOrgAPIKeys)
@@ -1962,7 +1963,7 @@ func Run(
 
 		// Admin Management
 		adminRoutes.GET("/admins", middleware.RequireAdminPermission(models.AdminPermGrantAdminAccess), h.AdminListAdmins)
-		adminRoutes.POST("/admins/:userId/grant", middleware.RequireAdminPermission(models.AdminPermGrantAdminAccess), h.AdminGrantPermissions)
+		adminRoutes.POST("/admins/:userId/grant", middleware.RequireAdminPermission(models.AdminPermGrantAdminAccess), middleware.RequireFreshAuth(), h.AdminGrantPermissions)
 		adminRoutes.POST("/admins/:userId/revoke", middleware.RequireAdminPermission(models.AdminPermGrantAdminAccess), h.AdminRevokePermissions)
 
 		// Audit Logs
