@@ -33,15 +33,16 @@ func seedUsers(ctx context.Context, pool *pgxpool.Pool, r *Result) error {
 
 	for _, u := range users {
 		_, err := pool.Exec(ctx, `
-			INSERT INTO users (id, first_name, last_name, email, password_hash, max_organizations, free_trial_used, admin_permissions, admin_granted_at, created_at, updated_at)
+			INSERT INTO users (id, first_name, last_name, email, password_hash, max_organizations, free_trial_used, admin_permissions, admin_granted_at, onboarding_completed_at, created_at, updated_at)
 			VALUES ($1,$2,$3,$4,$5,5,TRUE,$6,
 				CASE WHEN $6 > 0 THEN NOW() ELSE NULL END,
-				NOW(), NOW())
+				NOW(), NOW(), NOW())
 			ON CONFLICT (email) DO UPDATE SET
 				first_name = EXCLUDED.first_name,
 				last_name = EXCLUDED.last_name,
 				password_hash = EXCLUDED.password_hash,
 				admin_permissions = EXCLUDED.admin_permissions,
+				onboarding_completed_at = COALESCE(users.onboarding_completed_at, NOW()),
 				updated_at = NOW()
 		`, u.id, u.first, u.last, u.email, hash, u.adminPerm)
 		if err != nil {

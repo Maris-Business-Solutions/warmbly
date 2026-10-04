@@ -127,6 +127,12 @@ func (s *Service) createOwner(ctx context.Context, address string) error {
 	if uerr != nil {
 		return fmt.Errorf("bootstrap: creating the owner: %w", uerr)
 	}
+	// Provisioned from the environment, so nobody is at a browser to answer the wizard.
+	at, merr := s.users.MarkOnboarded(ctx, u.ID)
+	if merr != nil {
+		return fmt.Errorf("bootstrap: marking the owner onboarded: %w", merr)
+	}
+	u.OnboardingCompletedAt = &at
 	if err := s.userSvc.SaveUser(ctx, u); err != nil {
 		return fmt.Errorf("bootstrap: saving the owner: %w", err)
 	}

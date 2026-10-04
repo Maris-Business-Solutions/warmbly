@@ -131,6 +131,12 @@ func runUserCreate(ctx context.Context, args []string) error {
 	if cerr != nil {
 		return fmt.Errorf("creating the account: %w", cerr)
 	}
+	// An operator-made account is ready to use; the first-run wizard is for self-service signups.
+	if at, merr := c.users.MarkOnboarded(ctx, created.ID); merr != nil {
+		warn("the account was created but is not marked onboarded, so the dashboard will show the setup wizard first: %v", merr)
+	} else {
+		created.OnboardingCompletedAt = &at
+	}
 	if c.cache != nil {
 		if xerr := c.userService().SaveUser(ctx, created); xerr != nil {
 			warn("the account was created but could not be cached: %v", xerr)
