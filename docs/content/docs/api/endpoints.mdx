@@ -417,6 +417,15 @@ Registering and managing the OAuth apps your workspace owns. The flow itself (au
 | POST | `/webhooks/deliveries/:deliveryId/redeliver` | `WEBHOOKS` |
 | GET | `/webhooks/throttle-drops` | `WEBHOOKS` |
 | GET/POST/DELETE | `/integrations/*` (except `/integrations/slack/*`, which is [JWT only](#slack)) | `INTEGRATIONS` |
+| GET/PUT | `/integrations/salesforce/:id/settings` | `INTEGRATIONS` |
+| GET | `/integrations/salesforce/:id/overview`, `/metadata`, `/users`, `/list-views`, `/campaigns`, `/activity` | `INTEGRATIONS` |
+| POST | `/integrations/salesforce/:id/import/preview` | `INTEGRATIONS` |
+| GET/POST/PATCH/DELETE | `/integrations/salesforce/:id/import-sources[/:sourceId]` | `INTEGRATIONS` |
+| POST | `/integrations/salesforce/:id/import-sources/:sourceId/run` | `INTEGRATIONS` |
+| POST | `/integrations/salesforce/:id/activity/retry`, `/sync-now` | `INTEGRATIONS` |
+| GET | `/contacts/:id/salesforce` | `READ_CRM` |
+| POST | `/contacts/:id/salesforce/sync` | `INTEGRATIONS` |
+| DELETE | `/contacts/:id/salesforce/links/:linkId` | `INTEGRATIONS` |
 | GET/POST/PATCH/DELETE | `/automations[/:id]` | `INTEGRATIONS` |
 | PATCH | `/automations/:id/layout` | `INTEGRATIONS` |
 | GET/POST/PATCH/DELETE | `/warmup/routing[/:id]` | `WARMUP_ROUTING` |

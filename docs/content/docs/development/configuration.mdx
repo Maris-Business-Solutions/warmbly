@@ -536,6 +536,8 @@ The repository's `hubspot-app/` directory is the same app as a HubSpot developer
 | `POST /api/v1/integrations/hubspot/actions/enroll` | The "Add to Warmbly campaign" workflow action |
 | `POST /api/v1/integrations/hubspot/actions/campaigns` | The workflow action's campaign list |
 
+Salesforce reads `SALESFORCE_OAUTH_CLIENT_ID` and `SALESFORCE_OAUTH_CLIENT_SECRET`, from an External Client App or Connected App in your own org with PKCE required and the `api`, `refresh_token` and `id` scopes. One app serves production, sandbox and My Domain logins; each member picks theirs when connecting. See [Salesforce self-hosting](/guides/salesforce/#self-hosting).
+
 ## AI and search
 
 | Variable | What it does | Default |

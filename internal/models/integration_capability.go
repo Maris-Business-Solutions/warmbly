@@ -172,8 +172,8 @@ func Capabilities() map[IntegrationProvider]ProviderCapability {
 			Provider: IntegrationSalesforce, Directions: pushOnly,
 			Objects: []CapabilityObject{salesforceContact},
 			Actions: []CapabilityAction{{
-				ID: IntegrationActionSalesforceUpsert, Label: "Create or update contact",
-				Description: "Upsert a Salesforce Contact (matched by email).",
+				ID: IntegrationActionSalesforceUpsert, Label: "Create or update Salesforce record",
+				Description: "Find the person's Lead or Contact by email, or create one, and apply the connection's field rules.",
 				Object:      "contact",
 			}},
 		},

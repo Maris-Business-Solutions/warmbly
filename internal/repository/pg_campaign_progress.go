@@ -2289,6 +2289,13 @@ func automaticHoldGuard(alias, untilParam string) string {
 		  )`
 }
 
+// crmHoldGuard lets a CRM rule hold a lead that is not held, or replace an
+// automatic hold; it never replaces a member's own pause or a CC hold.
+func crmHoldGuard(alias string) string {
+	return `
+		  AND (NOT (` + liveHold(alias) + `) OR ` + alias + `.pause_source IN ('out_of_office', 'inbox_tagging'))`
+}
+
 // automaticHoldSource reports a hold the system wrote, which a member's own
 // pause always outranks and a longer automatic hold is never cut short by.
 func automaticHoldSource(source string) bool {
@@ -2308,6 +2315,8 @@ func (r *campaignProgressRepository) HoldLead(ctx context.Context, campaignID, c
 	guard := ""
 	if automaticHoldSource(source) {
 		guard = automaticHoldGuard("campaign_leads", "$3")
+	} else if source == models.LeadHoldSourceCRM {
+		guard = crmHoldGuard("campaign_leads")
 	}
 	now := time.Now()
 	hold, err := scanHold(r.db.QueryRow(ctx, `
@@ -2347,6 +2356,8 @@ func (r *campaignProgressRepository) HoldLeadEverywhere(ctx context.Context, con
 	guard := ""
 	if automaticHoldSource(source) {
 		guard = automaticHoldGuard("cl", "$2")
+	} else if source == models.LeadHoldSourceCRM {
+		guard = crmHoldGuard("cl")
 	}
 	rows, err := r.db.Query(ctx, `
 		UPDATE campaign_leads cl

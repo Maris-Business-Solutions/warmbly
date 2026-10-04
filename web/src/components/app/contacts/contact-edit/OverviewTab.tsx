@@ -3,6 +3,7 @@
 // Composition:
 //   - Suppression card (only when suppressed)
 //   - HubSpot card (HubSpot mode): owner, lifecycle stage, lead status
+//   - Salesforce record (only when a Salesforce connection exists)
 //   - Engagement: six flat stat tiles with a thin ratio bar where
 //     a ratio over Sent makes sense
 //   - Latest activity rail
@@ -35,6 +36,7 @@ import OriginBadge from "@/components/app/engagement/OriginBadge";
 import { labelInk } from "@/lib/utils";
 import HubSpotContactCard from "@/components/app/crm/HubSpotContactCard";
 import useCrmProvider from "@/hooks/useCrmProvider";
+import SalesforceContactCard from "@/components/app/integrations/SalesforceContactCard";
 
 export default function OverviewTab({
     contact,
@@ -97,6 +99,7 @@ export default function OverviewTab({
             )}
 
             {isHubSpot && <HubSpotContactCard contactId={contact.id} density="drawer" showProperties={false} />}
+            <SalesforceContactCard contactId={contact.id} />
 
             <Section title="Deliverability">
                 <VerificationCard contactId={contact.id} detail={detail?.verification} loading={detailLoading} />

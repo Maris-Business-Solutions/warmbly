@@ -31,7 +31,8 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { Label, TextInput } from "@/components/ui/field";
+import { FieldError, Label, TextInput } from "@/components/ui/field";
+import { OptionSelect } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import useConnectIntegration from "@/lib/api/hooks/app/integrations/useConnectIntegration";
 import {
     useFinishIntegrationOAuth,
@@ -101,6 +102,14 @@ const FIELDS_BY_PROVIDER: Record<string, FieldDef[]> = {
     ],
 };
 
+type SalesforceEnv = "production" | "sandbox" | "custom";
+
+// Accepts "acme.my.salesforce.com" or a pasted URL; returns the bare host or "".
+function salesforceHost(raw: string): string {
+    const host = raw.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : "";
+}
+
 export default function ConnectDrawer({
     entry,
     onClose,
@@ -114,6 +123,8 @@ export default function ConnectDrawer({
     const [config, setConfig] = React.useState<Record<string, string>>({});
     const [step, setStep] = React.useState<"overview" | "credentials">("overview");
     const [busy, setBusy] = React.useState(false);
+    const [sfEnv, setSfEnv] = React.useState<SalesforceEnv>("production");
+    const [sfDomain, setSfDomain] = React.useState("");
 
     const navigate = useNavigate();
     const connect = useConnectIntegration();
@@ -127,15 +138,30 @@ export default function ConnectDrawer({
     const fields = FIELDS_BY_PROVIDER[entry.provider] ?? [];
     // Only providers with real credential fields take the extra credentials step.
     const needsCredentials = !isOAuth && !isInbound && fields.length > 0;
+    const isSalesforce = entry.provider === "salesforce";
+    const sfHost = salesforceHost(sfDomain);
+    const sfDomainError =
+        isSalesforce && sfEnv === "custom" && sfDomain.trim() !== "" && !sfHost
+            ? "Enter a host like acme.my.salesforce.com"
+            : null;
 
     function update(key: string, value: string) {
         setConfig((c) => ({ ...c, [key]: value }));
     }
 
     async function runOAuth() {
+        if (isSalesforce && sfEnv === "custom" && !sfHost) {
+            toast.error("Enter your Salesforce My Domain, like acme.my.salesforce.com");
+            return;
+        }
         setBusy(true);
         try {
-            const { url } = await startOAuth.mutateAsync({ provider: entry.provider, label: label.trim() });
+            const sf = isSalesforce
+                ? sfEnv === "custom"
+                    ? { environment: sfHost.includes(".sandbox.") ? ("sandbox" as const) : ("production" as const), domain: sfHost }
+                    : { environment: sfEnv }
+                : {};
+            const { url } = await startOAuth.mutateAsync({ provider: entry.provider, label: label.trim(), ...sf });
             const { code, state } = await openOAuthPopup(url);
             const conn = await finishOAuth.mutateAsync({ code, state });
             toast.success(`Connected to ${entry.name}`);
@@ -225,6 +251,39 @@ export default function ConnectDrawer({
                                 <p className="text-[11px] text-slate-500 leading-relaxed">
                                     Want {entry.name} to call Warmbly back (e.g. create a contact)? Create a
                                     scoped key under Settings → API keys and paste it into {entry.name}.
+                                </p>
+                            </div>
+                        )}
+
+                        {isSalesforce && (
+                            <div className="space-y-2">
+                                <SectionLabel>Salesforce environment</SectionLabel>
+                                <OptionSelect
+                                    value={sfEnv}
+                                    onChange={setSfEnv}
+                                    aria-label="Salesforce environment"
+                                    options={[
+                                        { value: "production", label: "Production", hint: "login.salesforce.com" },
+                                        { value: "sandbox", label: "Sandbox", hint: "test.salesforce.com" },
+                                        { value: "custom", label: "Custom domain", hint: "Your org's My Domain login" },
+                                    ]}
+                                />
+                                {sfEnv === "custom" && (
+                                    <div>
+                                        <TextInput
+                                            value={sfDomain}
+                                            onChange={setSfDomain}
+                                            placeholder="acme.my.salesforce.com"
+                                            className="w-full font-mono"
+                                            invalid={!!sfDomainError}
+                                        />
+                                        <FieldError message={sfDomainError} />
+                                    </div>
+                                )}
+                                <p className="text-[10.5px] text-slate-400 leading-relaxed">
+                                    The user you sign in as needs API access: Enterprise, Unlimited, Performance or
+                                    Developer edition, or Professional with the API add-on. Your Salesforce admin may
+                                    need to approve the Warmbly connected app first.
                                 </p>
                             </div>
                         )}

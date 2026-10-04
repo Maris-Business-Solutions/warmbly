@@ -17,6 +17,7 @@ import {
     Loader2Icon,
     RefreshCwIcon,
     SendIcon,
+    Settings2Icon,
     UnplugIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -193,6 +194,22 @@ export default function ConnectionDetail({
                         )}
                     </div>
 
+                    {/* Salesforce has its own page: sync rules, field map, imports, activity log. */}
+                    {conn.provider === "salesforce" && (
+                        <div className="px-5 py-4 border-b border-slate-200 space-y-2">
+                            <Link
+                                to={`/app/integrations/salesforce/${conn.id}`}
+                                className="w-full h-8 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                                <Settings2Icon className="w-3.5 h-3.5" />
+                                Open Salesforce settings
+                            </Link>
+                            <p className="text-[10.5px] text-slate-400 leading-relaxed">
+                                Sync rules, field mapping, imports from list views and campaigns, and the activity log.
+                            </p>
+                        </div>
+                    )}
+
                     {/* Granted access */}
                     {conn.granted_scopes && conn.granted_scopes.length > 0 && (
                         <div className="px-5 py-4 border-b border-slate-200 space-y-2">
@@ -231,7 +248,7 @@ export default function ConnectionDetail({
                     )}
 
                     {/* Field mapping — control exactly what each CRM record gets */}
-                    {crmObject && !isHubSpot && (
+                    {crmObject && !isHubSpot && conn.provider !== "salesforce" && (
                         <div className="px-5 py-4 border-b border-slate-200 space-y-2.5">
                             <SectionLabel>Field mapping</SectionLabel>
                             <FieldMappingsBlock connectionId={conn.id} object={crmObject} />

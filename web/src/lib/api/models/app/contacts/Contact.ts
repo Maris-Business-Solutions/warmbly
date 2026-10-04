@@ -21,9 +21,10 @@ export type LeadStatus =
     | "undeliverable";
 
 // One contact's flow parked inside one campaign. source is "out_of_office"
-// when an auto-reply parked it, "manual" when a member did, "crm" when HubSpot
-// says the contact moved on (a deal, a lifecycle stage), and "cc" while the
-// contact is copied on another lead's emails (reason is that lead's address);
+// when an auto-reply parked it, "manual" when a member did, "crm" when the
+// connected CRM says the contact moved on (a HubSpot deal or lifecycle stage, a
+// Salesforce rule), and "cc" while the contact is copied on another lead's
+// emails (reason is that lead's address);
 // `until` absent means the hold has no end and only a resume lifts it.
 export interface LeadHold {
     since: Date;
@@ -62,14 +63,14 @@ export function holdSummary(hold: LeadHold): string {
             ? `Copied on the emails to ${hold.reason} · none of their own are sent`
             : "Copied on another lead's emails · none of their own are sent";
     }
-    // A HubSpot hold's reason already names HubSpot ("A deal was opened in HubSpot: Acme").
+    // A CRM hold's reason already names the CRM ("Salesforce: Lead Status is Qualified").
     const what =
         hold.source === "out_of_office"
             ? "Out of office"
             : hold.source === "crm"
               ? hold.reason
                   ? "Held"
-                  : "Held by HubSpot"
+                  : "Held by your CRM"
               : "Paused";
     const why = hold.reason ? ` · ${hold.reason}` : "";
     if (!hold.until) return `${what}${why} · until someone resumes it`;

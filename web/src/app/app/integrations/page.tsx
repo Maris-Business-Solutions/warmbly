@@ -46,12 +46,12 @@ export default function IntegrationsPage() {
     const catalogQuery = useIntegrationCatalog();
     const connectionsQuery = useIntegrationConnections();
     const bookingsQuery = useMeetingBookings();
+    const navigate = useNavigate();
 
     const [connectTarget, setConnectTarget] = React.useState<IntegrationCatalogEntry | null>(null);
     const [manageTarget, setManageTarget] = React.useState<IntegrationConnection | null>(null);
     const [inboundUrl, setInboundUrl] = React.useState<{ provider: IntegrationProvider; url: string } | null>(null);
     const [query, setQuery] = React.useState("");
-    const navigate = useNavigate();
 
     const catalog = React.useMemo(() => catalogQuery.data?.catalog ?? [], [catalogQuery.data?.catalog]);
     const connections = React.useMemo(
@@ -225,7 +225,10 @@ export default function IntegrationsPage() {
                     onClose={() => setConnectTarget(null)}
                     onConnected={(conn) => {
                         connectionsQuery.refetch();
-                        if (conn.inbound_webhook_url) {
+                        if (conn.provider === "salesforce") {
+                            // Setup continues on the Salesforce page: rules, mapping, imports.
+                            navigate(`/app/integrations/salesforce/${conn.id}`);
+                        } else if (conn.inbound_webhook_url) {
                             setInboundUrl({ provider: conn.provider, url: conn.inbound_webhook_url });
                         } else {
                             // Drop straight into management so the user can wire automations.

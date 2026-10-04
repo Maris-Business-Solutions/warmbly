@@ -884,6 +884,11 @@ func Run(
 				contacts.DELETE("/:id/notes/:noteId", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.DeleteContactNote)
 				contacts.GET("/:id/activities", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.ListContactActivities)
 				contacts.GET("/:id/deals", m.RequireAccess(models.PermViewContacts, models.APIPermReadCRM), h.GetDealsByContact)
+				// The contact's linked Salesforce record, deals included, so API keys
+				// need the CRM read bit; writing to Salesforce is an integration action.
+				contacts.GET("/:id/salesforce", m.RequireAccess(models.PermViewContacts, models.APIPermReadCRM), h.GetContactSalesforce)
+				contacts.POST("/:id/salesforce/sync", m.RequireAccess(models.PermUseIntegrations, models.APIPermIntegrations), h.SyncContactSalesforce)
+				contacts.DELETE("/:id/salesforce/links/:linkId", m.RequireAccess(models.PermUseIntegrations, models.APIPermIntegrations), h.UnlinkContactSalesforce)
 			}
 
 			// Group endpoints map to the resources they organize: campaign
@@ -1167,6 +1172,26 @@ func Run(
 				integrations.POST("/connections/:id/test", write, h.TestConnection)
 				integrations.POST("/connections/:id/push", operate, h.PushContactsToIntegration)
 				integrations.GET("/bookings", read, h.ListMeetingBookings)
+
+				// Native Salesforce sync (:id is the connection). Reading health and
+				// the activity log is operational; changing what syncs is settings.
+				sf := integrations.Group("/salesforce/:id")
+				sf.GET("/overview", read, h.SalesforceOverview)
+				sf.GET("/settings", read, h.GetSalesforceSettings)
+				sf.PUT("/settings", write, h.UpdateSalesforceSettings)
+				sf.GET("/metadata", read, h.SalesforceMetadata)
+				sf.GET("/users", read, h.SalesforceUsers)
+				sf.GET("/list-views", read, h.SalesforceListViews)
+				sf.GET("/campaigns", read, h.SalesforceCampaigns)
+				sf.POST("/import/preview", operate, h.PreviewSalesforceImport)
+				sf.GET("/import-sources", read, h.ListSalesforceImportSources)
+				sf.POST("/import-sources", write, h.CreateSalesforceImportSource)
+				sf.PATCH("/import-sources/:sourceId", write, h.UpdateSalesforceImportSource)
+				sf.POST("/import-sources/:sourceId/run", operate, h.RunSalesforceImportSource)
+				sf.DELETE("/import-sources/:sourceId", write, h.DeleteSalesforceImportSource)
+				sf.GET("/activity", read, h.ListSalesforceActivity)
+				sf.POST("/activity/retry", write, h.RetrySalesforceActivity)
+				sf.POST("/sync-now", operate, h.SalesforceSyncNow)
 			}
 
 			// Meetings (org-scoped). Booked calls from connected scheduling

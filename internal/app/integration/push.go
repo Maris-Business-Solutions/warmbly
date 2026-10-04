@@ -70,6 +70,11 @@ func (s *service) PushContacts(ctx context.Context, orgID, connID uuid.UUID, con
 	if conn.Status != models.IntegrationStatusConnected && conn.Status != models.IntegrationStatusDegraded {
 		return nil, fmt.Errorf("connection is not usable (status: %s)", conn.Status)
 	}
+	// Salesforce pushes go through the native sync: Lead or Contact matching,
+	// the connection's field rules, and a link the contact keeps.
+	if conn.Provider == models.IntegrationSalesforce && s.salesforce != nil {
+		return s.salesforce.PushContacts(ctx, orgID, connID, contacts)
+	}
 
 	sec, err := s.repo.GetConnectionSecrets(ctx, connID)
 	if err != nil {
@@ -224,6 +229,17 @@ func (s *service) UpdateConnectionConfig(ctx context.Context, orgID, connID uuid
 	if stored := configString(conn.ConfigCapabilities, models.ConfigCapabilitiesSigningSecret); stored != "" {
 		next[models.ConfigCapabilitiesSigningSecret] = stored
 	}
+	// Salesforce sync settings are written only through their own validated
+	// endpoint, so a generic config save carries the stored ones over.
+	if conn.Provider == models.IntegrationSalesforce {
+		delete(next, "salesforce")
+		var stored map[string]json.RawMessage
+		if json.Unmarshal(conn.ConfigCapabilities, &stored) == nil {
+			if v, ok := stored["salesforce"]; ok {
+				next["salesforce"] = v
+			}
+		}
+	}
 	raw, err := json.Marshal(next)
 	if err != nil {
 		return nil, err
@@ -256,4 +272,30 @@ func contactSource(ct PushContact) map[string]any {
 		"phone":      ct.Phone,
 		"name":       strings.TrimSpace(ct.FirstName + " " + ct.LastName),
 	}
+}
+
+// SetConfigKey replaces one key of a connection's config_capabilities, leaving
+// the rest as stored. Used by provider settings that validate themselves.
+func (s *service) SetConfigKey(ctx context.Context, orgID, connID uuid.UUID, key string, value any) error {
+	conn, err := s.repo.GetConnectionByID(ctx, orgID, connID)
+	if err != nil {
+		return err
+	}
+	if conn == nil {
+		return errors.New("connection not found")
+	}
+	cc := map[string]any{}
+	if len(conn.ConfigCapabilities) > 0 {
+		_ = json.Unmarshal(conn.ConfigCapabilities, &cc)
+	}
+	cc[key] = value
+	raw, err := json.Marshal(cc)
+	if err != nil {
+		return err
+	}
+	dir := conn.SyncDirection
+	if dir == "" {
+		dir = string(models.SyncDirectionPush)
+	}
+	return s.repo.UpdateConnectionConfig(ctx, orgID, connID, raw, dir)
 }
