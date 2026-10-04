@@ -27,6 +27,7 @@ import (
 	warmupapp "github.com/warmbly/warmbly/internal/app/warmup"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 	"github.com/warmbly/warmbly/internal/pkg/mailhtml"
 	"github.com/warmbly/warmbly/internal/pkg/warmlint"
@@ -2027,7 +2028,7 @@ func (s *service) IngestDeliverabilityEvent(ctx context.Context, organizationID 
 				// A reputation block is about the mailbox, not the lead, so
 				// the title says who refused rather than who bounced.
 				if addressFine && verdict.Cause == bounceclass.CauseReputationBlock {
-					title = "Provider refused mail from " + camp.Name
+					title = "Provider refused mail from " + displayname.DisplayableOr(camp.Name, "a campaign")
 				}
 				if eventType == models.DeliverabilityEventComplaint {
 					cat = models.NotifHealthComplaint

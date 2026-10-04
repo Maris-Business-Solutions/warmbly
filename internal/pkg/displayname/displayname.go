@@ -127,6 +127,14 @@ func Displayable(s string) string {
 	return s
 }
 
+// DisplayableOr is Displayable with a neutral fallback.
+func DisplayableOr(s, fallback string) string {
+	if out := Displayable(s); out != "" {
+		return out
+	}
+	return fallback
+}
+
 // FromEmail derives a first name from an address's local part, with the
 // separators people use between names turned into spaces.
 func FromEmail(address string) string {
