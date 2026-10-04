@@ -41,10 +41,7 @@ func IssuedLogoKey(pu storage.PublicURLer, orgID uuid.UUID, logoURL string) (str
 
 // ImportedName is the archive's app name under the naming rules, or a neutral one.
 func ImportedName(raw string) string {
-	if name := displayname.Clean(raw, displayname.Workspace); name != "" {
-		return name
-	}
-	return "Imported app"
+	return displayname.CleanOr(raw, displayname.Workspace, "Imported app")
 }
 
 // ImportedWebsite is the archive's website when it is an http(s) address.

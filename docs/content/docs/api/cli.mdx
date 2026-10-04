@@ -136,7 +136,7 @@ warmbly auth login
 
 It asks two questions: which instance (the hosted service, or a hostname of your own), and how (a browser approval, or pasting a key you already have).
 
-The browser path shows an eight character code, opens `app.warmbly.com/cli`, and waits. You approve there, choosing which workspace the CLI is signing in to. The client name and machine name on that screen are whatever the terminal reported, so check that the code matches the one your terminal printed. Because approving creates a lasting credential, the screen asks you to confirm it is you (password or second factor) if you have not done so in the last few minutes, the same as creating an API key. The approval creates **one API key named for your machine**, which appears under Settings > API keys and is revocable there or with `warmbly auth logout`. The terminal never handles your password, and the browser never handles the key.
+The browser path shows an eight character code, opens `app.warmbly.com/cli`, and waits. You approve there, choosing which workspace the CLI is signing in to. The client name and machine name on that screen are whatever the terminal reported, so check that the code matches the one your terminal printed. Because approving creates a lasting credential, the screen asks you to confirm it is you (password or second factor) if you have not done so in the last few minutes, the same as creating an API key. The approval creates **one API key named for your machine** (its hostname up to the first dot), which appears under Settings > API keys and is revocable there or with `warmbly auth logout`. The terminal never handles your password, and the browser never handles the key.
 
 ```
   Your code: K4TM-9RQD

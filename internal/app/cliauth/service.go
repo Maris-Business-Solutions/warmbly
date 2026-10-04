@@ -28,6 +28,7 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/crypt"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -110,19 +111,19 @@ func NormalizeUserCode(raw string) string {
 }
 
 func clip(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if len(s) > n {
-		return s[:n]
+	r := []rune(strings.TrimSpace(s))
+	if len(r) > n {
+		return string(r[:n])
 	}
-	return s
+	return string(r)
 }
 
 func (s *service) StartCode(ctx context.Context, req models.CLIAuthStartRequest) (*models.CLIAuthStartResponse, *errx.Error) {
-	req.ClientName = clip(req.ClientName, 60)
-	if req.ClientName == "" {
-		req.ClientName = "Warmbly CLI"
-	}
-	req.Hostname = clip(req.Hostname, 80)
+	// Both are shown on the approval screen, so they follow the naming rules.
+	req.ClientName = displayname.CleanOr(req.ClientName, displayname.Workspace, "Warmbly CLI")
+	// The machine's own label is enough to tell keys apart and is never a link.
+	machine, _, _ := strings.Cut(strings.TrimSpace(req.Hostname), ".")
+	req.Hostname = displayname.CleanOr(machine, displayname.Workspace, "")
 	req.CLIVersion = clip(req.CLIVersion, 40)
 
 	// An unknown bit would grant a scope the approval screen never showed.

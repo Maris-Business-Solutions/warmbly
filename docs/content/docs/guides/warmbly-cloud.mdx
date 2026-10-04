@@ -148,7 +148,7 @@ On your instance, **Settings > Warmbly Cloud > Disconnect** removes every enroll
 - The instance token is stored sealed with `CREDENTIALS_ENCRYPTION_KEY`. Rotating that key invalidates the stored token; reconnect afterwards
 - Brokered access tokens reach the worker through the backend's internal API (`/api/v1/internal/cloud-link/token/:id`), so workers keep needing only `ENCRYPTED_KEYS_BACKEND_URL` and `ENCRYPTED_KEYS_WORKER_TOKEN`. A worker that cannot reach the backend keeps sending from such mailboxes until its cached token expires, about an hour
 - The link and the enrollment list are properties of the instance, not of a workspace, so they are not part of a [workspace export](/guides/workspace-export-import/). Reconnect after moving a workspace to a new instance
-- `INSTANCE_NAME` sets the name shown on the approval page; the hostname is used when unset
+- `INSTANCE_NAME` sets the name shown on the approval page; the hostname is used when unset. The name follows the workspace [naming rules](/api/error-codes/#name-refusals), so one that reads as a web address (a hostname, for example) shows as "Self-hosted instance"
 
 ## Related guides
 

@@ -22,6 +22,7 @@ import (
 	"github.com/warmbly/warmbly/internal/infrastructure/cache"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/crypt"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 	"github.com/warmbly/warmbly/internal/repository"
 )
 
@@ -166,18 +167,16 @@ func NormalizeUserCode(raw string) string {
 }
 
 func (s *service) StartCode(ctx context.Context, req models.PoolLinkStartRequest) (*models.PoolLinkStartResponse, *errx.Error) {
-	req.InstanceName = strings.TrimSpace(req.InstanceName)
-	if req.InstanceName == "" {
+	if strings.TrimSpace(req.InstanceName) == "" {
 		return nil, ErrBadRequest
 	}
-	if len(req.InstanceName) > 80 {
-		req.InstanceName = req.InstanceName[:80]
-	}
+	// Shown to the approving workspace, so it follows the workspace naming rules.
+	req.InstanceName = displayname.CleanOr(req.InstanceName, displayname.Workspace, "Self-hosted instance")
 	if u, err := url.Parse(strings.TrimSpace(req.InstanceURL)); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		req.InstanceURL = ""
 	}
-	if len(req.InstanceVersion) > 40 {
-		req.InstanceVersion = req.InstanceVersion[:40]
+	if r := []rune(req.InstanceVersion); len(r) > 40 {
+		req.InstanceVersion = string(r[:40])
 	}
 
 	deviceCode, err := randomToken("")
