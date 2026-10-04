@@ -67,6 +67,32 @@ func appOwnLogoPrefix(appID uuid.UUID) string {
 	return appLogoPrefix + appID.String() + "-"
 }
 
+// deleteAppLogo removes an app's previous image when it was stored for that app,
+// or is a workspace upload that no other app of the workspace still shows.
+func (h *Handler) deleteAppLogo(ctx context.Context, orgID, appID uuid.UUID, previousURL, keepKey string) {
+	if previousURL == "" {
+		return
+	}
+	if avatarKeyFromURL(previousURL, appOwnLogoPrefix(appID)) != "" {
+		h.deleteAvatarObject(ctx, previousURL, appOwnLogoPrefix(appID), keepKey)
+		return
+	}
+	orgPrefix := appLogoPrefix + orgID.String() + "/"
+	if avatarKeyFromURL(previousURL, orgPrefix) == "" {
+		return
+	}
+	apps, err := h.OAuthService.ListApplications(ctx, orgID)
+	if err != nil {
+		return
+	}
+	for _, a := range apps {
+		if a.ID != appID && a.LogoURL == previousURL {
+			return
+		}
+	}
+	h.deleteAvatarObject(ctx, previousURL, orgPrefix, keepKey)
+}
+
 func appLogoKey(orgID uuid.UUID, ext string) (string, error) {
 	buf := make([]byte, 12)
 	if _, err := rand.Read(buf); err != nil {
@@ -178,7 +204,7 @@ func (h *Handler) UploadOAuthApplicationLogo(c *gin.Context) {
 		errx.JSON(c, errx.InternalError())
 		return
 	}
-	h.deleteAvatarObject(ctx, app.LogoURL, appOwnLogoPrefix(app.ID), key)
+	h.deleteAppLogo(ctx, orgID, app.ID, app.LogoURL, key)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -188,12 +214,16 @@ func (h *Handler) DeleteOAuthApplicationLogo(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if app.SuspendedAt != nil {
+		errx.JSON(c, oauthAppWriteError(oauth.ErrAppSuspended))
+		return
+	}
 	ctx := c.Request.Context()
 	updated, err := h.OAuthService.SetLogo(ctx, orgID, app.ID, "")
 	if err != nil {
 		errx.JSON(c, errx.InternalError())
 		return
 	}
-	h.deleteAvatarObject(ctx, app.LogoURL, appOwnLogoPrefix(app.ID), "")
+	h.deleteAppLogo(ctx, orgID, app.ID, app.LogoURL, "")
 	c.JSON(http.StatusOK, updated)
 }

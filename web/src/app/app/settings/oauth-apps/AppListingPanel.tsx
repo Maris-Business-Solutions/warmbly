@@ -62,8 +62,10 @@ export default function AppListingPanel({ app, blocked = false }: { app: OAuthAp
                             <button
                                 type="button"
                                 onClick={() => {
-                                    void navigator.clipboard.writeText(shareLink(listing.slug));
-                                    toast.success("Link copied");
+                                    navigator.clipboard
+                                        .writeText(shareLink(listing.slug))
+                                        .then(() => toast.success("Link copied"))
+                                        .catch(() => toast.error("Could not copy the link"));
                                 }}
                                 className="h-6 px-2 rounded text-[11.5px] text-slate-600 hover:bg-white hover:text-slate-900 inline-flex items-center gap-1"
                             >
@@ -157,18 +159,16 @@ function ListingModal({ app, listing, onClose }: { app: OAuthApplication; listin
     const save = useSaveAppListing(app.id);
     const confirm = useConfirm();
 
-    const initial: AppListingInput = React.useMemo(
-        () => ({
-            slug: listing?.slug ?? slugify(app.name),
-            tagline: listing?.tagline ?? app.description.slice(0, 120),
-            description: listing?.description ?? "",
-            category: listing?.category ?? "other",
-            install_url: listing?.install_url ?? app.website_url,
-            support_url: listing?.support_url ?? "",
-            privacy_url: listing?.privacy_url ?? "",
-        }),
-        [listing, app],
-    );
+    // Frozen at open, so a refetch while typing does not move the baseline.
+    const [initial] = React.useState<AppListingInput>(() => ({
+        slug: listing?.slug ?? slugify(app.name),
+        tagline: listing?.tagline ?? app.description.slice(0, 120),
+        description: listing?.description ?? "",
+        category: listing?.category ?? "other",
+        install_url: listing?.install_url ?? app.website_url,
+        support_url: listing?.support_url ?? "",
+        privacy_url: listing?.privacy_url ?? "",
+    }));
     const [form, setForm] = React.useState<AppListingInput>(initial);
     const set = <K extends keyof AppListingInput>(k: K, v: AppListingInput[K]) => setForm((f) => ({ ...f, [k]: v }));
     const dirty = JSON.stringify(form) !== JSON.stringify(initial);

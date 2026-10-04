@@ -120,7 +120,11 @@ export interface AppCardProps {
 
 function openOnKey(onOpen: () => void) {
     return (e: React.KeyboardEvent) => {
-        if (e.key === "Enter") onOpen();
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+        }
     };
 }
 

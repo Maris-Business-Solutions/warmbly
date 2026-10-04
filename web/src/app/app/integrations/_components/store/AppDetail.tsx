@@ -342,8 +342,10 @@ export function CommunityDetail({
     }
 
     function copyLink() {
-        void navigator.clipboard.writeText(`${window.location.origin}${communityAppPath(slug)}`);
-        toast.success("Link copied");
+        navigator.clipboard
+            .writeText(`${window.location.origin}${communityAppPath(slug)}`)
+            .then(() => toast.success("Link copied"))
+            .catch(() => toast.error("Could not copy the link"));
     }
 
     const notice =

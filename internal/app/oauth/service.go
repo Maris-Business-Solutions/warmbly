@@ -13,13 +13,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/warmbly/warmbly/internal/errx"
 	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/warmbly/warmbly/internal/app/webhook"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/cache"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/displayname"

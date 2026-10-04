@@ -131,6 +131,9 @@ func (h *Handler) UpdateOAuthApplication(c *gin.Context) {
 		errx.JSON(c, oauthAppWriteError(uerr))
 		return
 	}
+	if app.LogoURL != current.LogoURL {
+		h.deleteAppLogo(c.Request.Context(), *orgID, id, current.LogoURL, "")
+	}
 	c.JSON(http.StatusOK, app)
 }
 

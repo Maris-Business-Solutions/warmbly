@@ -17,14 +17,15 @@ const TINTS = [
 ];
 
 export default function CommunityLogo({ name, url, size = 9 }: { name: string; url?: string; size?: GlyphSize }) {
-    const [broken, setBroken] = React.useState(false);
+    const [brokenUrl, setBrokenUrl] = React.useState<string | null>(null);
+    const broken = brokenUrl === url;
     const dim = `${GLYPH_DIMS[size].tile} ${GLYPH_DIMS[size].text}`;
     if (url && !broken) {
         return (
             <img
                 src={url}
                 alt=""
-                onError={() => setBroken(true)}
+                onError={() => setBrokenUrl(url)}
                 className={cn("ring-1 ring-slate-200 object-cover bg-white shrink-0", dim)}
             />
         );

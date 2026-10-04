@@ -53,7 +53,7 @@ func (h *Handler) AdminSuspendOAuthApp(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	h.audit(c, models.AuditAction("suspend_oauth_app"), models.AuditEntityAppListing, &id, map[string]string{
+	h.audit(c, models.AuditAction("suspend_oauth_app"), models.AuditEntityOAuthApplication, &id, map[string]string{
 		"name": app.Name, "organization_id": app.OrganizationID.String(), "reason": body.Reason,
 	})
 	c.JSON(http.StatusOK, app)
@@ -70,7 +70,7 @@ func (h *Handler) AdminUnsuspendOAuthApp(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	h.audit(c, models.AuditAction("unsuspend_oauth_app"), models.AuditEntityAppListing, &id, map[string]string{
+	h.audit(c, models.AuditAction("unsuspend_oauth_app"), models.AuditEntityOAuthApplication, &id, map[string]string{
 		"name": app.Name, "organization_id": app.OrganizationID.String(),
 	})
 	c.JSON(http.StatusOK, app)
@@ -87,7 +87,7 @@ func (h *Handler) AdminRevokeOAuthAppGrants(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	h.audit(c, models.AuditAction("revoke_oauth_app_grants"), models.AuditEntityAppListing, &id, map[string]string{
+	h.audit(c, models.AuditAction("revoke_oauth_app_grants"), models.AuditEntityOAuthApplication, &id, map[string]string{
 		"revoked": strconv.FormatInt(n, 10),
 	})
 	c.JSON(http.StatusOK, gin.H{"revoked": n})
@@ -104,8 +104,8 @@ func (h *Handler) AdminRemoveOAuthAppLogo(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	h.deleteAvatarObject(c.Request.Context(), previous, appOwnLogoPrefix(id), "")
-	h.audit(c, models.AuditAction("remove_oauth_app_logo"), models.AuditEntityAppListing, &id, map[string]string{"name": app.Name})
+	h.deleteAppLogo(c.Request.Context(), app.OrganizationID, id, previous, "")
+	h.audit(c, models.AuditAction("remove_oauth_app_logo"), models.AuditEntityOAuthApplication, &id, map[string]string{"name": app.Name})
 	c.JSON(http.StatusOK, app)
 }
 
@@ -142,7 +142,7 @@ func (h *Handler) AdminCreateOAuthDeveloperBlock(c *gin.Context) {
 	if block.UserID != nil {
 		meta["user_id"] = block.UserID.String()
 	}
-	h.audit(c, models.AuditAction("block_oauth_developer"), models.AuditEntityAppListing, &block.ID, meta)
+	h.audit(c, models.AuditAction("block_oauth_developer"), models.AuditEntityOAuthDeveloperBlock, &block.ID, meta)
 	c.JSON(http.StatusCreated, gin.H{"block": block, "suspended_apps": suspended})
 }
 
@@ -156,7 +156,7 @@ func (h *Handler) AdminDeleteOAuthDeveloperBlock(c *gin.Context) {
 		errx.JSON(c, xerr)
 		return
 	}
-	h.audit(c, models.AuditAction("unblock_oauth_developer"), models.AuditEntityAppListing, &id, nil)
+	h.audit(c, models.AuditAction("unblock_oauth_developer"), models.AuditEntityOAuthDeveloperBlock, &id, nil)
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 

@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Explorer, FilterGroup, SearchFilter, SelectFilter } from "@/components/data/Explorer";
 import { DataTable, type Column } from "@/components/data/DataTable";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 import { AdminPerm } from "@/lib/auth/permissions";
 import { useCursorPager } from "@/lib/useCursorPager";
@@ -87,6 +88,7 @@ function AppsTab() {
     const pager = useCursorPager();
     const { reset } = pager;
     const [action, setAction] = useState<Action | null>(null);
+    const confirm = useConfirm();
 
     const filterKey = JSON.stringify({ query, status });
     useEffect(() => {
@@ -243,11 +245,19 @@ function AppsTab() {
                         )}
                         <DropdownMenuItem
                             disabled={r.installs === 0}
-                            onSelect={() =>
-                                run.mutate(() =>
-                                    revokeOAuthAppGrants(r.id).then((res) => toast.success(`${res.revoked} tokens revoked`)),
-                                )
-                            }
+                            onSelect={async () => {
+                                const ok = await confirm({
+                                    title: `Revoke every token for ${r.name}?`,
+                                    description: `Every workspace that installed it (${r.installs}) has to authorize it again. This cannot be undone.`,
+                                    confirmLabel: "Revoke every token",
+                                    destructive: true,
+                                });
+                                if (ok) {
+                                    run.mutate(() =>
+                                        revokeOAuthAppGrants(r.id).then((res) => toast.success(`${res.revoked} tokens revoked`)),
+                                    );
+                                }
+                            }}
                         >
                             Revoke every token
                         </DropdownMenuItem>
