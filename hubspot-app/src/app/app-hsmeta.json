@@ -24,7 +24,7 @@
       "conditionallyRequiredScopes": []
     },
     "permittedUrls": {
-      "fetch": ["https://api.warmbly.com"],
+      "fetch": ["https://api.warmbly.com/api/v1/integrations/hubspot/app/"],
       "iframe": [],
       "img": []
     },

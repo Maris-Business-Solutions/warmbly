@@ -48,6 +48,7 @@ type CRMProviderRepository interface {
 	OwnerForUser(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, userID uuid.UUID) (string, error)
 	UserForOwner(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, externalID string) (*uuid.UUID, error)
 	FallbackActor(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	MemberForOwnerEmail(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, email string) (*uuid.UUID, models.OrganizationPermission, error)
 
 	EnqueueJob(ctx context.Context, job *models.CRMSyncJob) error
 	ClaimJobs(ctx context.Context, limit int, lease time.Duration) ([]models.CRMSyncJob, error)
@@ -214,13 +215,14 @@ func (r *crmProviderRepository) ListProviderOrgs(ctx context.Context, provider m
 	return out, rows.Err()
 }
 
-// OrgsForAccount lists the workspaces in provider mode on one provider
-// account (a HubSpot portal), for routing that provider's webhooks.
+// OrgsForAccount lists the workspaces in provider mode with a live connection
+// to one provider account (a HubSpot portal).
 func (r *crmProviderRepository) OrgsForAccount(ctx context.Context, provider models.CRMProvider, externalAccountID string) ([]uuid.UUID, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT s.organization_id FROM crm_settings s
 		JOIN integration_connections c ON c.id = s.connection_id AND c.organization_id = s.organization_id
 		WHERE s.provider = $1 AND c.provider = $1 AND c.external_account_id = $2
+		  AND c.status IN ('connected', 'degraded')
 		ORDER BY s.created_at`, provider, externalAccountID)
 	if err != nil {
 		return nil, err
@@ -688,6 +690,27 @@ func (r *crmProviderRepository) UserForOwner(ctx context.Context, orgID uuid.UUI
 		return nil, nil
 	}
 	return id, err
+}
+
+// MemberForOwnerEmail is the accepted, sign-in-allowed member matched to the
+// active provider owner with this address, with their permissions.
+func (r *crmProviderRepository) MemberForOwnerEmail(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, email string) (*uuid.UUID, models.OrganizationPermission, error) {
+	var id uuid.UUID
+	var perms models.OrganizationPermission
+	err := r.db.QueryRow(ctx, `
+		SELECT m.user_id, m.permissions FROM crm_owners o
+		JOIN organization_members m ON m.organization_id = o.organization_id AND m.user_id = o.user_id
+		JOIN users u ON u.id = m.user_id
+		WHERE o.organization_id = $1 AND o.provider = $2 AND NOT o.archived
+		  AND LOWER(o.email) = LOWER($3) AND m.accepted_at IS NOT NULL AND (u.ban_scope & 1) = 0
+		ORDER BY o.user_pinned DESC, o.external_id LIMIT 1`, orgID, provider, email).Scan(&id, &perms)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	return &id, perms, nil
 }
 
 // FallbackActor is who a mirrored note or task is recorded as created by when

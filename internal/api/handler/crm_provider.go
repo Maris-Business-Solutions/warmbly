@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/app/hubspot"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
@@ -395,28 +398,35 @@ func (h *Handler) StartCRMBackfill(c *gin.Context) {
 }
 
 // verifyHubSpot checks a request HubSpot signed with the app's client secret
-// (v3, or v2 on requests that still carry it). HubSpot signs the URL it
-// called; behind a proxy that is the public backend URL.
+// (v3, timestamped) against the public backend URL it was sent to.
 func (h *Handler) verifyHubSpot(c *gin.Context, body []byte) bool {
-	scheme := "https"
-	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
-		scheme = strings.TrimSpace(strings.Split(proto, ",")[0])
-	} else if c.Request.TLS == nil {
-		scheme = "http"
-	}
-	candidates := []string{scheme + "://" + c.Request.Host + c.Request.URL.RequestURI()}
-	candidates = append(candidates, config.BackendPublicURL()+c.Request.URL.RequestURI())
-	v3, ts := c.GetHeader("X-HubSpot-Signature-v3"), c.GetHeader("X-HubSpot-Request-Timestamp")
-	v2 := c.GetHeader("X-HubSpot-Signature")
-	for _, u := range candidates {
-		if v3 != "" && h.HubSpot.VerifySignature(c.Request.Method, u, body, v3, ts, time.Now()) == nil {
-			return true
-		}
-		if v3 == "" && v2 != "" && h.HubSpot.VerifySignatureV2(c.Request.Method, u, body, v2) == nil {
+	u := config.BackendPublicURL() + c.Request.URL.RequestURI()
+	return h.HubSpot.VerifySignature(c.Request.Method, u, body,
+		c.GetHeader("X-HubSpot-Signature-v3"), c.GetHeader("X-HubSpot-Request-Timestamp"), time.Now()) == nil
+}
+
+// hubspotFetchParams are what HubSpot appends to a card's hubspot.fetch call.
+var hubspotFetchParams = []string{"portalid", "appid", "userid", "useremail"}
+
+// fromHubSpotFetch reports a request a card sent through hubspot.fetch.
+// HubSpot's webhook and workflow action calls carry none of these.
+func fromHubSpotFetch(q url.Values) bool {
+	for k := range q {
+		if slices.Contains(hubspotFetchParams, strings.ToLower(k)) {
 			return true
 		}
 	}
 	return false
+}
+
+// readHubSpotServer reads a signed webhook or workflow action call, whose
+// body names the portal, and refuses one a card sent.
+func (h *Handler) readHubSpotServer(c *gin.Context) ([]byte, bool) {
+	if h.HubSpot != nil && fromHubSpotFetch(c.Request.URL.Query()) {
+		c.Status(http.StatusForbidden)
+		return nil, false
+	}
+	return h.readHubSpot(c)
 }
 
 // readHubSpot reads and verifies a signed HubSpot request body.
@@ -440,7 +450,7 @@ func (h *Handler) readHubSpot(c *gin.Context) ([]byte, bool) {
 // HubSpotWebhook receives HubSpot's app webhooks. It only queues re-reads, so
 // a delivery can at most make a pull come sooner.
 func (h *Handler) HubSpotWebhook(c *gin.Context) {
-	body, ok := h.readHubSpot(c)
+	body, ok := h.readHubSpotServer(c)
 	if !ok {
 		return
 	}
@@ -452,7 +462,7 @@ func (h *Handler) HubSpotWebhook(c *gin.Context) {
 }
 
 // hubspotCardRequest is what the Warmbly card in HubSpot sends. HubSpot adds
-// portalId and userEmail to the query string and signs the request.
+// portalId, userId and userEmail to the query string and signs the request.
 type hubspotCardRequest struct {
 	ContactID  string `json:"contact_id"`
 	Email      string `json:"email"`
@@ -460,32 +470,43 @@ type hubspotCardRequest struct {
 	Paused     bool   `json:"paused"`
 }
 
-func (h *Handler) hubspotCardInput(c *gin.Context) (*hubspotCardRequest, bool) {
+func (h *Handler) hubspotCardInput(c *gin.Context) (*hubspotCardRequest, *hubspot.User, bool) {
 	body, ok := h.readHubSpot(c)
 	if !ok {
-		return nil, false
+		return nil, nil, false
 	}
-	// HubSpot appends the portal it signed for; a second value would let the
-	// URL name a different one, so exactly one is accepted.
-	if len(c.QueryArray("portalId")) != 1 || c.Query("portalId") == "" {
+	user, ok := hubspotFetchUser(c.Request.URL.Query())
+	if !ok {
 		errx.Handle(c, errx.New(errx.BadRequest, "invalid request"))
-		return nil, false
+		return nil, nil, false
 	}
 	var req hubspotCardRequest
 	if err := json.Unmarshal(body, &req); err != nil || len(req.ContactID) > 32 || len(req.Email) > 320 {
 		errx.Handle(c, errx.New(errx.BadRequest, "invalid request"))
-		return nil, false
+		return nil, nil, false
 	}
-	return &req, true
+	return &req, user, true
+}
+
+// hubspotFetchUser reads the portal and user HubSpot appended and signed. A
+// second value would let the URL name different ones, so exactly one of each
+// is accepted.
+func hubspotFetchUser(q url.Values) (*hubspot.User, bool) {
+	for _, k := range []string{"portalId", "userId", "userEmail"} {
+		if len(q[k]) != 1 || strings.TrimSpace(q.Get(k)) == "" {
+			return nil, false
+		}
+	}
+	return &hubspot.User{ID: q.Get("userId"), Email: q.Get("userEmail")}, true
 }
 
 // HubSpotCard returns the Warmbly card for a HubSpot contact record.
 func (h *Handler) HubSpotCard(c *gin.Context) {
-	req, ok := h.hubspotCardInput(c)
+	req, user, ok := h.hubspotCardInput(c)
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.Card(c.Request.Context(), c.Query("portalId"), req.ContactID, req.Email)
+	out, xerr := h.HubSpot.Card(c.Request.Context(), c.Query("portalId"), *user, req.ContactID, req.Email)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -496,11 +517,11 @@ func (h *Handler) HubSpotCard(c *gin.Context) {
 // HubSpotCardEnroll adds the record's contact to a campaign from the card.
 // Idempotent: enrolling a lead twice leaves one lead.
 func (h *Handler) HubSpotCardEnroll(c *gin.Context) {
-	req, ok := h.hubspotCardInput(c)
+	req, user, ok := h.hubspotCardInput(c)
 	if !ok {
 		return
 	}
-	if xerr := h.HubSpot.Enroll(c.Request.Context(), c.Query("portalId"), req.ContactID, req.Email, req.CampaignID, c.Query("userEmail")); xerr != nil {
+	if xerr := h.HubSpot.Enroll(c.Request.Context(), c.Query("portalId"), req.ContactID, req.Email, req.CampaignID, user); xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
@@ -510,11 +531,11 @@ func (h *Handler) HubSpotCardEnroll(c *gin.Context) {
 // HubSpotCardPause holds or resumes the contact's campaigns from the card.
 // Idempotent: it sets a state rather than toggling one.
 func (h *Handler) HubSpotCardPause(c *gin.Context) {
-	req, ok := h.hubspotCardInput(c)
+	req, user, ok := h.hubspotCardInput(c)
 	if !ok {
 		return
 	}
-	if xerr := h.HubSpot.SetPaused(c.Request.Context(), c.Query("portalId"), req.ContactID, req.Email, req.Paused); xerr != nil {
+	if xerr := h.HubSpot.SetPaused(c.Request.Context(), c.Query("portalId"), *user, req.ContactID, req.Email, req.Paused); xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
@@ -537,10 +558,10 @@ type hubspotActionRequest struct {
 	} `json:"fetchOptions"`
 }
 
-// HubSpotActionEnroll runs the "Add to Warmbly campaign" workflow action.
-// A refusal answers FAIL_CONTINUE with the reason, so the workflow goes on.
+// HubSpotActionEnroll runs the "Add to Warmbly campaign" workflow action, as
+// the workspace owner. A refusal answers FAIL_CONTINUE with the reason.
 func (h *Handler) HubSpotActionEnroll(c *gin.Context) {
-	body, ok := h.readHubSpot(c)
+	body, ok := h.readHubSpotServer(c)
 	if !ok {
 		return
 	}
@@ -551,7 +572,7 @@ func (h *Handler) HubSpotActionEnroll(c *gin.Context) {
 	}
 	campaign, _ := req.InputFields["campaign"].(string)
 	xerr := h.HubSpot.Enroll(c.Request.Context(), strconv.FormatInt(req.Origin.PortalID, 10),
-		strconv.FormatInt(req.Object.ObjectID, 10), req.Object.Properties["email"], campaign, "")
+		strconv.FormatInt(req.Object.ObjectID, 10), req.Object.Properties["email"], campaign, nil)
 	out := gin.H{"hs_execution_state": "SUCCESS", "warmbly_result": "Added to campaign"}
 	if xerr != nil {
 		out = gin.H{"hs_execution_state": "FAIL_CONTINUE", "warmbly_result": xerr.Message}
@@ -561,7 +582,7 @@ func (h *Handler) HubSpotActionEnroll(c *gin.Context) {
 
 // HubSpotActionCampaigns lists campaigns for the workflow action's dropdown.
 func (h *Handler) HubSpotActionCampaigns(c *gin.Context) {
-	body, ok := h.readHubSpot(c)
+	body, ok := h.readHubSpotServer(c)
 	if !ok {
 		return
 	}
