@@ -174,7 +174,12 @@ function SourceRow({
             tabIndex={0}
             onClick={onEdit}
             onKeyDown={(e) => {
-                if (e.key === "Enter") onEdit();
+                // Only the row itself: keys from its menu bubble here through the portal.
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onEdit();
+                }
             }}
             className="px-4 py-3 flex items-start gap-3 hover:bg-slate-50/60 transition-colors cursor-pointer outline-none focus-visible:bg-slate-50"
         >

@@ -147,7 +147,7 @@ A self-hosted instance needs its own Salesforce app. Which kind depends on how m
 
 Whichever you create, configure it with:
 
-- callback URL `<API_PUBLIC_URL>/integrations/oauth/callback`, or your `INTEGRATIONS_OAUTH_REDIRECT_URL`. It must match exactly, including the scheme and no trailing slash;
+- callback URL: the value of `INTEGRATIONS_OAUTH_REDIRECT_URL`, or when that is unset, `BACKEND_PUBLIC_URL` (else `API_PUBLIC_URL`) plus `/integrations/oauth/callback`. It must match exactly, including the scheme and no trailing slash;
 - OAuth scopes **Manage user data via APIs (api)**, **Perform requests at any time (refresh_token, offline_access)** and **Access the identity URL service (id, profile, email, address, phone)**;
 - **Require PKCE** on, and the **Web Server Flow** enabled with its client secret required;
 - refresh tokens **valid until revoked**.

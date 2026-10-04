@@ -1262,7 +1262,8 @@ func (s *service) ProviderAccess(ctx context.Context, orgID, connID uuid.UUID, f
 	}
 	// Concurrent callers share one refresh: with refresh-token rotation, two
 	// parallel refreshes would leave one holding a dead token.
-	key := connID.String()
+	// Its own keyspace: AccessToken shares the group with a different result type.
+	key := "provider:" + connID.String()
 	if force {
 		key += ":force"
 	}

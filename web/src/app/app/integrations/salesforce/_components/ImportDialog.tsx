@@ -109,13 +109,17 @@ export default function ImportDialog({ connectionId, onClose }: { connectionId: 
         return () => document.removeEventListener("keydown", onKey);
     }, [requestClose]);
 
+    // The selection the newest preview request was for; an older answer is dropped.
+    const latestPreview = React.useRef("");
     async function loadPreview() {
         const parts = kindParts(kind);
-        setPreviewFor(selectionKey);
+        const key = selectionKey;
+        latestPreview.current = key;
+        setPreviewFor(key);
         setPreview(null);
         try {
             const p = await previewM.mutateAsync({ connectionId, ...parts, source_id: sourceId });
-            setPreview(p);
+            if (latestPreview.current === key) setPreview(p);
         } catch {
             // Rendered in the step from previewM.error.
         }

@@ -248,6 +248,9 @@ func main() {
 		Repo:         repository.NewSalesforceRepository(primaryDB.Pool),
 		Integrations: integrationServiceC,
 		Cipher:       cipherService,
+		Holds:        campaignProgressRepo,
+		Suppression:  advancedRepo,
+		Subscription: contactRepo,
 	})
 	integrationServiceC.SetSalesforce(salesforceC)
 	webhookService.WireRecordSink(salesforceC.Recorder().Record)

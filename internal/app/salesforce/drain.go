@@ -627,7 +627,9 @@ func (s *Service) writeback(ctx context.Context, c *conn, work []*pending, links
 		if e := errs[p.contact.ID]; e != nil {
 			if p.done {
 				// The Task landed; the record update did not. Say so on the row.
-				s.annotate(ctx, p, "Task logged, but updating the record failed: "+e.Error())
+				if p.a.TaskID != "" {
+					s.annotate(ctx, p, "Task logged, but updating the record failed: "+describeErr(e))
+				}
 				continue
 			}
 			s.fail(ctx, p, e)
@@ -649,6 +651,8 @@ func (s *Service) finish(ctx context.Context, p *pending, status, taskID, detail
 	}
 	p.a.Attempts++
 	_ = s.Repo.FinishActivity(ctx, &p.a)
+	// FinishActivity released the lease; a later note on this row targets it unleased.
+	p.a.LeaseID = nil
 }
 
 func (s *Service) annotate(ctx context.Context, p *pending, detail string) {
@@ -687,6 +691,7 @@ func (s *Service) fail(ctx context.Context, p *pending, err error) {
 		p.a.Status = models.SalesforceActivityFailed
 	}
 	_ = s.Repo.FinishActivity(ctx, &p.a)
+	p.a.LeaseID = nil
 }
 
 func backoff(attempt int) time.Duration {
