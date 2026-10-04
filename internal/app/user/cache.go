@@ -16,6 +16,11 @@ func getUserKey(id uuid.UUID) string {
 	return "user:" + id.String()
 }
 
+// CacheKey is the Redis key the cached /auth/me copy of a user lives under.
+func CacheKey(id uuid.UUID) string {
+	return getUserKey(id)
+}
+
 func (s *userService) SaveUser(ctx context.Context, user *models.User) *errx.Error {
 	raw, err := json.Marshal(user)
 	if err != nil {

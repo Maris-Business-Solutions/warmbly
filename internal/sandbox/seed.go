@@ -317,6 +317,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, cfg Config) error {
 	if err := runAdvisor(ctx, pool); err != nil {
 		return err
 	}
+	seed.ForgetCachedUsers(ctx, pool)
 	return nil
 }
 
@@ -374,12 +375,16 @@ func seedIdentity(ctx context.Context, pool *pgxpool.Pool) error {
 			return err
 		}
 		if _, err := pool.Exec(ctx, `
-			INSERT INTO users (id, first_name, last_name, email, password_hash)
-			VALUES ($1, 'Sunny', 'Sandbox', $2, $3)
+			INSERT INTO users (id, first_name, last_name, email, password_hash, onboarding_completed_at)
+			VALUES ($1, 'Sunny', 'Sandbox', $2, $3, NOW())
 			ON CONFLICT (id) DO NOTHING`,
 			sandboxUser, SandboxLoginEmail, hash); err != nil {
 			return err
 		}
+	}
+	// The demo account lands straight in the dashboard, even on a database seeded before this rule.
+	if _, err := pool.Exec(ctx, `UPDATE users SET onboarding_completed_at = NOW() WHERE id = $1 AND onboarding_completed_at IS NULL`, sandboxUser); err != nil {
+		return err
 	}
 
 	if _, err := pool.Exec(ctx, `

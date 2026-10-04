@@ -57,6 +57,7 @@ type UserRepository interface {
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	SetFreeTrialUsed(ctx context.Context, userID uuid.UUID) error
 	UpdateOnboarding(ctx context.Context, userID uuid.UUID, firstName, lastName, referralSource, role, teamSize string) error
+	MarkOnboarded(ctx context.Context, userID uuid.UUID) (time.Time, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, firstName, lastName string) error
 	UpdateAvatar(ctx context.Context, userID uuid.UUID, avatarURL *string) error
 
@@ -226,6 +227,15 @@ func (r *userRepository) UpdateOnboarding(ctx context.Context, userID uuid.UUID,
 	const q = `UPDATE users SET first_name=$2, last_name=$3, referral_source=$4, job_role=NULLIF($5,''), team_size=NULLIF($6,''), onboarding_completed_at=NOW(), updated_at=NOW() WHERE id=$1`
 	_, err := r.DB.Exec(ctx, q, userID, firstName, lastName, referralSource, role, teamSize)
 	return err
+}
+
+// MarkOnboarded skips the first-run wizard for an operator-provisioned account,
+// keeping an earlier completion time when there is one.
+func (r *userRepository) MarkOnboarded(ctx context.Context, userID uuid.UUID) (time.Time, error) {
+	const q = `UPDATE users SET onboarding_completed_at=COALESCE(onboarding_completed_at, NOW()), updated_at=NOW() WHERE id=$1 RETURNING onboarding_completed_at`
+	var at time.Time
+	err := r.DB.QueryRow(ctx, q, userID).Scan(&at)
+	return at, err
 }
 
 func (r *userRepository) UpdateProfile(ctx context.Context, userID uuid.UUID, firstName, lastName string) error {
