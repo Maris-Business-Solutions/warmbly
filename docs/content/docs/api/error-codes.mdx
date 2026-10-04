@@ -301,6 +301,21 @@ Returned by the CRM endpoints while a workspace runs its CRM on [HubSpot](/guide
 }
 ```
 
+#### Salesforce sync refusals
+
+The [Salesforce](/guides/salesforce/) endpoints answer with their own codes. When Salesforce itself refused, `message` carries its `errorCode` and text, such as `Salesforce: INVALID_FIELD: No such column 'Tier__c' on entity 'Lead'`.
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `invalid_salesforce_domain` | 400 | The custom domain given to `POST /integrations/oauth/start` is not a Salesforce My Domain (`*.my.salesforce.com`) |
+| `invalid_salesforce_settings` | 400 | `PUT /integrations/salesforce/:id/settings` named something the sync cannot run: an unknown field, a related field to write, an engagement field to read, a field mapped twice, or a fixed owner with no user |
+| `salesforce_error` | 400 | Salesforce refused the request. The message is Salesforce's own |
+| `salesforce_unreachable` | 400 | Salesforce did not answer. Retry later |
+| `salesforce_sync_off` | 400 | `POST /integrations/salesforce/:id/sync-now` on a connection with sync turned off |
+| `salesforce_reconnect_required` | 409 | The Salesforce session ended (a revoked app, a password reset, a deactivated user). Reconnect the integration |
+| `import_running` | 409 | `POST /integrations/salesforce/:id/import-sources/:sourceId/run` while that import is already running |
+| `salesforce_rate_limited` | 429 | The Salesforce org has used its API requests for today |
+
 ### 401 Unauthorized
 
 Returned when authentication fails.

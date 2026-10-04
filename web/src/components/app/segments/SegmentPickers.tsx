@@ -265,6 +265,7 @@ const ENUM_LABELS: Record<string, string> = {
     campaign: "Added from a campaign",
     import: "Imported",
     sheet_sync: "Google Sheets sync",
+    crm_sync: "CRM sync",
     api: "API",
     ai_assistant: "AI assistant",
     form: "Form submission",

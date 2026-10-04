@@ -50,6 +50,7 @@ export type ContactSource =
     | "campaign"
     | "import"
     | "sheet_sync"
+    | "crm_sync"
     | "api"
     | "ai_assistant"
     | "form"

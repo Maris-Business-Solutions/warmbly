@@ -162,6 +162,10 @@ func (h *Handler) DisconnectIntegration(c *gin.Context) {
 type oauthStartPayload struct {
 	Provider string `json:"provider"`
 	Label    string `json:"label"`
+	// Environment ("production" or "sandbox") and Domain (a My Domain host)
+	// choose the Salesforce login server; ignored for other providers.
+	Environment string `json:"environment"`
+	Domain      string `json:"domain"`
 }
 
 // StartIntegrationOAuth returns the provider authorization URL for the SPA to
@@ -181,8 +185,14 @@ func (h *Handler) StartIntegrationOAuth(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.BadRequest, "unknown provider"))
 		return
 	}
-	resp, err := h.IntegrationService.OAuthStart(c.Request.Context(), orgID, userID, provider, p.Label)
+	params := map[string]string{"environment": p.Environment, "domain": p.Domain}
+	resp, err := h.IntegrationService.OAuthStart(c.Request.Context(), orgID, userID, provider, p.Label, params)
 	if err != nil {
+		var xe *errx.Error
+		if errors.As(err, &xe) {
+			errx.JSON(c, xe)
+			return
+		}
 		if errors.Is(err, integration.ErrOAuthNotConfigured) {
 			errx.JSON(c, errx.New(errx.NotImplemented, "This provider isn't available yet — OAuth credentials are not configured on the server."))
 			return

@@ -35,6 +35,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/notification"
 	"github.com/warmbly/warmbly/internal/app/opsnotify"
 	"github.com/warmbly/warmbly/internal/app/replyclassify"
+	"github.com/warmbly/warmbly/internal/app/salesforce"
 	warmupapp "github.com/warmbly/warmbly/internal/app/warmup"
 	"github.com/warmbly/warmbly/internal/app/webhook"
 	workerapp "github.com/warmbly/warmbly/internal/app/worker"
@@ -240,6 +241,19 @@ func main() {
 	integrationRepoC := repository.NewIntegrationRepository(primaryDB.Pool)
 	integrationServiceC := integration.NewService(integrationRepoC, cipherService, integration.NewOAuthManager())
 	webhookService.WireDispatchSink(integrationServiceC.DispatchAny)
+	// Replies, opens and clicks are raised here, so the Salesforce outbox
+	// records them here too; the backend drains it. Automation upserts take
+	// the native path as well.
+	salesforceC := salesforce.NewService(salesforce.Deps{
+		Repo:         repository.NewSalesforceRepository(primaryDB.Pool),
+		Integrations: integrationServiceC,
+		Cipher:       cipherService,
+		Holds:        campaignProgressRepo,
+		Suppression:  advancedRepo,
+		Subscription: contactRepo,
+	})
+	integrationServiceC.SetSalesforce(salesforceC)
+	webhookService.WireRecordSink(salesforceC.Recorder().Record)
 	// AI automation nodes + reply-classifier Layer 3 run in THIS process (reply /
 	// warmup / bounce events dispatch here). Build the credit ledger + provider so
 	// the ai_step / ai_switch nodes can charge + call, and so the classifier's

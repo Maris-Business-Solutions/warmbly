@@ -256,6 +256,8 @@ type IntegrationTokens struct {
 	RefreshToken string
 	ExpiresAt    *time.Time
 	Scopes       []string
+	// InstanceURL is a per-org API host a refresh reported (Salesforce).
+	InstanceURL string
 }
 
 // IntegrationOAuthState is the short-lived CSRF/PKCE record minted at the
@@ -269,9 +271,12 @@ type IntegrationOAuthState struct {
 	CodeVerifier    string
 	Label           string
 	RequestedScopes []string
-	UsedAt          *time.Time
-	ExpiresAt       time.Time
-	CreatedAt       time.Time
+	// Params carries provider options chosen at start, such as the Salesforce
+	// login host the code must be exchanged at.
+	Params    map[string]string
+	UsedAt    *time.Time
+	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
 // IntegrationOAuthStartResponse is returned to the SPA so it can open the

@@ -9,11 +9,13 @@ import (
 	"fmt"
 	emailverifyapp "github.com/warmbly/warmbly/internal/app/emailverify"
 	"github.com/warmbly/warmbly/internal/pkg/emailverify"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/oauth2"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/warmbly/warmbly/internal/app/cipher"
@@ -53,7 +55,8 @@ type Service interface {
 	Disconnect(ctx context.Context, orgID, id uuid.UUID) error
 
 	// OAuthStart returns the provider authorization URL for a one-click connect.
-	OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provider models.IntegrationProvider, label string) (*models.IntegrationOAuthStartResponse, error)
+	// params carries provider options (Salesforce: "environment", "domain").
+	OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provider models.IntegrationProvider, label string, params map[string]string) (*models.IntegrationOAuthStartResponse, error)
 	// OAuthFinish completes the handshake: validates state, exchanges the code,
 	// resolves the account identity, and persists encrypted tokens. authorize
 	// runs against the state's organization before the code is exchanged.
@@ -128,6 +131,8 @@ type Service interface {
 	// UpdateConnectionConfig persists the onboarding/capability snapshot + sync
 	// direction for a connection.
 	UpdateConnectionConfig(ctx context.Context, orgID, connID uuid.UUID, configCapabilities map[string]any, syncDirection string) (*models.IntegrationConnection, error)
+	// SetConfigKey replaces one key of config_capabilities, keeping the rest.
+	SetConfigKey(ctx context.Context, orgID, connID uuid.UUID, key string, value any) error
 
 	// WebhookSigningSecret returns the HMAC signing secret for an automation
 	// connection's outbound webhook deliveries, generating + persisting one on
@@ -195,6 +200,29 @@ type Service interface {
 	// SetCRMModeCheck reports whether a workspace runs its CRM on HubSpot, so
 	// the legacy HubSpot action steps aside.
 	SetCRMModeCheck(check func(ctx context.Context, orgID uuid.UUID) bool)
+	// ProviderAccess returns a usable OAuth access token for an org-owned
+	// connection, refreshing first when force is set or the token is expiring.
+	ProviderAccess(ctx context.Context, orgID, connID uuid.UUID, force bool) (*ProviderAccess, error)
+	// SetSalesforce routes Salesforce pushes, upsert actions and new
+	// connections through the native sync.
+	SetSalesforce(b SalesforceBridge)
+}
+
+// ProviderAccess is a live credential for one connection.
+type ProviderAccess struct {
+	Token       string
+	InstanceURL string
+	Conn        *models.IntegrationConnection
+}
+
+// SalesforceBridge is the native Salesforce sync as the integration surface
+// sees it. Implemented by the salesforce package, wired after construction.
+type SalesforceBridge interface {
+	PushContacts(ctx context.Context, orgID, connID uuid.UUID, contacts []PushContact) (*PushResult, error)
+	// UpsertFromEvent finds or creates the event's person; data may carry
+	// "_salesforce_fields", an automation's own projected field values.
+	UpsertFromEvent(ctx context.Context, orgID, connID uuid.UUID, data map[string]any) error
+	Connected(ctx context.Context, conn *models.IntegrationConnection)
 }
 
 type service struct {
@@ -208,6 +236,7 @@ type service struct {
 	aiProvider generation.Provider
 	credits    credits.CreditService
 	aiSearch   generation.SearchClient
+	salesforce SalesforceBridge
 }
 
 // NewService builds the integration service. cipherSvc seals provider secrets
@@ -228,6 +257,7 @@ func (s *service) SetAI(p generation.Provider, c credits.CreditService) {
 	s.credits = c
 }
 func (s *service) SetAISearch(sc generation.SearchClient) { s.aiSearch = sc }
+func (s *service) SetSalesforce(b SalesforceBridge)       { s.salesforce = b }
 
 func (s *service) Repo() repository.IntegrationRepository { return s.repo }
 
@@ -388,15 +418,61 @@ func (s *service) Connect(ctx context.Context, orgID, userID uuid.UUID, provider
 }
 
 func (s *service) Disconnect(ctx context.Context, orgID, id uuid.UUID) error {
+	if conn, err := s.repo.GetConnectionByID(ctx, orgID, id); err == nil && conn != nil && conn.Provider == models.IntegrationSalesforce {
+		s.revokeSalesforce(ctx, conn)
+	}
 	return s.repo.DeleteConnection(ctx, orgID, id)
 }
 
-func (s *service) OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provider models.IntegrationProvider, label string) (*models.IntegrationOAuthStartResponse, error) {
+// revokeSalesforce invalidates the refresh token (and every access token it
+// minted) so a disconnected org stops trusting Warmbly at once. Best-effort.
+func (s *service) revokeSalesforce(ctx context.Context, conn *models.IntegrationConnection) {
+	sec, err := s.repo.GetConnectionSecrets(ctx, conn.ID)
+	if err != nil || sec == nil {
+		return
+	}
+	refresh, err := s.open(ctx, conn.OrganizationID, sec.RefreshTokenEnc)
+	if err != nil || refresh == "" {
+		return
+	}
+	host := configString(conn.DisplayFields, "login_host")
+	if host == "" {
+		host = "login.salesforce.com"
+	}
+	if _, herr := SalesforceLoginHost(host); herr != nil {
+		return
+	}
+	rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_ = s.oauth.Revoke(rctx, "https://"+host+"/services/oauth2/revoke", refresh)
+}
+
+func (s *service) OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provider models.IntegrationProvider, label string, params map[string]string) (*models.IntegrationOAuthStartResponse, error) {
 	if !s.oauth.Configured(provider) {
 		return nil, ErrOAuthNotConfigured
 	}
+	stParams := map[string]string{}
+	loginHost := ""
+	if provider == models.IntegrationSalesforce {
+		in := params["domain"]
+		if strings.TrimSpace(in) == "" {
+			in = params["environment"]
+		}
+		host, herr := SalesforceLoginHost(in)
+		if herr != nil {
+			return nil, errx.NewWithIdentifier(errx.BadRequest, "invalid_salesforce_domain", herr.Error())
+		}
+		loginHost = host
+		stParams["login_host"] = host
+		if strings.TrimSpace(label) == "" {
+			label = "Salesforce"
+			if host == "test.salesforce.com" || strings.Contains(host, ".sandbox.") {
+				label = "Salesforce sandbox"
+			}
+		}
+	}
 	state := randomURLToken(24)
-	authURL, verifier, err := s.oauth.AuthCodeURL(provider, state)
+	authURL, verifier, err := s.oauth.AuthCodeURL(provider, state, loginHost)
 	if err != nil {
 		return nil, err
 	}
@@ -409,6 +485,7 @@ func (s *service) OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provi
 		CodeVerifier:    verifier,
 		Label:           strings.TrimSpace(label),
 		RequestedScopes: s.oauth.Scopes(provider),
+		Params:          stParams,
 		ExpiresAt:       time.Now().UTC().Add(oauthStateTTL),
 	}
 	if err := s.repo.CreateOAuthState(ctx, st); err != nil {
@@ -441,7 +518,13 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 		return nil, err
 	}
 
-	tokens, account, err := s.oauth.Exchange(ctx, st.Provider, code, st.CodeVerifier)
+	loginHost := st.Params["login_host"]
+	if loginHost != "" {
+		if _, herr := SalesforceLoginHost(loginHost); herr != nil {
+			return nil, herr
+		}
+	}
+	tokens, account, err := s.oauth.Exchange(ctx, st.Provider, code, st.CodeVerifier, loginHost)
 	if err != nil {
 		return nil, err
 	}
@@ -471,6 +554,31 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 	}
 	if account.UIDomain != "" {
 		display["ui_domain"] = account.UIDomain
+	}
+	if st.Provider == models.IntegrationSalesforce {
+		if loginHost == "" {
+			loginHost = "login.salesforce.com"
+		}
+		display["login_host"] = loginHost
+		display["environment"] = "production"
+		if loginHost == "test.salesforce.com" || strings.Contains(loginHost, ".sandbox.") {
+			display["environment"] = "sandbox"
+		}
+		if orgSF, userSF := salesforceIdentityIDs(account.IdentityURL); orgSF != "" {
+			display["sf_org_id"] = orgSF
+			display["sf_user_id"] = userSF
+		}
+	}
+	if st.Provider == models.IntegrationSalesforce {
+		// Connections are keyed by label; a login into a different org must
+		// become its own connection, never swap the org under this one's
+		// links and history.
+		if prev, perr := s.repo.GetConnection(ctx, st.OrganizationID, st.Provider, label); perr == nil && prev != nil {
+			prevOrg := configString(prev.DisplayFields, "sf_org_id")
+			if prevOrg != "" && display["sf_org_id"] != nil && prevOrg != display["sf_org_id"] {
+				label = fmt.Sprintf("%s (%s)", label, orFallback(account.Name, fmt.Sprint(display["sf_org_id"])))
+			}
+		}
 	}
 	df, _ := json.Marshal(display)
 
@@ -508,6 +616,9 @@ func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state
 			Status:         "success",
 			Detail:         "authorized " + string(st.Provider),
 		})
+		if st.Provider == models.IntegrationSalesforce && s.salesforce != nil {
+			s.salesforce.Connected(ctx, stored)
+		}
 		return stored, nil
 	}
 	return conn, nil
@@ -525,7 +636,11 @@ func (s *service) Reauth(ctx context.Context, orgID, userID, id uuid.UUID) (*mod
 		return nil, ErrUseOAuth
 	}
 	_ = s.repo.SetConnectionStatus(ctx, id, models.IntegrationStatusAuthorizing, models.IntegrationHealthDegraded, "reauthorizing")
-	return s.OAuthStart(ctx, orgID, userID, conn.Provider, conn.Label)
+	var params map[string]string
+	if host := configString(conn.DisplayFields, "login_host"); host != "" {
+		params = map[string]string{"domain": host}
+	}
+	return s.OAuthStart(ctx, orgID, userID, conn.Provider, conn.Label, params)
 }
 
 func (s *service) RotateInboundSecret(ctx context.Context, orgID, id uuid.UUID) (string, error) {
@@ -1052,15 +1167,23 @@ func (s *service) openConfig(ctx context.Context, sec *repository.ConnectionSecr
 // On an unrecoverable refresh failure it flips the connection to
 // reauth_required and returns an error.
 func (s *service) accessTokenFor(ctx context.Context, sec *repository.ConnectionSecrets) (string, error) {
+	tok, _, err := s.accessToken(ctx, sec, false)
+	return tok, err
+}
+
+// accessToken is accessTokenFor that can force a refresh, and also reports the
+// API host when the provider has one per org.
+func (s *service) accessToken(ctx context.Context, sec *repository.ConnectionSecrets, force bool) (token, instanceURL string, err error) {
 	orgID := sec.Conn.OrganizationID
+	instanceURL = configString(sec.Conn.DisplayFields, "instance_url")
 
 	access, err := s.open(ctx, orgID, sec.AccessTokenEnc)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	refresh, err := s.open(ctx, orgID, sec.RefreshTokenEnc)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	current := models.IntegrationTokens{
@@ -1069,18 +1192,96 @@ func (s *service) accessTokenFor(ctx context.Context, sec *repository.Connection
 		ExpiresAt:    sec.Conn.TokenExpiresAt,
 		Scopes:       sec.Conn.GrantedScopes,
 	}
-	refreshed, didRefresh, rerr := s.oauth.RefreshIfNeeded(ctx, sec.Conn.Provider, current)
+	loginHost := configString(sec.Conn.DisplayFields, "login_host")
+	if loginHost != "" {
+		if _, herr := SalesforceLoginHost(loginHost); herr != nil {
+			loginHost = ""
+		}
+	}
+	refreshed, didRefresh, rerr := s.oauth.RefreshIfNeeded(ctx, sec.Conn.Provider, current, force, loginHost)
 	if rerr != nil {
-		_ = s.repo.SetConnectionStatus(ctx, sec.Conn.ID, models.IntegrationStatusReauthRequired, models.IntegrationHealthDown, "token refresh failed: reconnect required")
-		return "", rerr
+		// Only the provider refusing the grant needs a person; a timeout or a
+		// 5xx at the token endpoint is retried on the next call.
+		if refreshRefused(rerr) {
+			_ = s.repo.SetConnectionStatus(ctx, sec.Conn.ID, models.IntegrationStatusReauthRequired, models.IntegrationHealthDown, "token refresh failed: reconnect required")
+		}
+		return "", "", rerr
 	}
 	if didRefresh {
 		accessEnc, _ := s.seal(ctx, orgID, refreshed.AccessToken)
 		refreshEnc, _ := s.seal(ctx, orgID, refreshed.RefreshToken)
 		_ = s.repo.UpdateConnectionTokens(ctx, sec.Conn.ID, accessEnc, refreshEnc, refreshed.ExpiresAt, refreshed.Scopes)
-		return refreshed.AccessToken, nil
+		// An org migration moves the instance host; the refresh is where it shows.
+		if refreshed.InstanceURL != "" && refreshed.InstanceURL != instanceURL {
+			instanceURL = refreshed.InstanceURL
+			_ = s.repo.MergeDisplayFields(ctx, sec.Conn.ID, map[string]any{"instance_url": instanceURL})
+		}
 	}
-	return refreshed.AccessToken, nil
+	return refreshed.AccessToken, instanceURL, nil
+}
+
+func orFallback(v, d string) string {
+	if strings.TrimSpace(v) == "" {
+		return d
+	}
+	return v
+}
+
+// refreshRefused reports a refresh the provider rejected outright: a revoked
+// or expired grant, or a client it no longer recognises.
+func refreshRefused(err error) bool {
+	var re *oauth2.RetrieveError
+	if !errors.As(err, &re) {
+		return false
+	}
+	switch re.ErrorCode {
+	case "invalid_grant", "invalid_client", "unauthorized_client", "invalid_scope":
+		return true
+	}
+	return re.Response != nil && (re.Response.StatusCode == http.StatusBadRequest || re.Response.StatusCode == http.StatusUnauthorized)
+}
+
+// ProviderAccess returns a usable token for an org-owned OAuth connection.
+func (s *service) ProviderAccess(ctx context.Context, orgID, connID uuid.UUID, force bool) (*ProviderAccess, error) {
+	conn, err := s.repo.GetConnectionByID(ctx, orgID, connID)
+	if err != nil {
+		return nil, err
+	}
+	if conn == nil {
+		return nil, errors.New("connection not found")
+	}
+	if conn.Status == models.IntegrationStatusReauthRequired || conn.Status == models.IntegrationStatusDisconnected {
+		return nil, ErrPushReauth
+	}
+	sec, err := s.repo.GetConnectionSecrets(ctx, connID)
+	if err != nil {
+		return nil, err
+	}
+	if sec == nil || sec.Conn.OrganizationID != orgID {
+		return nil, errors.New("connection not found")
+	}
+	// Concurrent callers share one refresh: with refresh-token rotation, two
+	// parallel refreshes would leave one holding a dead token.
+	// Its own keyspace: AccessToken shares the group with a different result type.
+	key := "provider:" + connID.String()
+	if force {
+		key += ":force"
+	}
+	v, err, _ := s.refresh.Do(key, func() (any, error) {
+		tok, instance, err := s.accessToken(ctx, sec, force)
+		if err != nil {
+			return nil, err
+		}
+		return [2]string{tok, instance}, nil
+	})
+	if err != nil {
+		if refreshRefused(err) {
+			return nil, fmt.Errorf("%w: %v", ErrPushReauth, err)
+		}
+		return nil, fmt.Errorf("could not refresh the access token: %w", err)
+	}
+	pair := v.([2]string)
+	return &ProviderAccess{Token: pair[0], InstanceURL: pair[1], Conn: conn}, nil
 }
 
 // AccessToken loads, refreshes and returns a connection's OAuth token after

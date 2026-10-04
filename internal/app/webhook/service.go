@@ -89,8 +89,9 @@ type Service interface {
 	// replacement; pass nil to detach.
 	WireDispatchSink(sink DispatchSink)
 
-	// WireRecordSink attaches a sink that sees every event before the throttle:
-	// a connected CRM is a system of record and must not lose a send to a burst.
+	// WireRecordSink adds a sink that sees every event before the throttle: a
+	// connected CRM is a system of record and must not lose a send to a burst.
+	// Each call adds one; every sink sees every event.
 	WireRecordSink(sink DispatchSink)
 
 	// WireThrottle attaches a Redis-backed per-org, per-event-type dispatch
@@ -134,7 +135,7 @@ type service struct {
 	repo         repository.WebhookRepository
 	now          func() time.Time
 	sink         DispatchSink
-	recordSink   DispatchSink
+	recordSinks  []DispatchSink
 	cache        *cache.Cache
 	resolveLimit func(ctx context.Context, orgID uuid.UUID) int
 	appDomains   AppDomainResolver
@@ -149,7 +150,9 @@ func (s *service) WireDispatchSink(sink DispatchSink) {
 }
 
 func (s *service) WireRecordSink(sink DispatchSink) {
-	s.recordSink = sink
+	if sink != nil {
+		s.recordSinks = append(s.recordSinks, sink)
+	}
 }
 
 func (s *service) WireThrottle(c *cache.Cache, resolveLimit func(ctx context.Context, orgID uuid.UUID) int) {
@@ -227,8 +230,8 @@ func (s *service) throttled(ctx context.Context, orgID uuid.UUID, eventType mode
 func (s *service) Dispatch(ctx context.Context, orgID uuid.UUID, eventType models.WebhookEventType, data any) (uuid.UUID, error) {
 	eventID := uuid.New()
 
-	if s.recordSink != nil {
-		s.recordSink(ctx, orgID, eventType, data)
+	for _, sink := range s.recordSinks {
+		sink(ctx, orgID, eventType, data)
 	}
 
 	// Global per-org, per-event-type fan-out throttle. Stops a per-contact

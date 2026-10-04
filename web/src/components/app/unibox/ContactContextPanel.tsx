@@ -32,6 +32,7 @@ import { Link } from "react-router-dom";
 import { TextInput } from "@/components/ui/field";
 import NewMeetingDialog from "@/components/app/meetings/NewMeetingDialog";
 import BookACallButton from "@/components/app/integrations/BookACallButton";
+import SalesforceContactCard from "@/components/app/integrations/SalesforceContactCard";
 import {
     PopoverMenu,
     PopoverMenuContent,
@@ -261,6 +262,8 @@ export default function ContactContextPanel({
                                 <HubSpotContactCard contactId={contact.id} density="panel" />
                             </div>
                         )}
+                        {/* The linked Salesforce record, when the workspace syncs with Salesforce. */}
+                        <SalesforceContactCard contactId={contact.id} variant="compact" />
 
                         {/* Campaigns, with pause / resume so a reply can hold follow-ups in place. */}
                         <CampaignsSection contactId={contact.id} contactName={name} fallback={campaigns} />
