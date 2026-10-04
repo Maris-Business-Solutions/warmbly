@@ -79,6 +79,16 @@ func Run(
 	r.POST("/api/v1/integrations/slack/events", h.SlackEvents)
 	r.POST("/api/v1/integrations/slack/interactivity", h.SlackInteractivity)
 	r.POST("/api/v1/integrations/slack/commands", h.SlackCommands)
+	// HubSpot app webhooks: one URL for every portal, authenticated by the
+	// X-HubSpot-Signature-v3 HMAC over the client secret.
+	r.POST("/api/v1/integrations/hubspot/webhooks", h.HubSpotWebhook)
+	// The Warmbly card on HubSpot records and the "Add to Warmbly campaign"
+	// workflow action, all signed by HubSpot with the app's client secret.
+	r.POST("/api/v1/integrations/hubspot/app/card", h.HubSpotCard)
+	r.POST("/api/v1/integrations/hubspot/app/enroll", h.HubSpotCardEnroll)
+	r.POST("/api/v1/integrations/hubspot/app/pause", h.HubSpotCardPause)
+	r.POST("/api/v1/integrations/hubspot/actions/enroll", h.HubSpotActionEnroll)
+	r.POST("/api/v1/integrations/hubspot/actions/campaigns", h.HubSpotActionCampaigns)
 
 	// OAuth 2.1 authorization-server discovery (RFC 8414): public + unversioned.
 	r.GET("/.well-known/oauth-authorization-server", h.OAuthServerMetadata)
@@ -1331,6 +1341,30 @@ func Run(
 					taskTypes.PATCH("/:id", m.RequireAccess(models.PermManageContacts, models.APIPermWriteCRM), h.UpdateTaskType)
 					taskTypes.DELETE("/:id", m.RequireAccess(models.PermManageContacts, models.APIPermWriteCRM), h.DeleteTaskType)
 				}
+
+				// CRM mode: Warmbly's own CRM or a connected one (HubSpot).
+				// Every member reads the mode; changing it is a settings change.
+				crmRead := m.RequireAccess(models.PermViewContacts, models.APIPermReadCRM)
+				crmWrite := m.RequireAccess(models.PermManageContacts, models.APIPermWriteCRM)
+				crmAdmin := m.RequireAccess(models.PermManageSettings, models.APIPermIntegrations)
+				crmGroup.GET("/settings", crmRead, h.GetCRMSettings)
+				crmGroup.PUT("/settings", crmAdmin, h.UpdateCRMSettings)
+				crmGroup.GET("/metadata", crmRead, h.GetCRMMetadata)
+				crmGroup.GET("/owners", crmRead, h.ListCRMOwners)
+				crmGroup.PUT("/owners/:externalId", crmAdmin, h.MapCRMOwner)
+				crmGroup.GET("/sync", crmRead, h.GetCRMSyncHealth)
+				crmGroup.POST("/sync", crmAdmin, h.SyncCRMNow)
+				crmGroup.POST("/sync/retry", crmAdmin, h.RetryCRMSyncFailures)
+				crmGroup.POST("/sync/discard", crmAdmin, h.DiscardCRMSyncFailures)
+				crmGroup.GET("/backfill", crmAdmin, h.GetCRMBackfill)
+				crmGroup.POST("/backfill", crmAdmin, h.StartCRMBackfill)
+				crmGroup.GET("/contacts/:id", crmRead, h.GetCRMContact)
+				crmGroup.POST("/contacts/:id/refresh", crmRead, h.RefreshCRMContact)
+				crmGroup.POST("/contacts/:id/link", crmWrite, h.LinkCRMContact)
+				crmGroup.PATCH("/contacts/:id", crmWrite, h.UpdateCRMContact)
+				crmGroup.GET("/lists", m.RequireAccess(models.PermManageContacts, models.APIPermReadCRM), h.ListCRMLists)
+				crmGroup.POST("/lists/preview", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.PreviewCRMImport)
+				crmGroup.POST("/lists/import", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.ImportCRMList)
 
 				crmTasks := crmGroup.Group("/tasks")
 				{

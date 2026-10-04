@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/creditwatch"
 	"github.com/warmbly/warmbly/internal/app/feature"
+	"github.com/warmbly/warmbly/internal/app/hubspot"
 	"github.com/warmbly/warmbly/internal/app/inboxagent"
 	"github.com/warmbly/warmbly/internal/app/inboxtag"
 	"github.com/warmbly/warmbly/internal/app/instancesettings"
@@ -314,6 +316,27 @@ func main() {
 		aware.WireSegments(repository.NewSegmentRepository(primaryDB))
 	}
 	advancedService.WireDispatcher(webhookService)
+
+	// HubSpot as the workspace CRM: replies and bounces dispatched here log to
+	// HubSpot, reply tasks reach it, and this process drains the CRM outbox and
+	// runs the pull that keeps the mirror current.
+	hubspotService := hubspot.New(hubspot.Deps{
+		Repo:         repository.NewCRMProviderRepository(primaryDB.Pool),
+		CRM:          crmRepo,
+		Tokens:       integrationServiceC,
+		Contacts:     contactRepo,
+		Holds:        campaignProgressRepo,
+		Suppress:     advancedRepo,
+		Realtime:     streamingPublisher,
+		Cache:        redisCache,
+		AppURL:       os.Getenv("APP_URL"),
+		ClientSecret: strings.TrimSpace(os.Getenv("HUBSPOT_OAUTH_CLIENT_SECRET")),
+	})
+	webhookService.WireRecordSink(hubspotService.OnEvent)
+	advancedService.WireCRMOutbox(hubspotService)
+	integrationServiceC.SetCRMModeCheck(hubspotService.Active)
+	go hubspotService.RunDrainer(ctx)
+	go hubspotService.RunPuller(ctx)
 	// Replies, bounces, opens and clicks teach verification what real mail
 	// showed about each address.
 	verificationEvidence := emailverifyapp.NewEvidence(repository.NewVerificationEvidenceRepository(primaryDB))

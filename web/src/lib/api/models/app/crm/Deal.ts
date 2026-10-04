@@ -1,3 +1,5 @@
+import type { CRMExternalRef } from "./CRMProvider";
+
 export type DealStatus = "open" | "won" | "lost";
 
 export default interface Deal {
@@ -37,6 +39,8 @@ export default interface Deal {
         position: number;
     };
     campaign_name?: string;
+    // Set when the deal lives in HubSpot.
+    external?: CRMExternalRef;
 }
 
 // Create/update body: expected_close_date goes out as the RFC3339 string the form builds.

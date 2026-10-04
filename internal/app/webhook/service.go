@@ -89,6 +89,10 @@ type Service interface {
 	// replacement; pass nil to detach.
 	WireDispatchSink(sink DispatchSink)
 
+	// WireRecordSink attaches a sink that sees every event before the throttle:
+	// a connected CRM is a system of record and must not lose a send to a burst.
+	WireRecordSink(sink DispatchSink)
+
 	// WireThrottle attaches a Redis-backed per-org, per-event-type dispatch
 	// throttle. resolveLimit returns the org's per-minute cap on how many events
 	// of a single type it may fan out. Over the cap, further events of that type
@@ -130,6 +134,7 @@ type service struct {
 	repo         repository.WebhookRepository
 	now          func() time.Time
 	sink         DispatchSink
+	recordSink   DispatchSink
 	cache        *cache.Cache
 	resolveLimit func(ctx context.Context, orgID uuid.UUID) int
 	appDomains   AppDomainResolver
@@ -141,6 +146,10 @@ func NewService(repo repository.WebhookRepository) Service {
 
 func (s *service) WireDispatchSink(sink DispatchSink) {
 	s.sink = sink
+}
+
+func (s *service) WireRecordSink(sink DispatchSink) {
+	s.recordSink = sink
 }
 
 func (s *service) WireThrottle(c *cache.Cache, resolveLimit func(ctx context.Context, orgID uuid.UUID) int) {
@@ -218,6 +227,10 @@ func (s *service) throttled(ctx context.Context, orgID uuid.UUID, eventType mode
 func (s *service) Dispatch(ctx context.Context, orgID uuid.UUID, eventType models.WebhookEventType, data any) (uuid.UUID, error) {
 	eventID := uuid.New()
 
+	if s.recordSink != nil {
+		s.recordSink(ctx, orgID, eventType, data)
+	}
+
 	// Global per-org, per-event-type fan-out throttle. Stops a per-contact
 	// event source (notably a campaign "notify" action over a large lead list)
 	// from flooding the org's webhooks and integration sinks. Checked before
@@ -245,7 +258,7 @@ func (s *service) Dispatch(ctx context.Context, orgID uuid.UUID, eventType model
 		EventType:      eventType,
 		OrganizationID: orgID,
 		CreatedAt:      s.now().UTC(),
-		Data:           data,
+		Data:           withoutPrivateKeys(data),
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -914,4 +927,20 @@ func challengeToken(payload []byte) string {
 		return ""
 	}
 	return p.Data.Challenge
+}
+
+// withoutPrivateKeys drops "_"-prefixed keys, which carry internal context
+// (message bodies, owner ids) for in-process sinks and never leave the platform.
+func withoutPrivateKeys(data any) any {
+	m, ok := data.(map[string]any)
+	if !ok {
+		return data
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		if !strings.HasPrefix(k, "_") {
+			out[k] = v
+		}
+	}
+	return out
 }

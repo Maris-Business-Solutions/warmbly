@@ -31,6 +31,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/fleetnode"
 	"github.com/warmbly/warmbly/internal/app/form"
 	"github.com/warmbly/warmbly/internal/app/group"
+	"github.com/warmbly/warmbly/internal/app/hubspot"
 	"github.com/warmbly/warmbly/internal/app/instancecheck"
 	"github.com/warmbly/warmbly/internal/app/instanceconfig"
 	"github.com/warmbly/warmbly/internal/app/instancesettings"
@@ -281,6 +282,10 @@ type Handler struct {
 	// SlackService is the Slack app (request URLs and the dashboard's Slack
 	// panel). Nil answers slack_not_configured.
 	SlackService *slackapp.Service
+
+	// HubSpot runs a workspace's CRM on HubSpot when it chooses so. Nil on
+	// processes built without it.
+	HubSpot *hubspot.Service
 
 	// OAuth 2.1 authorization server (third-party app registration + the
 	// authorization-code-with-PKCE flow + bearer-token validation).

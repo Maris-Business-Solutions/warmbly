@@ -1,0 +1,56 @@
+{
+  "uid": "warmbly_add_to_campaign",
+  "type": "workflow-action",
+  "config": {
+    "actionUrl": "https://api.warmbly.com/api/v1/integrations/hubspot/actions/enroll",
+    "isPublished": true,
+    "supportedClients": [
+      {
+        "client": "WORKFLOWS"
+      }
+    ],
+    "objectTypes": [
+      "CONTACT"
+    ],
+    "inputFields": [
+      {
+        "typeDefinition": {
+          "name": "campaign",
+          "type": "enumeration",
+          "fieldType": "select",
+          "optionsUrl": "https://api.warmbly.com/api/v1/integrations/hubspot/actions/campaigns"
+        },
+        "supportedValueTypes": [
+          "STATIC_VALUE"
+        ],
+        "isRequired": true
+      }
+    ],
+    "outputFields": [
+      {
+        "typeDefinition": {
+          "name": "warmbly_result",
+          "type": "string",
+          "fieldType": "text"
+        }
+      }
+    ],
+    "labels": {
+      "en": {
+        "actionName": "Add to Warmbly campaign",
+        "actionDescription": "Enroll the contact in a Warmbly campaign. Contacts new to Warmbly are created from their HubSpot record; opted-out contacts are skipped.",
+        "appDisplayName": "Warmbly",
+        "actionCardContent": "Add to Warmbly campaign",
+        "inputFieldLabels": {
+          "campaign": "Campaign"
+        },
+        "outputFieldLabels": {
+          "warmbly_result": "Warmbly result"
+        },
+        "inputFieldDescriptions": {
+          "campaign": "The Warmbly campaign to add the contact to. Campaigns that have finished are not listed."
+        }
+      }
+    }
+  }
+}

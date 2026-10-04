@@ -57,6 +57,8 @@ type CRMRepository interface {
 	UpdateCRMTask(ctx context.Context, orgID, taskID uuid.UUID, data *models.UpdateCRMTask) (*models.CRMTask, error)
 	DeleteCRMTask(ctx context.Context, orgID, taskID uuid.UUID) error
 	BulkDeleteCRMTasks(ctx context.Context, orgID uuid.UUID, sel models.TaskSelection, cap int) (matched, affected int64, err error)
+	// SelectTaskIDs resolves a bulk selection to ids, at most cap+1 of them.
+	SelectTaskIDs(ctx context.Context, orgID uuid.UUID, sel models.TaskSelection, cap int) ([]uuid.UUID, error)
 	BulkUpdateCRMTasks(ctx context.Context, orgID uuid.UUID, userID *uuid.UUID, sel models.TaskSelection, data *models.BulkUpdateTasks, cap int) (matched, affected int64, err error)
 
 	// CRM Task Types (user-managed)
@@ -1512,6 +1514,30 @@ func parseUUIDs(raw []string) ([]uuid.UUID, error) {
 		out = append(out, id)
 	}
 	return out, nil
+}
+
+// SelectTaskIDs resolves a bulk selection to the task ids it names, stopping at
+// cap+1 so an over-cap selection is known without reading all of it.
+func (r *crmRepository) SelectTaskIDs(ctx context.Context, orgID uuid.UUID, sel models.TaskSelection, cap int) ([]uuid.UUID, error) {
+	where, args, err := taskSelectionWhere(orgID, sel)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, cap+1)
+	rows, err := r.db.Query(ctx, fmt.Sprintf(`SELECT t.id FROM crm_tasks t WHERE %s LIMIT $%d`, where, len(args)), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // BulkDeleteCRMTasks deletes every task in the selection, returning how many

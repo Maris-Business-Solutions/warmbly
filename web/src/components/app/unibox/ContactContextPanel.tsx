@@ -66,8 +66,12 @@ import type Deal from "@/lib/api/models/app/crm/Deal";
 import type { DealWrite } from "@/lib/api/models/app/crm/Deal";
 import type CRMTask from "@/lib/api/models/app/crm/CRMTask";
 import type { CRMTaskWrite } from "@/lib/api/models/app/crm/CRMTask";
-import type { AppError } from "@/lib/api/client/normalizeError";
-import buildError from "@/lib/helper/buildError";
+import type { CRMExternalRef } from "@/lib/api/models/app/crm/CRMProvider";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import HubSpotContactCard from "@/components/app/crm/HubSpotContactCard";
+import { HubSpotBadge, OpenInHubSpot } from "@/components/app/crm/HubSpot";
+import { HUBSPOT_SETTINGS_PATH } from "@/components/app/crm/hubspotCrm";
+import { crmErrorMessage } from "@/components/app/crm/hubspotUtils";
 
 const DEAL_STATUS: Record<Deal["status"], { label: string; cls: string; dot: string }> = {
     open: { label: "Open", cls: "text-slate-600", dot: "bg-slate-400" },
@@ -123,6 +127,7 @@ export default function ContactContextPanel({
     const tasksQ = useCRMTasks({ contact_id: contactId, limit: 50 }, !!contactId);
     const notesQ = useContactNotes(contactId ?? "");
     const dealDefault = usePipelinesDefault();
+    const { isHubSpot } = useCrmProvider();
 
     const campaigns = detail?.campaigns ?? contact?.campaigns ?? [];
     const eng = detail?.engagement;
@@ -219,10 +224,10 @@ export default function ContactContextPanel({
                                     </Badge>
                                 )}
                                 <Link
-                                    to="/app/contacts"
+                                    to={`/app/contacts?contact=${encodeURIComponent(contact.id)}`}
                                     className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-slate-400 hover:text-sky-700 transition-colors"
                                 >
-                                    Contacts
+                                    Open contact
                                     <ExternalLinkIcon className="w-2.5 h-2.5" />
                                 </Link>
                             </div>
@@ -250,6 +255,13 @@ export default function ContactContextPanel({
                             )}
                         </div>
 
+                        {/* HubSpot mode: the contact's sales context, edited in place. */}
+                        {isHubSpot && (
+                            <div className="px-4 py-3">
+                                <HubSpotContactCard contactId={contact.id} density="panel" />
+                            </div>
+                        )}
+
                         {/* Campaigns, with pause / resume so a reply can hold follow-ups in place. */}
                         <CampaignsSection contactId={contact.id} contactName={name} fallback={campaigns} />
 
@@ -275,6 +287,7 @@ export default function ContactContextPanel({
                             mailboxId={mailboxId}
                             pipelineId={dealDefault.pipelineId}
                             stages={dealDefault.stages}
+                            hubspot={isHubSpot}
                         />
 
                         {/* Tasks */}
@@ -286,10 +299,16 @@ export default function ContactContextPanel({
                             contactName={name}
                             company={contact.company}
                             dealId={(dealsQ.data ?? []).find((d) => d.status === "open")?.id}
+                            hubspot={isHubSpot}
                         />
 
                         {/* Notes */}
-                        <NotesSection contactId={contact.id} notes={asNoteList(notesQ.data)} loading={notesQ.isPending} />
+                        <NotesSection
+                            contactId={contact.id}
+                            notes={asNoteList(notesQ.data)}
+                            loading={notesQ.isPending}
+                            hubspot={isHubSpot}
+                        />
                     </div>
                 )}
             </div>
@@ -440,6 +459,7 @@ function DealsSection({
     mailboxId,
     pipelineId,
     stages,
+    hubspot,
 }: {
     contactId: string;
     deals: Deal[];
@@ -449,6 +469,7 @@ function DealsSection({
     mailboxId?: string;
     pipelineId?: string;
     stages: Stage[];
+    hubspot: boolean;
 }) {
     const create = useCreateDeal();
     const updateDeal = useUpdateDeal();
@@ -484,7 +505,7 @@ function DealsSection({
             await toast.promise(create.mutateAsync(data), {
                 loading: "Creating deal…",
                 success: "Deal created",
-                error: (e: AppError) => buildError(e),
+                error: (e: unknown) => crmErrorMessage(e),
             });
             setOpen(false);
             setValue("");
@@ -497,7 +518,7 @@ function DealsSection({
         try {
             await toast.promise(
                 updateDeal.mutateAsync({ id: dealId, data: { stage_id: newStageId } as DealWrite }),
-                { loading: "Moving…", success: "Moved", error: (e: AppError) => buildError(e) },
+                { loading: "Moving…", success: "Moved", error: (e: unknown) => crmErrorMessage(e) },
             );
         } catch {
             /* surfaced */
@@ -507,9 +528,14 @@ function DealsSection({
     return (
         <Section
             label="Deals"
+            badge={hubspot ? <HubSpotBadge /> : undefined}
             action={
                 canAdd ? (
                     <AddButton open={open} onClick={() => setOpen((o) => !o)} />
+                ) : hubspot ? (
+                    <Link to={HUBSPOT_SETTINGS_PATH} className="text-[10.5px] text-slate-400 hover:text-sky-700">
+                        Choose pipelines
+                    </Link>
                 ) : (
                     <Link to="/app/crm/pipelines" className="text-[10.5px] text-slate-400 hover:text-sky-700">
                         Add a pipeline
@@ -528,7 +554,7 @@ function DealsSection({
                         <p className="text-[10px] text-slate-400 leading-snug">
                             Attributed to this {campaignId ? "campaign" : ""}
                             {campaignId && mailboxId ? " + " : ""}
-                            {mailboxId ? "mailbox" : ""}.
+                            {mailboxId ? "mailbox" : ""}.{hubspot ? " Created in HubSpot." : ""}
                         </p>
                     )}
                     <button
@@ -580,6 +606,7 @@ function DealsSection({
                                         {money(d.value, d.currency)}
                                     </span>
                                 )}
+                                {hubspot && <OpenInHubSpot external={d.external} compact label="Open deal in HubSpot" />}
                             </div>
                         );
                     })}
@@ -658,6 +685,7 @@ function TasksSection({
     contactName,
     company,
     dealId,
+    hubspot,
 }: {
     contactId: string;
     tasks: CRMTask[];
@@ -666,6 +694,7 @@ function TasksSection({
     contactName: string;
     company?: string;
     dealId?: string;
+    hubspot: boolean;
 }) {
     const create = useCreateCRMTask();
     const [open, setOpen] = React.useState(false);
@@ -695,7 +724,7 @@ function TasksSection({
             await toast.promise(create.mutateAsync(data), {
                 loading: "Adding task…",
                 success: "Task added",
-                error: (e: AppError) => buildError(e),
+                error: (e: unknown) => crmErrorMessage(e),
             });
             setOpen(false);
             setType("");
@@ -708,7 +737,11 @@ function TasksSection({
     }
 
     return (
-        <Section label="Tasks" action={<AddButton open={open} onClick={() => setOpen((o) => !o)} />}>
+        <Section
+            label="Tasks"
+            badge={hubspot ? <HubSpotBadge /> : undefined}
+            action={<AddButton open={open} onClick={() => setOpen((o) => !o)} />}
+        >
             {open && (
                 <div className="mb-2 rounded-md border border-slate-200 bg-white p-2 space-y-1.5">
                     <TextInput
@@ -747,7 +780,7 @@ function TasksSection({
                     <p className="text-[10px] text-slate-400 leading-snug">
                         Linked to {contactName}
                         {company ? ` · ${company}` : ""}
-                        {dealId ? " · open deal" : ""}.
+                        {dealId ? " · open deal" : ""}.{hubspot ? " Created in HubSpot." : ""}
                     </p>
                     <button
                         type="button"
@@ -775,6 +808,7 @@ function TasksSection({
                                     {fmtDate(t.due_date)}
                                 </span>
                             )}
+                            {hubspot && <OpenInHubSpot external={t.external} compact label="Open task in HubSpot" />}
                         </div>
                     ))}
                 </div>
@@ -787,10 +821,12 @@ function NotesSection({
     contactId,
     notes,
     loading,
+    hubspot,
 }: {
     contactId: string;
-    notes: { id: string; content: string; created_at: Date | string }[];
+    notes: PanelNote[];
     loading: boolean;
+    hubspot: boolean;
 }) {
     const create = useCreateContactNote();
     const [draft, setDraft] = React.useState("");
@@ -801,17 +837,17 @@ function NotesSection({
             await create.mutateAsync({ contactId, data: { content: draft.trim() } });
             setDraft("");
         } catch (e) {
-            toast.error(buildError(e as AppError));
+            toast.error(crmErrorMessage(e));
         }
     }
 
     return (
-        <Section label="Notes">
+        <Section label="Notes" badge={hubspot ? <HubSpotBadge /> : undefined}>
             <div className="mb-2 rounded-md border border-slate-200 bg-white p-2">
                 <textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Add a note…"
+                    placeholder={hubspot ? "Add a note to HubSpot…" : "Add a note…"}
                     rows={2}
                     className="w-full bg-transparent text-[11.5px] text-slate-900 placeholder:text-slate-400 outline-none resize-none"
                 />
@@ -836,7 +872,17 @@ function NotesSection({
                     {notes.slice(0, 5).map((n) => (
                         <div key={n.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
                             <p className="text-[11.5px] text-slate-700 leading-snug whitespace-pre-wrap break-words">{n.content}</p>
-                            <p className="text-[10px] text-slate-400 mt-1 font-mono">{fmtDate(n.created_at)}</p>
+                            <div className="mt-1 flex items-center gap-1">
+                                <p className="text-[10px] text-slate-400 font-mono">{fmtDate(n.created_at)}</p>
+                                {hubspot && (
+                                    <OpenInHubSpot
+                                        external={n.external}
+                                        compact
+                                        label="Open note in HubSpot"
+                                        className="ml-auto h-5 w-5"
+                                    />
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -850,11 +896,13 @@ function NotesSection({
 function Section({
     label,
     hint,
+    badge,
     action,
     children,
 }: {
     label: string;
     hint?: string;
+    badge?: React.ReactNode;
     action?: React.ReactNode;
     children?: React.ReactNode;
 }) {
@@ -862,6 +910,7 @@ function Section({
         <div className="px-4 py-3">
             <div className="flex items-center gap-2 mb-2">
                 <span className="text-[10.5px] uppercase tracking-[0.12em] text-slate-400 font-medium">{label}</span>
+                {badge}
                 {action && <span className="ml-auto">{action}</span>}
             </div>
             {hint ? <p className="text-[11px] text-slate-400">{hint}</p> : children}
@@ -988,9 +1037,11 @@ function NotAContact({ email, name }: { email?: string; name?: string }) {
 // The notes endpoint returns either a bare array or a { data, pagination }
 // envelope depending on the path; normalise to a plain list (mirrors the
 // contacts NotesTab helper) so .slice/.map never blow up.
-function asNoteList(raw: unknown): { id: string; content: string; created_at: Date | string }[] {
+type PanelNote = { id: string; content: string; created_at: Date | string; external?: CRMExternalRef };
+
+function asNoteList(raw: unknown): PanelNote[] {
     const arr = Array.isArray(raw) ? raw : ((raw as { data?: unknown } | null | undefined)?.data ?? []);
-    return Array.isArray(arr) ? (arr as { id: string; content: string; created_at: Date | string }[]) : [];
+    return Array.isArray(arr) ? (arr as PanelNote[]) : [];
 }
 
 function initials(name: string): string {

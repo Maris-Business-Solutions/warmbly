@@ -30,6 +30,9 @@ import CustomFieldsEditor from "../CustomFieldsEditor";
 import type { CustomField } from "../customFields";
 import { recordFromCF } from "./rebase";
 import { fmtAbsolute } from "./format";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotPropertiesList } from "@/components/app/crm/HubSpotContactCard";
+import { HubSpotMark } from "@/components/app/crm/HubSpot";
 
 export default function DetailsTab({
     contact,
@@ -72,6 +75,7 @@ export default function DetailsTab({
     customFields: CustomField[];
     setCustomFields: React.Dispatch<React.SetStateAction<CustomField[]>>;
 }) {
+    const { isHubSpot } = useCrmProvider();
     return (
         <div className="space-y-6">
             <Section title="Identity">
@@ -141,6 +145,12 @@ export default function DetailsTab({
                     pinned={Object.keys(contact.custom_fields ?? {})}
                 />
             </Section>
+
+            {isHubSpot && (
+                <Section title="HubSpot properties" accessory={<HubSpotMark className="w-3 h-3" />}>
+                    <HubSpotPropertiesList contactId={contact.id} />
+                </Section>
+            )}
 
             <Section title="Metadata">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11.5px]">

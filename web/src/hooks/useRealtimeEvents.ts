@@ -120,6 +120,23 @@ export function useRealtimeEvents() {
         return
       }
 
+      // Mirrored CRM data moved (HubSpot pushed or pulled): the deals, tasks,
+      // pipelines and the contact's HubSpot panel refetch.
+      if (event === 'CRM_SYNCED') {
+        const objects = Array.isArray(payload.objects) ? (payload.objects as string[]) : []
+        const keys: QueryKey[] = [['crm', 'sync']]
+        if (objects.includes('owner')) keys.push(['crm', 'owners'])
+        if (objects.includes('deal')) keys.push(['crm', 'deals'])
+        if (objects.includes('task')) keys.push(['crm', 'tasks'])
+        if (objects.includes('pipeline')) keys.push(['crm', 'pipelines'], ['crm', 'deals'])
+        if (objects.some((o) => o === 'contact' || o === 'note' || o === 'deal' || o === 'task')) {
+          keys.push(contactId ? ['contacts', contactId] : ['contacts'])
+          keys.push(contactId ? ['crm', 'contact', contactId] : ['crm', 'contact'])
+        }
+        invalidate(keys)
+        return
+      }
+
       // A contact import moved. The import refreshes on every beat; the lists
       // its rows land in refresh when it settles, not once a second while it runs.
       if (event === 'CONTACT_IMPORT_PROGRESS') {
@@ -494,7 +511,7 @@ export function useRealtimeEvents() {
           role: [['organizations']],
           automation: [['automations']],
           // Slack settings and member links are audited as integration writes too.
-          integration: [['integrations', 'connections'], ['integrations', 'slack']],
+          integration: [['integrations', 'connections'], ['integrations', 'slack'], ['crm', 'settings'], ['crm', 'owners']],
           lead_sync_source: [['lead-sync', 'sources']],
           meeting: [['meetings'], ['meetings', 'summary']],
           subscription: [['subscription'], ['organizations', 'limits']],

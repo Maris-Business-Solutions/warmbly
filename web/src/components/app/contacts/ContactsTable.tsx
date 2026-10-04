@@ -119,6 +119,9 @@ import {
     SelectButton,
 } from "@/components/ui/popover-menu";
 import { Checkbox } from "@/components/ui/checkbox";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotMark } from "@/components/app/crm/HubSpot";
+import HubSpotImportDialog from "./import/HubSpotImportDialog";
 
 type SubFilter = "all" | "subscribed" | "unsubscribed";
 
@@ -171,7 +174,18 @@ export default function ContactsTable({
         const id = params.get("import");
         return id && id !== "new" ? id : null;
     });
-    const [importStep] = React.useState<ImportStep | undefined>(() => (params.get("importStep") as ImportStep) ?? undefined);
+    const [importStep, setImportStep] = React.useState<ImportStep | undefined>(
+        () => (params.get("importStep") as ImportStep) ?? undefined,
+    );
+    // HubSpot mode adds a list import; its draft continues in the same wizard.
+    const { isHubSpot } = useCrmProvider();
+    const [hubspotImportOpen, setHubspotImportOpen] = React.useState(false);
+    const continueImport = React.useCallback((id: string, step: ImportStep) => {
+        setHubspotImportOpen(false);
+        setImportId(id);
+        setImportStep(step);
+        setImportOpen(true);
+    }, []);
     const routeImport = React.useCallback(
         (id: string | null, step: ImportStep) => {
             setParams(
@@ -189,6 +203,7 @@ export default function ContactsTable({
     const closeImport = React.useCallback(() => {
         setImportOpen(false);
         setImportId(null);
+        setImportStep(undefined);
         setParams(
             (prev) => {
                 const next = new URLSearchParams(prev);
@@ -199,6 +214,28 @@ export default function ContactsTable({
             { replace: true },
         );
     }, [setParams]);
+
+    // ?contact=<id> opens that contact's drawer (HubSpot's "Open in Warmbly" links here).
+    const deepContact = params.get("contact");
+    React.useEffect(() => {
+        if (deepContact) openContact(deepContact);
+    }, [deepContact, openContact]);
+    // Closing the drawer drops the param, so a reload does not reopen it.
+    const prevEdit = React.useRef(edit);
+    React.useEffect(() => {
+        const was = prevEdit.current;
+        prevEdit.current = edit;
+        if (!was || edit) return;
+        setParams(
+            (prev) => {
+                if (!prev.has("contact")) return prev;
+                const next = new URLSearchParams(prev);
+                next.delete("contact");
+                return next;
+            },
+            { replace: true },
+        );
+    }, [edit, setParams]);
 
     // The member's saved layout for this list: its columns and its sort. The
     // Leads tab and the contacts page are two views with two layouts.
@@ -377,9 +414,11 @@ export default function ContactsTable({
             (connectionsQuery.data?.connections ?? []).filter(
                 (c) =>
                     PUSHABLE_PROVIDERS.includes(c.provider) &&
-                    (c.status === "connected" || c.status === "degraded"),
+                    (c.status === "connected" || c.status === "degraded") &&
+                    // In HubSpot mode contacts sync to HubSpot on their own.
+                    !(isHubSpot && c.provider === "hubspot"),
             ),
-        [connectionsQuery.data],
+        [connectionsQuery.data, isHubSpot],
     );
 
     async function pushToCRM(connectionId: string, providerLabel: string) {
@@ -796,6 +835,15 @@ export default function ContactsTable({
                     >
                         Import
                     </TopbarAction>
+                    {isHubSpot && (
+                        <TopbarAction
+                            variant="ghost"
+                            icon={<HubSpotMark className="w-3 h-3" />}
+                            onClick={() => setHubspotImportOpen(true)}
+                        >
+                            From HubSpot
+                        </TopbarAction>
+                    )}
                     <TopbarAction
                         variant="ghost"
                         icon={<SheetIcon className="w-3 h-3" />}
@@ -912,6 +960,14 @@ export default function ContactsTable({
                     initialStep={importStep}
                     onRoute={routeImport}
                 />
+                {isHubSpot && (
+                    <HubSpotImportDialog
+                        open={hubspotImportOpen}
+                        onClose={() => setHubspotImportOpen(false)}
+                        onContinue={continueImport}
+                        target={current_campaign ? `Adding to ${current_campaign.name}` : undefined}
+                    />
+                )}
                 <AddFromContactsDialog
                     open={fromContactsOpen}
                     onClose={() => setFromContactsOpen(false)}
@@ -971,6 +1027,15 @@ export default function ContactsTable({
                     >
                         Import
                     </TopbarAction>
+                    {isHubSpot && (
+                        <TopbarAction
+                            variant="ghost"
+                            icon={<HubSpotMark className="w-3 h-3" />}
+                            onClick={() => setHubspotImportOpen(true)}
+                        >
+                            Import from HubSpot
+                        </TopbarAction>
+                    )}
                     <TopbarAction
                         variant="ghost"
                         icon={<SheetIcon className="w-3 h-3" />}
@@ -998,6 +1063,14 @@ export default function ContactsTable({
                             <PopoverMenuItem onSelect={() => setImportOpen(true)}>
                                 Import
                             </PopoverMenuItem>
+                            {isHubSpot && (
+                                <PopoverMenuItem
+                                    icon={<HubSpotMark className="w-3.5 h-3.5" />}
+                                    onSelect={() => setHubspotImportOpen(true)}
+                                >
+                                    Import from HubSpot
+                                </PopoverMenuItem>
+                            )}
                             <PopoverMenuItem onSelect={() => setSyncOpen(true)}>
                                 Sheet sync
                             </PopoverMenuItem>
@@ -1134,6 +1207,14 @@ export default function ContactsTable({
                 initialStep={importStep}
                 onRoute={routeImport}
             />
+            {isHubSpot && (
+                <HubSpotImportDialog
+                    open={hubspotImportOpen}
+                    onClose={() => setHubspotImportOpen(false)}
+                    onContinue={continueImport}
+                    target={segment ? `Adding to ${segment.name}` : undefined}
+                />
+            )}
             <SyncSourcesPanel open={syncOpen} onClose={() => setSyncOpen(false)} segment={segment} />
         </Page>
     );

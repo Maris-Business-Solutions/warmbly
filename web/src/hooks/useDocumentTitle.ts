@@ -61,6 +61,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/app/api-keys": "API keys",
   "/app/oauth-apps": "OAuth apps",
   "/app/integrations": "Integrations",
+  "/app/integrations/hubspot": "HubSpot",
   "/app/audit": "Audit log",
   "/app/slack/link": "Link Slack",
   "/app/unibox": "Unibox",

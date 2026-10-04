@@ -221,3 +221,20 @@ func TestRenderNodeEnvWorkerIdentity(t *testing.T) {
 		t.Errorf("ENCRYPTED_KEYS_BACKEND_URL = %q", env["ENCRYPTED_KEYS_BACKEND_URL"])
 	}
 }
+
+// A consumer refreshes integration tokens and drains the CRM outbox, so it
+// needs the integration client credentials; a worker never sees them.
+func TestRenderNodeEnvIntegrationCredentialsReachConsumerOnly(t *testing.T) {
+	setInstanceEnv(t)
+	t.Setenv("HUBSPOT_OAUTH_CLIENT_ID", "hs-id")
+	t.Setenv("HUBSPOT_OAUTH_CLIENT_SECRET", "hs-secret")
+
+	consumer := envLines(t, renderNodeEnv(uuid.New(), models.NodeRoleConsumer, ""))
+	if consumer["HUBSPOT_OAUTH_CLIENT_SECRET"] != "hs-secret" || consumer["HUBSPOT_OAUTH_CLIENT_ID"] != "hs-id" {
+		t.Errorf("consumer missing HubSpot credentials: %v", consumer)
+	}
+	worker := envLines(t, renderNodeEnv(uuid.New(), models.NodeRoleWorker, ""))
+	if _, ok := worker["HUBSPOT_OAUTH_CLIENT_SECRET"]; ok {
+		t.Error("a worker was handed an integration client secret")
+	}
+}

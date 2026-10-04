@@ -39,6 +39,8 @@ import { TASK_TYPE_COLORS } from "./taskTypes";
 import type TaskType from "@/lib/api/models/app/crm/TaskType";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotMark } from "./HubSpot";
 
 export default function TaskTypePicker({
     value,
@@ -51,6 +53,8 @@ export default function TaskTypePicker({
 }) {
     const { data: types = [], isPending } = useTaskTypes();
     const createType = useCreateTaskType();
+    // HubSpot's task types are fixed, so nothing here creates or edits one.
+    const { isHubSpot } = useCrmProvider();
 
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
@@ -131,13 +135,15 @@ export default function TaskTypePicker({
                             placement === "top" ? "bottom-full mb-1" : "top-full mt-1"
                         }`}
                     >
-                        <div className="px-2 py-1.5 border-b border-slate-200">
+                        <div className="px-2 py-1.5 border-b border-slate-200 flex items-center gap-1.5">
+                            {isHubSpot && <HubSpotMark className="w-3 h-3" title="HubSpot task types" />}
                             <input
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (
                                         e.key === "Enter" &&
+                                        !isHubSpot &&
                                         query.trim() &&
                                         !queryMatchesExisting
                                     ) {
@@ -149,7 +155,7 @@ export default function TaskTypePicker({
                                         setOpen(false);
                                     }
                                 }}
-                                placeholder="Search or create…"
+                                placeholder={isHubSpot ? "Search HubSpot task types…" : "Search or create…"}
                                 autoFocus
                                 className="w-full h-5 bg-transparent text-[12px] text-slate-900 placeholder:text-slate-400 outline-none"
                             />
@@ -173,7 +179,26 @@ export default function TaskTypePicker({
                                     Loading…
                                 </div>
                             ) : (
-                                filtered.map((t) => (
+                                filtered.map((t) =>
+                                    isHubSpot ? (
+                                        <button
+                                            key={t.id}
+                                            type="button"
+                                            onClick={() => pick(t.name)}
+                                            className={`w-full px-2.5 h-7 flex items-center gap-2 text-[12px] hover:bg-slate-100 transition-colors ${
+                                                t.name === value ? "text-slate-900 font-medium" : "text-slate-700"
+                                            }`}
+                                        >
+                                            <span
+                                                className="size-2.5 rounded-full shrink-0"
+                                                style={{ backgroundColor: t.color }}
+                                            />
+                                            <span className="truncate flex-1 text-left">{t.name}</span>
+                                            {t.name === value && (
+                                                <CheckIcon className="w-3 h-3 text-sky-600 shrink-0" />
+                                            )}
+                                        </button>
+                                    ) : (
                                     <TypeRow
                                         key={t.id}
                                         type={t}
@@ -183,10 +208,11 @@ export default function TaskTypePicker({
                                         onRenamedSelected={(name) => onChange(name)}
                                         onDeletedSelected={() => onChange("")}
                                     />
-                                ))
+                                    ),
+                                )
                             )}
 
-                            {query.trim() && !queryMatchesExisting && (
+                            {!isHubSpot && query.trim() && !queryMatchesExisting && (
                                 <button
                                     type="button"
                                     onClick={createAndPick}
@@ -202,7 +228,14 @@ export default function TaskTypePicker({
                                 </button>
                             )}
 
-                            {!isPending &&
+                            {isHubSpot && !isPending && filtered.length === 0 && (
+                                <div className="px-3 py-3 text-[11.5px] text-slate-400 text-center">
+                                    {query.trim() ? "No HubSpot task type matches" : "No task types"}
+                                </div>
+                            )}
+
+                            {!isHubSpot &&
+                                !isPending &&
                                 filtered.length === 0 &&
                                 !query.trim() && (
                                     <div className="px-3 py-3 text-[11.5px] text-slate-400 text-center">

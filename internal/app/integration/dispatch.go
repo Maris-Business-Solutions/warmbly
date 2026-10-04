@@ -161,6 +161,11 @@ func (s *service) execAction(ctx context.Context, target repository.DispatchTarg
 		return automationDeliver(ctx, url, secret, sub.EventType, buildAutomationPayload(sub, data, msg))
 
 	case models.IntegrationActionHubSpotUpsert:
+		// While HubSpot is the workspace CRM, every send, reply and contact
+		// syncs on its own; this action would only add duplicate notes.
+		if s.crmMode != nil && s.crmMode(ctx, target.Secrets.Conn.OrganizationID) {
+			return nil
+		}
 		token, terr := s.accessTokenFor(ctx, &target.Secrets)
 		if terr != nil {
 			return errReauthRequired

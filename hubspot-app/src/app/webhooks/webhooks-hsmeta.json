@@ -1,0 +1,25 @@
+{
+  "uid": "warmbly_webhooks",
+  "type": "webhooks",
+  "config": {
+    "settings": {
+      "targetUrl": "https://api.warmbly.com/api/v1/integrations/hubspot/webhooks",
+      "maxConcurrentRequests": 10
+    },
+    "subscriptions": {
+      "legacyCrmObjects": [
+        { "subscriptionType": "contact.propertyChange", "propertyName": "lifecyclestage", "active": true },
+        { "subscriptionType": "contact.propertyChange", "propertyName": "hs_lead_status", "active": true },
+        { "subscriptionType": "contact.propertyChange", "propertyName": "hubspot_owner_id", "active": true },
+        { "subscriptionType": "contact.propertyChange", "propertyName": "hs_email_optout", "active": true },
+        { "subscriptionType": "contact.deletion", "active": true },
+        { "subscriptionType": "deal.creation", "active": true },
+        { "subscriptionType": "deal.propertyChange", "propertyName": "dealstage", "active": true },
+        { "subscriptionType": "deal.propertyChange", "propertyName": "amount", "active": true },
+        { "subscriptionType": "deal.propertyChange", "propertyName": "dealname", "active": true },
+        { "subscriptionType": "deal.propertyChange", "propertyName": "hubspot_owner_id", "active": true },
+        { "subscriptionType": "deal.deletion", "active": true }
+      ]
+    }
+  }
+}

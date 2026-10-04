@@ -44,6 +44,9 @@ type oauthProvider struct {
 	provider models.IntegrationProvider
 	config   *oauth2.Config
 	scopes   []string
+	// optional scopes are requested but not required, so an account whose plan
+	// lacks one can still connect.
+	optional []string
 	usePKCE  bool
 	identify identifyFunc
 	// scopeSep overrides the space x/oauth2 joins scopes with (Slack wants commas).
@@ -86,7 +89,8 @@ func NewOAuthManager() *OAuthManager {
 	register(models.IntegrationHubSpot, "HUBSPOT", oauth2.Endpoint{
 		AuthURL:  "https://app.hubspot.com/oauth/authorize",
 		TokenURL: "https://api.hubapi.com/oauth/v1/token",
-	}, []string{"oauth", "crm.objects.contacts.read", "crm.objects.contacts.write"}, false, identifyHubSpot)
+	}, HubSpotRequiredScopes, false, identifyHubSpot)
+	m.providers[models.IntegrationHubSpot].optional = HubSpotOptionalScopes
 
 	register(models.IntegrationSlack, "SLACK", oauth2.Endpoint{
 		AuthURL:  "https://slack.com/oauth/v2/authorize",
@@ -114,6 +118,21 @@ func NewOAuthManager() *OAuthManager {
 
 	return m
 }
+
+// HubSpotRequiredScopes is what CRM mode needs: contacts, companies, deals,
+// owners, and the contact schema for the Warmbly property group.
+var HubSpotRequiredScopes = []string{
+	"oauth",
+	"crm.objects.contacts.read", "crm.objects.contacts.write",
+	"crm.objects.companies.read", "crm.objects.companies.write",
+	"crm.objects.deals.read", "crm.objects.deals.write",
+	"crm.objects.owners.read",
+	"crm.schemas.contacts.read", "crm.schemas.contacts.write",
+}
+
+// HubSpotOptionalScopes unlock list import and reading logged email bodies;
+// a portal without them still connects.
+var HubSpotOptionalScopes = []string{"crm.lists.read", "sales-email-read"}
 
 // SupportsOAuth reports whether the provider has an OAuth flow at all.
 func (m *OAuthManager) SupportsOAuth(p models.IntegrationProvider) bool {
@@ -148,6 +167,9 @@ func (m *OAuthManager) AuthCodeURL(p models.IntegrationProvider, state string) (
 	opts := []oauth2.AuthCodeOption{oauth2.AccessTypeOffline, oauth2.ApprovalForce}
 	if op.scopeSep != "" && len(op.scopes) > 0 {
 		opts = append(opts, oauth2.SetAuthURLParam("scope", strings.Join(op.scopes, op.scopeSep)))
+	}
+	if len(op.optional) > 0 {
+		opts = append(opts, oauth2.SetAuthURLParam("optional_scope", strings.Join(op.optional, " ")))
 	}
 	if op.usePKCE {
 		verifier = randomURLToken(32)
@@ -208,6 +230,9 @@ func (m *OAuthManager) Exchange(ctx context.Context, p models.IntegrationProvide
 	if iu, ok := tok.Extra("instance_url").(string); ok {
 		acct.InstanceURL = strings.TrimRight(strings.TrimSpace(iu), "/")
 	}
+	if p == models.IntegrationHubSpot {
+		acct.UIDomain = hubspotUIDomain(ctx, m, tok.AccessToken)
+	}
 	return tokens, acct, nil
 }
 
@@ -255,6 +280,8 @@ type extAccount struct {
 	// InstanceURL is the provider-specific API host returned at token-exchange
 	// time (Salesforce's per-org domain). Empty for providers with a fixed host.
 	InstanceURL string
+	// UIDomain is the provider web app host for record links (HubSpot).
+	UIDomain string
 }
 
 // --- identity resolvers -----------------------------------------------------
@@ -275,6 +302,18 @@ func identifyHubSpot(ctx context.Context, m *OAuthManager, tok *oauth2.Token) (s
 		name = out.User
 	}
 	return fmt.Sprintf("%d", out.HubID), name, out.Scopes, nil
+}
+
+// hubspotUIDomain resolves the web app host for the portal (app-eu1 for EU
+// data hosting), so record links open in the right region.
+func hubspotUIDomain(ctx context.Context, m *OAuthManager, token string) string {
+	var out struct {
+		UIDomain string `json:"uiDomain"`
+	}
+	if err := m.getJSON(ctx, "https://api.hubapi.com/account-info/v3/details", token, &out); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.UIDomain)
 }
 
 func identifySlack(ctx context.Context, m *OAuthManager, tok *oauth2.Token) (string, string, []string, error) {

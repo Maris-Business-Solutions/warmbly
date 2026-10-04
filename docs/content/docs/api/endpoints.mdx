@@ -285,6 +285,21 @@ The `agent-drafts` endpoints back the [inbox agent](/guides/inbox-agent/): the a
 | GET | `/crm/tasks`, `/crm/tasks/:id` | `READ_CRM` |
 | POST/PATCH/DELETE | `/crm/tasks[/:id]` | `WRITE_CRM` |
 | PATCH/DELETE | `/crm/tasks` (bulk, over an id list or a whole filter) | `WRITE_CRM` |
+| GET | `/crm/task-types` | `READ_CRM` |
+| POST/PATCH/DELETE | `/crm/task-types[/:id]` | `WRITE_CRM` |
+| GET | `/crm/settings`, `/crm/metadata`, `/crm/owners`, `/crm/sync` | `READ_CRM` |
+| PUT | `/crm/settings` | `INTEGRATIONS` |
+| PUT | `/crm/owners/:externalId` | `INTEGRATIONS` |
+| POST | `/crm/sync`, `/crm/sync/retry`, `/crm/sync/discard` | `INTEGRATIONS` |
+| GET/POST | `/crm/backfill` | `INTEGRATIONS` |
+| GET | `/crm/contacts/:id` | `READ_CRM` |
+| POST | `/crm/contacts/:id/refresh` | `READ_CRM` |
+| POST | `/crm/contacts/:id/link` | `WRITE_CRM` |
+| PATCH | `/crm/contacts/:id` | `WRITE_CRM` |
+| GET | `/crm/lists` | `READ_CRM` |
+| POST | `/crm/lists/preview`, `/crm/lists/import` | `WRITE_CONTACTS` |
+
+The `/crm/settings` through `/crm/lists` routes are [HubSpot mode](/guides/hubspot/). For a dashboard session they gate on `view_contacts` to read, `manage_contacts` to edit a contact's HubSpot record or import a list, and `manage_settings` to change the mode, match owners, run a sync or copy records. `POST /crm/sync/retry`, `POST /crm/sync/discard` and `POST /crm/backfill` are naturally safe to retry: a requeued job is not queued twice and a copied record is never copied again. While HubSpot is the workspace's CRM, writes to pipelines, stages and task types answer `409 crm_managed_externally`. See [CRM](/api/reference/crm/#hubspot-mode).
 
 ### Analytics and audit
 
@@ -650,6 +665,8 @@ The two `/integrations/slack/link` routes that take a code do not need a workspa
 - `GET /health`
 - `POST /auth/cli/code`, `POST /auth/cli/poll` (the [CLI](/api/cli/) device-code handshake, per-IP rate limited. Public by necessity: the CLI has no credential until the flow completes. `POST /auth/cli/code` returns `device_code`, `user_code`, `verification_uri`, `verification_uri_complete`, `expires_in` and `interval`; polling returns `{"status":"pending"}` until a member decides, then `{"status":"approved"}` carrying the minted key exactly once, or `{"status":"denied"}`. An unknown or expired `device_code` is a `404`, so a poller cannot probe for live handshakes)
 - `POST /webhook/stripe` (Stripe signature)
+- `POST /api/v1/integrations/hubspot/webhooks` (HubSpot app webhooks, verified with the `X-HubSpot-Signature-v3` signature over the app's client secret and refused when older than five minutes. A delivery only makes the next read of the named record come sooner; see [HubSpot](/guides/hubspot/#self-hosting))
+- `POST /api/v1/integrations/hubspot/app/card`, `/app/enroll`, `/app/pause` (the Warmbly card on HubSpot contact records) and `POST /api/v1/integrations/hubspot/actions/enroll`, `/actions/campaigns` (the "Add to Warmbly campaign" workflow action). HubSpot signs each request with the app's client secret; the portal it names selects the workspace in HubSpot mode. See [working from inside HubSpot](/guides/hubspot/#working-from-inside-hubspot)
 - `POST /webhook/campaign`, `/webhook/email`, `/webhook/user-email` (Google OIDC token from Cloud Tasks)
 - `GET /addresses/google/callback`, `GET /addresses/outlook/callback` (OAuth bouncer pages)
 - `POST /oauth/token`, `POST /oauth/revoke` (OAuth token endpoints, authenticated by the client's id and secret, or PKCE for public clients)

@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/popover-menu";
 import usePipelines from "@/lib/api/hooks/app/crm/pipelines/usePipelines";
 import type { Stage } from "@/lib/api/models/app/crm/Pipeline";
+import useCrmProvider from "@/hooks/useCrmProvider";
+import { HubSpotMark } from "./HubSpot";
 
 function sortedStages(stages: Stage[] | undefined): Stage[] {
     return stages ? [...stages].sort((a, b) => a.position - b.position) : [];
@@ -34,6 +36,8 @@ export default function DealStagePicker({
     onChange: (next: { pipelineId: string; stageId: string }) => void;
 }) {
     const { data: pipelines = [], isPending } = usePipelines();
+    // HubSpot mode lists HubSpot's pipelines and deal stages (managed there).
+    const { isHubSpot } = useCrmProvider();
 
     const pipeline = pipelines.find((p) => p.id === pipelineId);
     const stages = sortedStages(pipeline?.stages);
@@ -45,6 +49,14 @@ export default function DealStagePicker({
     };
 
     if (!isPending && pipelines.length === 0) {
+        if (isHubSpot) {
+            return (
+                <p className="flex items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[11.5px] leading-relaxed text-slate-600">
+                    <HubSpotMark className="w-3 h-3 mt-0.5" />
+                    Your HubSpot pipelines have not synced yet. They appear here once the first sync finishes.
+                </p>
+            );
+        }
         return (
             <p className="rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[11.5px] leading-relaxed text-slate-600">
                 You don't have a CRM pipeline yet. Create one under CRM, then come back to choose where deals land.
@@ -55,7 +67,10 @@ export default function DealStagePicker({
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-                <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Pipeline</p>
+                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                    Pipeline
+                    {isHubSpot && <HubSpotMark className="w-3 h-3" title="HubSpot pipelines" />}
+                </p>
                 <PipelineSelect
                     pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))}
                     value={pipelineId}
@@ -63,7 +78,9 @@ export default function DealStagePicker({
                 />
             </div>
             <div>
-                <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Stage</p>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                    {isHubSpot ? "Deal stage" : "Stage"}
+                </p>
                 <StageSelect
                     stages={stages}
                     value={stageId}

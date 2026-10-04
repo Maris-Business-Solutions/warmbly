@@ -9,6 +9,7 @@
 "use client";
 
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { CalendarCheckIcon, ExternalLinkIcon, RefreshCwIcon, SettingsIcon } from "lucide-react";
 
@@ -50,6 +51,7 @@ export default function IntegrationsPage() {
     const [manageTarget, setManageTarget] = React.useState<IntegrationConnection | null>(null);
     const [inboundUrl, setInboundUrl] = React.useState<{ provider: IntegrationProvider; url: string } | null>(null);
     const [query, setQuery] = React.useState("");
+    const navigate = useNavigate();
 
     const catalog = React.useMemo(() => catalogQuery.data?.catalog ?? [], [catalogQuery.data?.catalog]);
     const connections = React.useMemo(
@@ -99,6 +101,8 @@ export default function IntegrationsPage() {
     }
 
     function onCardClick(entry: IntegrationCatalogEntry) {
+        // HubSpot has its own home: connect, CRM setup and settings.
+        if (entry.provider === "hubspot") return navigate("/app/integrations/hubspot");
         const existing = firstConnByProvider[entry.provider];
         if (existing) setManageTarget(existing);
         else setConnectTarget(entry);
@@ -145,7 +149,9 @@ export default function IntegrationsPage() {
                                     index={i}
                                     connection={c}
                                     entry={entryByProvider[c.provider]}
-                                    onManage={() => setManageTarget(c)}
+                                    onManage={() =>
+                                        c.provider === "hubspot" ? navigate("/app/integrations/hubspot") : setManageTarget(c)
+                                    }
                                 />
                             ))}
                         </div>

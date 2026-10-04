@@ -7,8 +7,10 @@
 "use client";
 
 import React from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
     AlertTriangleIcon,
+    ArrowRightIcon,
     CheckCircle2Icon,
     CopyIcon,
     EyeIcon,
@@ -20,6 +22,7 @@ import {
 import toast from "react-hot-toast";
 
 import { TextInput } from "@/components/ui/field";
+import { HubSpotMark } from "@/components/app/crm/HubSpot";
 import { useConfirm } from "@/hooks/context/confirm";
 import { usePresenceResource } from "@/hooks/PresenceProvider";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
@@ -105,6 +108,8 @@ export default function ConnectionDetail({
     const isOAuth = conn.auth_method === "oauth";
     const needsReauth = conn.status === "reauth_required";
     const isSlack = conn.provider === "slack";
+    const isHubSpot = conn.provider === "hubspot";
+    const onHubSpotPage = useLocation().pathname.startsWith("/app/integrations/hubspot");
 
     async function handleReauth() {
         setBusy(true);
@@ -205,8 +210,28 @@ export default function ConnectionDetail({
                         </div>
                     )}
 
+                    {/* HubSpot: CRM mode, field mapping and rules live on the HubSpot page */}
+                    {isHubSpot && !onHubSpotPage && (
+                        <div className="px-5 py-4 border-b border-slate-200">
+                            <Link
+                                to="/app/integrations/hubspot"
+                                onClick={onClose}
+                                className="flex items-center gap-3 rounded-md border border-slate-200 hover:border-slate-300 hover:bg-slate-50/60 px-3 py-2.5 transition-colors group"
+                            >
+                                <HubSpotMark className="w-4 h-4" />
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-[12.5px] font-medium text-slate-900">HubSpot settings</span>
+                                    <span className="block text-[11px] text-slate-500 leading-relaxed">
+                                        Use HubSpot as your CRM, field mapping, activity logging, owners, rules and sync health.
+                                    </span>
+                                </span>
+                                <ArrowRightIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 shrink-0" />
+                            </Link>
+                        </div>
+                    )}
+
                     {/* Field mapping — control exactly what each CRM record gets */}
-                    {crmObject && (
+                    {crmObject && !isHubSpot && (
                         <div className="px-5 py-4 border-b border-slate-200 space-y-2.5">
                             <SectionLabel>Field mapping</SectionLabel>
                             <FieldMappingsBlock connectionId={conn.id} object={crmObject} />
