@@ -435,7 +435,10 @@ function SecretReveal({ title, secret, onDone }: { title: string; secret: string
             <div>
                 <Label>Signing secret</Label>
                 <div className="flex items-center gap-1.5">
-                    <code className="flex-1 truncate rounded-md border border-amber-200 bg-amber-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-amber-800">
+                    <code
+                        className="flex-1 truncate rounded-md border border-amber-200 bg-amber-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-amber-800"
+                        data-ph-mask=""
+                    >
                         {secret}
                     </code>
                     <CopyButton value={secret} />
@@ -768,7 +771,9 @@ function OverviewTab({ endpoint }: { endpoint: WebhookEndpoint }) {
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
                         <div className="text-[10.5px] uppercase tracking-[0.12em] text-amber-700 mb-1">New signing secret (shown once)</div>
                         <div className="flex items-center gap-1.5">
-                            <code className="flex-1 truncate text-[11.5px] font-mono text-amber-800">{secret}</code>
+                            <code className="flex-1 truncate text-[11.5px] font-mono text-amber-800" data-ph-mask="">
+                                {secret}
+                            </code>
                             <CopyButton value={secret} />
                         </div>
                     </div>

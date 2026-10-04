@@ -552,7 +552,9 @@ function Credentials({
                 <div>
                     <Label>Client secret</Label>
                     <div className="flex items-center gap-1.5">
-                        <code className="flex-1 min-w-0 truncate rounded-md border border-amber-200 bg-amber-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-amber-800">{app.client_secret}</code>
+                        <code className="flex-1 min-w-0 truncate rounded-md border border-amber-200 bg-amber-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-amber-800" data-ph-mask="">
+                            {app.client_secret}
+                        </code>
                         <CopyButton value={app.client_secret ?? ""} onCopied={onCopied} />
                     </div>
                 </div>

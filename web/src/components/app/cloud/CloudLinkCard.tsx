@@ -190,6 +190,7 @@ export default function CloudLinkCard({
                 animate={{ scale: 1, opacity: 1 }}
                 className="group relative rounded-lg border border-slate-200 bg-slate-50 px-6 py-4 font-mono text-[28px] tracking-[0.28em] text-slate-900 hover:border-sky-300 transition-colors"
                 title="Copy code"
+                data-ph-mask=""
             >
                 {pending.user_code}
                 <span className="absolute -top-2 -right-2 size-6 rounded-full bg-white border border-slate-200 text-slate-500 inline-flex items-center justify-center group-hover:text-sky-600">

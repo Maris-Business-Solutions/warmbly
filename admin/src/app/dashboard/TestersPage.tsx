@@ -160,7 +160,9 @@ export default function TestersPage() {
                         ].map(([k, v]) => (
                             <div key={k} className="flex items-center gap-2">
                                 <dt className="w-20 shrink-0 text-amber-800">{k}</dt>
-                                <dd className="font-mono break-all">{v}</dd>
+                                <dd className="font-mono break-all" data-ph-mask={k === "Password" ? "" : undefined}>
+                                    {v}
+                                </dd>
                                 <button
                                     type="button"
                                     onClick={() => copy(String(v))}

@@ -353,7 +353,7 @@ function RevealStep({ apiKey, onClose }: { apiKey: APIKeyWithSecret; onClose: ()
                             {copied ? "Copied" : "Copy"}
                         </button>
                     </div>
-                    <pre className="px-4 py-3 text-[12px] text-slate-100 font-mono whitespace-pre-wrap break-all">
+                    <pre className="px-4 py-3 text-[12px] text-slate-100 font-mono whitespace-pre-wrap break-all" data-ph-mask="">
                         {apiKey.secret}
                     </pre>
                 </div>

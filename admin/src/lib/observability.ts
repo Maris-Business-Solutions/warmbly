@@ -137,11 +137,16 @@ function loadPostHog(): Promise<import("posthog-js").PostHog | null> {
                 rageclick: true,
                 capture_performance: { web_vitals: true, network_timing: true },
                 disable_session_recording: !POSTHOG_SESSION_REPLAY,
+                // Same masking as the dashboard: data-ph-mask hides a revealed
+                // secret's text and blocks an input holding one.
                 session_recording: {
                     maskAllInputs: false,
                     maskInputOptions: { password: true },
+                    maskTextSelector: "[data-ph-mask], .ph-mask",
+                    blockSelector: "input[data-ph-mask], textarea[data-ph-mask], [data-ph-mask] input, [data-ph-mask] textarea, [data-input-otp], input[autocomplete='one-time-code']",
                 },
-                enable_recording_console_log: true,
+                // Replayed console output is retained; exceptions are captured separately.
+                enable_recording_console_log: false,
                 respect_dnt: false,
                 capture_exceptions: POSTHOG_ERROR_TRACKING
                     ? {

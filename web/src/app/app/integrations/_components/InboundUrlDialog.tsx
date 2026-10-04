@@ -80,7 +80,9 @@ export default function InboundUrlDialog({
                     </p>
 
                     <div className="rounded border border-slate-200 bg-slate-50 p-2.5 flex items-center gap-2">
-                        <code className="flex-1 font-mono text-[11.5px] text-slate-800 break-all">{fullUrl}</code>
+                        <code className="flex-1 font-mono text-[11.5px] text-slate-800 break-all" data-ph-mask="">
+                            {fullUrl}
+                        </code>
                         <button
                             type="button"
                             onClick={copy}

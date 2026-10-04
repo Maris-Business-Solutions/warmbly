@@ -336,7 +336,9 @@ function ReviewStep({
                         {info.cli_version && <span className="text-slate-400">· v{info.cli_version}</span>}
                     </p>
                 </div>
-                <span className="hidden sm:inline-flex font-mono text-[13px] tracking-[0.18em] text-slate-400">{info.user_code}</span>
+                <span className="hidden sm:inline-flex font-mono text-[13px] tracking-[0.18em] text-slate-400" data-ph-mask="">
+                    {info.user_code}
+                </span>
             </div>
             <p className="mt-2 text-[11.5px] text-slate-500 leading-relaxed">
                 The name and machine above are reported by the terminal itself and are not verified. Only continue if you just ran{" "}

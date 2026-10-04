@@ -178,7 +178,10 @@ export default function WorkerNewPage() {
                     )}
 
                     <div className="relative">
-                        <pre className="overflow-x-auto rounded-md border bg-muted/40 p-3 pr-24 font-mono text-[12px] leading-relaxed">
+                        <pre
+                            className="overflow-x-auto rounded-md border bg-muted/40 p-3 pr-24 font-mono text-[12px] leading-relaxed"
+                            data-ph-mask=""
+                        >
                             {command}
                         </pre>
                         <div className="absolute right-2 top-2">

@@ -268,7 +268,9 @@ function AppRow({ app, blocked }: { app: OAuthApplication; blocked: boolean }) {
                 <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2">
                     <div className="text-[10.5px] uppercase tracking-[0.12em] text-amber-700 mb-1">New client secret (shown once)</div>
                     <div className="flex items-center gap-1.5">
-                        <code className="flex-1 truncate text-[11.5px] font-mono text-amber-800">{secret}</code>
+                        <code className="flex-1 truncate text-[11.5px] font-mono text-amber-800" data-ph-mask="">
+                            {secret}
+                        </code>
                         <CopyButton value={secret} />
                     </div>
                 </div>
@@ -303,7 +305,10 @@ function AppWebhookSecretRow({ app }: { app: OAuthApplication }) {
             </p>
             <div className="flex items-center gap-1.5">
                 {reveal && secret.data ? (
-                    <code className="flex-1 truncate rounded-md border border-slate-200 bg-slate-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-slate-700">
+                    <code
+                        className="flex-1 truncate rounded-md border border-slate-200 bg-slate-50 px-2 h-7 inline-flex items-center text-[11.5px] font-mono text-slate-700"
+                        data-ph-mask=""
+                    >
                         {secret.data.webhook_secret}
                     </code>
                 ) : (
