@@ -9,6 +9,8 @@ import (
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net/textproto"
+
+	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 )
 
 // Attachment is a fully-resolved file the worker has already fetched from object
@@ -30,6 +32,11 @@ type hdr struct{ name, value string }
 //   - text/plain + text/html   -> multipart/alternative
 //   - + attachments            -> multipart/mixed(alternative, files...)
 func buildMIME(hdrs []hdr, bodyPlain, bodyHTML string, attachments []Attachment) ([]byte, error) {
+	for _, h := range hdrs {
+		if err := mailhdr.CheckHeader(h.name, h.value); err != nil {
+			return nil, fmt.Errorf("%s: %w", h.name, err)
+		}
+	}
 	var buf bytes.Buffer
 	writeHeaders := func(extra ...hdr) {
 		for _, h := range hdrs {

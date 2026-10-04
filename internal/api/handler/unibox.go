@@ -13,6 +13,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/emailsend"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 )
 
 // uniboxReadTimeout bounds an interactive unibox read, connection wait and body load included.
@@ -563,7 +564,7 @@ func (h *Handler) UniboxReply(c *gin.Context) {
 	// nests for them too, without needing a client change.
 	inReplyTo := req.InReplyTo
 	if len(inReplyTo) == 0 && req.ThreadID != "" {
-		if parentMessageID, xerr := h.UniboxService.LatestMessageIDInThread(c.Request.Context(), *orgID, req.ThreadID); xerr == nil && parentMessageID != "" {
+		if parentMessageID, xerr := h.UniboxService.LatestMessageIDInThread(c.Request.Context(), *orgID, req.ThreadID); xerr == nil && mailhdr.ValidMessageID(parentMessageID) {
 			inReplyTo = []string{parentMessageID}
 		}
 	}

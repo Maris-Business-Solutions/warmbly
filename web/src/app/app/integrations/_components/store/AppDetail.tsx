@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, CheckIcon, ExternalLinkIcon, LinkIcon, Loader2Icon, ShieldAlertIcon } from "lucide-react";
 
 import { useConfirm } from "@/hooks/context/confirm";
+import { httpUrl } from "@/lib/safeUrl";
 import { useCommunityApp } from "@/lib/api/hooks/app/integrations/useCommunityApps";
 import { useAuthorizedApps, useRevokeAuthorizedApp } from "@/lib/api/hooks/app/oauth/useAuthorizedApps";
 import { communityAppPath, type CommunityApp } from "@/lib/api/models/app/integrations/Community";
@@ -338,7 +339,9 @@ export function CommunityDetail({
     const permissions = [...app.permissions.filter((p) => p.category !== "read"), ...app.permissions.filter((p) => p.category === "read")];
 
     function install() {
-        window.open(app!.install_url, "_blank", "noopener,noreferrer");
+        // A listing is a third party's input: only an http(s) address is opened.
+        const url = httpUrl(app!.install_url);
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
     }
 
     function copyLink() {

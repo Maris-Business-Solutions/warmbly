@@ -115,6 +115,8 @@ Fields are named by their JSON key, with nested fields as a dotted path (`inner.
 | `no_organization` | The request needs a workspace and the caller has none selected. Every entitlement, limit and suppression rule is scoped to a workspace, so a write that would run unscoped is refused rather than run without those checks. API keys always carry their workspace; a dashboard session picks one at sign-in, so this normally means the session predates the workspace being chosen. Select a workspace and retry |
 | `lead_cc_limit` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) was given more than `2` contacts |
 | `lead_cc_self` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named the lead itself as a copy |
+| `invalid_recipient` | `POST /emails/:id/send`, `POST /unibox/reply` or `POST /unibox/compose` was given a `to`, `cc` or `bcc` entry that is not exactly one email address (`ana@example.com` or `Ana <ana@example.com>`), or no `to` address at all. Put each address in its own entry |
+| `invalid_message_id` | `POST /emails/:id/send` or `POST /unibox/reply` was given an `in_reply_to` entry that is not one Message-ID: printable characters with no spaces or line breaks, with or without the surrounding `<` and `>` |
 
 #### Password refusals
 

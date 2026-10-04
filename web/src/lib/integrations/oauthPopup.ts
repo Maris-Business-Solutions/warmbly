@@ -5,12 +5,26 @@
 // finish the handshake. The window-name carries no secret — the CSRF/PKCE
 // state lives server-side, keyed by the `state` nonce.
 
+import { API_URL } from "@/lib/information";
+
 export interface OAuthPopupResult {
     code: string;
     state: string;
 }
 
 const POPUP_MESSAGE_SOURCE = "warmbly-integration-oauth";
+
+// The callback page is served by the API, so only its origin (or ours, when the
+// API sits behind the dashboard's origin) may hand back a code.
+function callbackOrigins(): string[] {
+    const origins = [window.location.origin];
+    try {
+        origins.push(new URL(API_URL, window.location.href).origin);
+    } catch {
+        /* unset API_URL leaves only our own origin */
+    }
+    return origins;
+}
 
 export function openOAuthPopup(authUrl: string): Promise<OAuthPopupResult> {
     return new Promise((resolve, reject) => {
@@ -35,6 +49,7 @@ export function openOAuthPopup(authUrl: string): Promise<OAuthPopupResult> {
         };
 
         const onMessage = (event: MessageEvent) => {
+            if (!callbackOrigins().includes(event.origin)) return;
             const data = event.data as
                 | { source?: string; code?: string; state?: string; error?: string }
                 | undefined;

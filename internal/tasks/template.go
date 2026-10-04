@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
-	"sync"
 	"text/template"
 
 	"github.com/google/uuid"
@@ -47,11 +46,11 @@ var templateAction = regexp.MustCompile(`\{\{[^{}]*\}\}`)
 var spacedFieldRefAt = regexp.MustCompile(`^\.[A-Za-z0-9_]+(?:[ \-]+[A-Za-z0-9_]+)+`)
 
 // tmplCache caches parsed templates keyed by the raw template string. A stored
-// nil *template.Template is a "known-bad" sentinel: that body failed to parse,
-// so future renders skip straight to the naive fallback instead of re-parsing
-// on every recipient. *template.Template is safe for concurrent Execute once
-// parsed, so a single cached instance is reused across the whole send loop.
-var tmplCache sync.Map // map[string]*template.Template ; nil value = known-bad
+// nil is a "known-bad" sentinel: that body failed to compile, so future renders
+// skip straight to the naive fallback instead of re-parsing on every recipient.
+// *template.Template is safe for concurrent Execute once parsed, so a single
+// cached instance is reused across the whole send loop.
+var tmplCache tmplfuncs.Cache
 
 // buildTemplateData flattens the contact into the single map[string]string root
 // the template engine executes against. Standard fields use their established
@@ -129,13 +128,12 @@ func rewriteSpacedInAction(action string) string {
 // (not html/template) performs no escaping, so the author's HTML body is emitted
 // verbatim.
 func compiledTemplate(tmpl string) *template.Template {
-	if v, ok := tmplCache.Load(tmpl); ok {
-		t, _ := v.(*template.Template)
+	if t, ok := tmplCache.Load(tmpl); ok {
 		return t // may be nil (known-bad)
 	}
-	t, err := template.New("body").Funcs(tmplfuncs.FuncMap()).Option("missingkey=zero").Parse(tmpl)
+	t, err := tmplfuncs.Compile("body", tmpl)
 	if err != nil {
-		tmplCache.Store(tmpl, (*template.Template)(nil))
+		tmplCache.Store(tmpl, nil)
 		return nil
 	}
 	tmplCache.Store(tmpl, t)
@@ -152,7 +150,7 @@ func TemplateError(tmpl string) error {
 	if tmpl == "" {
 		return nil
 	}
-	_, err := template.New("validate").Funcs(tmplfuncs.FuncMap()).Option("missingkey=zero").Parse(rewriteSpacedFieldRefs(tmpl))
+	_, err := tmplfuncs.Compile("validate", rewriteSpacedFieldRefs(tmpl))
 	return err
 }
 
@@ -185,11 +183,11 @@ func RenderTemplateWith(tmpl string, contact models.Contact, extra map[string]st
 		return naiveRenderTemplate(tmpl, contact, extra) // known-bad -> legacy path
 	}
 
-	var b strings.Builder
-	if err := t.Execute(&b, data); err != nil {
+	out, err := tmplfuncs.Execute(t, data)
+	if err != nil {
 		return naiveRenderTemplate(tmpl, contact, extra)
 	}
-	return b.String()
+	return out
 }
 
 // naiveRenderTemplate is the legacy renderer: a literal {{.Key}} -> value

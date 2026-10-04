@@ -10,13 +10,16 @@
 // Height is measured from the inner document and kept in sync as images load,
 // so the message reads as part of the page rather than a scroll box.
 //
-// With blockRemote, a Content-Security-Policy in the frame refuses every remote
-// image, background and font until the reader asks for them, so a sender's
-// tracking pixel cannot learn when, where or in what client a message was read.
+// Every frame carries a Content-Security-Policy that refuses scripts, plugins,
+// <base> and form targets, and a link that is not http(s), mailto or tel loses
+// its href. With blockRemote the policy also refuses every remote image,
+// background and font until the reader asks for them, so a sender's tracking
+// pixel cannot learn when, where or in what client a message was read.
 
 import React from "react";
 import { ImageOffIcon, MoreHorizontalIcon } from "lucide-react";
 import { hasRemoteContent, plainToDisplayHtml } from "@/lib/email/body";
+import { isSafeLinkHref } from "@/lib/safeUrl";
 import { useAppStore } from "@/stores";
 import { cn } from "@/lib/utils";
 
@@ -28,11 +31,12 @@ interface EmailBodyProps {
     blockRemote?: boolean;
 }
 
+const CSP_BASE = "default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 // Inline (data:) images and fonts only: nothing leaves the browser.
-const CSP_BLOCKED = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'";
-// After "Load images": remote images, fonts and media, still no scripts or frames.
-const CSP_LOADED =
-    "default-src 'none'; img-src data: https: http:; font-src data: https:; media-src https:; style-src 'unsafe-inline'";
+const CSP_BLOCKED = `${CSP_BASE}; img-src data:; font-src data:; style-src 'unsafe-inline'`;
+// After "Load images", and for previews of the user's own drafts: remote
+// images, fonts and media, still no scripts or frames.
+const CSP_LOADED = `${CSP_BASE}; img-src data: https: http:; font-src data: https:; media-src https:; style-src 'unsafe-inline'`;
 
 // Collapse only recognizable history; ambiguous inline replies stay visible.
 const QUOTE_SELECTORS = [
@@ -133,28 +137,40 @@ const isDesignedEmail = (body: string) => DESIGNED.test(body);
 // recipient will never see. Its own <head> gets our shell instead.
 const DOCUMENT_ROOT = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html[\s>])/i;
 
-function shell(csp: string | null, dark: boolean): string {
+function shell(csp: string, dark: boolean): string {
     // The policy must precede everything else in the head to govern it.
-    const policy = csp ? `<meta http-equiv="Content-Security-Policy" content="${csp}">` : "";
     return (
-        policy +
+        `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
         `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
         `<base target="_blank"><style>${DOCUMENT_CSS}${dark ? DARK_DOCUMENT_CSS : ""}</style>`
     );
 }
 
-function buildDocument(body: string, csp: string | null, dark: boolean): string {
-    const SHELL = shell(csp, dark);
-    if (DOCUMENT_ROOT.test(body)) {
-        // Our shell goes FIRST in the parsed document's real head, so the
-        // message's own stylesheet comes after it and wins on everything but
-        // the containment rules, and nothing in the markup (a commented-out
-        // <head>, say) can capture where the policy lands.
-        const doc = new DOMParser().parseFromString(body, "text/html");
-        doc.head.insertAdjacentHTML("afterbegin", SHELL);
-        return `${doc.doctype ? "<!doctype html>" : ""}${doc.documentElement.outerHTML}`;
-    }
-    return `<!doctype html><html><head>${SHELL}</head><body>${body}</body></html>`;
+const LINK_ATTRS = ["href", "xlink:href", "action", "formaction"];
+
+// Drops every link target whose scheme a link may not open (javascript:, data:, ...).
+function neutralizeLinks(doc: Document) {
+    doc.querySelectorAll("*").forEach((el) => {
+        for (const name of LINK_ATTRS) {
+            const value = el.getAttribute(name);
+            if (value !== null && !isSafeLinkHref(value)) el.removeAttribute(name);
+        }
+    });
+}
+
+function buildDocument(body: string, csp: string, dark: boolean): string {
+    // Our shell goes FIRST in the parsed document's real head, so the
+    // message's own stylesheet comes after it and wins on everything but the
+    // containment rules, and nothing in the markup (a commented-out <head>,
+    // say) can capture where the policy lands.
+    const whole = DOCUMENT_ROOT.test(body);
+    const doc = new DOMParser().parseFromString(
+        whole ? body : `<!doctype html><html><head></head><body>${body}</body></html>`,
+        "text/html",
+    );
+    doc.head.insertAdjacentHTML("afterbegin", shell(csp, dark));
+    neutralizeLinks(doc);
+    return `${doc.doctype ? "<!doctype html>" : ""}${doc.documentElement.outerHTML}`;
 }
 
 export default function EmailBody({ html, plain, blockRemote = false }: EmailBodyProps) {
@@ -180,7 +196,7 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
     const quotes = React.useMemo(() => prepareQuotes(body), [body]);
     const hasQuote = quotes.hasQuote;
     const remote = React.useMemo(() => blockRemote && hasRemoteContent(body), [blockRemote, body]);
-    const csp = blockRemote ? (remoteLoaded ? CSP_LOADED : CSP_BLOCKED) : null;
+    const csp = blockRemote && !remoteLoaded ? CSP_BLOCKED : CSP_LOADED;
     const darkTheme = useAppStore((s) => s.resolvedTheme === "dark");
     const designed = React.useMemo(() => isDesignedEmail(body), [body]);
     const darkDocument = darkTheme && !designed;

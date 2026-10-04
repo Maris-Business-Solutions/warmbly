@@ -17,6 +17,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/emailsend"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 )
 
 // ListAgentDrafts — GET /unibox/agent-drafts
@@ -112,7 +113,7 @@ func (h *Handler) ApproveAgentDraft(c *gin.Context) {
 		ThreadID:  draft.ThreadID,
 		SendMode:  "instant",
 	}
-	if draft.InReplyTo != "" {
+	if mailhdr.ValidMessageID(draft.InReplyTo) {
 		sendReq.InReplyTo = []string{draft.InReplyTo}
 	}
 

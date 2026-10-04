@@ -10,6 +10,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/emailsend"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/generation"
+	"github.com/warmbly/warmbly/internal/pkg/mailhdr"
 )
 
 // Inbox send tools. These are the ONLY tools that transmit mail to a real
@@ -100,7 +101,7 @@ func (d Deps) sendReply(ctx context.Context, inv Invocation, args json.RawMessag
 	}
 	// Best-effort: pull the original Message-ID so the reply threads via
 	// In-Reply-To. The thread preview does not carry it, so fetch the message.
-	if full, ferr := d.Unibox.GetByID(ctx, inv.OrgID, latest.ID); ferr == nil && full != nil && full.MessageID != "" {
+	if full, ferr := d.Unibox.GetByID(ctx, inv.OrgID, latest.ID); ferr == nil && full != nil && mailhdr.ValidMessageID(full.MessageID) {
 		sendReq.InReplyTo = []string{full.MessageID}
 	}
 	resp, xerr := d.EmailSend.SendEmail(ctx, inv.UserID, inv.OrgID, accountID, sendReq)

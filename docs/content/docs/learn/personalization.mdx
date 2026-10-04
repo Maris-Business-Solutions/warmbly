@@ -161,6 +161,8 @@ Warmbly guards against broken templates at three points:
 - A campaign won't start if any step's template is malformed. You get an error naming the step, so recipients never receive raw `{{if ...}}` text.
 - If a broken template ever reaches sending, it falls back to plain variable substitution rather than failing the send.
 
+Templates also have limits, so one template cannot tie up the server. `{{range}}` only loops over a field of the data (`{{range .items}}`), never over a number or a function's result, and loops nest at most two deep. `{{template}}` and `{{block}}` are not supported. A template that breaks one of these rules is treated as malformed, and one whose output passes 1 MB falls back to plain substitution.
+
 Always check Preview and send yourself a test email before launching.
 
 ## Quick reference

@@ -132,6 +132,11 @@ type header struct{ name, value string }
 // multipart/mixed would be valid but is not what a mail client produces, and
 // cold outreach has no room for gratuitous structural differences.
 func buildMIME(hdrs []header, bodyPlain, bodyHTML string, attachments []Attachment) ([]byte, error) {
+	for _, h := range hdrs {
+		if err := mailhdr.CheckHeader(h.name, h.value); err != nil {
+			return nil, fmt.Errorf("%s: %w", h.name, err)
+		}
+	}
 	switch {
 	case len(attachments) > 0:
 		return buildMixedMIME(hdrs, bodyPlain, bodyHTML, attachments)
