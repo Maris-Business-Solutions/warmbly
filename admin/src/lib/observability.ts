@@ -132,6 +132,9 @@ function loadPostHog(): Promise<import("posthog-js").PostHog | null> {
                 // A single-page app: one load, then history changes.
                 capture_pageview: "history_change",
                 capture_pageleave: true,
+                // Same URL masking as the dashboard: tokens and codes can travel in a query string.
+                mask_personal_data_properties: true,
+                custom_personal_data_properties: ["token", "session", "agent_session", "code"],
                 capture_dead_clicks: true,
                 capture_heatmaps: true,
                 rageclick: true,
