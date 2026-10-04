@@ -687,6 +687,9 @@ func (s *service) CreateEventSubscription(ctx context.Context, orgID, connID uui
 	if !models.IsValidWebhookEventType(eventType) {
 		return nil, fmt.Errorf("unknown event type: %s", eventType)
 	}
+	if !models.ProviderSupportsAction(conn.Provider, action) {
+		return nil, ErrActionProviderMismatch
+	}
 	// SSRF guard for action configs that carry an outbound URL.
 	if err := validateOutboundConfigURLs(config); err != nil {
 		return nil, err
@@ -910,6 +913,9 @@ func (s *service) validateAutomationGraph(ctx context.Context, orgID uuid.UUID, 
 			}
 			if conn == nil {
 				return errors.New("an action node references an unknown integration")
+			}
+			if !models.ProviderSupportsAction(conn.Provider, n.Action) {
+				return ErrActionProviderMismatch
 			}
 			cfg := map[string]any{}
 			if len(n.Config) > 0 {

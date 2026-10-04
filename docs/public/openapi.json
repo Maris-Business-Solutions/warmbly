@@ -19567,7 +19567,7 @@
       "get": {
         "operationId": "integrations_bookings_list",
         "summary": "List meeting bookings (integrations view)",
-        "description": "Up to 50 recent booked meetings, surfaced on the integrations page. For the full Meetings list with filters and pagination, use `GET /meetings`.",
+        "description": "Up to 50 recent booked meetings, surfaced on the integrations page. For the full Meetings list with filters and pagination, use `GET /meetings`. Scope `READ_CONTACTS`.",
         "tags": [
           "integrations"
         ],

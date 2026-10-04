@@ -337,6 +337,14 @@ func (h *Handler) ListConnectionEventSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"events": subs})
 }
 
+// automationWriteError maps a refused automation or subscription write to a 400.
+func automationWriteError(err error) *errx.Error {
+	if errors.Is(err, integration.ErrActionProviderMismatch) {
+		return errx.NewWithIdentifier(errx.BadRequest, "action_provider_mismatch", err.Error())
+	}
+	return errx.New(errx.BadRequest, err.Error())
+}
+
 func (h *Handler) CreateConnectionEventSubscription(c *gin.Context) {
 	orgID, userID, ok := h.requireIntegrationActor(c, true)
 	if !ok {
@@ -359,7 +367,7 @@ func (h *Handler) CreateConnectionEventSubscription(c *gin.Context) {
 	sub, err := h.IntegrationService.CreateEventSubscription(c.Request.Context(), orgID, connID,
 		strings.TrimSpace(p.EventType), models.IntegrationAction(strings.TrimSpace(p.Action)), p.Config, enabled)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, automationWriteError(err))
 		return
 	}
 	h.auditIntegration(c, userID, models.AuditActionUpdate, connID, "event:"+p.EventType)
@@ -812,7 +820,7 @@ func (h *Handler) CreateAutomation(c *gin.Context) {
 	}
 	a, err := h.IntegrationService.CreateAutomation(c.Request.Context(), orgID, w)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, automationWriteError(err))
 		return
 	}
 	h.auditIntegrationEntity(c, userID, models.AuditActionCreate, models.AuditEntityAutomation, a.ID, a.Name)
@@ -837,7 +845,7 @@ func (h *Handler) UpdateAutomation(c *gin.Context) {
 	}
 	a, err := h.IntegrationService.UpdateAutomation(c.Request.Context(), orgID, id, w)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, automationWriteError(err))
 		return
 	}
 	h.auditIntegrationEntity(c, userID, models.AuditActionUpdate, models.AuditEntityAutomation, id, a.Name)

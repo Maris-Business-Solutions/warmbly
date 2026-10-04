@@ -113,6 +113,9 @@ func (s *service) RunResearch(ctx context.Context, inv aitools.Invocation, conta
 		Status: models.ResearchRunning, Objective: strings.TrimSpace(objective),
 	}
 	created, replayed, err := s.repo.CreateRun(ctx, run, idempotencyKey)
+	if errors.Is(err, repository.ErrResearchContactNotFound) {
+		return nil, errx.New(errx.NotFound, "contact not found")
+	}
 	if err != nil {
 		return nil, errx.New(errx.Internal, "failed to create research run")
 	}

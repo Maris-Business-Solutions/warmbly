@@ -1428,7 +1428,10 @@ func (s *tasksService) executeActionNode(ctx context.Context, campaign *models.C
 		}
 		return nil
 	case "unsubscribe":
-		if xerr := s.advanced.Unsubscribe(ctx, campaign.ID, contact.ID); xerr != nil {
+		if campaign.OrganizationID == nil {
+			return nil
+		}
+		if xerr := s.advanced.Unsubscribe(ctx, *campaign.OrganizationID, campaign.ID, contact.ID); xerr != nil {
 			return xerr
 		}
 		return nil

@@ -331,6 +331,12 @@ The [Salesforce](/guides/salesforce/) endpoints answer with their own codes. Whe
 | `import_running` | 409 | `POST /integrations/salesforce/:id/import-sources/:sourceId/run` while that import is already running |
 | `salesforce_rate_limited` | 429 | The Salesforce org has used its API requests for today |
 
+#### Automation refusals
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `action_provider_mismatch` | 400 | `POST /automations`, `PATCH /automations/:id` or `POST /integrations/connections/:id/events` paired an action with a connection whose provider does not run it, such as a Slack message on a HubSpot connection. Each action runs only on the integration it belongs to; the provider's actions are listed under `capability.actions` in `GET /integrations/catalog` |
+
 ### 401 Unauthorized
 
 Returned when authentication fails.

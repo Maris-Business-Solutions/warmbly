@@ -290,7 +290,10 @@ func (s *service) executeInstantActionNode(ctx context.Context, campaign *models
 			s.logActionErr(campaign, contact, cfg.Type, eventKind, xerr)
 		}
 	case "unsubscribe":
-		if xerr := s.Unsubscribe(ctx, campaign.ID, contact.ID); xerr != nil {
+		if campaign.OrganizationID == nil {
+			return
+		}
+		if xerr := s.Unsubscribe(ctx, *campaign.OrganizationID, campaign.ID, contact.ID); xerr != nil {
 			s.logActionErr(campaign, contact, cfg.Type, eventKind, xerr)
 		}
 	case "create_task":

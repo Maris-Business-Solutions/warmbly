@@ -67,7 +67,7 @@ type Service interface {
 	// Unsubscribe suppresses a contact in response to a List-Unsubscribe action
 	// (one-click POST or the manual link). Always suppresses — it's an explicit
 	// recipient request, independent of the auto-suppress settings.
-	Unsubscribe(ctx context.Context, campaignID, contactID uuid.UUID) *errx.Error
+	Unsubscribe(ctx context.Context, organizationID, campaignID, contactID uuid.UUID) *errx.Error
 	// UnsubscribeFromLink is Unsubscribe for a verified link token: the
 	// organization in the token must own the campaign, and via names the
 	// mechanism ("one_click" for the RFC 8058 POST, "link" for a click).
@@ -594,32 +594,31 @@ func (s *service) ListPipelines(ctx context.Context, orgID uuid.UUID) ([]models.
 	return s.crmRepo.ListPipelines(ctx, orgID)
 }
 
-func (s *service) Unsubscribe(ctx context.Context, campaignID, contactID uuid.UUID) *errx.Error {
-	return s.unsubscribe(ctx, nil, campaignID, contactID, "action")
+func (s *service) Unsubscribe(ctx context.Context, organizationID, campaignID, contactID uuid.UUID) *errx.Error {
+	return s.unsubscribe(ctx, organizationID, campaignID, contactID, "action")
 }
 
 func (s *service) UnsubscribeFromLink(ctx context.Context, organizationID, campaignID, contactID uuid.UUID, via string) *errx.Error {
 	if via != "one_click" {
 		via = "link"
 	}
-	return s.unsubscribe(ctx, &organizationID, campaignID, contactID, via)
+	return s.unsubscribe(ctx, organizationID, campaignID, contactID, via)
 }
 
 // unsubscribe records an explicit opt-out: the address goes on the workspace
 // suppression list and the contact's own subscription flag is cleared, so the
-// CRM and the send gate tell the same story.
-func (s *service) unsubscribe(ctx context.Context, expectOrg *uuid.UUID, campaignID, contactID uuid.UUID, via string) *errx.Error {
+// CRM and the send gate tell the same story. The campaign and the contact
+// must both belong to organizationID.
+func (s *service) unsubscribe(ctx context.Context, organizationID, campaignID, contactID uuid.UUID, via string) *errx.Error {
 	campaign, err := s.campaignRepo.GetByID(ctx, campaignID)
-	if err != nil || campaign == nil || campaign.OrganizationID == nil {
+	if err != nil || campaign == nil || campaign.OrganizationID == nil || *campaign.OrganizationID != organizationID {
 		return errx.New(errx.BadRequest, "invalid unsubscribe link")
 	}
-	if expectOrg != nil && *expectOrg != *campaign.OrganizationID {
+	found, cerr := s.contactRepo.GetByIDsAndOrganization(ctx, organizationID, []uuid.UUID{contactID})
+	if cerr != nil || len(found) != 1 || found[0].Email == "" {
 		return errx.New(errx.BadRequest, "invalid unsubscribe link")
 	}
-	contact, cerr := s.contactRepo.GetByID(ctx, contactID)
-	if cerr != nil || contact == nil || contact.Email == "" {
-		return errx.New(errx.BadRequest, "invalid unsubscribe link")
-	}
+	contact := &found[0]
 
 	reason := map[string]string{
 		"one_click": "one-click unsubscribe (mail client)",

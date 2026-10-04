@@ -645,8 +645,8 @@ export default function AutomationFlow({
 
     // Collaboration: claim this automation while the builder is open so a
     // teammate sees who's here. Editors show as "editing"; members without the
-    // integration permission (view-only) show as "viewing".
-    const canEditAutomation = usePermission("USE_INTEGRATIONS");
+    // settings permission (view-only) show as "viewing".
+    const canEditAutomation = usePermission("MANAGE_SETTINGS");
     usePresenceResource(`automation:${automation.id}`, canEditAutomation ? "editing" : "viewing");
     // This canvas has its own flow-space cursor layer; silence the page layer.
     useSuppressGlobalCursors();
@@ -694,13 +694,14 @@ export default function AutomationFlow({
     // only the ones a hand touched). Silent on the server: no audit, no
     // updated_at bump, so it never nudges a teammate's editor.
     const persistLayout = React.useCallback(() => {
+        if (!canEditAutomation) return;
         const positions = nodesRef.current.map((n) => ({
             id: n.id,
             x: Math.round(n.position.x),
             y: Math.round(n.position.y),
         }));
         if (positions.length) layoutMutateRef.current({ id: automation.id, positions });
-    }, [automation.id]);
+    }, [automation.id, canEditAutomation]);
 
     // Debounced so a flurry of drags coalesces into one write.
     const commitLayout = React.useCallback(() => {
@@ -1267,7 +1268,8 @@ export default function AutomationFlow({
     // action steps the user toggled off. Persists the canvas first only when there
     // are unsaved edits, so we test what's on screen.
     const runTest = async (data?: Record<string, unknown>, skipNodeIds?: string[]) => {
-        if (dirty && !(await save())) return;
+        // A view-only member tests the saved flow; only an editor can persist first.
+        if (dirty && canEditAutomation && !(await save())) return;
         try {
             const res = await test.mutateAsync({ id: automation.id, data, skipNodeIds });
             setTestResult(res);
@@ -1324,9 +1326,10 @@ export default function AutomationFlow({
                     role="switch"
                     aria-checked={enabled}
                     aria-label="Enable automation"
+                    disabled={!canEditAutomation}
                     onClick={() => setEnabled((v) => !v)}
                     title={enabled ? "Automation is live" : "Automation is paused"}
-                    className="inline-flex h-7 cursor-pointer select-none items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+                    className="inline-flex h-7 cursor-pointer select-none items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:cursor-default disabled:opacity-70"
                 >
                     <span
                         className={cn(
@@ -1391,7 +1394,7 @@ export default function AutomationFlow({
                         <span className="hidden md:inline">Tidy up</span>
                     </button>
                     <PermissionButton
-                        permission="USE_INTEGRATIONS"
+                        permission="MANAGE_SETTINGS"
                         type="button"
                         onClick={save}
                         disabled={!dirty || update.isPending}

@@ -16,8 +16,9 @@ type CRMService interface {
 	// Notes
 	CreateNote(ctx context.Context, orgID, contactID, userID uuid.UUID, data *models.CreateContactNote) (*models.ContactNote, *errx.Error)
 	ListNotes(ctx context.Context, orgID, contactID uuid.UUID, limit int, cursor *uuid.UUID) (*models.ContactNotesResult, *errx.Error)
-	UpdateNote(ctx context.Context, orgID, noteID uuid.UUID, data *models.UpdateContactNote) (*models.ContactNote, *errx.Error)
-	DeleteNote(ctx context.Context, orgID, noteID uuid.UUID) *errx.Error
+	// UpdateNote and DeleteNote refuse a note on another contact when contactID is set.
+	UpdateNote(ctx context.Context, orgID uuid.UUID, contactID *uuid.UUID, noteID uuid.UUID, data *models.UpdateContactNote) (*models.ContactNote, *errx.Error)
+	DeleteNote(ctx context.Context, orgID uuid.UUID, contactID *uuid.UUID, noteID uuid.UUID) *errx.Error
 
 	// Activities
 	ListActivities(ctx context.Context, orgID, contactID uuid.UUID, limit int, cursor *uuid.UUID) (*models.ContactActivitiesResult, *errx.Error)
@@ -170,12 +171,30 @@ func (s *crmService) ListNotes(ctx context.Context, orgID, contactID uuid.UUID, 
 	return result, nil
 }
 
-func (s *crmService) UpdateNote(ctx context.Context, orgID, noteID uuid.UUID, data *models.UpdateContactNote) (*models.ContactNote, *errx.Error) {
+// noteOnContact checks that noteID is a note on contactID, when one is given.
+func (s *crmService) noteOnContact(ctx context.Context, orgID uuid.UUID, contactID *uuid.UUID, noteID uuid.UUID) *errx.Error {
+	if contactID == nil {
+		return nil
+	}
+	note, err := s.repo.GetNote(ctx, orgID, noteID)
+	if err != nil {
+		return toErrx(err)
+	}
+	if note.ContactID != *contactID {
+		return errx.ErrNotFound
+	}
+	return nil
+}
+
+func (s *crmService) UpdateNote(ctx context.Context, orgID uuid.UUID, contactID *uuid.UUID, noteID uuid.UUID, data *models.UpdateContactNote) (*models.ContactNote, *errx.Error) {
 	if data.Content == nil || len(*data.Content) == 0 {
 		return nil, errx.New(errx.BadRequest, "content is required")
 	}
 	if len(*data.Content) > 10000 {
 		return nil, errx.New(errx.BadRequest, "content must be at most 10000 characters")
+	}
+	if xerr := s.noteOnContact(ctx, orgID, contactID, noteID); xerr != nil {
+		return nil, xerr
 	}
 
 	if ext := s.external(ctx, orgID); ext != nil {
@@ -196,7 +215,10 @@ func (s *crmService) UpdateNote(ctx context.Context, orgID, noteID uuid.UUID, da
 	return note, nil
 }
 
-func (s *crmService) DeleteNote(ctx context.Context, orgID, noteID uuid.UUID) *errx.Error {
+func (s *crmService) DeleteNote(ctx context.Context, orgID uuid.UUID, contactID *uuid.UUID, noteID uuid.UUID) *errx.Error {
+	if xerr := s.noteOnContact(ctx, orgID, contactID, noteID); xerr != nil {
+		return xerr
+	}
 	if ext := s.external(ctx, orgID); ext != nil {
 		if xerr := ext.PushNoteDelete(ctx, orgID, noteID); xerr != nil {
 			return xerr

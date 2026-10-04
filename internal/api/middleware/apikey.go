@@ -238,9 +238,10 @@ func (h *Handler) RequireAccess(orgPerm models.OrganizationPermission, apiPerm u
 			}
 			c.Next()
 		default:
-			// JWT path: defer to the org-permission gate.
+			// JWT path: defer to the org-permission gate, which refuses when it cannot check.
 			if h.OrganizationService == nil {
-				c.Next()
+				errx.JSON(c, errx.InternalError())
+				c.Abort()
 				return
 			}
 			userID, err := GetUserUUID(c)
@@ -308,7 +309,8 @@ func (h *Handler) RequireAnyAccess(apiPerm uint64, orgPerms ...models.Organizati
 			c.Next()
 		default:
 			if h.OrganizationService == nil {
-				c.Next()
+				errx.JSON(c, errx.InternalError())
+				c.Abort()
 				return
 			}
 			userID, err := GetUserUUID(c)

@@ -174,7 +174,8 @@ func (h *Handler) RequireOrganization() gin.HandlerFunc {
 func (h *Handler) RequirePermission(perm models.OrganizationPermission) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if h.OrganizationService == nil {
-			c.Next()
+			errx.JSON(c, errx.InternalError())
+			c.Abort()
 			return
 		}
 

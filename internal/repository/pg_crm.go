@@ -129,7 +129,7 @@ func (r *crmRepository) ListNotes(ctx context.Context, orgID, contactID uuid.UUI
 		WHERE cn.contact_id = $1
 		  AND cn.organization_id = $4
 		  AND ($2::uuid IS NULL OR (cn.created_at, cn.id) < (
-			SELECT created_at, id FROM contact_notes WHERE id = $2
+			SELECT created_at, id FROM contact_notes WHERE id = $2 AND organization_id = $4
 		  ))
 		ORDER BY cn.created_at DESC, cn.id DESC
 		LIMIT $3
@@ -222,7 +222,7 @@ func (r *crmRepository) ListActivities(ctx context.Context, orgID, contactID uui
 		WHERE contact_id = $1
 		  AND organization_id = $4
 		  AND ($2::uuid IS NULL OR (created_at, id) < (
-			SELECT created_at, id FROM contact_activities WHERE id = $2
+			SELECT created_at, id FROM contact_activities WHERE id = $2 AND organization_id = $4
 		  ))
 		ORDER BY created_at DESC, id DESC
 		LIMIT $3
@@ -699,7 +699,7 @@ func (r *crmRepository) ListDeals(ctx context.Context, orgID uuid.UUID, pipeline
 	}
 
 	if cursor != nil {
-		whereClauses = append(whereClauses, fmt.Sprintf("(created_at, id) < (SELECT created_at, id FROM deals WHERE id = $%d)", argPos))
+		whereClauses = append(whereClauses, fmt.Sprintf("(created_at, id) < (SELECT created_at, id FROM deals WHERE id = $%d AND organization_id = $1)", argPos))
 		args = append(args, *cursor)
 		argPos++
 	}
@@ -1233,7 +1233,7 @@ func (r *crmRepository) ListCRMTasks(ctx context.Context, orgID uuid.UUID, conta
 	}
 
 	if cursor != nil {
-		whereClauses = append(whereClauses, fmt.Sprintf("(created_at, id) < (SELECT created_at, id FROM crm_tasks WHERE id = $%d)", argPos))
+		whereClauses = append(whereClauses, fmt.Sprintf("(created_at, id) < (SELECT created_at, id FROM crm_tasks WHERE id = $%d AND organization_id = $1)", argPos))
 		args = append(args, *cursor)
 		argPos++
 	}

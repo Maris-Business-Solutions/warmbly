@@ -178,3 +178,29 @@ func TestRequireAccessWithQueryOnlyGatesWithTheParam(t *testing.T) {
 		})
 	}
 }
+
+// A session caller is refused when no organization service is wired to check it.
+func TestOrgGatesRefuseWithoutOrganizationService(t *testing.T) {
+	h := &Handler{}
+	for name, gate := range map[string]gin.HandlerFunc{
+		"RequireAccess":     h.RequireAccess(models.PermManageSettings, models.APIPermIntegrations),
+		"RequireAnyAccess":  h.RequireAnyAccess(models.APIPermIntegrations, models.PermManageSettings, models.PermUseIntegrations),
+		"RequirePermission": h.RequirePermission(models.PermManageSettings),
+	} {
+		r := gin.New()
+		r.Use(func(c *gin.Context) {
+			c.Set(AuthTypeKey, AuthTypeJWT)
+			c.Next()
+		})
+		calls := 0
+		r.GET("/x", gate, func(c *gin.Context) {
+			calls++
+			c.JSON(http.StatusOK, gin.H{})
+		})
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/x", nil))
+		if w.Code != http.StatusInternalServerError || calls != 0 {
+			t.Errorf("%s: status = %d, handler ran %d times; want 500 and 0", name, w.Code, calls)
+		}
+	}
+}

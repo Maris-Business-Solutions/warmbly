@@ -18,6 +18,7 @@ import {
     TopbarAction,
 } from "@/components/layout/Page";
 import { useConfirm } from "@/hooks/context/confirm";
+import { usePermission } from "@/hooks/usePermission";
 import { useAutomations } from "@/lib/api/hooks/app/automations/useAutomations";
 import {
     useCreateAutomation,
@@ -50,6 +51,8 @@ export default function AutomationsPage() {
     const navigate = useNavigate();
     const { data, isLoading } = useAutomations();
     const create = useCreateAutomation();
+    // Building automations is a settings action; others can open and test them.
+    const canManage = usePermission("MANAGE_SETTINGS");
     const automations = data?.automations ?? [];
 
     const enabledCount = automations.filter((a) => a.enabled).length;
@@ -83,12 +86,14 @@ export default function AutomationsPage() {
     return (
         <Page>
             <PageTopbar eyebrow="Automations" subtitle="When something happens in Warmbly, do this across your integrations">
-                <TopbarAction
-                    onClick={newAutomation}
-                    icon={create.isPending ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <PlusIcon className="w-3.5 h-3.5" />}
-                >
-                    New automation
-                </TopbarAction>
+                {canManage && (
+                    <TopbarAction
+                        onClick={newAutomation}
+                        icon={create.isPending ? <Loader2Icon className="w-3.5 h-3.5 animate-spin" /> : <PlusIcon className="w-3.5 h-3.5" />}
+                    >
+                        New automation
+                    </TopbarAction>
+                )}
             </PageTopbar>
 
             <StatStrip cols={3}>
@@ -108,23 +113,33 @@ export default function AutomationsPage() {
                         title="No automations yet"
                         body="Build a flow: pick a trigger like “meeting booked”, then connect what should happen — ping Slack, create a deal, push to your CRM, or fire a webhook."
                         cta={
-                            <TopbarAction onClick={newAutomation} icon={<PlusIcon className="w-3.5 h-3.5" />}>
-                                New automation
-                            </TopbarAction>
+                            canManage ? (
+                                <TopbarAction onClick={newAutomation} icon={<PlusIcon className="w-3.5 h-3.5" />}>
+                                    New automation
+                                </TopbarAction>
+                            ) : undefined
                         }
                     />
                 ) : (
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-200/60 border-b border-slate-200/60">
                         {automations.map((a, i) => (
-                            <AutomationCard key={a.id} index={i} automation={a} onOpen={() => navigate(`/app/automations/${a.id}`)} />
+                            <AutomationCard
+                                key={a.id}
+                                index={i}
+                                automation={a}
+                                canManage={canManage}
+                                onOpen={() => navigate(`/app/automations/${a.id}`)}
+                            />
                         ))}
                     </div>
                 )}
 
-                <div className="mt-8">
-                    <SectionBar label="Start from a template" />
-                    <TemplateGallery onPick={newFromTemplate} busy={create.isPending} />
-                </div>
+                {canManage && (
+                    <div className="mt-8">
+                        <SectionBar label="Start from a template" />
+                        <TemplateGallery onPick={newFromTemplate} busy={create.isPending} />
+                    </div>
+                )}
             </PageBody>
         </Page>
     );
@@ -160,10 +175,12 @@ function AutomationCard({
     automation,
     onOpen,
     index,
+    canManage,
 }: {
     automation: Automation;
     onOpen: () => void;
     index: number;
+    canManage: boolean;
 }) {
     const confirm = useConfirm();
     const del = useDeleteAutomation();
@@ -253,25 +270,27 @@ function AutomationCard({
                 </div>
             </div>
 
-            <div className="mt-auto pt-3 flex items-center justify-between gap-2">
-                <span
-                    role="button"
-                    tabIndex={-1}
-                    onClick={toggle}
-                    className="text-[11px] text-slate-500 hover:text-slate-900 underline decoration-dotted underline-offset-2"
-                >
-                    {a.enabled ? "Turn off" : "Turn on"}
-                </span>
-                <span
-                    role="button"
-                    tabIndex={-1}
-                    onClick={remove}
-                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 h-6 w-6 rounded inline-flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
-                    title="Delete automation"
-                >
-                    <Trash2Icon className="w-3.5 h-3.5" />
-                </span>
-            </div>
+            {canManage && (
+                <div className="mt-auto pt-3 flex items-center justify-between gap-2">
+                    <span
+                        role="button"
+                        tabIndex={-1}
+                        onClick={toggle}
+                        className="text-[11px] text-slate-500 hover:text-slate-900 underline decoration-dotted underline-offset-2"
+                    >
+                        {a.enabled ? "Turn off" : "Turn on"}
+                    </span>
+                    <span
+                        role="button"
+                        tabIndex={-1}
+                        onClick={remove}
+                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 h-6 w-6 rounded inline-flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                        title="Delete automation"
+                    >
+                        <Trash2Icon className="w-3.5 h-3.5" />
+                    </span>
+                </div>
+            )}
         </motion.button>
     );
 }

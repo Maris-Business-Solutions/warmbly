@@ -423,7 +423,8 @@ The `listing` routes publish an app to the [community directory](/api/oauth/#pub
 | GET | `/webhooks/:id/deliveries` | `WEBHOOKS` |
 | POST | `/webhooks/deliveries/:deliveryId/redeliver` | `WEBHOOKS` |
 | GET | `/webhooks/throttle-drops` | `WEBHOOKS` |
-| GET/POST/DELETE | `/integrations/*` (except `/integrations/slack/*`, which is [JWT only](#slack)) | `INTEGRATIONS` |
+| GET/POST/DELETE | `/integrations/*` (except `/integrations/slack/*`, which is [JWT only](#slack), and `/integrations/bookings`) | `INTEGRATIONS` |
+| GET | `/integrations/bookings` | `READ_CONTACTS` |
 | GET/PUT | `/integrations/salesforce/:id/settings` | `INTEGRATIONS` |
 | GET | `/integrations/salesforce/:id/overview`, `/metadata`, `/users`, `/list-views`, `/campaigns`, `/activity` | `INTEGRATIONS` |
 | POST | `/integrations/salesforce/:id/import/preview` | `INTEGRATIONS` |
@@ -435,6 +436,8 @@ The `listing` routes publish an app to the [community directory](/api/oauth/#pub
 | DELETE | `/contacts/:id/salesforce/links/:linkId` | `INTEGRATIONS` |
 | GET/POST/PATCH/DELETE | `/automations[/:id]` | `INTEGRATIONS` |
 | PATCH | `/automations/:id/layout` | `INTEGRATIONS` |
+
+A signed-in member needs `manage_settings` to create, edit, enable or delete an automation, because a flow runs as the workspace; `use_integrations` is enough to list, open, test and read the run history.
 | GET/POST/PATCH/DELETE | `/warmup/routing[/:id]` | `WARMUP_ROUTING` |
 
 ### Retry safety

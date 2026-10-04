@@ -110,8 +110,8 @@ func (a Adapter) MoveDealStage(ctx context.Context, orgID, contactID, pipelineID
 	return nil
 }
 
-func (a Adapter) Unsubscribe(ctx context.Context, campaignID, contactID uuid.UUID) error {
-	if e := a.Adv.Unsubscribe(ctx, campaignID, contactID); e != nil {
+func (a Adapter) Unsubscribe(ctx context.Context, orgID, campaignID, contactID uuid.UUID) error {
+	if e := a.Adv.Unsubscribe(ctx, orgID, campaignID, contactID); e != nil {
 		return e
 	}
 	return nil

@@ -1174,7 +1174,8 @@ func Run(
 				integrations.POST("/connections/:id/rotate-inbound-url", write, h.RotateConnectionInboundURL)
 				integrations.POST("/connections/:id/test", write, h.TestConnection)
 				integrations.POST("/connections/:id/push", operate, h.PushContactsToIntegration)
-				integrations.GET("/bookings", read, h.ListMeetingBookings)
+				// Bookings carry invitee details, so they are read like contacts.
+				integrations.GET("/bookings", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.ListMeetingBookings)
 
 				// Native Salesforce sync (:id is the connection). Reading health and
 				// the activity log is operational; changing what syncs is settings.
@@ -1213,15 +1214,13 @@ func Run(
 
 			// Automations (org-scoped). The visual flow builder: a trigger event +
 			// action steps across integrations. Reads reachable by operational
-			// integration users; creating/editing is a settings action.
+			// integration users; creating/editing is a settings action, because a
+			// flow runs as the workspace.
 			automations := protected.Group("/automations")
 			automations.Use(m.RequireOrganization(), m.RateLimitMiddleware(models.RateLimitWrite))
 			{
 				aread := m.RequireAnyAccess(models.APIPermIntegrations, models.PermManageSettings, models.PermUseIntegrations)
-				// Writing automations needs the integration permission (same family as
-				// reads) OR settings-manager; previously it required manage-settings only,
-				// which let integration-permitted members open the builder but 403 on save.
-				awrite := m.RequireAnyAccess(models.APIPermIntegrations, models.PermManageSettings, models.PermUseIntegrations)
+				awrite := m.RequireAccess(models.PermManageSettings, models.APIPermIntegrations)
 				automations.GET("", aread, h.ListAutomations)
 				automations.POST("", awrite, h.CreateAutomation)
 				automations.GET("/:id", aread, h.GetAutomation)
