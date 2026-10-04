@@ -95,7 +95,7 @@ type OrganizationService interface {
 	UpdateRole(ctx context.Context, orgID, actorID, roleID uuid.UUID, req *models.UpdateOrganizationRoleRequest) (*models.OrganizationRole, *errx.Error)
 	DeleteRole(ctx context.Context, orgID, actorID, roleID uuid.UUID) *errx.Error
 	UpdateMemberRole(ctx context.Context, orgID, actorID, memberUserID uuid.UUID, req *models.UpdateMemberRequest) (*models.OrganizationMember, *errx.Error)
-	RemoveMember(ctx context.Context, orgID, memberUserID uuid.UUID) *errx.Error
+	RemoveMember(ctx context.Context, orgID, actorID, memberUserID uuid.UUID) *errx.Error
 
 	// Invitations
 	GetPendingInvitations(ctx context.Context, orgID uuid.UUID) ([]models.OrganizationInvitation, *errx.Error)
@@ -918,11 +918,12 @@ func (s *organizationService) UpdateMemberRole(ctx context.Context, orgID, actor
 		return nil, xerr
 	}
 	// Assignment is an escalation surface: the actor must hold every
-	// permission the new role set grants, and may not re-role themselves.
+	// permission the member has now and every one the new role set grants,
+	// and may not re-role themselves.
 	if actorID == memberUserID {
 		return nil, errx.New(errx.Forbidden, "you cannot change your own roles")
 	}
-	if xerr := s.validateActorHoldsPermissions(ctx, orgID, actorID, permissions); xerr != nil {
+	if xerr := s.validateActorHoldsPermissions(ctx, orgID, actorID, permissions|member.Permissions); xerr != nil {
 		return nil, xerr
 	}
 
@@ -942,8 +943,9 @@ func (s *organizationService) UpdateMemberRole(ctx context.Context, orgID, actor
 	return updated, nil
 }
 
-// RemoveMember removes a member from the organization
-func (s *organizationService) RemoveMember(ctx context.Context, orgID, memberUserID uuid.UUID) *errx.Error {
+// RemoveMember removes a member from the organization. The actor must hold
+// every permission the member holds.
+func (s *organizationService) RemoveMember(ctx context.Context, orgID, actorID, memberUserID uuid.UUID) *errx.Error {
 	member, err := s.orgRepo.GetMember(ctx, orgID, memberUserID)
 	if err != nil {
 		errs.CaptureException(err)
@@ -956,6 +958,9 @@ func (s *organizationService) RemoveMember(ctx context.Context, orgID, memberUse
 	// Cannot remove owner
 	if member.Role == string(models.RoleOwner) {
 		return errx.New(errx.Forbidden, "cannot remove organization owner")
+	}
+	if xerr := s.validateActorHoldsPermissions(ctx, orgID, actorID, member.Permissions); xerr != nil {
+		return xerr
 	}
 
 	if err := s.orgRepo.RemoveMember(ctx, orgID, memberUserID); err != nil {
@@ -1794,6 +1799,10 @@ func (s *organizationService) validateActorHoldsPermissions(ctx context.Context,
 	if actor == nil {
 		return errx.New(errx.Forbidden, "not a member")
 	}
+	// The owner holds every permission, including bits added after its row was written.
+	if actor.Role == string(models.RoleOwner) {
+		return nil
+	}
 	if perms&^actor.Permissions != 0 {
 		return errx.New(errx.Forbidden, "you cannot grant permissions you do not hold")
 	}
@@ -1892,6 +1901,11 @@ func (s *organizationService) UpdateRole(ctx context.Context, orgID, actorID, ro
 	if req.Permissions != nil {
 		perms := models.OrganizationPermission(*req.Permissions)
 		if xerr := s.validateRolePermissions(ctx, orgID, actorID, perms); xerr != nil {
+			return nil, xerr
+		}
+		// Editing takes the old permissions away from everyone holding the
+		// role, so the actor must hold those too, as for DeleteRole.
+		if xerr := s.validateActorHoldsPermissions(ctx, orgID, actorID, role.Permissions); xerr != nil {
 			return nil, xerr
 		}
 		role.Permissions = perms

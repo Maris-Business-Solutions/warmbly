@@ -196,7 +196,7 @@ func (d Deps) removeMember(ctx context.Context, inv Invocation, args json.RawMes
 	if err != nil {
 		return "", err
 	}
-	if xerr := d.Org.RemoveMember(ctx, inv.OrgID, memberID); xerr != nil {
+	if xerr := d.Org.RemoveMember(ctx, inv.OrgID, inv.UserID, memberID); xerr != nil {
 		return "", fromErrx(xerr)
 	}
 	d.logAudit(ctx, inv, models.AuditActionRemove, models.AuditEntityOrganizationMember, &memberID, nil)

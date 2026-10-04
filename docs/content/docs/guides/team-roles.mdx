@@ -80,7 +80,7 @@ On **Roles & access**, click **New role**: a name (up to 50 characters, and only
 Five rules keep this safe:
 
 - **Editing a role updates everyone assigned to it immediately.** The editor shows how many members are affected before you save.
-- **You can only grant permissions you hold**, so nobody can mint a role stronger than their own.
+- **You can only grant or take away permissions you hold**, so nobody can mint a role stronger than their own. Changing a role's permissions, deleting a role, re-roling a member and removing a member all need every permission involved, old and new; the owner holds them all.
 - **Ownership transfer can never be part of a custom role.**
 - **Members can hold several roles**, and their effective access is the union of all of them. A member left with no roles keeps membership but has no permissions.
 - Up to 25 roles per workspace, including the seeded ones.
