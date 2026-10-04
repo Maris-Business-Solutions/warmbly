@@ -1,6 +1,6 @@
-// The HubSpot side of one contact: owner, lifecycle stage and lead status,
-// edited in place and written to HubSpot. Shared by the inbox panel and the
-// contact drawer so both read and edit the record the same way.
+// The connected CRM's side of one contact: owner, lifecycle stage (a label in
+// Pipedrive) and lead status, edited in place and written to the CRM. Shared by
+// the inbox panel and the contact drawer so both read and edit it the same way.
 
 import React from "react";
 import { Link } from "@tanstack/react-router";
@@ -25,9 +25,8 @@ import getCrmContact from "@/lib/api/client/app/crm/provider/getCrmContact";
 import type { CRMOption, CRMOwner, CRMPropertyView, UpdateCRMContact } from "@/lib/api/models/app/crm/CRMProvider";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import { cn } from "@/lib/utils";
-import { HubSpotBadge, HubSpotSyncedAt, OpenInHubSpot } from "./HubSpot";
-import { HUBSPOT_SETTINGS_PATH } from "./hubspotCrm";
-import { crmErrorMessage } from "./hubspotUtils";
+import { type CrmInfo, CrmBadge, CrmSyncedAt, OpenInCrm } from "./crmProviders";
+import { crmErrorMessage } from "./crmModeUtils";
 
 type Field = "owner" | "lifecycle" | "lead";
 
@@ -37,7 +36,7 @@ interface FieldError {
     reauth: boolean;
 }
 
-function toFieldError(field: FieldError["field"], err: unknown): FieldError {
+function toFieldError(field: FieldError["field"], err: unknown, crm: CrmInfo): FieldError {
     const e = err as AppError;
     if (e?.code === "crm_contact_missing") {
         return {
@@ -45,7 +44,7 @@ function toFieldError(field: FieldError["field"], err: unknown): FieldError {
             reauth: false,
             message:
                 e.message ||
-                "HubSpot has no contact with this email address, and creating contacts from Warmbly is turned off.",
+                `${crm.name} has no ${crm.words.contact} with this email address, and creating them from Warmbly is turned off.`,
         };
     }
     return { field, message: crmErrorMessage(err), reauth: e?.code === "crm_reauth_required" };
@@ -56,8 +55,8 @@ function ownerName(o?: Pick<CRMOwner, "first_name" | "last_name" | "email">): st
     return `${o.first_name ?? ""} ${o.last_name ?? ""}`.trim() || o.email || "";
 }
 
-// Reads the cached HubSpot view without asking for another pull; the card
-// on the same contact already did.
+// Reads the cached CRM view without asking for another pull; the card on the
+// same contact already did.
 function useCrmContactView(contactId: string | undefined, enabled = true) {
     return useQuery({
         queryKey: ["crm", "contact", contactId],
@@ -67,7 +66,7 @@ function useCrmContactView(contactId: string | undefined, enabled = true) {
     });
 }
 
-export default function HubSpotContactCard({
+export default function CrmContactCard({
     contactId,
     density = "panel",
     showProperties = true,
@@ -79,16 +78,16 @@ export default function HubSpotContactCard({
     showProperties?: boolean;
     className?: string;
 }) {
-    const { isHubSpot, needsReconnect } = useCrmProvider();
-    const view = useCrmContact(contactId, isHubSpot);
+    const { isExternal, crm, needsReconnect } = useCrmProvider();
+    const view = useCrmContact(contactId, isExternal);
     const canEdit = usePermission("MANAGE_CONTACTS");
     const link = useLinkCrmContact();
     const update = useUpdateCrmContact();
     const linked = !!view.data?.linked;
-    const metadata = useCrmMetadata(isHubSpot && linked);
-    const owners = useCrmOwners(isHubSpot && linked && canEdit);
+    const metadata = useCrmMetadata(isExternal && linked);
+    const owners = useCrmOwners(isExternal && linked && canEdit);
 
-    // The value being written, so the row shows the choice before HubSpot answers.
+    // The value being written, so the row shows the choice before the CRM answers.
     const [pending, setPending] = React.useState<{ field: Field; label: string } | null>(null);
     const [error, setError] = React.useState<FieldError | null>(null);
 
@@ -98,7 +97,7 @@ export default function HubSpotContactCard({
         setError(null);
     }, [contactId]);
 
-    if (!isHubSpot) return null;
+    if (!isExternal) return null;
 
     const data = view.data;
     const drawer = density === "drawer";
@@ -109,18 +108,18 @@ export default function HubSpotContactCard({
         try {
             await update.mutateAsync({ contactId, data: body });
         } catch (err) {
-            setError(toFieldError(field, err));
+            setError(toFieldError(field, err, crm));
         } finally {
             setPending(null);
         }
     }
 
-    async function addToHubSpot() {
+    async function addToCrm() {
         setError(null);
         try {
             await link.mutateAsync(contactId);
         } catch (err) {
-            setError(toFieldError("link", err));
+            setError(toFieldError("link", err, crm));
         }
     }
 
@@ -134,25 +133,25 @@ export default function HubSpotContactCard({
     return (
         <div className={cn("min-w-0", className)}>
             <div className="flex items-center gap-2 mb-2 min-h-6">
-                <HubSpotBadge />
+                <CrmBadge provider={crm.id} />
                 {data?.linked && data.url && (
-                    <OpenInHubSpot url={data.url} compact={!drawer} className="ml-auto" />
+                    <OpenInCrm url={data.url} provider={crm.id} compact={!drawer} className="ml-auto" />
                 )}
                 {view.isFetching && !view.isPending && (
                     <Loader2Icon
                         className={cn("w-3 h-3 animate-spin text-slate-300", data?.linked && data.url ? "" : "ml-auto")}
-                        aria-label="Syncing with HubSpot"
+                        aria-label={`Syncing with ${crm.name}`}
                     />
                 )}
             </div>
 
             {needsReconnect && (
                 <Link
-                    to={HUBSPOT_SETTINGS_PATH}
+                    to={crm.settingsPath}
                     className="mb-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1.5 text-[11px] leading-snug text-amber-800 hover:bg-amber-50 transition-colors"
                 >
                     <AlertTriangleIcon className="w-3 h-3 mt-px shrink-0" />
-                    <span>Reconnect HubSpot to keep this contact in sync.</span>
+                    <span>Reconnect {crm.name} to keep this contact in sync.</span>
                 </Link>
             )}
 
@@ -178,19 +177,24 @@ export default function HubSpotContactCard({
                 </div>
             ) : !data?.linked ? (
                 <div className="rounded-md border border-dashed border-slate-200 px-2.5 py-2.5">
-                    <p className="text-[12px] font-medium text-slate-700">Not in HubSpot yet</p>
+                    <p className="text-[12px] font-medium text-slate-700">Not in {crm.name} yet</p>
                     <p className="text-[11px] text-slate-500 leading-snug mt-0.5">
-                        Add them to HubSpot to see their owner, lifecycle stage and deals here.
+                        Add them to {crm.name} to see their owner, {crm.words.lifecycle.toLowerCase()} and deals here.
                     </p>
                     {canEdit && (
                         <button
                             type="button"
-                            onClick={addToHubSpot}
+                            onClick={addToCrm}
                             disabled={link.isPending}
-                            className="mt-2 h-7 px-2.5 rounded-md border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-700 text-[11.5px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60"
+                            className={cn(
+                                "mt-2 h-7 px-2.5 rounded-md border text-[11.5px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60",
+                                crm.border,
+                                crm.tint,
+                                crm.tintText,
+                            )}
                         >
                             {link.isPending ? <Loader2Icon className="w-3 h-3 animate-spin" /> : <PlusIcon className="w-3 h-3" />}
-                            Add to HubSpot
+                            Add to {crm.name}
                         </button>
                     )}
                     {error?.field === "link" && <InlineError error={error} />}
@@ -201,7 +205,7 @@ export default function HubSpotContactCard({
                         <div className="mb-2 flex items-start gap-1.5 rounded-md border border-red-200 bg-red-50/60 px-2 py-1.5">
                             <AlertTriangleIcon className="w-3 h-3 text-red-600 mt-px shrink-0" />
                             <span className="text-[11px] text-red-700 leading-snug">
-                                Opted out of email in HubSpot.
+                                {crm.id === "pipedrive" ? "Unsubscribed from email in Pipedrive." : "Opted out of email in HubSpot."}
                             </span>
                         </div>
                     )}
@@ -220,7 +224,7 @@ export default function HubSpotContactCard({
                             />
                         </Row>
                         {error?.field === "owner" && <InlineError error={error} inRow />}
-                        <Row label="Lifecycle stage" drawer={drawer}>
+                        <Row label={crm.words.lifecycle} drawer={drawer}>
                             <Picker
                                 label={pending?.field === "lifecycle" ? pending.label : data.lifecycle_stage?.label ?? ""}
                                 empty="Not set"
@@ -233,22 +237,25 @@ export default function HubSpotContactCard({
                             />
                         </Row>
                         {error?.field === "lifecycle" && <InlineError error={error} inRow />}
-                        <Row label="Lead status" drawer={drawer}>
-                            <Picker
-                                label={pending?.field === "lead" ? pending.label : data.lead_status?.label ?? ""}
-                                empty="Not set"
-                                options={leadOptions}
-                                value={data.lead_status?.value}
-                                loading={metadata.isPending}
-                                saving={pending?.field === "lead"}
-                                disabled={!canEdit}
-                                onPick={(o) => void save("lead", { lead_status: o.value }, o.label)}
-                            />
-                        </Row>
+                        {crm.words.leadStatus && (
+                            <Row label={crm.words.leadStatus} drawer={drawer}>
+                                <Picker
+                                    label={pending?.field === "lead" ? pending.label : data.lead_status?.label ?? ""}
+                                    empty="Not set"
+                                    options={leadOptions}
+                                    value={data.lead_status?.value}
+                                    loading={metadata.isPending}
+                                    saving={pending?.field === "lead"}
+                                    disabled={!canEdit}
+                                    onPick={(o) => void save("lead", { lead_status: o.value }, o.label)}
+                                />
+                            </Row>
+                        )}
                         {error?.field === "lead" && <InlineError error={error} inRow />}
                         {data.company && (
-                            <Row label="Company" drawer={drawer}>
+                            <Row label={crm.words.company === "company" ? "Company" : "Organization"} drawer={drawer}>
                                 <CompanyValue
+                                    hover={crm.hoverText}
                                     name={data.company.name}
                                     domain={data.company.domain}
                                     url={data.company.url}
@@ -262,18 +269,18 @@ export default function HubSpotContactCard({
                                 </Row>
                             ))}
                     </div>
-                    {data.synced_at && <HubSpotSyncedAt at={data.synced_at} className="mt-1.5" />}
+                    {data.synced_at && <CrmSyncedAt at={data.synced_at} provider={crm.id} className="mt-1.5" />}
                 </>
             )}
         </div>
     );
 }
 
-// The displayed HubSpot properties as plain rows, for the drawer's Details tab.
-export function HubSpotPropertiesList({ contactId }: { contactId: string }) {
-    const { isHubSpot } = useCrmProvider();
-    const view = useCrmContactView(contactId, isHubSpot);
-    if (!isHubSpot) return null;
+// The displayed CRM properties as plain rows, for the drawer's Details tab.
+export function CrmPropertiesList({ contactId }: { contactId: string }) {
+    const { isExternal, crm } = useCrmProvider();
+    const view = useCrmContactView(contactId, isExternal);
+    if (!isExternal) return null;
     const data = view.data;
     const props: CRMPropertyView[] = data?.properties ?? [];
 
@@ -281,14 +288,14 @@ export function HubSpotPropertiesList({ contactId }: { contactId: string }) {
         return <div className="h-16 rounded-md bg-slate-100 animate-pulse" />;
     }
     if (!data?.linked) {
-        return <p className="text-[11.5px] text-slate-500">This contact is not in HubSpot yet.</p>;
+        return <p className="text-[11.5px] text-slate-500">This contact is not in {crm.name} yet.</p>;
     }
     if (props.length === 0) {
         return (
             <p className="text-[11.5px] text-slate-500">
-                No HubSpot properties are chosen for display.{" "}
-                <Link to={HUBSPOT_SETTINGS_PATH} className="text-sky-700 hover:underline">
-                    Pick them in HubSpot settings
+                No {crm.name} {crm.words.properties} are chosen for display.{" "}
+                <Link to={crm.settingsPath} className="text-sky-700 hover:underline">
+                    Pick them in {crm.name} settings
                 </Link>
                 .
             </p>
@@ -304,8 +311,8 @@ export function HubSpotPropertiesList({ contactId }: { contactId: string }) {
                 ))}
             </div>
             <div className="mt-1.5 flex items-center gap-2">
-                {data.synced_at && <HubSpotSyncedAt at={data.synced_at} />}
-                {data.url && <OpenInHubSpot url={data.url} className="ml-auto" />}
+                {data.synced_at && <CrmSyncedAt at={data.synced_at} provider={crm.id} />}
+                {data.url && <OpenInCrm url={data.url} provider={crm.id} className="ml-auto" />}
             </div>
         </div>
     );
@@ -319,7 +326,7 @@ interface PickerOption {
 
 function optionList(options: CRMOption[] | undefined, current?: CRMOption): PickerOption[] {
     const list = (options ?? []).map((o) => ({ value: o.value, label: o.label || o.value }));
-    // A value HubSpot no longer offers still shows as the current choice.
+    // A value the CRM no longer offers still shows as the current choice.
     if (current?.value && !list.some((o) => o.value === current.value)) {
         list.unshift({ value: current.value, label: current.label || current.value });
     }
@@ -351,7 +358,7 @@ function PropertyValue({ value }: { value: string }) {
     );
 }
 
-function CompanyValue({ name, domain, url }: { name: string; domain?: string; url?: string }) {
+function CompanyValue({ name, domain, url, hover }: { name: string; domain?: string; url?: string; hover: string }) {
     const body = (
         <>
             <BuildingIcon className="w-3 h-3 text-slate-400 shrink-0" />
@@ -372,7 +379,7 @@ function CompanyValue({ name, domain, url }: { name: string; domain?: string; ur
             target="_blank"
             rel="noopener noreferrer"
             title={domain ? `${name} · ${domain}` : name}
-            className="inline-flex items-center gap-1 min-w-0 text-[12px] text-slate-900 hover:text-orange-700 transition-colors"
+            className={cn("inline-flex items-center gap-1 min-w-0 text-[12px] text-slate-900 transition-colors", hover)}
         >
             {body}
         </a>
@@ -402,6 +409,7 @@ function Picker({
 }) {
     const [open, setOpen] = React.useState(false);
     const [q, setQ] = React.useState("");
+    const { crm } = useCrmProvider();
 
     React.useEffect(() => {
         if (!open) setQ("");
@@ -436,13 +444,13 @@ function Picker({
             <PopoverMenuContent minWidth={200} className="max-h-72">
                 {searchable && (
                     <div className="px-2 pt-1 pb-1.5 border-b border-slate-100 mb-1">
-                        <SearchInput value={q} onChange={setQ} placeholder="Search owners…" autoFocus className="w-full" />
+                        <SearchInput value={q} onChange={setQ} placeholder={`Search ${crm.words.owners}…`} autoFocus className="w-full" />
                     </div>
                 )}
                 {loading ? (
                     <div className="px-3 py-2 flex items-center gap-1.5 text-[11.5px] text-slate-400">
                         <Loader2Icon className="w-3 h-3 animate-spin" />
-                        Loading from HubSpot…
+                        Loading from {crm.name}…
                     </div>
                 ) : shown.length === 0 ? (
                     <div className="px-3 py-2 text-[11.5px] text-slate-400">{needle ? "No match" : "Nothing to choose"}</div>
@@ -472,6 +480,7 @@ function Picker({
 }
 
 function InlineError({ error, inRow }: { error: FieldError; inRow?: boolean }) {
+    const { crm } = useCrmProvider();
     return (
         <div
             role="alert"
@@ -486,8 +495,8 @@ function InlineError({ error, inRow }: { error: FieldError; inRow?: boolean }) {
                 {error.reauth && (
                     <>
                         {" "}
-                        <Link to={HUBSPOT_SETTINGS_PATH} className="underline hover:text-red-900">
-                            Reconnect HubSpot
+                        <Link to={crm.settingsPath} className="underline hover:text-red-900">
+                            Reconnect {crm.name}
                         </Link>
                     </>
                 )}

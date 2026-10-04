@@ -107,7 +107,7 @@ import { triggerLabel } from "@/lib/api/models/app/automations/meta";
 import TaskTypePicker from "@/components/app/crm/TaskTypePicker";
 import AssigneeTeamPicker, { type AssigneeValue } from "@/components/app/crm/AssigneeTeamPicker";
 import DealStagePicker from "@/components/app/crm/DealStagePicker";
-import { HubSpotActionNote } from "@/components/app/crm/hubspotCrm";
+import { CrmDealNote, CrmTaskNote } from "@/components/app/crm/crmMode";
 
 // Personalization tokens available in templated copy. Mirrors SequenceView's
 // VARIABLES so a deal name can use the same {{.FirstName}}/{{.Company}} tokens
@@ -3107,9 +3107,7 @@ function ActionConfigFields({
 
             {action.type === "create_task" && (
                 <div className="space-y-4">
-                    <HubSpotActionNote className="max-w-[420px]">
-                        The task is created in HubSpot with a HubSpot task type. A member needs a HubSpot owner to be assigned.
-                    </HubSpotActionNote>
+                    <CrmTaskNote className="max-w-[420px]" />
                     <div>
                         <Label>Task title</Label>
                         <TextInput
@@ -3178,11 +3176,7 @@ function ActionConfigFields({
 
             {(action.type === "create_deal" || action.type === "move_deal_stage") && (
                 <div className="space-y-4">
-                    <HubSpotActionNote className="max-w-[420px]">
-                        {action.type === "create_deal"
-                            ? "The deal is created in HubSpot, in the pipeline and deal stage you pick."
-                            : "The deal moves in HubSpot too. Pipelines and deal stages are HubSpot's."}
-                    </HubSpotActionNote>
+                    <CrmDealNote className="max-w-[420px]" creates={action.type === "create_deal"} />
                     <div>
                         <Label>{action.type === "create_deal" ? "Create the deal in" : "Move the deal to"}</Label>
                         <DealStagePicker

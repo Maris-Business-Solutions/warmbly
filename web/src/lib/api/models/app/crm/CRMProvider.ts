@@ -1,17 +1,17 @@
-// A workspace runs one CRM: Warmbly's own, or a connected one (HubSpot). In
-// HubSpot mode deals, tasks, notes and pipelines are HubSpot's records,
-// mirrored locally and written through on every change.
+// A workspace runs one CRM: Warmbly's own, or a connected one (HubSpot or
+// Pipedrive). In provider mode deals, tasks, notes and pipelines are the
+// provider's records, mirrored locally and written through on every change.
 
-export type CRMProviderName = "native" | "hubspot";
+export type CRMProviderName = "native" | "hubspot" | "pipedrive";
 
 // Where a record lives outside Warmbly. Set on deals, tasks, notes and
-// pipelines read in HubSpot mode.
+// pipelines read in provider mode.
 export interface CRMExternalRef {
     provider: CRMProviderName;
     external_id: string;
     url?: string;
     synced_at: Date;
-    // The HubSpot owner, when that owner is not a workspace member.
+    // The provider's owner, when that owner is not a workspace member.
     owner_name?: string;
 }
 
@@ -27,8 +27,11 @@ export interface CRMActivityLog {
 
 export interface CRMReplyOutcome {
     lead_status: string;
+    // A lifecycle stage in HubSpot, a person label id in Pipedrive.
     lifecycle_stage: string;
     create_deal: boolean;
+    // Adds the person to Pipedrive's Leads Inbox (Pipedrive only).
+    create_lead?: boolean;
     deal_pipeline_id?: string;
     deal_stage_id?: string;
 }
@@ -56,12 +59,14 @@ export interface CRMProviderConfig {
     positive_reply: CRMReplyOutcome;
     exit_rules: CRMExitRules;
     guards: CRMEnrollmentGuards;
-    // HubSpot pipeline ids to mirror; empty means every pipeline.
+    // Provider pipeline ids to mirror; empty means every pipeline.
     deal_pipelines: string[];
     display_properties: string[];
-    // Warmbly field (first_name, company, custom:x) -> HubSpot property.
+    // Warmbly field (first_name, company, custom:x) -> provider property.
     field_map: Record<string, string>;
     field_direction: Record<string, CRMFieldDirection>;
+    // The provider these choices were made for.
+    for?: CRMProviderName;
 }
 
 export interface CRMAccount {
@@ -70,7 +75,7 @@ export interface CRMAccount {
     app_url: string;
     status: string;
     health: string;
-    // Permissions the connection lacks; non-empty means "reconnect HubSpot".
+    // Permissions the connection lacks; non-empty means "reconnect".
     missing_scopes?: string[];
 }
 
@@ -135,7 +140,7 @@ export interface CRMPropertyView {
     value: string;
 }
 
-// The HubSpot side of one contact, for the inbox panel and the contact drawer.
+// The provider's side of one contact, for the inbox panel and the contact drawer.
 export interface CRMContactView {
     provider: CRMProviderName;
     linked: boolean;

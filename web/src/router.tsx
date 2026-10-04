@@ -77,6 +77,7 @@ export const dashboardPages = {
     apiKeys: () => import("./app/app/api-keys/page"),
     integrations: () => import("./app/app/integrations/page"),
     hubspot: () => import("./app/app/integrations/hubspot/page"),
+    pipedrive: () => import("./app/app/integrations/pipedrive/page"),
     salesforce: () => import("./app/app/integrations/salesforce/[id]/page"),
     automations: () => import("./app/app/automations/page"),
     automation: () => import("./app/app/automations/[id]/page"),
@@ -341,6 +342,7 @@ const integrationsRoute = createRoute({
 const integrationsIndex = createRoute({ getParentRoute: () => integrationsRoute, path: "/" });
 const integrationsSplat = createRoute({ getParentRoute: () => integrationsRoute, path: "$" });
 const hubspotRoute = dash(appRoute, "integrations/hubspot", dashboardPages.hubspot, "HubSpot");
+const pipedriveRoute = dash(appRoute, "integrations/pipedrive", dashboardPages.pipedrive, "Pipedrive");
 const salesforceRoute = dash(appRoute, "integrations/salesforce/$id", dashboardPages.salesforce, "Salesforce");
 
 const automationsRoute = dash(appRoute, "automations", dashboardPages.automations, "Automations", loaders.automationsLoader);
@@ -434,6 +436,7 @@ const routeTree = rootRoute.addChildren([
         oauthAppsLegacy,
         integrationsRoute.addChildren([integrationsIndex, integrationsSplat]),
         hubspotRoute,
+        pipedriveRoute,
         salesforceRoute,
         automationsRoute,
         automationRoute,

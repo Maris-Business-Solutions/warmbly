@@ -1,5 +1,5 @@
-// The HubSpot CRM settings, one editor per concern. The setup wizard shows
-// them one step at a time; the settings page shows them as cards.
+// The connected CRM's settings (HubSpot or Pipedrive), one editor per concern.
+// The setup wizard shows them one step at a time; the settings page as cards.
 
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 
 import { SettingRow, Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
-import { HubSpotMark } from "@/components/app/crm/HubSpot";
+import { CrmMark } from "@/components/app/crm/crmProviders";
 import listCrmOwners from "@/lib/api/client/app/crm/provider/listCrmOwners";
 import useCrmSyncHealth from "@/lib/api/hooks/app/crm/provider/useCrmSyncHealth";
 import useMapCrmOwner from "@/lib/api/hooks/app/crm/provider/useMapCrmOwner";
@@ -24,12 +24,13 @@ import type {
 import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 import { cn } from "@/lib/utils";
 
-import { useHubSpotPipelines } from "./hooks";
+import { usePageCrm } from "./context";
+import { useProviderPipelines } from "./hooks";
 import { MultiPicker, SearchSelect } from "./pickers";
 import {
     type ConfigPatch,
-    DIRECTION_OPTIONS,
     MAPPABLE_FIELDS,
+    directionOptions,
     errMessage,
     humanize,
     warmblyFieldLabel,
@@ -99,18 +100,24 @@ function ToggleSetting({
 // --- contacts ------------------------------------------------------------------
 
 export function ContactsEditor({ config, patch, disabled }: { config: CRMProviderConfig; patch: ConfigPatch; disabled?: boolean }) {
+    const crm = usePageCrm();
+    const pd = crm.id === "pipedrive";
     return (
         <div className="space-y-3.5">
             <ToggleSetting
-                title="Create contacts in HubSpot"
-                description="When Warmbly emails someone HubSpot does not know yet, a HubSpot contact is created so the activity has somewhere to go."
+                title={`Create ${crm.words.contacts} in ${crm.name}`}
+                description={`When Warmbly emails someone ${crm.name} does not know yet, a ${crm.name} ${crm.words.contact} is created so the activity has somewhere to go.`}
                 value={config.create_contacts}
                 onChange={(v) => patch((c) => ({ ...c, create_contacts: v }))}
                 disabled={disabled}
             />
             <ToggleSetting
-                title="Create companies"
-                description="New contacts are associated with a HubSpot company from their email domain, created if it does not exist."
+                title={pd ? "Create organizations" : "Create companies"}
+                description={
+                    pd
+                        ? "New people are linked to the Pipedrive organization named after their company (or their email domain), created if it does not exist."
+                        : "New contacts are associated with a HubSpot company from their email domain, created if it does not exist."
+                }
                 value={config.create_companies}
                 onChange={(v) => patch((c) => ({ ...c, create_companies: v }))}
                 disabled={disabled}
@@ -120,8 +127,6 @@ export function ContactsEditor({ config, patch, disabled }: { config: CRMProvide
 }
 
 // --- field mapping -------------------------------------------------------------
-
-const DIRECTION_SELECT: SelectOption[] = DIRECTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
 const directionIcon = (d: CRMFieldDirection) =>
     d === "push" ? ArrowRightIcon : d === "pull" ? ArrowLeftIcon : ArrowLeftRightIcon;
@@ -139,6 +144,10 @@ export function FieldMappingTable({
     customKeys: string[];
     disabled?: boolean;
 }) {
+    const crm = usePageCrm();
+    const directions = directionOptions(crm.name);
+    const directionSelect: SelectOption[] = directions.map((o) => ({ value: o.value, label: o.label }));
+    const propNoun = `${crm.name} ${crm.words.property}`;
     const propByName = React.useMemo(() => new Map(properties.map((p) => [p.name, p])), [properties]);
     const propOptions = React.useMemo(
         () => properties.map((p) => ({ value: p.name, label: p.label, hint: p.read_only ? `${p.name} · read-only` : p.name })),
@@ -185,7 +194,7 @@ export function FieldMappingTable({
 
     function pickNewField(field: string) {
         setNewField(field);
-        // Suggest the HubSpot property with the same name, when there is one.
+        // Suggest the CRM property with the same name, when there is one.
         if (!newProp && field.startsWith("custom:")) {
             const key = field.slice("custom:".length).toLowerCase().replace(/[^a-z0-9]/g, "");
             const match = properties.find((p) => p.name.replace(/_/g, "") === key || p.label.toLowerCase().replace(/[^a-z0-9]/g, "") === key);
@@ -208,8 +217,8 @@ export function FieldMappingTable({
                 <SubLabel>Warmbly</SubLabel>
                 <span />
                 <SubLabel className="flex items-center gap-1">
-                    <HubSpotMark className="w-3 h-3" />
-                    HubSpot property
+                    <CrmMark provider={crm.id} className="w-3 h-3" />
+                    {propNoun}
                 </SubLabel>
                 <SubLabel>When both change</SubLabel>
                 <span />
@@ -223,7 +232,9 @@ export function FieldMappingTable({
                     </span>
                     <ArrowLeftRightIcon className="w-3 h-3 text-slate-300 hidden sm:block" />
                     <span className="text-[12px] text-slate-600">Email</span>
-                    <span className="text-[11px] text-slate-400 basis-full sm:basis-auto sm:col-span-2">Contacts are matched by email</span>
+                    <span className="text-[11px] text-slate-400 basis-full sm:basis-auto sm:col-span-2">
+                        {crm.id === "pipedrive" ? "People" : "Contacts"} are matched by email
+                    </span>
                 </div>
                 {rows.map(([field, prop]) => {
                     const dir = config.field_direction[field] ?? "both";
@@ -253,15 +264,15 @@ export function FieldMappingTable({
                                     options={propOptions}
                                     value={prop}
                                     onChange={(v) => setProperty(field, v)}
-                                    placeholder="Choose a property"
-                                    searchPlaceholder="Search HubSpot properties…"
-                                    ariaLabel={`HubSpot property for ${warmblyFieldLabel(field)}`}
+                                    placeholder={`Choose a ${crm.words.property}`}
+                                    searchPlaceholder={`Search ${crm.name} ${crm.words.properties}…`}
+                                    ariaLabel={`${propNoun} for ${warmblyFieldLabel(field)}`}
                                     disabled={disabled}
                                 />
                                 <SelectMenu
                                     value={dir}
                                     onChange={(v) => setDirection(field, v as CRMFieldDirection)}
-                                    options={DIRECTION_SELECT}
+                                    options={directionSelect}
                                     fullWidth
                                     disabled={disabled}
                                     aria-label={`Which side wins for ${warmblyFieldLabel(field)}`}
@@ -278,7 +289,7 @@ export function FieldMappingTable({
                             </div>
                             {pushesReadOnly && (
                                 <p className="mt-1.5 text-[11px] text-amber-700">
-                                    {meta?.label} is read-only in HubSpot, so Warmbly can only read it. Choose HubSpot wins.
+                                    {meta?.label} is read-only in {crm.name}, so Warmbly can only read it. Choose {crm.name} wins.
                                 </p>
                             )}
                         </div>
@@ -303,15 +314,15 @@ export function FieldMappingTable({
                             options={propOptions}
                             value={newProp}
                             onChange={setNewProp}
-                            placeholder="HubSpot property"
-                            searchPlaceholder="Search HubSpot properties…"
-                            ariaLabel="HubSpot property to sync with"
+                            placeholder={propNoun}
+                            searchPlaceholder={`Search ${crm.name} ${crm.words.properties}…`}
+                            ariaLabel={`${propNoun} to sync with`}
                         />
                         <button
                             type="button"
                             onClick={add}
                             disabled={!newField || !newProp}
-                            title={!newField ? "Choose a Warmbly field first" : !newProp ? "Choose the HubSpot property it syncs with" : undefined}
+                            title={!newField ? "Choose a Warmbly field first" : !newProp ? `Choose the ${propNoun} it syncs with` : undefined}
                             className="h-7 px-2.5 rounded-md border border-slate-200 text-[12px] text-slate-700 hover:border-slate-300 hover:text-slate-900 inline-flex items-center justify-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <PlusIcon className="w-3 h-3" />
@@ -322,7 +333,7 @@ export function FieldMappingTable({
             )}
 
             <ul className="pt-1 space-y-0.5">
-                {DIRECTION_OPTIONS.map((o) => (
+                {directions.map((o) => (
                     <li key={o.value} className="text-[11px] text-slate-500 leading-relaxed">
                         <span className="font-medium text-slate-700">{o.label}:</span> {o.hint}
                     </li>
@@ -333,6 +344,28 @@ export function FieldMappingTable({
 }
 
 // --- activity ------------------------------------------------------------------
+
+function activityRows(pipedrive: boolean): { key: keyof CRMActivityLog; title: string; description: string }[] {
+    return pipedrive ? PIPEDRIVE_ACTIVITY_ROWS : ACTIVITY_ROWS;
+}
+
+const PIPEDRIVE_ACTIVITY_ROWS: { key: keyof CRMActivityLog; title: string; description: string }[] = [
+    {
+        key: "sent",
+        title: "Emails sent",
+        description: "Each campaign email is logged as a done Email activity on the person, their organization and open deal, with subject and body.",
+    },
+    { key: "replies", title: "Replies", description: "Replies are logged as done Email activities, so the conversation reads in order." },
+    { key: "bounces", title: "Bounces", description: "The logged email is marked as bounced so the record shows the address no longer works." },
+    { key: "unsubscribes", title: "Unsubscribes", description: "A note is added to the person when they unsubscribe from your campaigns." },
+    { key: "meetings", title: "Meetings booked", description: "Calendly and Cal.com bookings become Meeting activities on the person and their open deal." },
+    {
+        key: "opens",
+        title: "Opens",
+        description: "Off by default. Apple Mail Privacy Protection opens almost every email on its own, so opens mostly add noise.",
+    },
+    { key: "clicks", title: "Clicks", description: "Off by default. Security scanners in company inboxes click links before people do." },
+];
 
 const ACTIVITY_ROWS: { key: keyof CRMActivityLog; title: string; description: string }[] = [
     { key: "sent", title: "Emails sent", description: "Each campaign email is logged on the contact's timeline as a real email, with subject and body." },
@@ -353,9 +386,10 @@ const ACTIVITY_ROWS: { key: keyof CRMActivityLog; title: string; description: st
 ];
 
 export function ActivityEditor({ config, patch, disabled }: { config: CRMProviderConfig; patch: ConfigPatch; disabled?: boolean }) {
+    const crm = usePageCrm();
     return (
         <div className="space-y-3.5">
-            {ACTIVITY_ROWS.map((r) => (
+            {activityRows(crm.id === "pipedrive").map((r) => (
                 <ToggleSetting
                     key={r.key}
                     title={r.title}
@@ -370,10 +404,15 @@ export function ActivityEditor({ config, patch, disabled }: { config: CRMProvide
 }
 
 export function WarmblyPropertiesEditor({ config, patch, disabled }: { config: CRMProviderConfig; patch: ConfigPatch; disabled?: boolean }) {
+    const crm = usePageCrm();
     return (
         <ToggleSetting
-            title="Write Warmbly properties to HubSpot"
-            description="Adds a Warmbly property group to HubSpot contacts: Warmbly status, last campaign, last contacted, last replied, last opened, last clicked, reply intent, unsubscribed and an Open in Warmbly link. Use them in HubSpot views, lists and workflows."
+            title={`Write Warmbly ${crm.words.properties} to ${crm.name}`}
+            description={
+                crm.id === "pipedrive"
+                    ? "Adds Warmbly fields to Pipedrive people: Warmbly status, last campaign, last contacted, last replied, last opened, last clicked, reply intent and an Open in Warmbly link. Use them in Pipedrive filters, reports and automations. Adding the fields needs a Pipedrive admin or the contact fields permission."
+                    : "Adds a Warmbly property group to HubSpot contacts: Warmbly status, last campaign, last contacted, last replied, last opened, last clicked, reply intent, unsubscribed and an Open in Warmbly link. Use them in HubSpot views, lists and workflows."
+            }
             value={config.write_properties}
             onChange={(v) => patch((c) => ({ ...c, write_properties: v }))}
             disabled={disabled}
@@ -398,8 +437,10 @@ export function ReplyOutcomeEditor({
     metadata?: CRMMetadata;
     disabled?: boolean;
 }) {
+    const crm = usePageCrm();
+    const pd = crm.id === "pipedrive";
     const r = config.positive_reply;
-    const { pipelines, loading } = useHubSpotPipelines();
+    const { pipelines, loading } = useProviderPipelines();
     const pipeline = pipelines.find((p) => p.id === r.deal_pipeline_id);
     const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.position - b.position);
 
@@ -411,6 +452,7 @@ export function ReplyOutcomeEditor({
         { value: "", label: "Don't change" },
         ...withStoredValues(metadata?.lifecycle_stages, r.lifecycle_stage ? [r.lifecycle_stage] : []),
     ];
+    const lifecycleLabel = pd ? "Label the person" : crm.words.lifecycle;
 
     const setReply = (next: Partial<CRMProviderConfig["positive_reply"]>) =>
         patch((c) => ({ ...c, positive_reply: { ...c.positive_reply, ...next } }));
@@ -426,35 +468,46 @@ export function ReplyOutcomeEditor({
     return (
         <div className="space-y-3.5">
             <div className="grid sm:grid-cols-2 gap-3">
+                {crm.words.leadStatus && (
+                    <div>
+                        <SubLabel className="mb-1.5">{crm.words.leadStatus}</SubLabel>
+                        <SelectMenu
+                            value={r.lead_status}
+                            onChange={(v) => setReply({ lead_status: v })}
+                            options={leadOptions}
+                            fullWidth
+                            disabled={disabled}
+                            aria-label={`${crm.words.leadStatus} after a positive reply`}
+                        />
+                    </div>
+                )}
                 <div>
-                    <SubLabel className="mb-1.5">Lead status</SubLabel>
-                    <SelectMenu
-                        value={r.lead_status}
-                        onChange={(v) => setReply({ lead_status: v })}
-                        options={leadOptions}
-                        fullWidth
-                        disabled={disabled}
-                        aria-label="Lead status after a positive reply"
-                    />
-                </div>
-                <div>
-                    <SubLabel className="mb-1.5">Lifecycle stage</SubLabel>
+                    <SubLabel className="mb-1.5">{lifecycleLabel}</SubLabel>
                     <SelectMenu
                         value={r.lifecycle_stage}
                         onChange={(v) => setReply({ lifecycle_stage: v })}
                         options={stageOptions}
                         fullWidth
                         disabled={disabled}
-                        aria-label="Lifecycle stage after a positive reply"
+                        aria-label={`${lifecycleLabel} after a positive reply`}
                     />
                 </div>
             </div>
+            {pd && (
+                <ToggleSetting
+                    title="Add to the Leads Inbox"
+                    description="Adds a Pipedrive lead for the person and their organization, owned by whoever owns the mailbox that got the reply, so it can be qualified before it becomes a deal. Skipped when they already have an open deal."
+                    value={!!r.create_lead}
+                    onChange={(v) => setReply({ create_lead: v })}
+                    disabled={disabled}
+                />
+            )}
             <ToggleSetting
                 title="Create a deal"
                 description={
                     noPipelines
-                        ? "Your HubSpot pipelines appear here after the first sync. Come back to this once they have."
-                        : "Opens a HubSpot deal for the contact, assigned to whoever owns the mailbox that got the reply. Skipped when they already have an open deal."
+                        ? `Your ${crm.name} pipelines appear here after the first sync. Come back to this once they have.`
+                        : `Opens a ${crm.name} deal for the ${crm.words.contact}, assigned to whoever owns the mailbox that got the reply. Skipped when they already have an open deal.`
                 }
                 value={r.create_deal}
                 onChange={toggleDeal}
@@ -506,36 +559,42 @@ export function ExitRulesEditor({
     metadata?: CRMMetadata;
     disabled?: boolean;
 }) {
+    const crm = usePageCrm();
+    const pd = crm.id === "pipedrive";
     const e = config.exit_rules;
     const set = (next: Partial<CRMProviderConfig["exit_rules"]>) => patch((c) => ({ ...c, exit_rules: { ...c.exit_rules, ...next } }));
     return (
         <div className="space-y-3.5">
             <ToggleSetting
                 title="A deal is created for them"
-                description="Someone on your team opened a deal in HubSpot, so the conversation has moved on."
+                description={`Someone on your team opened a deal in ${crm.name}, so the conversation has moved on.`}
                 value={e.deal_created}
                 onChange={(v) => set({ deal_created: v })}
                 disabled={disabled}
             />
             <SettingRow
-                title="Their lifecycle stage becomes"
-                description="Leave empty to ignore lifecycle changes."
+                title={pd ? "They get one of these labels" : "Their lifecycle stage becomes"}
+                description={pd ? "Leave empty to ignore label changes." : "Leave empty to ignore lifecycle changes."}
                 stack
                 control={
                     <MultiPicker
                         options={withStoredValues(metadata?.lifecycle_stages, e.lifecycle_stages)}
                         selected={e.lifecycle_stages}
                         onChange={(v) => set({ lifecycle_stages: v })}
-                        placeholder="Choose lifecycle stages"
-                        searchPlaceholder="Search lifecycle stages…"
+                        placeholder={`Choose ${crm.words.lifecycles}`}
+                        searchPlaceholder={`Search ${crm.words.lifecycles}…`}
                         disabled={disabled}
-                        ariaLabel="Lifecycle stages that stop a campaign"
+                        ariaLabel={`${crm.words.lifecycles} that stop a campaign`}
                     />
                 }
             />
             <ToggleSetting
-                title="They opt out of email in HubSpot"
-                description="An unsubscribe recorded in HubSpot stops Warmbly too."
+                title={pd ? "They unsubscribe in Pipedrive" : "They opt out of email in HubSpot"}
+                description={
+                    pd
+                        ? "An unsubscribe recorded by Pipedrive Campaigns stops Warmbly too."
+                        : "An unsubscribe recorded in HubSpot stops Warmbly too."
+                }
                 value={e.opted_out}
                 onChange={(v) => set({ opted_out: v })}
                 disabled={disabled}
@@ -555,23 +614,29 @@ export function GuardsEditor({
     metadata?: CRMMetadata;
     disabled?: boolean;
 }) {
+    const crm = usePageCrm();
+    const pd = crm.id === "pipedrive";
     const g = config.guards;
     const set = (next: Partial<CRMProviderConfig["guards"]>) => patch((c) => ({ ...c, guards: { ...c.guards, ...next } }));
     return (
         <div className="space-y-3.5">
             <SettingRow
-                title="Are in these lifecycle stages"
-                description="Customers and evangelists are skipped by default so nobody cold-emails a happy customer."
+                title={pd ? "Have one of these labels" : "Are in these lifecycle stages"}
+                description={
+                    pd
+                        ? "People labeled Customer are skipped by default so nobody cold-emails a happy customer."
+                        : "Customers and evangelists are skipped by default so nobody cold-emails a happy customer."
+                }
                 stack
                 control={
                     <MultiPicker
                         options={withStoredValues(metadata?.lifecycle_stages, g.skip_lifecycle_stages)}
                         selected={g.skip_lifecycle_stages}
                         onChange={(v) => set({ skip_lifecycle_stages: v })}
-                        placeholder="Choose lifecycle stages"
-                        searchPlaceholder="Search lifecycle stages…"
+                        placeholder={`Choose ${crm.words.lifecycles}`}
+                        searchPlaceholder={`Search ${crm.words.lifecycles}…`}
                         disabled={disabled}
-                        ariaLabel="Lifecycle stages to skip"
+                        ariaLabel={`${crm.words.lifecycles} to skip`}
                     />
                 }
             />
@@ -584,13 +649,13 @@ export function GuardsEditor({
             />
             <ToggleSetting
                 title="Are owned by someone outside this workspace"
-                description="Their HubSpot owner is not matched to a workspace member."
+                description={`Their ${crm.name} ${crm.words.owner} is not matched to a workspace member.`}
                 value={g.skip_other_owners}
                 onChange={(v) => set({ skip_other_owners: v })}
                 disabled={disabled}
             />
             <ToggleSetting
-                title="Opted out of email in HubSpot"
+                title={pd ? "Unsubscribed in Pipedrive" : "Opted out of email in HubSpot"}
                 description="Respects unsubscribes collected outside Warmbly."
                 value={g.skip_opted_out}
                 onChange={(v) => set({ skip_opted_out: v })}
@@ -613,6 +678,7 @@ export function PipelinesEditor({
     metadata?: CRMMetadata;
     disabled?: boolean;
 }) {
+    const crm = usePageCrm();
     return (
         <MultiPicker
             options={withStoredValues(metadata?.pipelines, config.deal_pipelines)}
@@ -621,7 +687,7 @@ export function PipelinesEditor({
             emptyLabel="All pipelines"
             searchPlaceholder="Search pipelines…"
             disabled={disabled}
-            ariaLabel="HubSpot pipelines to mirror"
+            ariaLabel={`${crm.name} pipelines to mirror`}
         />
     );
 }
@@ -637,20 +703,23 @@ export function DisplayPropertiesEditor({
     properties: CRMProperty[];
     disabled?: boolean;
 }) {
+    const crm = usePageCrm();
     const options = React.useMemo(() => {
-        const out = properties.map((p) => ({ value: p.name, label: p.label, hint: p.name }));
+        // Pipedrive shows its standard person keys on the panel already.
+        const shown = crm.id === "pipedrive" ? properties.filter((p) => p.group_name !== "Person") : properties;
+        const out = shown.map((p) => ({ value: p.name, label: p.label, hint: p.name }));
         for (const v of config.display_properties) if (!out.some((o) => o.value === v)) out.push({ value: v, label: humanize(v), hint: v });
         return out;
-    }, [properties, config.display_properties]);
+    }, [properties, config.display_properties, crm.id]);
     return (
         <MultiPicker
             options={options}
             selected={config.display_properties}
             onChange={(v) => patch((c) => ({ ...c, display_properties: v.slice(0, 40) }))}
-            placeholder="Choose HubSpot properties"
-            searchPlaceholder="Search HubSpot properties…"
+            placeholder={`Choose ${crm.name} ${crm.words.properties}`}
+            searchPlaceholder={`Search ${crm.name} ${crm.words.properties}…`}
             disabled={disabled}
-            ariaLabel="HubSpot properties shown in Warmbly"
+            ariaLabel={`${crm.name} ${crm.words.properties} shown in Warmbly`}
         />
     );
 }
@@ -660,12 +729,13 @@ export function DisplayPropertiesEditor({
 const OWNER_WAIT_MS = 90_000;
 
 function ownerName(o: CRMOwner) {
-    return [o.first_name, o.last_name].filter(Boolean).join(" ") || o.email || "HubSpot user";
+    return [o.first_name, o.last_name].filter(Boolean).join(" ") || o.email || "User";
 }
 
-// HubSpot users matched to workspace members. Owners arrive with the first pull
-// after the switch, so `waiting` keeps asking until they do.
+// The CRM's users matched to workspace members. Owners arrive with the first
+// pull after the switch, so `waiting` keeps asking until they do.
 export function OwnersTable({ disabled, waiting = false }: { disabled?: boolean; waiting?: boolean }) {
+    const crm = usePageCrm();
     const queryClient = useQueryClient();
     const [gaveUp, setGaveUp] = React.useState(false);
     React.useEffect(() => {
@@ -704,18 +774,18 @@ export function OwnersTable({ disabled, waiting = false }: { disabled?: boolean;
         return (
             <div className="rounded-md border border-slate-200 px-4 py-6 flex flex-col items-center gap-2 text-center">
                 <Loader2Icon className="w-4 h-4 text-slate-400 animate-spin" />
-                <p className="text-[12.5px] text-slate-700">Fetching your HubSpot users…</p>
+                <p className="text-[12.5px] text-slate-700">Fetching your {crm.name} users…</p>
                 <p className="text-[11px] text-slate-400">This usually takes a few seconds. You can continue and match them later.</p>
             </div>
         );
     }
     if (owners.isError) {
-        return <p className="text-[12px] text-rose-600">{errMessage(owners.error, "Could not load HubSpot users.")}</p>;
+        return <p className="text-[12px] text-rose-600">{errMessage(owners.error, `Could not load ${crm.name} users.`)}</p>;
     }
     if (list.length === 0) {
         return (
             <p className="rounded-md border border-slate-200 px-4 py-5 text-[12px] text-slate-500 text-center">
-                No HubSpot users yet. They show up here after the first sync, and you can match them then.
+                No {crm.name} users yet. They show up here after the first sync, and you can match them then.
             </p>
         );
     }
@@ -732,7 +802,13 @@ export function OwnersTable({ disabled, waiting = false }: { disabled?: boolean;
                     return (
                         <div key={o.external_id} className="px-3 py-2 flex flex-col sm:flex-row sm:items-center gap-2">
                             <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                <span className="size-6 rounded-full bg-orange-50 text-orange-700 text-[10px] font-semibold inline-flex items-center justify-center shrink-0">
+                                <span
+                                    className={cn(
+                                        "size-6 rounded-full text-[10px] font-semibold inline-flex items-center justify-center shrink-0",
+                                        crm.tint,
+                                        crm.tintText,
+                                    )}
+                                >
                                     {ownerName(o).slice(0, 1).toUpperCase()}
                                 </span>
                                 <div className="min-w-0">
@@ -764,7 +840,7 @@ export function OwnersTable({ disabled, waiting = false }: { disabled?: boolean;
             </div>
             {archived > 0 && (
                 <p className="text-[11px] text-slate-400">
-                    {archived} deactivated HubSpot {archived === 1 ? "user is" : "users are"} hidden.
+                    {archived} deactivated {crm.name} {archived === 1 ? "user is" : "users are"} hidden.
                 </p>
             )}
         </div>

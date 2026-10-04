@@ -1,8 +1,9 @@
-// HubSpot mode, after setup: health, the same choices as the wizard as cards
-// that save on their own, and the way back to Warmbly's own CRM.
+// HubSpot or Pipedrive mode, after setup: health, the same choices as the
+// wizard as cards that save on their own, and the way back to Warmbly's own CRM.
 
 import React from "react";
 import { Link } from "@tanstack/react-router";
+import { AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     AlertTriangleIcon,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { HubSpotBadge, HubSpotMark, HubSpotSyncedAt } from "@/components/app/crm/HubSpot";
+import { CrmBadge, CrmMark, CrmSyncedAt } from "@/components/app/crm/crmProviders";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useConfirm } from "@/hooks/context/confirm";
 import useCrmProvider from "@/hooks/useCrmProvider";
@@ -49,11 +50,12 @@ import {
     SubLabel,
     WarmblyPropertiesEditor,
 } from "./editors";
-import { useHubSpotOAuth } from "./hooks";
+import { usePageCrm } from "./context";
+import { useCrmOAuth } from "./hooks";
 import SyncHealthCard from "./SyncHealthCard";
 import { type ConfigPatch, errCode, errMessage, joinList, normalizeConfig, plural, replyOutcomeIssue } from "./shared";
 
-export default function HubSpotSettings({
+export default function CrmSettings({
     settings,
     connection,
     entry,
@@ -62,6 +64,8 @@ export default function HubSpotSettings({
     connection?: IntegrationConnection;
     entry?: IntegrationCatalogEntry;
 }) {
+    const crm = usePageCrm();
+    const pd = crm.id === "pipedrive";
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const canManage = usePermission("MANAGE_SETTINGS");
@@ -69,7 +73,7 @@ export default function HubSpotSettings({
     const health = useCrmSyncHealth();
     const syncNow = useSyncCrmNow();
     const update = useUpdateCrmSettings();
-    const oauth = useHubSpotOAuth();
+    const oauth = useCrmOAuth();
     const metadata = useCrmMetadata();
     const customKeys = useCustomFieldKeys();
     const [manageOpen, setManageOpen] = React.useState(false);
@@ -93,7 +97,7 @@ export default function HubSpotSettings({
                 queryClient.setQueryData(["crm", "settings"], res);
                 void queryClient.invalidateQueries({ queryKey: ["crm", "contact"] });
             } catch (err) {
-                toast.error(errMessage(err, "Could not save HubSpot settings"));
+                toast.error(errMessage(err, `Could not save ${crm.name} settings`));
                 throw err;
             }
         },
@@ -102,7 +106,7 @@ export default function HubSpotSettings({
     React.useEffect(() => {
         if (hydratedFor.current === orgID) return;
         hydratedFor.current = orgID;
-        const cfg = normalizeConfig(settings.config);
+        const cfg = normalizeConfig(settings.config, crm.id);
         setDraft(cfg);
         autosave.markSaved(cfg);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,7 +116,7 @@ export default function HubSpotSettings({
 
     function runSync() {
         syncNow.mutate(undefined, {
-            onSuccess: () => toast.success("Syncing with HubSpot. This takes a minute or two."),
+            onSuccess: () => toast.success(`Syncing with ${crm.name}. This takes a minute or two.`),
             onError: (err) =>
                 errCode(err) === "crm_sync_running"
                     ? toast(errMessage(err, "A sync just started."))
@@ -135,9 +139,9 @@ export default function HubSpotSettings({
         }
     }
 
-    function stopUsingHubSpot() {
+    function stopUsingCrm() {
         confirm.show(
-            "Stop using HubSpot as your CRM? Warmbly goes back to its own deals, tasks and notes. Records already mirrored stay in Warmbly, nothing is deleted in HubSpot, and activity stops being logged there.",
+            `Stop using ${crm.name} as your CRM? Warmbly goes back to its own deals, tasks and notes. Records already mirrored stay in Warmbly, nothing is deleted in ${crm.name}, and activity stops being logged there.`,
             async () => {
                 try {
                     await update.mutateAsync({ provider: "native" });
@@ -165,22 +169,27 @@ export default function HubSpotSettings({
                         Integrations
                     </Link>
                     <div className="flex flex-wrap items-start gap-3">
-                        <span className="size-10 rounded-lg bg-orange-50 inline-flex items-center justify-center shrink-0">
-                            <HubSpotMark className="w-5 h-5" />
+                        <span className={cn("size-10 rounded-lg inline-flex items-center justify-center shrink-0", crm.tint)}>
+                            <CrmMark provider={crm.id} className="w-5 h-5" />
                         </span>
                         <div className="min-w-0 flex-1 basis-48">
                             <div className="flex flex-wrap items-center gap-2">
-                                <h1 className="text-[18px] font-semibold text-slate-900 tracking-tight">HubSpot</h1>
+                                <h1 className="text-[18px] font-semibold text-slate-900 tracking-tight">{crm.name}</h1>
                                 <StatusPill tone={lost || needsReconnect ? "amber" : account?.health === "degraded" ? "amber" : "emerald"}>
                                     {lost ? "Disconnected" : needsReconnect ? "Needs reconnect" : account?.health === "degraded" ? "Degraded" : "Your CRM"}
                                 </StatusPill>
                                 {draft && <SaveStatus status={autosave.status} onRetry={autosave.retry} />}
                             </div>
                             <p className="text-[12px] text-slate-500 truncate">
-                                {account?.name || "HubSpot account"}
-                                {account?.external_id && <span className="text-slate-400"> · Portal {account.external_id}</span>}
+                                {account?.name || `${crm.name} account`}
+                                {account?.external_id && (
+                                    <span className="text-slate-400">
+                                        {" "}
+                                        · {pd ? "Company" : "Portal"} {account.external_id}
+                                    </span>
+                                )}
                             </p>
-                            <HubSpotSyncedAt at={health.data?.last_synced_at} className="mt-0.5" />
+                            <CrmSyncedAt at={health.data?.last_synced_at} provider={crm.id} className="mt-0.5" />
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                             <button
@@ -197,10 +206,13 @@ export default function HubSpotSettings({
                                     href={appUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="h-7 px-2.5 rounded-md border border-slate-200 hover:border-slate-300 text-[12px] text-slate-700 hover:text-orange-700 inline-flex items-center gap-1.5 transition-colors"
+                                    className={cn(
+                                        "h-7 px-2.5 rounded-md border border-slate-200 hover:border-slate-300 text-[12px] text-slate-700 inline-flex items-center gap-1.5 transition-colors",
+                                        crm.hoverText,
+                                    )}
                                 >
-                                    <HubSpotMark className="w-3 h-3" />
-                                    Open HubSpot
+                                    <CrmMark provider={crm.id} className="w-3 h-3" />
+                                    Open {crm.name}
                                     <ExternalLinkIcon className="w-3 h-3 opacity-60" />
                                 </a>
                             )}
@@ -223,14 +235,14 @@ export default function HubSpotSettings({
                         <AlertTriangleIcon className="hidden sm:block w-4 h-4 text-amber-600 shrink-0" />
                         <div className="min-w-0 flex-1">
                             <p className="text-[12.5px] font-medium text-amber-900">
-                                {lost ? "The HubSpot connection was removed" : "Reconnect HubSpot to keep syncing"}
+                                {lost ? `The ${crm.name} connection was removed` : `Reconnect ${crm.name} to keep syncing`}
                             </p>
                             <p className="text-[11.5px] text-amber-800 leading-relaxed">
                                 {lost
-                                    ? "Nothing reaches HubSpot until it is connected again."
+                                    ? `Nothing reaches ${crm.name} until it is connected again.`
                                     : account?.missing_scopes?.length
-                                      ? "HubSpot has not granted every permission CRM mode needs. Reconnect and approve the request."
-                                      : "HubSpot stopped accepting Warmbly's access. Reconnect to pick up where it left off."}
+                                      ? `${crm.name} has not granted every permission CRM mode needs. Reconnect and approve the request.`
+                                      : `${crm.name} stopped accepting Warmbly's access. Reconnect to pick up where it left off.`}
                             </p>
                         </div>
                         <button
@@ -240,7 +252,7 @@ export default function HubSpotSettings({
                             className="h-7 px-2.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-[12px] font-medium inline-flex items-center gap-1.5 shrink-0 transition-colors disabled:opacity-60"
                         >
                             {oauth.busy ? <Loader2Icon className="w-3 h-3 animate-spin" /> : <RefreshCwIcon className="w-3 h-3" />}
-                            {lost ? "Connect HubSpot" : "Reconnect HubSpot"}
+                            {lost ? `Connect ${crm.name}` : `Reconnect ${crm.name}`}
                         </button>
                     </div>
                 )}
@@ -261,9 +273,13 @@ export default function HubSpotSettings({
                 ) : (
                     <>
                         {metadata.error && (
-                            <p className="text-[11.5px] text-amber-700">{errMessage(metadata.error, "Could not read your HubSpot properties.")}</p>
+                            <p className="text-[11.5px] text-amber-700">{errMessage(metadata.error, `Could not read your ${crm.name} ${crm.words.properties}.`)}</p>
                         )}
-                        <Card title="Contacts and fields" description="How Warmbly contacts and HubSpot contacts stay in step." badge={<HubSpotBadge />}>
+                        <Card
+                            title={pd ? "People and fields" : "Contacts and fields"}
+                            description={`How Warmbly contacts and ${crm.name} ${crm.words.contacts} stay in step.`}
+                            badge={<CrmBadge provider={crm.id} />}
+                        >
                             <ContactsEditor config={draft} patch={patch} disabled={disabled} />
                             <div className="space-y-2 pt-4 border-t border-slate-100">
                                 <SubLabel>Field mapping</SubLabel>
@@ -279,19 +295,26 @@ export default function HubSpotSettings({
 
                         <Card
                             title="People"
-                            description="HubSpot users matched to workspace members. Records owned by someone who is not a member show their HubSpot name."
+                            description={`${crm.name} users matched to workspace members. Records owned by someone who is not a member show their ${crm.name} name.`}
                         >
                             <OwnersTable disabled={disabled} />
                         </Card>
 
-                        <Card title="Activity" description="Which Warmbly events are logged on the HubSpot contact timeline.">
+                        <Card
+                            title="Activity"
+                            description={
+                                pd
+                                    ? "Which Warmbly events are logged as activities on the Pipedrive person."
+                                    : "Which Warmbly events are logged on the HubSpot contact timeline."
+                            }
+                        >
                             <ActivityEditor config={draft} patch={patch} disabled={disabled} />
                             <div className="pt-4 border-t border-slate-100">
                                 <WarmblyPropertiesEditor config={draft} patch={patch} disabled={disabled} />
                             </div>
                         </Card>
 
-                        <Card title="Rules" description="What a good reply does in HubSpot, and when HubSpot should stop a campaign.">
+                        <Card title="Rules" description={`What a good reply does in ${crm.name}, and when ${crm.name} should stop a campaign.`}>
                             <div className="space-y-3">
                                 <SubLabel>When someone replies with interest</SubLabel>
                                 <ReplyOutcomeEditor config={draft} patch={patch} metadata={metadata.data} disabled={disabled} />
@@ -302,7 +325,9 @@ export default function HubSpotSettings({
                                 <ExitRulesEditor config={draft} patch={patch} metadata={metadata.data} disabled={disabled} />
                             </div>
                             <div className="space-y-3 pt-4 border-t border-slate-100">
-                                <SubLabel>When importing a HubSpot list, skip contacts who</SubLabel>
+                                <SubLabel>
+                                    When importing a {crm.name} {crm.words.list}, skip {crm.words.contacts} who
+                                </SubLabel>
                                 <GuardsEditor config={draft} patch={patch} metadata={metadata.data} disabled={disabled} />
                             </div>
                         </Card>
@@ -310,13 +335,17 @@ export default function HubSpotSettings({
                         <div className="grid md:grid-cols-2 gap-4">
                             <Card
                                 title="Pipelines to mirror"
-                                description="The HubSpot deal pipelines that show up in Warmbly. Leave it on all pipelines unless some belong to another team."
+                                description={`The ${crm.name} deal pipelines that show up in Warmbly. Leave it on all pipelines unless some belong to another team.`}
                             >
                                 <PipelinesEditor config={draft} patch={patch} metadata={metadata.data} disabled={disabled} />
                             </Card>
                             <Card
                                 title="Contact properties shown in Warmbly"
-                                description="Extra HubSpot properties shown on contacts and inbox threads, next to Owner, Lifecycle stage and Lead status."
+                                description={
+                                    pd
+                                        ? "Extra Pipedrive fields shown on contacts and inbox threads, next to Owner, Label and Organization."
+                                        : "Extra HubSpot properties shown on contacts and inbox threads, next to Owner, Lifecycle stage and Lead status."
+                                }
                             >
                                 <DisplayPropertiesEditor
                                     config={draft}
@@ -335,15 +364,15 @@ export default function HubSpotSettings({
                     <section className="rounded-md border border-rose-200 bg-white">
                         <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
                             <div className="min-w-0 flex-1">
-                                <h3 className="text-[12.5px] font-semibold text-rose-700">Stop using HubSpot as your CRM</h3>
+                                <h3 className="text-[12.5px] font-semibold text-rose-700">Stop using {crm.name} as your CRM</h3>
                                 <p className="text-[11.5px] text-slate-500 mt-0.5 leading-relaxed">
                                     Warmbly goes back to its own deals, tasks and notes. Everything already mirrored stays in
-                                    Warmbly, and nothing is deleted in HubSpot. HubSpot stays connected for automations.
+                                    Warmbly, and nothing is deleted in {crm.name}. {crm.name} stays connected for automations.
                                 </p>
                             </div>
                             <button
                                 type="button"
-                                onClick={stopUsingHubSpot}
+                                onClick={stopUsingCrm}
                                 disabled={update.isPending}
                                 className="h-7 px-3 rounded-md border border-rose-200 text-[12px] font-medium text-rose-600 hover:bg-rose-50 hover:border-rose-300 inline-flex items-center gap-1.5 shrink-0 transition-colors disabled:opacity-60"
                             >
@@ -354,16 +383,19 @@ export default function HubSpotSettings({
                 )}
             </div>
 
-            {manageOpen && connection && (
-                <ConnectionDetail connection={connection} entry={entry} onClose={() => setManageOpen(false)} />
-            )}
+            <AnimatePresence>
+                {manageOpen && connection && (
+                    <ConnectionDetail connection={connection} entry={entry} onClose={() => setManageOpen(false)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
 
 // Records created in Warmbly's own CRM (before the switch, or while it was
-// off) can be copied into HubSpot at any time.
+// off) can be copied into the connected CRM at any time.
 function BackfillCard() {
+    const crm = usePageCrm();
     const preview = useCrmBackfillPreview();
     const start = useStartCrmBackfill();
     const [copy, setCopy] = React.useState<CRMBackfillRequest>({ deals: true, tasks: true, notes: true });
@@ -382,7 +414,7 @@ function BackfillCard() {
         start.mutate(
             { deals: copy.deals && (p?.deals ?? 0) > 0, tasks: copy.tasks && (p?.tasks ?? 0) > 0, notes: copy.notes && (p?.notes ?? 0) > 0 },
             {
-                onSuccess: () => toast.success("Copying into HubSpot. Progress shows in Sync health."),
+                onSuccess: () => toast.success(`Copying into ${crm.name}. Progress shows in Sync health.`),
                 onError: (err) => toast.error(errMessage(err, "Could not start copying")),
             },
         );
@@ -391,7 +423,7 @@ function BackfillCard() {
     return (
         <Card
             title="Warmbly-only records"
-            description={`${joinList(items.map(([k, one]) => plural(p?.[k] ?? 0, one)))} exist only in Warmbly. Copy them into HubSpot once; nothing is copied twice.`}
+            description={`${joinList(items.map(([k, one]) => plural(p?.[k] ?? 0, one)))} exist only in Warmbly. Copy them into ${crm.name} once; nothing is copied twice.`}
             actions={
                 <button
                     type="button"
@@ -401,7 +433,7 @@ function BackfillCard() {
                     className="h-7 px-2.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                     {start.isPending ? <Loader2Icon className="w-3 h-3 animate-spin" /> : <CopyPlusIcon className="w-3 h-3" />}
-                    Copy into HubSpot
+                    Copy into {crm.name}
                 </button>
             }
         >

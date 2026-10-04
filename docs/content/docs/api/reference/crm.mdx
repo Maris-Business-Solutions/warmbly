@@ -1,6 +1,6 @@
 ---
 title: CRM
-description: Manage pipelines, stages, deals, task types, and CRM tasks for your organization, and run the CRM on HubSpot.
+description: Manage pipelines, stages, deals, task types, and CRM tasks for your organization, and run the CRM on HubSpot or Pipedrive.
 ---
 
 The CRM endpoints model your sales pipeline: deals move through stages of a pipeline, and CRM tasks track the follow-up work attached to contacts and deals. Every route is organization-scoped and requires an active organization on the session or API key. Read access uses the **CRM** read scope (`READ_CRM` / org permission `view_contacts`), and mutations use the **CRM** write scope (`WRITE_CRM` / org permission `manage_contacts`), except team membership operations which gate on `manage_team`. See [authentication](/api/authentication/) and [permissions](/api/permissions/) for how scopes map to API keys and member roles.
@@ -1053,27 +1053,33 @@ Auth: **Scope** `WRITE_CRM` · **Org permission** `manage_contacts`
 { "affected": 128 }
 ```
 
-## HubSpot mode
+## CRM provider mode
 
-A workspace can run its CRM on [HubSpot](/guides/hubspot/) instead of Warmbly's own. In HubSpot mode the endpoints above keep their shapes, and the records they return are HubSpot's, mirrored into Warmbly:
+A workspace can run its CRM on [HubSpot](/guides/hubspot/) or [Pipedrive](/guides/pipedrive/) instead of Warmbly's own. In provider mode the endpoints above keep their shapes, and the records they return are the provider's, mirrored into Warmbly. In HubSpot mode:
 
 - a create, update or delete of a deal, task or note is written to HubSpot before it is saved. A refusal from HubSpot comes back as an error and nothing is saved; see [CRM provider refusals](/api/error-codes/#crm-provider-refusals)
 - creating, updating or deleting a pipeline, stage or task type answers `409 crm_managed_externally`. `GET /crm/pipelines` lists only HubSpot pipelines, and `GET /crm/task-types` returns HubSpot's four types (To-do, Call, Email, LinkedIn)
 - `POST /crm/deals/search` and `POST /crm/deals/summary` cover only HubSpot pipelines when no `pipeline_ids` filter is given, so deals in Warmbly-only pipelines are left out
 - setting a deal's `status` to `won` or `lost` moves it to the pipeline's first closed stage of that kind, and moving it to a closed stage sets its `status`. `assigned_to` must be a member matched to a HubSpot owner (`400 crm_owner_unmapped`)
 
-Deals, tasks, notes and pipelines that live in HubSpot carry an `external` object, and the stages of a HubSpot pipeline carry HubSpot's stage metadata. Both are absent outside HubSpot mode.
+In Pipedrive mode the same holds, with Pipedrive's model:
+
+- tasks are Pipedrive activities. `GET /crm/task-types` returns the company's activity types; a task's `status` is written as done (`completed`, `cancelled`) or not done, and its `priority` stays in Warmbly
+- a deal's `status` is Pipedrive's own deal status, so `won` and `lost` keep the deal's stage. `lost_reason` is written with a `lost` status. `assigned_to` must be a member matched to a Pipedrive user (`400 crm_owner_unmapped`)
+- Pipedrive has no lifecycle stage or lead status. A contact's `lifecycle_stage` is its first person label (an id, as in `GET /crm/metadata`), and `lead_status` is always empty
+
+Deals, tasks, notes and pipelines that live in the provider carry an `external` object, and the stages of a mirrored pipeline carry its stage metadata. Both are absent outside provider mode.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `external.provider` | string | Always `hubspot`. |
-| `external.external_id` | string | The HubSpot record id. |
-| `external.url` | string | Where the record opens in HubSpot: the deal, the HubSpot tasks view, the note's contact, or the pipeline settings. Omitted when unknown. |
-| `external.synced_at` | string (date-time) | When the record was last written to or read from HubSpot. |
-| `external.owner_name` | string | The HubSpot owner, on a deal or task whose owner is not a workspace member (so `assigned_to` is empty). |
-| `stages[].closed` | boolean | The stage is a closed stage in HubSpot. Omitted when false. |
-| `stages[].won` | boolean | The stage is closed won. Omitted when false. |
-| `stages[].probability` | number | HubSpot's deal probability for the stage, from `0` to `1`. |
+| `external.provider` | string | `hubspot` or `pipedrive`. |
+| `external.external_id` | string | The provider's record id. |
+| `external.url` | string | Where the record opens in the provider: the deal, the tasks view (in Pipedrive the activity's deal, else the activities list), the note's contact, or the pipeline. Omitted when unknown. |
+| `external.synced_at` | string (date-time) | When the record was last written to or read from the provider. |
+| `external.owner_name` | string | The provider's owner, on a deal or task whose owner is not a workspace member (so `assigned_to` is empty). |
+| `stages[].closed` | boolean | The stage is a closed stage in HubSpot. Omitted when false, and always in Pipedrive. |
+| `stages[].won` | boolean | The stage is closed won in HubSpot. Omitted when false, and always in Pipedrive. |
+| `stages[].probability` | number | The provider's deal probability for the stage, from `0` to `1`. |
 
 ```json
 {
@@ -1090,13 +1096,13 @@ Deals, tasks, notes and pipelines that live in HubSpot carry an `external` objec
 }
 ```
 
-The routes below configure HubSpot mode and read HubSpot's side of a contact. Except for `GET /crm/settings`, `GET /crm/owners`, `GET /crm/sync` and `GET /crm/backfill`, each answers `409 crm_not_connected` while the workspace is not in HubSpot mode, and `501` on an instance where CRM providers are not available.
+The routes below configure provider mode and read the provider's side of a contact; each one acts on the CRM the workspace runs on. Except for `GET /crm/settings`, `GET /crm/owners`, `GET /crm/sync` and `GET /crm/backfill`, each answers `409 crm_not_connected` while the workspace is not in provider mode, and `501` on an instance where CRM providers are not available.
 
 ## Get CRM settings
 
 `GET /crm/settings`
 
-Return the workspace's CRM mode, its setup choices and the connected HubSpot account. A workspace that never chose returns `provider: "native"` with the default choices.
+Return the workspace's CRM mode, its setup choices and the connected account. A workspace that never chose returns `provider: "native"` with the default choices.
 
 Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
@@ -1132,13 +1138,13 @@ Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 }
 ```
 
-`account.missing_scopes` lists the HubSpot permissions the connection lacks for HubSpot mode, when there are any.
+`account.missing_scopes` lists the permissions the connection lacks for provider mode, when there are any. `config.for` names the provider the choices were made for. In Pipedrive mode `account.external_id` is the Pipedrive company id, and `config.positive_reply.create_lead` adds the person to Pipedrive's Leads Inbox on an interested reply.
 
 ## Update CRM settings
 
 `PUT /crm/settings`
 
-Choose the CRM and store the setup choices. Switching to HubSpot creates the Warmbly contact property group in HubSpot (when `write_properties` is on) and starts the first pull in the background. Naturally safe to retry: it writes an end state.
+Choose the CRM and store the setup choices. Switching to HubSpot creates the Warmbly contact property group in HubSpot (when `write_properties` is on) and starts the first pull in the background. Switching to Pipedrive fills the label rules from the company's own labels when no `config` is sent, then adds the Warmbly person fields, registers the change notifications and starts the first pull. Switching from one provider to the other replaces it, and stored choices made for the other provider are reset to the new one's defaults. Naturally safe to retry: it writes an end state.
 
 Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
 
@@ -1146,12 +1152,12 @@ Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `provider` | string | no | `native` or `hubspot`. |
-| `connection_id` | uuid | no | The workspace's HubSpot [integration connection](/api/reference/integrations/). Required once, to use HubSpot. |
+| `provider` | string | no | `native`, `hubspot` or `pipedrive`. |
+| `connection_id` | uuid | no | The workspace's HubSpot or Pipedrive [integration connection](/api/reference/integrations/). Required once, to use the provider. |
 | `config` | object | no | The whole set of choices, replacing the stored one. Shape as in the response above. |
 | `complete_setup` | boolean | no | Mark the setup wizard as finished. |
 
-`config` is validated before it is stored: `field_map` keys are `first_name`, `last_name`, `email`, `company`, `phone` or `custom:<key>`; each `field_direction` entry is `push`, `pull` or `both` and names a mapped field; `deal_pipelines` (HubSpot pipeline ids, empty for all) holds at most 50 entries, `display_properties` at most 40, `field_map` at most 100, and each lifecycle stage list at most 20. `positive_reply.create_deal` needs `deal_pipeline_id` and `deal_stage_id`, which are Warmbly's ids for a mirrored pipeline and stage.
+`config` is validated before it is stored: `field_map` keys are `first_name`, `last_name`, `email`, `company`, `phone` or `custom:<key>`; each `field_direction` entry is `push`, `pull` or `both` and names a mapped field; `deal_pipelines` (provider pipeline ids, empty for all) holds at most 50 entries, `display_properties` at most 40, `field_map` at most 100, and each lifecycle stage list at most 20. `positive_reply.create_deal` needs `deal_pipeline_id` and `deal_stage_id`, which are Warmbly's ids for a mirrored pipeline and stage.
 
 ```json
 {
@@ -1163,13 +1169,13 @@ Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
 
 ### Response
 
-The settings object, as returned by `GET /crm/settings`. A connection without the permissions HubSpot mode needs answers `409 crm_reauth_required`; a `connection_id` that is not one of the workspace's HubSpot connections answers `400`.
+The settings object, as returned by `GET /crm/settings`. A connection without the permissions provider mode needs answers `409 crm_reauth_required`; a `connection_id` that is not one of the workspace's connections to that provider answers `400`.
 
 ## Get CRM metadata
 
 `GET /crm/metadata`
 
-Return HubSpot's vocabulary for the setup pickers: lifecycle stages, lead statuses, task types, contact properties (hidden and calculated ones left out) and deal pipelines. Pipelines here carry HubSpot's ids, as `deal_pipelines` expects.
+Return the provider's vocabulary for the setup pickers: lifecycle stages, lead statuses, task types, contact properties (hidden and calculated ones left out) and deal pipelines. Pipelines here carry the provider's ids, as `deal_pipelines` expects. For Pipedrive, `lifecycle_stages` are the person labels, `lead_statuses` is empty, `task_types` are the activity types, and `properties` are the standard person keys (`first_name`, `last_name`, `name`, `phone`, `org_name`) followed by the custom fields by code.
 
 Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
@@ -1189,7 +1195,7 @@ Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
 `GET /crm/owners`
 
-List HubSpot's owners and the member each one is matched to. Owners are matched by email address unless a match was chosen by hand (`user_pinned`).
+List the provider's owners (Pipedrive's users) and the member each one is matched to. Owners are matched by email address unless a match was chosen by hand (`user_pinned`).
 
 Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
@@ -1215,13 +1221,13 @@ Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
 `PUT /crm/owners/:externalId`
 
-Match a HubSpot owner to a member, or clear the match with `null`. A match set here is kept when email matching runs again. Naturally safe to retry.
+Match a provider owner to a member, or clear the match with `null`. A match set here is kept when email matching runs again. Naturally safe to retry.
 
 Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
 
 | Parameter | In | Type | Description |
 | --- | --- | --- | --- |
-| `externalId` | path | string | HubSpot owner id. |
+| `externalId` | path | string | The provider's owner (Pipedrive user) id. |
 
 ### Request body
 
@@ -1278,7 +1284,7 @@ Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
 `POST /crm/sync`
 
-Start a full pull from HubSpot in the background.
+Start a full pull from the provider in the background.
 
 Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
 
@@ -1306,11 +1312,11 @@ Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
 { "affected": 3 }
 ```
 
-## Copy Warmbly CRM data into HubSpot
+## Copy Warmbly CRM data into the provider
 
 `GET /crm/backfill` · `POST /crm/backfill`
 
-`GET` counts the deals, tasks and notes that are not in HubSpot yet. `POST` copies the kinds you pick, once, in the background: deals move onto the first HubSpot pipeline, keeping a stage of the same name or else taking the first stage that matches their status. A copied record is never copied twice, and a second `POST` while one runs is folded into it.
+`GET` counts the deals, tasks and notes that live only in Warmbly, in no connected CRM (records mirrored from a CRM the workspace used before are left out). `POST` copies the kinds you pick, once, in the background: deals move onto the first mirrored pipeline, keeping a stage of the same name or else taking the first stage that matches their status (in Pipedrive, the first stage, with the deal's status kept). A copied record is never copied twice, and a second `POST` while one runs is folded into it.
 
 Auth: **Scope** `INTEGRATIONS` · **Org permission** `manage_settings`
 
@@ -1328,11 +1334,11 @@ At least one must be `true`.
 
 `GET` returns `{ "deals": 12, "tasks": 40, "notes": 7 }`. `POST` returns `202 Accepted`; progress shows in [sync health](#get-sync-health).
 
-## Get a contact's HubSpot record
+## Get a contact's CRM record
 
 `GET /crm/contacts/:id`
 
-Return HubSpot's side of a Warmbly contact as last mirrored: owner, lifecycle stage, lead status, company, opt-out and the properties chosen in `display_properties`. A contact not linked to HubSpot returns `linked: false` and nothing else.
+Return the provider's side of a Warmbly contact as last mirrored: owner, lifecycle stage (a label in Pipedrive), lead status, company (organization in Pipedrive), opt-out and the properties chosen in `display_properties`. A contact not linked to the provider returns `linked: false` and nothing else.
 
 Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
@@ -1358,35 +1364,35 @@ Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 }
 ```
 
-## Refresh a contact's HubSpot record
+## Refresh a contact's CRM record
 
 `POST /crm/contacts/:id/refresh`
 
-Pull the contact's HubSpot record, deals, tasks and notes now. An unlinked contact is looked up by email and linked when HubSpot has it; nothing is created. Debounced per contact (one pull a minute, one lookup every five minutes), so it is safe to call whenever a contact is opened.
+Pull the contact's provider record, deals, tasks and notes now. An unlinked contact is looked up by email and linked when the provider has it; nothing is created. Debounced per contact, so it is safe to call whenever a contact is opened: in HubSpot one pull a minute and one lookup every five minutes; in Pipedrive, which meters API use per company per day, the person is re-read at most every two minutes, their deals, activities and notes every six hours, and an unlinked contact is looked up every fifteen minutes.
 
 Auth: **Scope** `READ_CRM` · **Org permission** `view_contacts`
 
 ### Response
 
-The contact's HubSpot record, as in `GET /crm/contacts/:id`.
+The contact's CRM record, as in `GET /crm/contacts/:id`.
 
-## Link a contact to HubSpot
+## Link a contact to the CRM
 
 `POST /crm/contacts/:id/link`
 
-Find the contact in HubSpot by email, or create it there when the workspace allows creating contacts, then pull its deals, tasks and notes. Naturally safe to retry: a linked contact stays linked to the same record.
+Find the contact in the provider by email, or create it there when the workspace allows creating contacts, then pull its deals, tasks and notes. Naturally safe to retry: a linked contact stays linked to the same record.
 
 Auth: **Scope** `WRITE_CRM` · **Org permission** `manage_contacts`
 
 ### Response
 
-The contact's HubSpot record, as in `GET /crm/contacts/:id`. `404 crm_contact_missing` when HubSpot does not have the contact and creating contacts is off.
+The contact's CRM record, as in `GET /crm/contacts/:id`. `404 crm_contact_missing` when the provider does not have the contact and creating contacts is off.
 
-## Update a contact's HubSpot record
+## Update a contact's CRM record
 
 `PATCH /crm/contacts/:id`
 
-Write the contact's owner, lifecycle stage or lead status to HubSpot, then to the mirror.
+Write the contact's owner, lifecycle stage or lead status to the provider, then to the mirror. In Pipedrive, `lifecycle_stage` sets the person's label (an id from `GET /crm/metadata`, or empty to clear it) and `lead_status` is ignored.
 
 Auth: **Scope** `WRITE_CRM` · **Org permission** `manage_contacts`
 
@@ -1394,7 +1400,7 @@ Auth: **Scope** `WRITE_CRM` · **Org permission** `manage_contacts`
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `owner_external_id` | string | no | HubSpot owner id. |
+| `owner_external_id` | string | no | The provider's owner (Pipedrive user) id. |
 | `lifecycle_stage` | string | no | A lifecycle stage value from `GET /crm/metadata`. |
 | `lead_status` | string | no | A lead status value from `GET /crm/metadata`. |
 
@@ -1402,13 +1408,13 @@ Each value is at most 100 characters.
 
 ### Response
 
-The updated HubSpot record, as in `GET /crm/contacts/:id`. `404 crm_contact_missing` when the contact is not linked to HubSpot.
+The updated provider record, as in `GET /crm/contacts/:id`. `404 crm_contact_missing` when the contact is not linked to the provider.
 
-## List HubSpot lists
+## List CRM lists
 
 `GET /crm/lists`
 
-List the HubSpot account's contact lists, newest first, for import. Needs HubSpot's optional list permission; a connection without it answers `409 crm_reauth_required`.
+List the HubSpot account's contact lists, newest first, for import. Needs HubSpot's optional list permission; a connection without it answers `409 crm_reauth_required`. In Pipedrive mode these are the company's saved people filters, most recently changed first, each with `size: -1` (Pipedrive does not count a filter) and `dynamic: true`.
 
 Auth: **Scope** `READ_CRM` · **Org permission** `manage_contacts`
 
@@ -1429,7 +1435,7 @@ Auth: **Scope** `READ_CRM` · **Org permission** `manage_contacts`
 }
 ```
 
-## Preview a HubSpot list import
+## Preview a CRM list import
 
 `POST /crm/lists/preview`
 
@@ -1441,7 +1447,7 @@ Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `list_id` | string | yes | HubSpot list id (at most 64 characters). |
+| `list_id` | string | yes | HubSpot list id or Pipedrive filter id (at most 64 characters). |
 | `apply_guards` | boolean | no | Skip the contacts the workspace's import guards exclude (`config.guards`). |
 
 ### Response
@@ -1463,11 +1469,11 @@ Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
 
 `reason` is `opted_out`, `lifecycle`, `open_deal`, `other_owner`, `no_email` or `duplicate`. One import reads at most 25,000 contacts; `truncated` is `true` when the list is larger.
 
-## Import a HubSpot list
+## Import a CRM list
 
 `POST /crm/lists/import`
 
-Turn a list into a [contact import](/api/reference/contacts/) draft, finished in the regular import review. The body and the skip rules are those of the preview. The imported contacts are linked to their HubSpot records a few minutes later. The draft belongs to the caller (for an API key, the member who created it).
+Turn a list into a [contact import](/api/reference/contacts/) draft, finished in the regular import review. The body and the skip rules are those of the preview. The imported contacts are linked to their provider records a few minutes later. The draft belongs to the caller (for an API key, the member who created it).
 
 Auth: **Scope** `WRITE_CONTACTS` · **Org permission** `manage_contacts`
 

@@ -1,5 +1,6 @@
-// Import from HubSpot: pick a contact list, see who comes in and who the
-// workspace's HubSpot rules skip, then continue in the regular import review.
+// Import from the connected CRM: pick a HubSpot list or a Pipedrive filter, see
+// who comes in and who the workspace's CRM rules skip, then continue in the
+// regular import review.
 
 import React from "react";
 import { Link } from "@tanstack/react-router";
@@ -17,9 +18,8 @@ import {
 } from "lucide-react";
 import { SearchInput } from "@/components/ui/field";
 import { Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
-import { HubSpotMark } from "@/components/app/crm/HubSpot";
-import { HUBSPOT_SETTINGS_PATH } from "@/components/app/crm/hubspotCrm";
-import { crmErrorMessage } from "@/components/app/crm/hubspotUtils";
+import { type CrmInfo, CrmMark } from "@/components/app/crm/crmProviders";
+import { crmErrorMessage } from "@/components/app/crm/crmModeUtils";
 import useCrmProvider from "@/hooks/useCrmProvider";
 import useDebouncedValue from "@/hooks/useDebouncedValue";
 import { useCrmLists, useImportCrmList, usePreviewCrmImport } from "@/lib/api/hooks/app/crm/provider/useCrmLists";
@@ -33,10 +33,12 @@ import { mappingProblem } from "../importShared";
 
 type Step = "list" | "review";
 
-const STEPS: { key: Step; label: string }[] = [
-    { key: "list", label: "Choose a list" },
-    { key: "review", label: "Review" },
-];
+function steps(crm: CrmInfo): { key: Step; label: string }[] {
+    return [
+        { key: "list", label: `Choose a ${crm.words.list}` },
+        { key: "review", label: "Review" },
+    ];
+}
 
 const paneVariants = {
     enter: (dir: 1 | -1) => ({ x: dir * 28, opacity: 0 }),
@@ -47,7 +49,7 @@ const paneVariants = {
 const PAGE_SIZE = 25;
 const MAX_LIST_IMPORT = 25000;
 
-export default function HubSpotImportDialog({
+export default function CrmImportDialog({
     open,
     onClose,
     onContinue,
@@ -60,6 +62,7 @@ export default function HubSpotImportDialog({
     // "Adding to <campaign>" when the import lands somewhere specific.
     target?: string;
 }) {
+    const { crm } = useCrmProvider();
     const [step, setStep] = React.useState<Step>("list");
     const [direction, setDirection] = React.useState<1 | -1>(1);
     const [list, setList] = React.useState<CRMList | null>(null);
@@ -81,7 +84,7 @@ export default function HubSpotImportDialog({
 
     function go(next: Step) {
         if (next === "review" && !list) {
-            setNudge("Pick a list to continue.");
+            setNudge(`Pick a ${crm.words.list} to continue.`);
             return;
         }
         setNudge(null);
@@ -138,7 +141,7 @@ export default function HubSpotImportDialog({
                         key="card"
                         role="dialog"
                         aria-modal="true"
-                        aria-label="Import from HubSpot"
+                        aria-label={`Import from ${crm.name}`}
                         initial={{ y: 8, opacity: 0, scale: 0.985 }}
                         animate={{ y: 0, opacity: 1, scale: 1 }}
                         exit={{ y: 8, opacity: 0, scale: 0.985 }}
@@ -147,8 +150,8 @@ export default function HubSpotImportDialog({
                         className="w-full max-w-[600px] h-[min(88dvh,640px)] rounded-lg bg-white border border-slate-200 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.18),0_8px_16px_-8px_rgba(15,23,42,0.1)] overflow-hidden flex flex-col"
                     >
                         <header className="h-12 px-4 border-b border-slate-200 flex items-center gap-2 shrink-0">
-                            <HubSpotMark className="w-4 h-4" />
-                            <h2 className="text-[13px] font-semibold text-slate-900">Import from HubSpot</h2>
+                            <CrmMark provider={crm.id} className="w-4 h-4" />
+                            <h2 className="text-[13px] font-semibold text-slate-900">Import from {crm.name}</h2>
                             {target && <span className="text-[11.5px] text-slate-400 truncate">{target}</span>}
                             <button
                                 type="button"
@@ -242,7 +245,7 @@ export default function HubSpotImportDialog({
                                         ) : (
                                             <ArrowRightIcon className="w-3 h-3" />
                                         )}
-                                        {importList.isPending ? "Reading the list…" : "Import"}
+                                        {importList.isPending ? `Reading the ${crm.words.list}…` : "Import"}
                                     </button>
                                 )}
                             </div>
@@ -255,6 +258,8 @@ export default function HubSpotImportDialog({
 }
 
 function Stepper({ step, canReview, onGo }: { step: Step; canReview: boolean; onGo: (s: Step) => void }) {
+    const { crm } = useCrmProvider();
+    const STEPS = steps(crm);
     const at = STEPS.findIndex((s) => s.key === step);
     return (
         <div className="px-4 sm:px-5 h-10 border-b border-slate-100 flex items-center shrink-0 bg-slate-50/40">
@@ -324,6 +329,7 @@ function ListStep({
     // Double click: choose and go straight to the review.
     onPick: (l: CRMList) => void;
 }) {
+    const { crm } = useCrmProvider();
     const [q, setQ] = React.useState("");
     const query = useDebouncedValue(q.trim(), 300);
     // Each "Load more" adds the next page's cursor; every page is its own query.
@@ -333,12 +339,16 @@ function ListStep({
     return (
         <div className="space-y-3">
             <div>
-                <p className="text-[12.5px] text-slate-700">Pick the HubSpot list to bring in.</p>
+                <p className="text-[12.5px] text-slate-700">
+                    Pick the {crm.name} {crm.words.list} to bring in.
+                </p>
                 <p className="text-[11.5px] text-slate-500 mt-0.5">
-                    Active lists bring in whoever is on them right now. Static lists bring in their saved members.
+                    {crm.id === "pipedrive"
+                        ? "A saved people filter brings in whoever matches it right now."
+                        : "Active lists bring in whoever is on them right now. Static lists bring in their saved members."}
                 </p>
             </div>
-            <SearchInput value={q} onChange={setQ} placeholder="Search HubSpot lists…" autoFocus className="w-full" />
+            <SearchInput value={q} onChange={setQ} placeholder={`Search ${crm.name} ${crm.words.lists}…`} autoFocus className="w-full" />
             <div className="space-y-1">
                 {cursors.map((cursor, i) => (
                     <ListPage
@@ -378,6 +388,7 @@ function ListPage({
     onMore: (cursor: string) => void;
 }) {
     const lists = useCrmLists({ q: query || undefined, cursor, limit: PAGE_SIZE });
+    const { crm } = useCrmProvider();
 
     if (lists.isPending) {
         return (
@@ -397,8 +408,8 @@ function ListPage({
                 <div className="min-w-0 flex-1 text-[11.5px] text-amber-900 leading-snug">
                     {crmErrorMessage(lists.error)}
                     {reauth && (
-                        <Link to={HUBSPOT_SETTINGS_PATH} className="ml-1 font-medium underline hover:text-amber-950">
-                            Open HubSpot settings
+                        <Link to={crm.settingsPath} className="ml-1 font-medium underline hover:text-amber-950">
+                            Open {crm.name} settings
                         </Link>
                     )}
                 </div>
@@ -424,7 +435,11 @@ function ListPage({
                 <div className="rounded-md border border-dashed border-slate-200 px-3 py-8 text-center">
                     <ListIcon className="w-4 h-4 text-slate-300 mx-auto mb-1.5" />
                     <p className="text-[11.5px] text-slate-500">
-                        {query ? "No HubSpot list matches that search." : "This HubSpot account has no contact lists yet."}
+                        {query
+                            ? `No ${crm.name} ${crm.words.list} matches that search.`
+                            : crm.id === "pipedrive"
+                              ? "This Pipedrive account has no saved people filters yet."
+                              : "This HubSpot account has no contact lists yet."}
                     </p>
                 </div>
             )}
@@ -454,18 +469,20 @@ function ListPage({
                             <span className="block text-[12.5px] font-medium text-slate-900 truncate">{l.name}</span>
                             <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
                                 <UsersIcon className="w-3 h-3 text-slate-400" />
-                                {l.size.toLocaleString()} contact{l.size === 1 ? "" : "s"}
+                                {listSize(l, crm)}
                             </span>
                         </span>
-                        <span
-                            className={cn(
-                                "shrink-0 h-5 px-1.5 rounded text-[10.5px] font-medium inline-flex items-center",
-                                l.dynamic ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600",
-                            )}
-                            title={l.dynamic ? "Membership updates on its own in HubSpot" : "Members are added by hand"}
-                        >
-                            {l.dynamic ? "Active" : "Static"}
-                        </span>
+                        {crm.id !== "pipedrive" && (
+                            <span
+                                className={cn(
+                                    "shrink-0 h-5 px-1.5 rounded text-[10.5px] font-medium inline-flex items-center",
+                                    l.dynamic ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600",
+                                )}
+                                title={l.dynamic ? `Membership updates on its own in ${crm.name}` : "Members are added by hand"}
+                            >
+                                {l.dynamic ? "Active" : "Static"}
+                            </span>
+                        )}
                     </button>
                 );
             })}
@@ -475,7 +492,7 @@ function ListPage({
                     onClick={() => onMore(next)}
                     className="w-full h-8 rounded-md text-[12px] text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
                 >
-                    Load more lists
+                    Load more {crm.words.lists}
                 </button>
             )}
         </>
@@ -491,10 +508,10 @@ function ReviewStep({
     applyGuards: boolean;
     setApplyGuards: (v: boolean) => void;
 }) {
-    const { settings } = useCrmProvider();
+    const { settings, crm } = useCrmProvider();
     const metadata = useCrmMetadata();
     const preview = usePreviewCrmImport();
-    // Both answers are kept, so flipping the rules back and forth asks HubSpot once each.
+    // Both answers are kept, so flipping the rules back and forth asks the CRM once each.
     const [results, setResults] = React.useState<Record<string, CRMImportPreview>>({});
     const key = `${list.external_id}:${applyGuards ? 1 : 0}`;
     const result = results[key];
@@ -511,34 +528,36 @@ function ReviewStep({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key, mutate, reset]);
 
-    const rules = guardRules(settings?.config?.guards, metadata.data?.lifecycle_stages);
+    const rules = guardRules(settings?.config?.guards, metadata.data?.lifecycle_stages, crm);
     const skippedTotal = result?.skipped.reduce((n, s) => n + s.count, 0) ?? 0;
     const loading = !result && !preview.isError;
 
     return (
         <div className="space-y-4">
             <div className="flex items-start gap-2.5">
-                <span className="size-8 rounded-md bg-orange-50 inline-flex items-center justify-center shrink-0">
-                    <HubSpotMark className="w-4 h-4" />
+                <span className={cn("size-8 rounded-md inline-flex items-center justify-center shrink-0", crm.tint)}>
+                    <CrmMark provider={crm.id} className="w-4 h-4" />
                 </span>
                 <div className="min-w-0">
                     <p className="text-[13px] font-semibold text-slate-900 truncate">{result?.list_name || list.name}</p>
                     <p className="text-[11.5px] text-slate-500">
-                        {list.size.toLocaleString()} contact{list.size === 1 ? "" : "s"} · {list.dynamic ? "Active list" : "Static list"}
+                        {crm.id === "pipedrive"
+                            ? `Saved people filter${result ? ` · ${result.total.toLocaleString()} ${result.total === 1 ? "person" : "people"}` : ""}`
+                            : `${listSize(list, crm)} · ${list.dynamic ? "Active list" : "Static list"}`}
                     </p>
                 </div>
             </div>
 
             <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5 flex items-start gap-3">
                 <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] font-medium text-slate-900">Apply HubSpot rules</div>
+                    <div className="text-[12.5px] font-medium text-slate-900">Apply {crm.name} rules</div>
                     <div className="text-[11px] text-slate-500 leading-snug mt-0.5">
                         {rules.length > 0
-                            ? `Skips ${joinList(rules)}, as set in HubSpot settings.`
-                            : "No skip rules are set in HubSpot settings, so only contacts without an email are left out."}
+                            ? `Skips ${joinList(rules)}, as set in ${crm.name} settings.`
+                            : `No skip rules are set in ${crm.name} settings, so only ${crm.words.contacts} without an email are left out.`}
                     </div>
                 </div>
-                <Toggle value={applyGuards} onChange={setApplyGuards} ariaLabel="Apply HubSpot rules" />
+                <Toggle value={applyGuards} onChange={setApplyGuards} ariaLabel={`Apply ${crm.name} rules`} />
             </div>
 
             {preview.isError && !result ? (
@@ -547,8 +566,8 @@ function ReviewStep({
                     <div className="min-w-0 flex-1 text-[11.5px] text-amber-900 leading-snug">
                         {crmErrorMessage(preview.error)}
                         {(preview.error as unknown as AppError)?.code === "crm_reauth_required" && (
-                            <Link to={HUBSPOT_SETTINGS_PATH} className="ml-1 font-medium underline hover:text-amber-950">
-                                Open HubSpot settings
+                            <Link to={crm.settingsPath} className="ml-1 font-medium underline hover:text-amber-950">
+                                Open {crm.name} settings
                             </Link>
                         )}
                     </div>
@@ -569,7 +588,7 @@ function ReviewStep({
             ) : loading ? (
                 <div className="rounded-md border border-slate-200 px-3 py-6 flex items-center justify-center gap-2 text-[12px] text-slate-500">
                     <Loader2Icon className="w-3.5 h-3.5 animate-spin text-slate-400" />
-                    Checking the list against HubSpot…
+                    Checking the {crm.words.list} against {crm.name}…
                 </div>
             ) : result ? (
                 <div className="space-y-3">
@@ -635,14 +654,15 @@ function ReviewStep({
                     {result.truncated && (
                         <p className="flex items-start gap-1.5 text-[11px] text-slate-500 leading-snug">
                             <AlertTriangleIcon className="w-3 h-3 text-amber-500 mt-px shrink-0" />
-                            This list is larger than one import takes, so the first {MAX_LIST_IMPORT.toLocaleString()} members are
+                            This {crm.words.list} is larger than one import takes, so the first {MAX_LIST_IMPORT.toLocaleString()} members are
                             read. Import again later for the rest.
                         </p>
                     )}
 
                     {result.included === 0 ? (
                         <p className="text-[11.5px] text-amber-700">
-                            Nobody in this list can be imported{applyGuards && skippedTotal > 0 ? " with the HubSpot rules on" : ""}.
+                            Nobody in this {crm.words.list} can be imported
+                            {applyGuards && skippedTotal > 0 ? ` with the ${crm.name} rules on` : ""}.
                         </p>
                     ) : (
                         <p className="text-[11.5px] text-slate-500 leading-snug">
@@ -669,17 +689,26 @@ function Tile({ label, value, tone }: { label: string; value: number; tone: "sky
 function guardRules(
     g: { skip_lifecycle_stages: string[]; skip_open_deals: boolean; skip_other_owners: boolean; skip_opted_out: boolean } | undefined,
     stages: { value: string; label: string }[] | undefined,
+    crm: CrmInfo,
 ): string[] {
     if (!g) return [];
     const out: string[] = [];
+    const who = crm.words.contacts;
     if (g.skip_lifecycle_stages?.length) {
         const names = g.skip_lifecycle_stages.map((v) => (stages?.find((s) => s.value === v)?.label ?? v).toLowerCase());
-        out.push(`${joinList(names)} contacts`);
+        out.push(crm.id === "pipedrive" ? `${who} labeled ${joinList(names)}` : `${joinList(names)} ${who}`);
     }
-    if (g.skip_open_deals) out.push("contacts with an open deal");
-    if (g.skip_other_owners) out.push("contacts owned by someone outside this workspace");
-    if (g.skip_opted_out) out.push("contacts who opted out of email");
+    if (g.skip_open_deals) out.push(`${who} with an open deal`);
+    if (g.skip_other_owners) out.push(`${who} owned by someone outside this workspace`);
+    if (g.skip_opted_out) out.push(`${who} who opted out of email`);
     return out;
+}
+
+// "1,204 contacts", or nothing to count for a Pipedrive filter.
+function listSize(l: CRMList, crm: CrmInfo): string {
+    if (l.size < 0) return "Saved people filter";
+    const noun = crm.id === "pipedrive" ? (l.size === 1 ? "person" : "people") : l.size === 1 ? "contact" : "contacts";
+    return `${l.size.toLocaleString()} ${noun}`;
 }
 
 function joinList(items: string[]): string {

@@ -1,7 +1,7 @@
-// HubSpot setup: five short steps, each pre-filled with a sensible default so
-// "Looks good" all the way through is a complete setup. The switch happens at
-// the end of step one, because the remaining steps need HubSpot's own users,
-// stages and properties; every step after it saves as you continue.
+// CRM setup (HubSpot or Pipedrive): five short steps, each pre-filled with a
+// sensible default so "Looks good" all the way through is a complete setup. The
+// switch happens at the end of step one, because the remaining steps need the
+// CRM's own users, stages and properties; every step after it saves as you go.
 
 import React from "react";
 import { Link } from "@tanstack/react-router";
@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { HubSpotMark } from "@/components/app/crm/HubSpot";
+import { CRM_INFO, type CrmInfo, CrmMark, type ExternalCrm } from "@/components/app/crm/crmProviders";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { useConfirm } from "@/hooks/context/confirm";
@@ -45,9 +45,11 @@ import {
     SubLabel,
     WarmblyPropertiesEditor,
 } from "./editors";
-import { useHubSpotOAuth, useLeaveGuard } from "./hooks";
+import { usePageCrm } from "./context";
+import { useCrmOAuth, useLeaveGuard } from "./hooks";
 import {
     type ConfigPatch,
+    configFor,
     errCode,
     errMessage,
     joinList,
@@ -59,46 +61,60 @@ import {
 
 type StepKey = "switch" | "contacts" | "people" | "activity" | "rules";
 
-const STEPS: { key: StepKey; label: string; title: string; description: string }[] = [
-    {
-        key: "switch",
-        label: "HubSpot",
-        title: "Use HubSpot as your CRM",
-        description: "Warmbly stops keeping its own CRM records and works on HubSpot's instead.",
-    },
-    {
-        key: "contacts",
-        label: "Contacts",
-        title: "Contacts and fields",
-        description: "How Warmbly contacts and HubSpot contacts stay in step.",
-    },
-    {
-        key: "people",
-        label: "People",
-        title: "Match your team",
-        description: "HubSpot users are matched to workspace members by email, so owners and assignees line up on both sides.",
-    },
-    {
-        key: "activity",
-        label: "Activity",
-        title: "What shows up in HubSpot",
-        description: "Choose which Warmbly events are logged on the HubSpot contact timeline.",
-    },
-    {
-        key: "rules",
-        label: "Rules",
-        title: "Rules",
-        description: "What a good reply does in HubSpot, and when HubSpot should stop a campaign.",
-    },
-];
+function steps(crm: CrmInfo): { key: StepKey; label: string; title: string; description: string }[] {
+    const pd = crm.id === "pipedrive";
+    return [
+        {
+            key: "switch",
+            label: crm.name,
+            title: `Use ${crm.name} as your CRM`,
+            description: `Warmbly stops keeping its own CRM records and works on ${crm.name}'s instead.`,
+        },
+        {
+            key: "contacts",
+            label: pd ? "People" : "Contacts",
+            title: pd ? "People and fields" : "Contacts and fields",
+            description: `How Warmbly contacts and ${crm.name} ${crm.words.contacts} stay in step.`,
+        },
+        {
+            key: "people",
+            label: "Team",
+            title: "Match your team",
+            description: `${crm.name} users are matched to workspace members by email, so owners and assignees line up on both sides.`,
+        },
+        {
+            key: "activity",
+            label: "Activity",
+            title: `What shows up in ${crm.name}`,
+            description: pd
+                ? "Choose which Warmbly events are logged as activities on the Pipedrive person."
+                : "Choose which Warmbly events are logged on the HubSpot contact timeline.",
+        },
+        {
+            key: "rules",
+            label: "Rules",
+            title: "Rules",
+            description: `What a good reply does in ${crm.name}, and when ${crm.name} should stop a campaign.`,
+        },
+    ];
+}
 
-const CHANGES = [
-    "Deals, tasks, notes and pipelines become HubSpot's. Changes made in Warmbly write straight through to HubSpot.",
-    "Sends, replies, bounces and meetings are logged on the HubSpot timeline as real emails.",
-    "Owner, Lifecycle stage and Lead status show on every contact and inbox thread.",
-    "Campaigns stop for a contact when HubSpot says they moved on, like a new deal.",
-    "Contacts can be imported straight from HubSpot lists.",
-];
+const CHANGES: Record<ExternalCrm, string[]> = {
+    hubspot: [
+        "Deals, tasks, notes and pipelines become HubSpot's. Changes made in Warmbly write straight through to HubSpot.",
+        "Sends, replies, bounces and meetings are logged on the HubSpot timeline as real emails.",
+        "Owner, Lifecycle stage and Lead status show on every contact and inbox thread.",
+        "Campaigns stop for a contact when HubSpot says they moved on, like a new deal.",
+        "Contacts can be imported straight from HubSpot lists.",
+    ],
+    pipedrive: [
+        "Deals, notes and pipelines become Pipedrive's, and tasks become Pipedrive activities. Changes made in Warmbly write straight through to Pipedrive.",
+        "Sends, replies, bounces and meetings are logged as activities on the person, their organization and open deal.",
+        "Owner, label and organization show on every contact and inbox thread.",
+        "Campaigns stop for a person when a deal opens or they are labeled a customer in Pipedrive.",
+        "People can be imported straight from saved Pipedrive filters.",
+    ],
+};
 
 const paneVariants = {
     enter: (dir: 1 | -1) => ({ x: dir * 28, opacity: 0 }),
@@ -116,11 +132,15 @@ export default function SetupWizard({
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const canManage = usePermission("MANAGE_SETTINGS");
+    const crm = usePageCrm();
+    const STEPS = steps(crm);
     const update = useUpdateCrmSettings();
     const startBackfill = useStartCrmBackfill();
-    const oauth = useHubSpotOAuth();
+    const oauth = useCrmOAuth();
 
-    const switched = settings.provider === "hubspot";
+    const switched = settings.provider === crm.id;
+    // Another connected CRM the workspace runs on now, which the switch replaces.
+    const replacing = settings.provider !== "native" && settings.provider !== crm.id ? CRM_INFO[settings.provider] : null;
     const [connectionId, setConnectionId] = React.useState(
         () => settings.connection_id ?? (connections.find((c) => c.status === "connected") ?? connections[0])?.id ?? "",
     );
@@ -134,8 +154,8 @@ export default function SetupWizard({
     const [serverIssue, setServerIssue] = React.useState<string | null>(null);
     const [needsReauth, setNeedsReauth] = React.useState(false);
 
-    const [draft, setDraft] = React.useState<CRMProviderConfig>(() => normalizeConfig(settings.config));
-    const [saved, setSaved] = React.useState<CRMProviderConfig>(() => normalizeConfig(settings.config));
+    const [draft, setDraft] = React.useState<CRMProviderConfig>(() => configFor(crm.id, settings.config));
+    const [saved, setSaved] = React.useState<CRMProviderConfig>(() => configFor(crm.id, settings.config));
     const patch: ConfigPatch = React.useCallback((fn) => setDraft((c) => fn(c)), []);
     const dirty = switched && !sameConfig(draft, saved);
 
@@ -146,7 +166,7 @@ export default function SetupWizard({
 
     const allowLeave = useLeaveGuard(
         dirty,
-        "Leave HubSpot setup? The changes on this step are not saved yet. HubSpot stays your CRM with what was saved so far.",
+        `Leave ${crm.name} setup? The changes on this step are not saved yet. ${crm.name} stays your CRM with what was saved so far.`,
     );
 
     const current = STEPS[step];
@@ -154,8 +174,8 @@ export default function SetupWizard({
 
     function issueFor(i: number): string | null {
         const key = STEPS[i].key;
-        if (!canManage) return "Only members who can manage workspace settings can set up HubSpot.";
-        if (key === "switch" && !connectionId) return "Connect a HubSpot account first.";
+        if (!canManage) return `Only members who can manage workspace settings can set up ${crm.name}.`;
+        if (key === "switch" && !connectionId) return `Connect a ${crm.name} account first.`;
         if (key === "rules") return replyOutcomeIssue(draft);
         return null;
     }
@@ -208,14 +228,18 @@ export default function SetupWizard({
     async function doSwitch() {
         setBusy("switch");
         try {
-            await update.mutateAsync({ provider: "hubspot", connection_id: connectionId });
+            const res = await update.mutateAsync({ provider: crm.id, connection_id: connectionId });
+            // The server seeds the rules from the CRM's own labels and stages.
+            const seeded = normalizeConfig(res.config, crm.id);
+            setDraft(seeded);
+            setSaved(seeded);
             setNeedsReauth(false);
             advance();
         } catch (err) {
             if (errCode(err) === "crm_reauth_required") {
                 setNeedsReauth(true);
             } else {
-                setServerIssue(errMessage(err, "Could not switch to HubSpot"));
+                setServerIssue(errMessage(err, `Could not switch to ${crm.name}`));
                 setNudged(true);
             }
         } finally {
@@ -226,7 +250,7 @@ export default function SetupWizard({
     async function finish() {
         setBusy("finish");
         try {
-            await update.mutateAsync({ provider: "hubspot", connection_id: connectionId, config: draft, complete_setup: true });
+            await update.mutateAsync({ provider: crm.id, connection_id: connectionId, config: draft, complete_setup: true });
             allowLeave();
             setSaved(draft);
             const counts = preview.data;
@@ -238,12 +262,12 @@ export default function SetupWizard({
             if (want.deals || want.tasks || want.notes) {
                 try {
                     await startBackfill.mutateAsync(want);
-                    toast.success("HubSpot is your CRM now. Copying your Warmbly records into HubSpot.");
+                    toast.success(`${crm.name} is your CRM now. Copying your Warmbly records into ${crm.name}.`);
                 } catch (err) {
-                    toast.error(`Setup is done, but copying records did not start: ${errMessage(err, "try again from HubSpot settings")}`);
+                    toast.error(`Setup is done, but copying records did not start: ${errMessage(err, `try again from ${crm.name} settings`)}`);
                 }
             } else {
-                toast.success("HubSpot is your CRM now");
+                toast.success(`${crm.name} is your CRM now`);
             }
         } catch (err) {
             setServerIssue(errMessage(err, "Could not finish setup"));
@@ -268,7 +292,7 @@ export default function SetupWizard({
 
     function cancelSetup() {
         confirm.show(
-            "Stop setting up HubSpot? Your workspace goes back to Warmbly's own CRM. Nothing is deleted in Warmbly or in HubSpot.",
+            `Stop setting up ${crm.name}? Your workspace goes back to Warmbly's own CRM. Nothing is deleted in Warmbly or in ${crm.name}.`,
             async () => {
                 setBusy("cancel");
                 try {
@@ -297,7 +321,7 @@ export default function SetupWizard({
         current.key === "switch"
             ? switched
                 ? "Continue"
-                : "Switch to HubSpot"
+                : `Switch to ${crm.name}`
             : step === last
               ? "Finish setup"
               : dirty
@@ -315,13 +339,13 @@ export default function SetupWizard({
                     Integrations
                 </Link>
                 <div className="flex flex-wrap items-center gap-3 mb-4">
-                    <span className="size-9 rounded-lg bg-orange-50 inline-flex items-center justify-center shrink-0">
-                        <HubSpotMark className="w-5 h-5" />
+                    <span className={cn("size-9 rounded-lg inline-flex items-center justify-center shrink-0", crm.tint)}>
+                        <CrmMark provider={crm.id} className="w-5 h-5" />
                     </span>
                     <div className="min-w-0 flex-1">
-                        <h1 className="text-[18px] font-semibold text-slate-900 tracking-tight">Set up HubSpot</h1>
+                        <h1 className="text-[18px] font-semibold text-slate-900 tracking-tight">Set up {crm.name}</h1>
                         <p className="text-[12px] text-slate-500 truncate">
-                            {connection?.external_account_name || settings.account?.name || "HubSpot"}
+                            {connection?.external_account_name || (switched ? settings.account?.name : "") || crm.name}
                             {" · "}About two minutes. Everything stays editable afterwards.
                         </p>
                     </div>
@@ -339,7 +363,7 @@ export default function SetupWizard({
                 </div>
 
                 <div className="rounded-md border border-slate-200 bg-white overflow-hidden">
-                    <Stepper step={step} reached={reached} goTo={goTo} />
+                    <Stepper steps={STEPS} step={step} reached={reached} goTo={goTo} />
 
                     <div className="relative overflow-hidden">
                         <AnimatePresence mode="wait" initial={false} custom={direction}>
@@ -365,6 +389,7 @@ export default function SetupWizard({
                                         needsReauth={needsReauth || connection?.status === "reauth_required"}
                                         reconnect={reconnect}
                                         reconnecting={oauth.busy}
+                                        replacing={replacing}
                                         preview={preview.data}
                                         copy={copy}
                                         setCopy={setCopy}
@@ -407,7 +432,9 @@ export default function SetupWizard({
                                             <ExitRulesEditor config={draft} patch={patch} metadata={metadata.data} disabled={!canManage} />
                                         </div>
                                         <div className="space-y-3 pt-5 border-t border-slate-100">
-                                            <SubLabel>When importing a HubSpot list, skip contacts who</SubLabel>
+                                            <SubLabel>
+                                                When importing a {crm.name} {crm.words.list}, skip {crm.words.contacts} who
+                                            </SubLabel>
                                             <GuardsEditor config={draft} patch={patch} metadata={metadata.data} disabled={!canManage} />
                                         </div>
                                     </div>
@@ -429,7 +456,7 @@ export default function SetupWizard({
                             </button>
                         ) : (
                             <span className="text-[11px] text-slate-400 pl-1 hidden sm:inline">
-                                {switched ? "HubSpot is your CRM. Finish the remaining steps when you are ready." : "You can switch back at any time."}
+                                {switched ? `${crm.name} is your CRM. Finish the remaining steps when you are ready.` : "You can switch back at any time."}
                             </span>
                         )}
                         <div className="ml-auto flex items-center gap-2 min-w-0">
@@ -472,16 +499,17 @@ export default function SetupWizard({
 }
 
 function MetadataNote({ loading, error }: { loading: boolean; error: unknown }) {
+    const crm = usePageCrm();
     if (loading) {
         return (
             <p className="text-[11.5px] text-slate-400 inline-flex items-center gap-1.5">
                 <Loader2Icon className="w-3 h-3 animate-spin" />
-                Loading your HubSpot properties and stages…
+                Loading your {crm.name} {crm.words.properties} and stages…
             </p>
         );
     }
     if (error) {
-        return <p className="text-[11.5px] text-amber-700">{errMessage(error, "Could not read your HubSpot properties.")}</p>;
+        return <p className="text-[11.5px] text-amber-700">{errMessage(error, `Could not read your ${crm.name} ${crm.words.properties}.`)}</p>;
     }
     return null;
 }
@@ -494,6 +522,7 @@ function SwitchStep({
     needsReauth,
     reconnect,
     reconnecting,
+    replacing,
     preview,
     copy,
     setCopy,
@@ -505,10 +534,12 @@ function SwitchStep({
     needsReauth: boolean;
     reconnect: () => void;
     reconnecting: boolean;
+    replacing: CrmInfo | null;
     preview?: { deals: number; tasks: number; notes: number };
     copy: CRMBackfillRequest;
     setCopy: React.Dispatch<React.SetStateAction<CRMBackfillRequest>>;
 }) {
+    const crm = usePageCrm();
     const items = (
         [
             ["deals", "deal"],
@@ -523,12 +554,12 @@ function SwitchStep({
                 <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 flex items-start gap-2">
                     <CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
                     <p className="text-[12px] text-emerald-800 leading-relaxed">
-                        HubSpot is your CRM. Warmbly is pulling your owners, pipelines, deals and tasks now.
+                        {crm.name} is your CRM. Warmbly is pulling your {crm.words.owners}, pipelines, deals and {crm.words.tasks} now.
                     </p>
                 </div>
             ) : (
                 <ul className="space-y-2">
-                    {CHANGES.map((c) => (
+                    {CHANGES[crm.id].map((c) => (
                         <li key={c} className="flex items-start gap-2 text-[12.5px] text-slate-700 leading-relaxed">
                             <CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
                             <span>{c}</span>
@@ -537,15 +568,26 @@ function SwitchStep({
                 </ul>
             )}
 
+            {replacing && !switched && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
+                    <AlertCircleIcon className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                    <p className="text-[12px] text-amber-800 leading-relaxed">
+                        {replacing.name} runs this workspace's CRM now. Switching makes {crm.name} the CRM instead:{" "}
+                        {replacing.name}'s records stay in Warmbly, nothing is deleted in {replacing.name}, and activity stops
+                        being logged there. {replacing.name} stays connected for automations.
+                    </p>
+                </div>
+            )}
+
             {!switched && connections.length > 1 && (
                 <div className="max-w-sm">
-                    <SubLabel className="mb-1.5">HubSpot account</SubLabel>
+                    <SubLabel className="mb-1.5">{crm.name} account</SubLabel>
                     <SelectMenu
                         value={connectionId}
                         onChange={setConnectionId}
                         options={connections.map((c) => ({ value: c.id, label: c.external_account_name || c.label }))}
                         fullWidth
-                        aria-label="HubSpot account"
+                        aria-label={`${crm.name} account`}
                     />
                 </div>
             )}
@@ -553,7 +595,9 @@ function SwitchStep({
             {needsReauth && !switched && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
                     <p className="text-[12px] text-amber-800 leading-relaxed flex-1">
-                        HubSpot needs a few more permissions for CRM mode (deals, companies and owners). Reconnect to grant them, then switch.
+                        {crm.id === "pipedrive"
+                            ? "Pipedrive needs a few more permissions for CRM mode (deals, people, activities and users). Reconnect to grant them, then switch."
+                            : "HubSpot needs a few more permissions for CRM mode (deals, companies and owners). Reconnect to grant them, then switch."}
                     </p>
                     <button
                         type="button"
@@ -562,7 +606,7 @@ function SwitchStep({
                         className="h-7 px-2.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-[12px] font-medium inline-flex items-center gap-1.5 shrink-0 transition-colors disabled:opacity-60"
                     >
                         {reconnecting ? <Loader2Icon className="w-3 h-3 animate-spin" /> : <RefreshCwIcon className="w-3 h-3" />}
-                        Reconnect HubSpot
+                        Reconnect {crm.name}
                     </button>
                 </div>
             )}
@@ -575,7 +619,7 @@ function SwitchStep({
                             <p className="text-[12.5px] font-medium text-slate-900">Bring your Warmbly CRM along</p>
                             <p className="text-[11.5px] text-slate-500 leading-relaxed">
                                 You have {joinList(items.map(([k, one]) => plural(preview?.[k] ?? 0, one)))} in Warmbly's own CRM.
-                                Copy them into HubSpot once, so nothing is left behind.
+                                Copy them into {crm.name} once, so nothing is left behind.
                             </p>
                         </div>
                     </div>
@@ -599,15 +643,25 @@ function SwitchStep({
 
             {!switched && (
                 <p className={cn("text-[11.5px] text-slate-500 leading-relaxed")}>
-                    The switch applies to everyone in this workspace as soon as you press Switch to HubSpot. The next steps
-                    are already filled in, so you can press Looks good through them, and change anything later.
+                    The switch applies to everyone in this workspace as soon as you press Switch to {crm.name}. The next
+                    steps are already filled in, so you can press Looks good through them, and change anything later.
                 </p>
             )}
         </div>
     );
 }
 
-function Stepper({ step, reached, goTo }: { step: number; reached: number; goTo: (s: number) => void }) {
+function Stepper({
+    steps: STEPS,
+    step,
+    reached,
+    goTo,
+}: {
+    steps: { key: StepKey; label: string }[];
+    step: number;
+    reached: number;
+    goTo: (s: number) => void;
+}) {
     return (
         <div className="px-4 sm:px-5 h-11 border-b border-slate-100 flex items-center bg-slate-50/40">
             {STEPS.map((s, i) => {

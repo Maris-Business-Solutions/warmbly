@@ -618,8 +618,8 @@ func (s *Service) applyContact(ctx context.Context, o *org, contactID uuid.UUID,
 	fields := map[string]string{}
 	custom := map[string]string{}
 	for field, prop := range o.Config.FieldMap {
-		dir := o.Config.FieldDirection[field]
-		if dir != models.CRMFieldPull && dir != models.CRMFieldBoth {
+		// No direction is two-way: the dashboard stores "both" by leaving it out.
+		if dir := o.Config.FieldDirection[field]; dir == models.CRMFieldPush {
 			continue
 		}
 		v := c.Prop(prop)

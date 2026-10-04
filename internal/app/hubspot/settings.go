@@ -32,6 +32,9 @@ func (s *Service) Settings(ctx context.Context, orgID uuid.UUID) (*models.CRMSet
 		return nil, errx.InternalError()
 	}
 	out := &models.CRMSettings{OrganizationID: orgID, Provider: models.CRMProviderNative, Config: models.DefaultCRMProviderConfig()}
+	if row != nil && row.Provider == models.CRMProviderNative && !row.Config.BelongsTo(provider) {
+		row.Config = models.DefaultCRMProviderConfig()
+	}
 	if row != nil {
 		out.Provider = row.Provider
 		out.ConnectionID = row.ConnectionID
@@ -92,6 +95,10 @@ func (s *Service) UpdateSettings(ctx context.Context, orgID uuid.UUID, upd *mode
 		default:
 			return nil, errx.New(errx.BadRequest, "provider must be native or hubspot")
 		}
+		if !wasHubSpot && row.Provider == provider && upd.ConnectionID == nil {
+			// Another CRM's connection cannot run HubSpot mode.
+			row.ConnectionID = nil
+		}
 	}
 	if upd.ConnectionID != nil {
 		row.ConnectionID = upd.ConnectionID
@@ -101,6 +108,11 @@ func (s *Service) UpdateSettings(ctx context.Context, orgID uuid.UUID, upd *mode
 			return nil, errx.New(errx.BadRequest, verr.Error())
 		}
 		row.Config = *upd.Config
+		row.Config.For = provider
+	} else if row.Provider == provider && !row.Config.BelongsTo(provider) {
+		// The stored choices name another CRM's stages and properties.
+		row.Config = models.DefaultCRMProviderConfigFor(provider)
+		row.Config.For = provider
 	}
 	if row.Provider == provider {
 		if row.ConnectionID == nil {
@@ -293,7 +305,7 @@ func (s *Service) SyncHealth(ctx context.Context, orgID uuid.UUID) (*models.CRMS
 
 // RetryFailed requeues failed jobs (all when ids is empty).
 func (s *Service) RetryFailed(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, *errx.Error) {
-	n, err := s.d.Repo.RetryFailedJobs(ctx, orgID, ids)
+	n, err := s.d.Repo.RetryFailedJobs(ctx, orgID, provider, ids)
 	if err != nil {
 		return 0, errx.InternalError()
 	}
@@ -302,7 +314,7 @@ func (s *Service) RetryFailed(ctx context.Context, orgID uuid.UUID, ids []uuid.U
 
 // DiscardFailed drops failed jobs (all when ids is empty).
 func (s *Service) DiscardFailed(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, *errx.Error) {
-	n, err := s.d.Repo.DiscardFailedJobs(ctx, orgID, ids)
+	n, err := s.d.Repo.DiscardFailedJobs(ctx, orgID, provider, ids)
 	if err != nil {
 		return 0, errx.InternalError()
 	}

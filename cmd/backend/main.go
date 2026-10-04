@@ -51,6 +51,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/creditwatch"
 	"github.com/warmbly/warmbly/internal/app/crm"
+	"github.com/warmbly/warmbly/internal/app/crmmode"
 	"github.com/warmbly/warmbly/internal/app/dailythrottle"
 	"github.com/warmbly/warmbly/internal/app/dangerzone"
 	"github.com/warmbly/warmbly/internal/app/delegation"
@@ -86,6 +87,7 @@ import (
 	orgrisk "github.com/warmbly/warmbly/internal/app/orgrisk"
 	"github.com/warmbly/warmbly/internal/app/orgtransfer"
 	"github.com/warmbly/warmbly/internal/app/passkey"
+	"github.com/warmbly/warmbly/internal/app/pipedrive"
 	"github.com/warmbly/warmbly/internal/app/placement"
 	"github.com/warmbly/warmbly/internal/app/poollink"
 	"github.com/warmbly/warmbly/internal/app/ratelimit"
@@ -187,6 +189,8 @@ func main() {
 	var mailboxImportService *mailboximport.Service
 	var contactImportService *contactimport.Service
 	var hubspotService *hubspot.Service
+	var pipedriveService *pipedrive.Service
+	var crmModes *crmmode.Registry
 	var delegationService *delegation.Service
 	var vendorConnService *vendorconn.Service
 	var sendingDomainService *sendingdomain.Service
@@ -2076,11 +2080,32 @@ func main() {
 			AppURL:       os.Getenv("APP_URL"),
 			ClientSecret: strings.TrimSpace(os.Getenv("HUBSPOT_OAUTH_CLIENT_SECRET")),
 		})
-		crmService.SetExternal(hubspotService)
-		integrationServiceForHandler.SetCRMModeCheck(hubspotService.Active)
+		// Pipedrive as the workspace CRM: the same shape on Pipedrive's records,
+		// plus per-connection webhooks registered when a workspace switches.
+		pipedriveService = pipedrive.New(pipedrive.Deps{
+			Repo:         repository.NewCRMProviderRepository(primaryDB.Pool),
+			CRM:          crmRepository,
+			Tokens:       integrationServiceForHandler,
+			Contacts:     contactRepostory,
+			Holds:        campaignProgressRepository,
+			Suppress:     advancedRepository,
+			Importer:     pipedriveImporter(contactImportService),
+			Leads:        contactService,
+			Realtime:     streamingPublisher,
+			Cache:        cache,
+			AppURL:       os.Getenv("APP_URL"),
+			PublicURL:    config.BackendPublicURL(),
+			ClientSecret: strings.TrimSpace(os.Getenv("PIPEDRIVE_OAUTH_CLIENT_SECRET")),
+		})
+		crmModes = crmmode.New(repository.NewCRMProviderRepository(primaryDB.Pool), integrationServiceForHandler,
+			hubspotService, pipedriveService)
+		crmService.AddExternal(hubspotService)
+		crmService.AddExternal(pipedriveService)
+		integrationServiceForHandler.SetCRMModeCheck(crmModes.Mode)
 		webhookServiceForHandler.WireRecordSink(hubspotService.OnEvent)
+		webhookServiceForHandler.WireRecordSink(pipedriveService.OnEvent)
 		if advancedService != nil {
-			advancedService.WireCRMOutbox(hubspotService)
+			advancedService.WireCRMOutbox(crmModes)
 		}
 		emailVerifyService.SetVerdictHook(func(ctx context.Context, orgID uuid.UUID) {
 			if campaignService != nil {
@@ -2311,6 +2336,8 @@ func main() {
 		// CRM
 		CRMService: crmService,
 		HubSpot:    hubspotService,
+		Pipedrive:  pipedriveService,
+		CRMModes:   crmModes,
 
 		// Teams
 		TeamService: teamService,
@@ -2502,6 +2529,14 @@ func main() {
 // hubspotImporter keeps a missing import service a nil interface rather than
 // a typed nil, so HubSpot list import reports itself unavailable.
 func hubspotImporter(s *contactimport.Service) hubspot.Importer {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+// pipedriveImporter is hubspotImporter for Pipedrive filter import.
+func pipedriveImporter(s *contactimport.Service) pipedrive.Importer {
 	if s == nil {
 		return nil
 	}

@@ -1,4 +1,4 @@
-// Pickers for the HubSpot settings, in the shared picker language: a bordered
+// Pickers for the CRM settings, in the shared picker language: a bordered
 // chip box (or select-style trigger) opening a PopoverMenu with a search
 // header and checkbox-square rows.
 
@@ -172,7 +172,7 @@ export function MultiPicker({
     );
 }
 
-// Searchable single select, for long lists (HubSpot properties).
+// Searchable single select, for long lists (CRM properties).
 export function SearchSelect({
     options,
     value,

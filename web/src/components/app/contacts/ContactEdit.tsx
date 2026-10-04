@@ -12,7 +12,7 @@
 // Tabs:
 //   - Overview  → engagement stats + suppression + profile snapshot
 //   - Activity  → merged timeline
-//   - Deals     → the contact's deals (HubSpot's in HubSpot mode)
+//   - Deals     → the contact's deals (the CRM's in provider mode)
 //   - Notes     → CRM notes CRUD
 //   - Details   → identity / categories / campaigns / custom fields
 
