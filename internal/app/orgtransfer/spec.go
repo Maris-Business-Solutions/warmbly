@@ -62,6 +62,10 @@ type Table struct {
 	// organization. $1 is the organization id.
 	Scope string
 
+	// Owner selects every row the organization owns, when that is wider than
+	// what Scope exports. Empty means Scope. $1 is the organization id.
+	Owner string
+
 	// Secrets are columns holding ciphertext that must be re-keyed.
 	Secrets []SecretColumn
 
@@ -81,6 +85,15 @@ type Table struct {
 
 	// Note explains a non-obvious policy choice; surfaced in the docs table.
 	Note string
+}
+
+// OwnerScope is the WHERE fragment deciding whether an existing row belongs to
+// the organization, which an import checks before writing or referencing it.
+func (t *Table) OwnerScope() string {
+	if t.Owner != "" {
+		return t.Owner
+	}
+	return t.Scope
 }
 
 // Scope fragments. Written as subqueries rather than joins so every scope is a
@@ -169,6 +182,7 @@ var Tables = []Table{
 		Name: "domain_redirects", Group: models.OrgDataGroupCore,
 		// A row Cloud serves for a linked instance belongs to that link, which does not travel.
 		Scope: `organization_id = $1 AND linked_instance_id IS NULL`,
+		Owner: scopeOrg,
 		// DNS points at the source (or at Cloud for it) until moved, so the destination serves it itself once its own check passes.
 		ResetOnImport: []string{"verified", "verified_at", "last_checked_at", "last_error", "served_by", "remote_host", "remote_records",
 			"linked_instance_id", "reach_status", "reach_hint", "reach_detail", "reach_proxy", "reach_checked_at"},
@@ -700,6 +714,7 @@ var Tables = []Table{
 	{
 		Name: "inbox_tag_results", Group: models.OrgDataGroupInbox,
 		Scope: scopeOrg + ` AND status = 'complete'`,
+		Owner: scopeOrg,
 		Note: "Automatic tagging verdicts, including the raw probabilities. They travel because retuning the weights " +
 			"against stored answers is free while re-running the model over the history is not. Below email_accounts, " +
 			"which it references.",
@@ -728,6 +743,7 @@ var Tables = []Table{
 		// A placement probe's task stays behind: a pending one would send from
 		// the destination to the source instance's seeds.
 		Scope: `email_account_id IN ` + orgMailboxes + ` AND task_type <> 'placement'`,
+		Owner: `email_account_id IN ` + orgMailboxes,
 		// The handle belongs to the source instance's queue.
 		ResetOnImport: []string{"cloud_task_name"},
 	},

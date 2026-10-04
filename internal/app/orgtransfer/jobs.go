@@ -264,6 +264,7 @@ func (s *service) Preflight(
 	}
 
 	// What already exists here, and what this instance cannot take.
+	foreignTables := 0
 	for _, mt := range manifest.Tables {
 		t, known := TableByName[mt.Name]
 		if !known || t.ImportSkip {
@@ -289,7 +290,7 @@ func (s *service) Preflight(
 		if !ok {
 			continue
 		}
-		n, err := s.countConflicts(ctx, mt.Name, pk, entry)
+		n, foreign, err := s.countConflicts(ctx, orgID, t, pk, entry)
 		if err != nil {
 			// A conflict count is advisory; failing the whole preflight over
 			// one unreadable table helps nobody.
@@ -298,8 +299,15 @@ func (s *service) Preflight(
 		if n > 0 {
 			out.Conflicts[mt.Name] = n
 		}
+		if foreign > 0 {
+			foreignTables++
+		}
 	}
 
+	if foreignTables > 0 {
+		out.Warnings = append(out.Warnings, "Some records in this archive already belong to another workspace on this instance, so the import will be refused. "+
+			"Import it into the workspace it was exported from, or into a workspace on another instance.")
+	}
 	if len(out.SkippedTables) > 0 {
 		out.Warnings = append(out.Warnings, fmt.Sprintf(
 			"%d table(s) in this archive do not exist on this instance and will be skipped. It was probably exported from a newer release.",
@@ -313,18 +321,27 @@ func (s *service) Preflight(
 // scanning a million-row inbox table twice for a preview is not worth it.
 const conflictSampleRows = 2000
 
-func (s *service) countConflicts(ctx context.Context, table string, pk []string, entry *zip.File) (int64, error) {
+// The second count is the sampled keys another workspace already holds.
+func (s *service) countConflicts(ctx context.Context, orgID uuid.UUID, t *Table, pk []string, entry *zip.File) (int64, int64, error) {
 	rc, err := entry.Open()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer rc.Close()
 
 	rows, err := readRows(rc, conflictSampleRows)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return s.repo.CountExisting(ctx, table, pk, rows)
+	existing, err := s.repo.CountExisting(ctx, t.Name, pk, rows)
+	if err != nil {
+		return 0, 0, err
+	}
+	foreign, err := s.repo.CountForeignRows(ctx, nil, t.Name, t.OwnerScope(), pk, nil, orgID, rows)
+	if err != nil {
+		return 0, 0, err
+	}
+	return existing, foreign, nil
 }
 
 func (s *service) RequestImport(
