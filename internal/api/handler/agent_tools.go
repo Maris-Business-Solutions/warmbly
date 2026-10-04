@@ -147,7 +147,11 @@ func (h *Handler) CallAgentTool(c *gin.Context) {
 		default:
 			// A tool-level failure is the agent's to read and react to, not a
 			// transport error: surface the message with a stable 422.
-			errx.JSON(c, errx.New(errx.Unprocessable, err.Error()))
+			if msg, ok := aitools.PublicMessage(err); ok {
+				errx.JSON(c, errx.New(errx.Unprocessable, msg))
+			} else {
+				errx.JSON(c, errx.New(errx.Internal, err.Error()))
+			}
 		}
 		return
 	}

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,8 +13,24 @@ import (
 	"github.com/warmbly/warmbly/internal/app/webhook"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/repository"
 	"github.com/warmbly/warmbly/internal/utils/paging"
 )
+
+// webhookError answers a correctable refusal or a missing row in words, and anything else as an internal error.
+func webhookError(err error) *errx.Error {
+	var invalid *webhook.InvalidInputError
+	switch {
+	case errors.As(err, &invalid):
+		return errx.New(errx.BadRequest, invalid.Error())
+	case errors.Is(err, repository.ErrWebhookEndpointNotFound):
+		return errx.New(errx.NotFound, "webhook endpoint not found")
+	case errors.Is(err, repository.ErrWebhookDeliveryNotFound):
+		return errx.New(errx.NotFound, "webhook delivery not found")
+	default:
+		return errx.New(errx.Internal, err.Error())
+	}
+}
 
 // webhookEndpointPayload is the wire shape for create/update requests.
 // The secret is server-generated and only returned at create / rotate
@@ -88,7 +105,7 @@ func (h *Handler) CreateWebhookEndpoint(c *gin.Context) {
 	}
 	endpoint, err := h.WebhookService.CreateEndpoint(c.Request.Context(), orgID, in)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, webhookError(err))
 		return
 	}
 	endpointID := endpoint.ID
@@ -120,7 +137,7 @@ func (h *Handler) UpdateWebhookEndpoint(c *gin.Context) {
 	}
 	endpoint, err := h.WebhookService.UpdateEndpoint(c.Request.Context(), orgID, endpointID, p.URL, p.Description, p.EventTypes, enabled)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, webhookError(err))
 		return
 	}
 	h.auditOrg(c, models.AuditActionUpdate, models.AuditEntityWebhook, &endpointID, nil, nil)
@@ -140,7 +157,7 @@ func (h *Handler) DeleteWebhookEndpoint(c *gin.Context) {
 		return
 	}
 	if err := h.WebhookService.DeleteEndpoint(c.Request.Context(), orgID, endpointID); err != nil {
-		errx.JSON(c, errx.New(errx.NotFound, err.Error()))
+		errx.JSON(c, webhookError(err))
 		return
 	}
 	h.auditOrg(c, models.AuditActionDelete, models.AuditEntityWebhook, &endpointID, nil, nil)
@@ -162,7 +179,7 @@ func (h *Handler) RotateWebhookSecret(c *gin.Context) {
 	}
 	secret, err := h.WebhookService.RotateSecret(c.Request.Context(), orgID, endpointID)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.NotFound, err.Error()))
+		errx.JSON(c, webhookError(err))
 		return
 	}
 	h.auditOrg(c, models.AuditActionRotate, models.AuditEntityWebhook, &endpointID, nil, map[string]string{"rotated": "true"})
@@ -185,7 +202,7 @@ func (h *Handler) VerifyWebhookEndpoint(c *gin.Context) {
 		return
 	}
 	if err := h.WebhookService.VerifyEndpoint(c.Request.Context(), orgID, endpointID); err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, webhookError(err))
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"status": "challenge_sent"})
@@ -264,7 +281,7 @@ func (h *Handler) RedeliverWebhookDelivery(c *gin.Context) {
 		return
 	}
 	if err := h.WebhookService.Redeliver(c.Request.Context(), orgID, deliveryID); err != nil {
-		errx.JSON(c, errx.New(errx.NotFound, err.Error()))
+		errx.JSON(c, webhookError(err))
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"status": "queued"})

@@ -1,6 +1,16 @@
 package aitools
 
-import "errors"
+import (
+	"context"
+	"errors"
+	"net"
+	"net/url"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/warmbly/warmbly/internal/errx"
+)
 
 var (
 	// ErrToolNotFound is returned by Registry.Call for an unknown tool name.
@@ -21,4 +31,28 @@ var (
 // message is fed back to the model so it can explain why it did not send.
 func errRecipientSuppressed(msg string) error {
 	return errors.New(msg)
+}
+
+// PublicMessage is the text an external caller may read for a tool failure;
+// ok is false for a server-side failure, whose text belongs in the log only.
+func PublicMessage(err error) (msg string, ok bool) {
+	var xe *errx.Error
+	if errors.As(err, &xe) {
+		if xe.Code == errx.Internal && !xe.Public {
+			return "", false
+		}
+		return xe.Message, true
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "not found", true
+	}
+	var pgErr *pgconn.PgError
+	var connErr *pgconn.ConnectError
+	var netErr net.Error
+	var urlErr *url.Error
+	if errors.As(err, &pgErr) || errors.As(err, &connErr) || errors.As(err, &netErr) || errors.As(err, &urlErr) ||
+		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "", false
+	}
+	return err.Error(), true
 }

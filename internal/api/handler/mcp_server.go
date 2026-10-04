@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/aitools"
@@ -126,8 +127,13 @@ func (h *Handler) mcpToolCall(c *gin.Context, inv aitools.Invocation, req jsonRP
 		default:
 			// A tool error is a normal MCP result with isError, so the client can
 			// react rather than treating it as a protocol failure.
+			msg, ok := aitools.PublicMessage(err)
+			if !ok {
+				log.Error().Str("request_id", c.GetString("request_id")).Str("tool", params.Name).Err(err).Msg("mcp tool failed")
+				msg = "The tool failed on the server. Try again later."
+			}
 			c.JSON(http.StatusOK, rpcResult(req.ID, gin.H{
-				"content": []gin.H{{"type": "text", "text": err.Error()}},
+				"content": []gin.H{{"type": "text", "text": msg}},
 				"isError": true,
 			}))
 		}

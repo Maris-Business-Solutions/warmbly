@@ -18,6 +18,12 @@ import (
 
 // WebhookRepository persists webhook endpoints and per-attempt delivery
 // records. The dispatcher polls due deliveries from this repo.
+// Not-found sentinels, so a caller can tell a missing row from a failed query.
+var (
+	ErrWebhookEndpointNotFound = errors.New("webhook endpoint not found")
+	ErrWebhookDeliveryNotFound = errors.New("webhook delivery not found")
+)
+
 type WebhookRepository interface {
 	// Endpoints
 	CreateEndpoint(ctx context.Context, endpoint *models.WebhookEndpoint, secret, verificationToken string) error
@@ -185,7 +191,7 @@ func (r *webhookRepository) UpdateEndpoint(ctx context.Context, endpoint *models
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-		return errors.New("webhook endpoint not found")
+		return ErrWebhookEndpointNotFound
 	}
 	return nil
 }
@@ -203,7 +209,7 @@ func (r *webhookRepository) RotateSecret(ctx context.Context, orgID, endpointID 
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-		return errors.New("webhook endpoint not found")
+		return ErrWebhookEndpointNotFound
 	}
 	return nil
 }
@@ -217,7 +223,7 @@ func (r *webhookRepository) DeleteEndpoint(ctx context.Context, orgID, endpointI
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-		return errors.New("webhook endpoint not found")
+		return ErrWebhookEndpointNotFound
 	}
 	return nil
 }
@@ -258,7 +264,7 @@ func (r *webhookRepository) GetEndpointSecret(ctx context.Context, endpointID uu
 		`SELECT secret FROM webhook_endpoints WHERE id = $1`, endpointID,
 	).Scan(&secret)
 	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
-		return "", errors.New("webhook endpoint not found")
+		return "", ErrWebhookEndpointNotFound
 	}
 	if err != nil {
 		return "", err
@@ -285,7 +291,7 @@ func (r *webhookRepository) GetVerificationToken(ctx context.Context, endpointID
 		`SELECT verification_token FROM webhook_endpoints WHERE id = $1`, endpointID,
 	).Scan(&token)
 	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
-		return "", errors.New("webhook endpoint not found")
+		return "", ErrWebhookEndpointNotFound
 	}
 	return token, err
 }
@@ -300,7 +306,7 @@ func (r *webhookRepository) ArmVerification(ctx context.Context, orgID, endpoint
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-		return errors.New("webhook endpoint not found")
+		return ErrWebhookEndpointNotFound
 	}
 	return nil
 }
@@ -652,7 +658,7 @@ func (r *webhookRepository) RedeliverDelivery(ctx context.Context, orgID, delive
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
-		return errors.New("webhook delivery not found")
+		return ErrWebhookDeliveryNotFound
 	}
 	return nil
 }

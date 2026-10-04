@@ -420,7 +420,7 @@ func (h *Handler) AdminFleetNodes(c *gin.Context) {
 	}
 	nodes, err := h.FleetNodes.List(c.Request.Context(), role)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Role < nodes[j].Role })
@@ -436,7 +436,7 @@ func (h *Handler) AdminFleetIssueJoinToken(c *gin.Context) {
 	}
 	token, expiresAt, err := h.FleetNodes.IssueJoinToken(c.Request.Context(), fleetnode.DefaultJoinTokenTTL)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, "fleet_join_token_issued", models.AuditEntityWorker, nil, map[string]string{"expires_at": expiresAt.Format(time.RFC3339)})
@@ -457,7 +457,7 @@ type setTagsBody struct {
 func (h *Handler) AdminListWorkerTags(c *gin.Context) {
 	tags, err := h.WorkerRepo.ListAllWorkerTags(c.Request.Context())
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": tags})
@@ -490,7 +490,7 @@ func (h *Handler) AdminSetWorkerTags(c *gin.Context) {
 		tags = append(tags, t)
 	}
 	if err := h.WorkerRepo.SetWorkerTags(c.Request.Context(), id, tags); err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, models.AuditActionUpdate, models.AuditEntityWorker, &id, map[string]string{
@@ -541,7 +541,7 @@ func (h *Handler) AdminFleetReserveWorker(c *gin.Context) {
 	ctx := c.Request.Context()
 	w, err := h.WorkerRepo.GetWorkerDetail(ctx, id)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if w == nil {
@@ -586,7 +586,7 @@ func (h *Handler) AdminFleetDeleteNode(c *gin.Context) {
 		return
 	}
 	if err := h.FleetNodeRepo.Delete(c.Request.Context(), id); err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, models.AuditActionDelete, models.AuditEntityWorker, &id, nil)
@@ -626,21 +626,21 @@ func (h *Handler) AdminFleetPatchNode(c *gin.Context) {
 	changed := map[string]string{}
 	if body.Name != nil {
 		if err := h.FleetNodeRepo.SetName(ctx, id, *body.Name); err != nil {
-			errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
 			return
 		}
 		changed["name"] = *body.Name
 	}
 	if body.Notes != nil {
 		if err := h.FleetNodeRepo.SetNotes(ctx, id, *body.Notes); err != nil {
-			errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
 			return
 		}
 		changed["notes"] = *body.Notes
 	}
 	if body.PinnedVersion != nil {
 		if err := h.FleetNodeRepo.SetPinnedVersion(ctx, id, *body.PinnedVersion); err != nil {
-			errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+			errx.JSON(c, errx.New(errx.Internal, err.Error()))
 			return
 		}
 		changed["pinned_version"] = *body.PinnedVersion
@@ -653,7 +653,7 @@ func (h *Handler) AdminFleetPatchNode(c *gin.Context) {
 	h.audit(c, models.AuditActionUpdate, models.AuditEntityWorker, &id, changed)
 	node, err := h.FleetNodes.Get(ctx, id)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, node)
@@ -668,7 +668,7 @@ func (h *Handler) AdminFleetRelease(c *gin.Context) {
 	}
 	state, err := h.FleetSettingsRepo.GetRelease(c.Request.Context())
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if state == nil {
@@ -699,7 +699,7 @@ func (h *Handler) AdminFleetSetRelease(c *gin.Context) {
 	ctx := c.Request.Context()
 	state, err := h.FleetSettingsRepo.GetRelease(ctx)
 	if err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	if state == nil {
@@ -725,7 +725,7 @@ func (h *Handler) AdminFleetSetRelease(c *gin.Context) {
 	}
 
 	if err := h.FleetSettingsRepo.SetRelease(ctx, state); err != nil {
-		errx.JSON(c, errx.NewPublic(errx.Internal, err.Error()))
+		errx.JSON(c, errx.New(errx.Internal, err.Error()))
 		return
 	}
 	h.audit(c, "fleet_release_set", models.AuditEntityWorker, nil, map[string]string{

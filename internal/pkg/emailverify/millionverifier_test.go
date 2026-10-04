@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -65,5 +66,23 @@ func TestMillionVerifierMapsResults(t *testing.T) {
 	bad := NewMillionVerifier("wrong", srv.URL)
 	if _, err := bad.Credits(context.Background()); !errors.Is(err, ErrProviderKey) {
 		t.Fatalf("bad key = %v", err)
+	}
+}
+
+func TestMillionVerifierTransportErrorOmitsKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	base := srv.URL
+	srv.Close()
+
+	mv := NewMillionVerifier("sekrit-key", base)
+	res, err := mv.Check(context.Background(), "a@x.com")
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if strings.Contains(err.Error(), "sekrit-key") || strings.Contains(res.Reason, "sekrit-key") {
+		t.Fatalf("check error carries the key: %v / %s", err, res.Reason)
+	}
+	if _, err := mv.Credits(context.Background()); err == nil || strings.Contains(err.Error(), "sekrit-key") {
+		t.Fatalf("credits error carries the key or is nil: %v", err)
 	}
 }
