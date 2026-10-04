@@ -11,6 +11,7 @@
 // This component is purely the row. Layout (where it sits) is decided by
 // AppShell, not here.
 
+import { useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronRight, Menu, Search } from "lucide-react";
 import { Logo } from "@/components/svg";
@@ -204,6 +205,8 @@ function AssistantButton() {
     const setMinimized = useAppStore((s) => s.setAgentMinimized);
     const tabs = useAppStore((s) => s.agentTabs);
     const canAI = usePermission("USE_AI");
+    const lastRunOk = useAppStore((s) => s.agentLastRunOk);
+    const anchor = useRef<HTMLDivElement>(null);
 
     if (!canAI) return null;
 
@@ -213,7 +216,7 @@ function AssistantButton() {
 
     return (
         // Relative so Remie's tip bubble can hang off the blob.
-        <div className="relative">
+        <div ref={anchor} className="relative">
         <ShortcutTooltip label="Ask Remie" combo="mod+I" side="bottom">
         <button
             onClick={() => {
@@ -230,14 +233,18 @@ function AssistantButton() {
             aria-label="Ask Remie"
             className="group relative flex items-center justify-center size-7 rounded-md hover:bg-sky-50 transition-colors"
         >
-            <AgentMark size={20} state={pending ? "attention" : running ? "thinking" : "idle"} />
+            <AgentMark
+                size={20}
+                celebrate={lastRunOk}
+                state={pending ? "attention" : running ? "thinking" : "idle"}
+            />
             {/* Working and waiting show on the mark itself; the dot is an unread reply. */}
             {unseen && !running && !pending && (
                 <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-sky-500 ring-2 ring-white" />
             )}
         </button>
         </ShortcutTooltip>
-        <RemieTip />
+        <RemieTip anchor={anchor} />
         </div>
     );
 }

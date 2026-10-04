@@ -19,6 +19,8 @@ type Props = {
     tone?: "color" | "muted";
     // Boop on composer keystrokes (pulseAgent).
     listen?: boolean;
+    // Whether a run ending now succeeded; only then does the mark celebrate.
+    celebrate?: boolean;
     // blob is the assistant's icon; bare is a pixel spark, for inline loaders.
     variant?: "blob" | "bare";
     className?: string;
@@ -28,14 +30,14 @@ export default function AgentMark({ variant = "blob", ...props }: Props) {
     return variant === "bare" ? <PixelMark {...props} /> : <BlobMark {...props} />;
 }
 
-// True for a moment after a run finishes, so the mark can celebrate.
-function useJustFinished(state: AgentMarkState): boolean {
+// True for a moment after a run finishes well, so the mark can celebrate.
+function useJustFinished(state: AgentMarkState, celebrate: boolean): boolean {
     const [done, setDone] = React.useState(false);
     const prev = React.useRef(state);
     React.useEffect(() => {
-        if (prev.current === "thinking" && state === "idle") setDone(true);
+        if (prev.current === "thinking" && state === "idle" && celebrate) setDone(true);
         prev.current = state;
-    }, [state]);
+    }, [state, celebrate]);
     React.useEffect(() => {
         if (!done) return;
         const t = window.setTimeout(() => setDone(false), 1400);
@@ -52,10 +54,17 @@ function replay(el: HTMLElement | null, cls: string) {
     el.classList.add(cls);
 }
 
-function BlobMark({ size = 16, state = "idle", tone = "color", listen = false, className }: Omit<Props, "variant">) {
+function BlobMark({
+    size = 16,
+    state = "idle",
+    tone = "color",
+    listen = false,
+    celebrate = true,
+    className,
+}: Omit<Props, "variant">) {
     const reduced = useReducedMotion();
     const ref = React.useRef<HTMLSpanElement>(null);
-    const done = useJustFinished(state);
+    const done = useJustFinished(state, celebrate);
 
     React.useEffect(() => {
         if (!listen || reduced) return;
@@ -124,9 +133,9 @@ const SPARK = pattern([".+.", "+#+", ".+."]);
 // The outer ring, clockwise from the top left.
 const RING = [0, 1, 2, 5, 8, 7, 6, 3];
 
-function PixelMark({ size = 16, state = "idle", tone = "color", className }: Omit<Props, "variant">) {
+function PixelMark({ size = 16, state = "idle", tone = "color", celebrate = true, className }: Omit<Props, "variant">) {
     const reduced = useReducedMotion();
-    const done = useJustFinished(state);
+    const done = useJustFinished(state, celebrate);
     const cell = size * 0.26;
     const gap = Math.max(0.5, size * 0.1);
     const look = done ? "done" : tone === "muted" && state === "idle" ? "muted" : state;

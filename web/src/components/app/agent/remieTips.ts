@@ -7,7 +7,7 @@
 // worse may be offered once more), today's count, and how tips were received.
 
 import type { AdvisorFinding, AdvisorSurface } from "@/lib/api/models/app/advisor/Advisor";
-import { SEVERITY_RANK } from "@/lib/api/models/app/advisor/Advisor";
+import { SEVERITY_RANK, groupFindings, groupTitle } from "@/lib/api/models/app/advisor/Advisor";
 
 export const TIP_RULES = {
     // Only findings that are hurting sending now, or will.
@@ -46,7 +46,11 @@ export const emptyMemory = (): TipMemory => ({
     off: false,
 });
 
-const dayOf = (now: number) => new Date(now).toISOString().slice(0, 10);
+// The member's local calendar day, so "two a day" resets at their midnight.
+const dayOf = (now: number) => {
+    const d = new Date(now);
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
 
 // The dashboard tab each surface's fix lives on, to prefer a tip about the page
 // the member is already looking at.
@@ -63,8 +67,8 @@ export function onSurfacePage(f: AdvisorFinding, pathname: string): boolean {
     return pathname.startsWith(SURFACE_PATH[f.surface]);
 }
 
-// One thing Remie suggests: every open finding of one kind, so three steps
-// with the same copy problem read as one thing to fix rather than three.
+// One thing Remie suggests: the Advisor's own grouping of open findings (from
+// two of a kind), so Remie and the Advisor strip name the same problem alike.
 export type RemieSuggestion = {
     key: string;
     text: string;
@@ -73,24 +77,13 @@ export type RemieSuggestion = {
 };
 
 export function suggestionsFrom(findings: AdvisorFinding[], minRank: number): RemieSuggestion[] {
-    const byKind = new Map<string, AdvisorFinding[]>();
-    for (const f of findings) {
-        if (f.status !== "open" || SEVERITY_RANK[f.severity] < minRank) continue;
-        const list = byKind.get(f.detector_key);
-        if (list) list.push(f);
-        else byKind.set(f.detector_key, [f]);
-    }
-    // Findings arrive most severe first, so each kind's first one leads it.
-    return Array.from(byKind.entries()).map(([key, list]) => {
-        const lead = list[0];
-        const text =
-            list.length > 1 && lead.group_title
-                ? lead.group_title.replace("{count}", String(list.length))
-                : list.length > 1
-                  ? `${lead.title}, and ${list.length - 1} more like it`
-                  : lead.title;
-        return { key, text, severity: lead.severity, findings: list };
-    });
+    const open = findings.filter((f) => f.status === "open" && SEVERITY_RANK[f.severity] >= minRank);
+    return groupFindings(open, 2).map((g) => ({
+        key: g.key,
+        text: groupTitle(g),
+        severity: g.lead.severity,
+        findings: g.members,
+    }));
 }
 
 // Why no tip may show right now, or null when one may. Findings are not

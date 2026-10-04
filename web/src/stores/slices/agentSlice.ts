@@ -122,6 +122,9 @@ export interface AgentSlice {
   // A question handed to Remie from elsewhere in the dashboard (a tip's "Ask
   // Remie"). The panel sends it once a tab is ready, then clears it.
   agentQueuedPrompt: string | null
+  // Whether the most recent run ended without an error or a stop, so the
+  // mark only celebrates a run that actually succeeded.
+  agentLastRunOk: boolean
 
   setAgentExpanded: (v: boolean) => void
   setAgentMinimized: (v: boolean) => void
@@ -133,6 +136,7 @@ export interface AgentSlice {
   // job (it knows the viewport).
   setAgentFloatRect: (r: AgentFloatRect) => void
   agentQueuePrompt: (prompt: string | null) => void
+  setAgentLastRunOk: (ok: boolean) => void
   // Ensure at least one tab exists (called when the panel first opens).
   agentEnsureTab: () => void
   // Open a brand-new empty conversation tab and focus it.
@@ -158,6 +162,7 @@ export const createAgentSlice: StateCreator<AgentSlice, [], [], AgentSlice> = (s
   agentFloating: true,
   agentFloatRect: null,
   agentQueuedPrompt: null,
+  agentLastRunOk: true,
 
   setAgentExpanded: (agentExpanded) => set({ agentExpanded }),
   setAgentMinimized: (agentMinimized) => set({ agentMinimized }),
@@ -176,6 +181,7 @@ export const createAgentSlice: StateCreator<AgentSlice, [], [], AgentSlice> = (s
     }),
 
   agentQueuePrompt: (agentQueuedPrompt) => set({ agentQueuedPrompt }),
+  setAgentLastRunOk: (agentLastRunOk) => set({ agentLastRunOk }),
 
   agentEnsureTab: () => {
     if (get().agentTabs.length > 0) return

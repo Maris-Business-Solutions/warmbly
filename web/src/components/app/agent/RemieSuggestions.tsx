@@ -9,10 +9,13 @@ import { ArrowRightIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SEVERITY_DOT, SEVERITY_RANK } from "@/lib/api/models/app/advisor/Advisor";
 import { useAdvisorFindings } from "@/lib/api/hooks/app/advisor/useAdvisor";
+import { usePermission } from "@/hooks/usePermission";
 import { fixPromptFor, suggestionsFrom } from "./remieTips";
 
 export default function RemieSuggestions({ onPick }: { onPick: (prompt: string) => void }) {
-    const { data } = useAdvisorFindings({ limit: 50 });
+    // Findings are read under View analytics, the Advisor's own permission.
+    const canSeeAdvisor = usePermission("VIEW_ANALYTICS");
+    const { data } = useAdvisorFindings({ limit: 50 }, canSeeAdvisor);
     const items = React.useMemo(() => suggestionsFrom(data ?? [], SEVERITY_RANK.medium).slice(0, 4), [data]);
     if (items.length === 0) return null;
 

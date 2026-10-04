@@ -46,14 +46,19 @@ const all = (fs: AdvisorFinding[]) => suggestionsFrom(fs, SEVERITY_RANK.low);
 
 describe("suggestionsFrom", () => {
     it("folds one kind of problem into one suggestion named by its group title", () => {
+        const group = { group_title: "{count} new mailboxes are sending at full volume" };
         const fs = [
-            finding("a", "high", "ramp", "emails", { group_title: "{count} new mailboxes are sending at full volume" }),
-            finding("b", "high", "ramp"),
+            finding("a", "high", "ramp", "emails", group),
+            finding("b", "high", "ramp", "emails", group),
             finding("c", "medium", "cap"),
         ];
         const got = all(fs);
         expect(got.map((s) => s.text)).toEqual(["2 new mailboxes are sending at full volume", "t-c"]);
         expect(got[0].findings).toHaveLength(2);
+    });
+
+    it("keeps findings without a group title as their own lines", () => {
+        expect(all([finding("a", "high", "k"), finding("b", "high", "k")]).map((s) => s.text)).toEqual(["t-a", "t-b"]);
     });
 
     it("drops what is not open or below the floor", () => {
@@ -62,11 +67,13 @@ describe("suggestionsFrom", () => {
     });
 
     it("asks Remie to fix every finding with the recommended change", () => {
+        const group = { group_title: "{count} things" };
         const fs = [
             finding("a", "high", "k", "emails", {
+                ...group,
                 action: { tool: "x", args: {}, label: "Start at 20/day instead" },
             }),
-            finding("b", "high", "k"),
+            finding("b", "high", "k", "emails", group),
         ];
         const prompt = fixPromptFor(all(fs)[0]);
         expect(prompt).toContain("1. t-a. Recommended: Start at 20/day instead");
@@ -93,10 +100,10 @@ describe("pickTip", () => {
         expect(pickTip(all(fs), emptyMemory(), NOW, "/app/emails")?.key).toBe("c");
     });
 
-    it("offers a kind once, and again only when it gets worse", () => {
+    it("offers a suggestion once, and again only when it gets worse", () => {
         const before = NOW - TIP_RULES.gapMs - 1;
         const m = recordShown(emptyMemory(), all([finding("a", "high")])[0], before);
-        expect(pickTip(all([finding("a2", "high", "a")]), m, NOW, "/app")).toBeNull();
+        expect(pickTip(all([finding("a", "high")]), m, NOW, "/app")).toBeNull();
         expect(pickTip(all([finding("a", "critical")]), m, NOW, "/app")?.key).toBe("a");
     });
 });

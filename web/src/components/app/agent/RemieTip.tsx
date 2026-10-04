@@ -9,6 +9,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
 import { BellOffIcon, XIcon } from "lucide-react";
 import { useAppStore } from "@/stores";
+import useClickOutside from "@/hooks/useClickOutside";
+import { usePermission } from "@/hooks/usePermission";
 import { SEVERITY_RANK } from "@/lib/api/models/app/advisor/Advisor";
 import { useAdvisorFindings } from "@/lib/api/hooks/app/advisor/useAdvisor";
 import AgentMark from "./AgentMark";
@@ -32,7 +34,8 @@ import {
 // Layers that mean the member is in the middle of something.
 const BUSY_SELECTOR = '[role="dialog"], [role="alertdialog"], [data-floating]';
 
-export default function RemieTip() {
+// `anchor` wraps the blob button, so clicking the blob is not a dismissal.
+export default function RemieTip({ anchor }: { anchor: React.RefObject<HTMLElement | null> }) {
     const userId = useAppStore((s) => s.user?.id ?? "");
     const orgId = useAppStore((s) => s.currentOrganization?.id ?? "");
     const panelOpen = useAppStore((s) => s.aiAssistantOpen && !s.agentMinimized);
@@ -46,7 +49,9 @@ export default function RemieTip() {
         return () => m.removeEventListener("change", fn);
     }, []);
 
-    const enabled = !!userId && !!orgId && wide;
+    // Findings are read under View analytics, the Advisor's own permission.
+    const canSeeAdvisor = usePermission("VIEW_ANALYTICS");
+    const enabled = !!userId && !!orgId && wide && canSeeAdvisor;
     const { data: findings } = useAdvisorFindings({ limit: 50 }, enabled);
     const suggestions = React.useMemo(
         () => suggestionsFrom(findings ?? [], SEVERITY_RANK.low),
@@ -55,6 +60,11 @@ export default function RemieTip() {
 
     const [tip, setTip] = React.useState<RemieSuggestion | null>(null);
     const hovered = React.useRef(false);
+    const bubble = React.useRef<HTMLDivElement>(null);
+    // A bubble that unmounts under the cursor never sees pointerleave.
+    React.useEffect(() => {
+        hovered.current = false;
+    }, [tip]);
 
     const update = React.useCallback(
         (fn: (m: TipMemory) => TipMemory) => {
@@ -106,6 +116,16 @@ export default function RemieTip() {
         return () => window.clearInterval(t);
     }, [enabled, suggestions, tip, panelOpen, pathname, userId, orgId]);
 
+    // Something else claiming attention (a dialog, a popover) puts the tip away
+    // without counting it against tips.
+    React.useEffect(() => {
+        if (!tip) return;
+        const t = window.setInterval(() => {
+            if (document.querySelector(BUSY_SELECTOR)) setTip(null);
+        }, 500);
+        return () => window.clearInterval(t);
+    }, [tip]);
+
     // A tip nobody touches leaves on its own and counts as not wanted.
     React.useEffect(() => {
         if (!tip) return;
@@ -135,19 +155,14 @@ export default function RemieTip() {
         [update],
     );
 
-    React.useEffect(() => {
-        if (!tip) return;
-        const fn = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && !document.querySelector(BUSY_SELECTOR)) close("ignored");
-        };
-        window.addEventListener("keydown", fn);
-        return () => window.removeEventListener("keydown", fn);
-    }, [tip, close]);
+    // Click-away and Escape, through the shared layer stack like every floating layer.
+    useClickOutside(!!tip, () => close("ignored"), [bubble, anchor]);
 
     return (
         <AnimatePresence>
             {tip && (
                 <motion.div
+                    ref={bubble}
                     key={tip.key}
                     role="status"
                     aria-live="polite"
@@ -162,7 +177,7 @@ export default function RemieTip() {
                     onPointerLeave={() => {
                         hovered.current = false;
                     }}
-                    className="absolute right-0 top-full z-[60] mt-2.5 w-[300px] rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-[0_18px_44px_-14px_rgba(15,23,42,0.3)]"
+                    className="absolute right-0 top-full z-40 mt-2.5 w-[300px] rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-[0_18px_44px_-14px_rgba(15,23,42,0.3)]"
                 >
                     <span
                         aria-hidden

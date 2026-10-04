@@ -78,6 +78,7 @@ const runStarts = new Map<string, number>();
 // Tabs playing the dev demo, whose approvals continue the script instead of
 // calling the server.
 const demoTabs = new Set<string>();
+const demoStarting = new Set<string>();
 
 let mid = 0;
 const nextId = () => `m${++mid}`;
@@ -126,6 +127,7 @@ export default function AgentPanel() {
     const floatRect = useAppStore((s) => s.agentFloatRect);
     const tabs = useAppStore((s) => s.agentTabs);
     const activeKey = useAppStore((s) => s.agentActiveKey);
+    const lastRunOk = useAppStore((s) => s.agentLastRunOk);
     const visible = open && !minimized;
 
     // Floating is desktop-only; below sm the panel stays a full-width sheet.
@@ -356,10 +358,15 @@ export default function AgentPanel() {
         return ac;
     }
 
-    function finishRun(tabKey: string) {
+    function finishRun(tabKey: string, aborted: boolean) {
         aborts.delete(tabKey);
         runStarts.delete(tabKey);
         const st = useAppStore.getState();
+        // Stopped or ended on an error: the marks must not celebrate it.
+        const tab = st.agentTabs.find((t) => t.key === tabKey);
+        const last = tab?.turns[tab.turns.length - 1];
+        const failed = last?.blocks[last.blocks.length - 1]?.kind === "error";
+        st.setAgentLastRunOk(!aborted && !failed);
         st.agentPatchTab(tabKey, { running: false });
         // Finished while the user wasn't looking at this tab: flag it so the
         // tab dot, dock, and header icon can say a response is ready.
@@ -377,16 +384,20 @@ export default function AgentPanel() {
         try {
             await streamAgentRun(path, body, (ev) => handleEvent(tabKey, ev), ac.signal);
         } finally {
-            finishRun(tabKey);
+            finishRun(tabKey, ac.signal.aborted);
         }
     }
 
     // Dev only: play a scripted run through handleEvent (see agentDemo.ts).
-    async function playDemo(part: "open" | "approve" | "deny") {
-        if (!import.meta.env.DEV) return;
-        const tab = useAppStore.getState().agentTabs.find((t) => t.key === activeKey);
+    async function playDemo(part: "open" | "approve" | "deny", tabKey = activeKey) {
+        if (!import.meta.env.DEV || !tabKey || demoStarting.has(tabKey)) return;
+        const tab = useAppStore.getState().agentTabs.find((t) => t.key === tabKey);
         if (!tab || tab.running) return;
-        const { DEMO_PROMPT, demoRun } = await import("./agentDemo");
+        // Held across the import below, so a double click starts one demo.
+        demoStarting.add(tab.key);
+        const { DEMO_PROMPT, demoRun } = await import("./agentDemo").finally(() =>
+            demoStarting.delete(tab.key),
+        );
         if (part === "open") {
             demoTabs.add(tab.key);
             useAppStore.getState().agentUpdateTab(tab.key, (t) => ({
@@ -408,7 +419,9 @@ export default function AgentPanel() {
                 handleEvent(tab.key, step.ev);
             }
         } finally {
-            finishRun(tab.key);
+            // The script ends after its approval is answered; real runs follow.
+            if (part !== "open") demoTabs.delete(tab.key);
+            finishRun(tab.key, ac.signal.aborted);
         }
     }
 
@@ -424,6 +437,8 @@ export default function AgentPanel() {
             return;
         }
         const store = useAppStore.getState();
+        // A real question ends any demo script playing in this tab.
+        demoTabs.delete(tab.key);
         runStarts.set(tab.key, Date.now());
         // running flips on synchronously so a double Enter can't double-send.
         store.agentUpdateTab(tab.key, (t) => ({
@@ -475,7 +490,7 @@ export default function AgentPanel() {
         const tab = useAppStore.getState().agentTabs.find((t) => t.key === tabKey);
         if (import.meta.env.DEV && tab?.pending && demoTabs.has(tabKey)) {
             useAppStore.getState().agentPatchTab(tabKey, { pending: null });
-            await playDemo(decision === "deny" ? "deny" : "approve");
+            await playDemo(decision === "deny" ? "deny" : "approve", tabKey);
             return;
         }
         if (!tab || !tab.sessionId || !tab.pending) return;
@@ -765,6 +780,7 @@ export default function AgentPanel() {
                         <AgentMark
                             size={20}
                             listen
+                            celebrate={lastRunOk}
                             state={
                                 activeTab?.pending
                                     ? "attention"
@@ -1143,6 +1159,7 @@ function DockBar({
     onRestore: (key: string | null) => void;
     onClose: () => void;
 }) {
+    const lastRunOk = useAppStore((s) => s.agentLastRunOk);
     const focus =
         tabs.find((t) => t.running) ??
         tabs.find((t) => t.pending) ??
@@ -1211,6 +1228,7 @@ function DockBar({
             >
                 <AgentMark
                     size={20}
+                    celebrate={lastRunOk}
                     state={focus?.pending ? "attention" : focus?.running ? "thinking" : "idle"}
                 />
                 <span className="max-w-[160px] truncate text-[12.5px] font-medium text-slate-800">
