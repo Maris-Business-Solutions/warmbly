@@ -223,7 +223,14 @@ func (s *Service) RefreshToken(ctx context.Context, clientID, clientSecret, refr
 	if err != nil {
 		return nil, errServer("token lookup failed")
 	}
-	if g == nil || g.RevokedAt != nil || g.ApplicationID != app.ID {
+	if g == nil {
+		// A refresh token the grant already rotated away from was replayed: end the grant (RFC 9700 4.14.2).
+		if revoked, rerr := s.repo.RevokeGrantByPreviousRefresh(ctx, app.ID, hashToken(refreshToken)); rerr == nil && revoked {
+			s.ReconcileAppEndpoints(ctx, app.ID)
+		}
+		return nil, errInvalidGrant("invalid refresh token")
+	}
+	if g.RevokedAt != nil || g.ApplicationID != app.ID {
 		return nil, errInvalidGrant("invalid refresh token")
 	}
 	if g.RefreshExpiresAt != nil && g.RefreshExpiresAt.Before(time.Now().UTC()) {

@@ -46,6 +46,10 @@ func (r *capRepo) RotateGrantTokens(context.Context, uuid.UUID, string, string, 
 	return r.rotated, nil
 }
 
+func (r *capRepo) RevokeGrantByPreviousRefresh(context.Context, uuid.UUID, string) (bool, error) {
+	return false, nil
+}
+
 func (r *capRepo) RevokeGrant(context.Context, uuid.UUID) error {
 	r.revoked = true
 	return nil

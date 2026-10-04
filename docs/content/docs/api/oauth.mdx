@@ -149,7 +149,7 @@ curl "https://api.warmbly.com/v1/campaigns" \
 
 ### 5. Refresh when it expires
 
-Access tokens last one hour. Exchange the refresh token for a new pair before or after expiry. Refresh tokens **rotate**: the old one stops working the moment a new pair is issued, so always store the latest one. Presenting the same refresh token twice at once (two workers refreshing in parallel, or a replay) lets one exchange win and **revokes the grant**, so the user has to authorize again ([RFC 9700 section 4.14.2](https://www.rfc-editor.org/rfc/rfc9700#section-4.14.2)). Serialize refreshes per grant.
+Access tokens last one hour. Exchange the refresh token for a new pair before or after expiry. Refresh tokens **rotate**: the old one stops working the moment a new pair is issued, so always store the latest one. Presenting a refresh token that was already exchanged (two workers refreshing in parallel, a retry with the old token, or a replay) **revokes the grant**, so the user has to authorize again ([RFC 9700 section 4.14.2](https://www.rfc-editor.org/rfc/rfc9700#section-4.14.2)). Serialize refreshes per grant.
 
 ```bash
 curl -X POST "https://api.warmbly.com/v1/oauth/token" \

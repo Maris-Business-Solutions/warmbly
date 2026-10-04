@@ -52,6 +52,8 @@ type OAuthRepository interface {
 	RotateGrantTokens(ctx context.Context, id uuid.UUID, oldRefreshHash, accessHash, refreshHash string, accessExp time.Time, refreshExp *time.Time) (bool, error)
 	TouchGrantLastUsed(ctx context.Context, id uuid.UUID) error
 	RevokeGrant(ctx context.Context, id uuid.UUID) error
+	// RevokeGrantByPreviousRefresh ends the app's grant whose rotated-away refresh token has this hash.
+	RevokeGrantByPreviousRefresh(ctx context.Context, appID uuid.UUID, refreshHash string) (bool, error)
 	RevokeGrantByTokenHash(ctx context.Context, appID uuid.UUID, hash string) error
 	ListAuthorizedApps(ctx context.Context, orgID, userID uuid.UUID) ([]models.OAuthAuthorizedApp, error)
 	// ListWorkspaceAuthorizations lists every member's live app authorizations in orgID.
@@ -449,12 +451,23 @@ func (r *oauthRepository) RotateGrantTokens(ctx context.Context, id uuid.UUID, o
 		refresh = &refreshHash
 	}
 	tag, err := r.db.Exec(ctx, `
-		UPDATE oauth_access_grants SET access_token_hash=$2, refresh_token_hash=$3, access_expires_at=$4, refresh_expires_at=$5, last_used_at=now()
+		UPDATE oauth_access_grants SET previous_refresh_token_hash=refresh_token_hash, access_token_hash=$2, refresh_token_hash=$3,
+			access_expires_at=$4, refresh_expires_at=$5, last_used_at=now()
 		WHERE id=$1 AND refresh_token_hash=$6 AND revoked_at IS NULL`, id, accessHash, refresh, accessExp, refreshExp, oldRefreshHash)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+func (r *oauthRepository) RevokeGrantByPreviousRefresh(ctx context.Context, appID uuid.UUID, refreshHash string) (bool, error) {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE oauth_access_grants SET revoked_at = now()
+		WHERE application_id = $1 AND previous_refresh_token_hash = $2 AND revoked_at IS NULL`, appID, refreshHash)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *oauthRepository) TouchGrantLastUsed(ctx context.Context, id uuid.UUID) error {
