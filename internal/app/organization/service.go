@@ -778,13 +778,17 @@ func (s *organizationService) PreviewInvitation(ctx context.Context, token strin
 		Expired: false,
 	}
 	if inv.Organization != nil {
-		preview.OrganizationName = inv.Organization.Name
+		// Shown to someone outside the workspace, with the invitation email's fallbacks.
+		preview.OrganizationName = displayname.DisplayableOr(inv.Organization.Name, "your organization")
 		if inv.Organization.AvatarURL != nil {
 			preview.OrganizationAvatar = *inv.Organization.AvatarURL
 		}
 	}
 	if inviter, _ := s.userRepo.GetUser(ctx, inv.InvitedBy); inviter != nil {
-		preview.InviterName = strings.TrimSpace(inviter.FirstName + " " + inviter.LastName)
+		preview.InviterName = displayname.FullName(inviter.FirstName, inviter.LastName)
+		if preview.InviterName == "" {
+			preview.InviterName = "A team member"
+		}
 	}
 	list := []models.OrganizationInvitation{*inv}
 	if err := s.orgRepo.HydrateInvitationRoles(ctx, list); err == nil {

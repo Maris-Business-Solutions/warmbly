@@ -13,6 +13,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 )
 
 // ErrAppListingSlugTaken is returned when another listing already holds the slug.
@@ -165,6 +166,8 @@ func scanCommunityApp(row pgx.Row) (*models.CommunityApp, error) {
 		&app.Installs, &app.Installed, &app.PublishedAt); err != nil {
 		return nil, err
 	}
+	// Shown to every workspace; empty lets the directory say "Community developer".
+	app.Developer = displayname.Displayable(app.Developer)
 	app.Scopes = uint64(scopes)
 	app.Permissions = models.PermissionsIn(app.Scopes)
 	app.Status = models.AppListingStatus(status)
