@@ -17898,6 +17898,174 @@
         }
       }
     },
+    "/integrations/community": {
+      "get": {
+        "operationId": "integrations_community_list",
+        "summary": "List community apps",
+        "description": "Community directory listings shown in discovery: featured apps first, then published apps installed in at least 25 workspaces other than the publisher's, each at least two weeks old, most installed first. A link-only app is never returned here; open it by its slug.",
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            },
+            "description": "Page size. Out-of-range values return 400."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from pagination.next_cursor. A cursor this API did not issue returns 400."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listed community apps.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityAppList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid limit or cursor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (missing INTEGRATIONS scope).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/community/{slug}": {
+      "get": {
+        "operationId": "integrations_community_get",
+        "summary": "Get a community app",
+        "description": "One listing by its slug, listed or link only. A hidden or unpublished listing, or one whose app is disabled, returns 404.",
+        "tags": [
+          "integrations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The listing's slug."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityApp"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No published listing with this slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (missing INTEGRATIONS scope).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/integrations/connections": {
       "get": {
         "operationId": "integrations_connections_list",
@@ -37629,6 +37797,155 @@
           "configured": {
             "type": "boolean",
             "description": "Whether the server has OAuth client credentials wired for this provider."
+          },
+          "rank": {
+            "type": "integer",
+            "description": "Popularity on this instance, 1 being the most used: workspaces with a live connection, ties broken by a curated order."
+          }
+        }
+      },
+      "CommunityApp": {
+        "type": "object",
+        "description": "A published OAuth app as a workspace browsing the community directory sees it. Carries no credential, redirect or webhook field.",
+        "required": [
+          "application_id",
+          "slug",
+          "name",
+          "tagline",
+          "category",
+          "install_url",
+          "developer",
+          "scopes",
+          "permissions",
+          "status",
+          "listed",
+          "installs",
+          "installed",
+          "published_at"
+        ],
+        "properties": {
+          "application_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "description": "The listing's link: /app/integrations/apps/{slug}."
+          },
+          "name": {
+            "type": "string"
+          },
+          "tagline": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "crm",
+              "automation",
+              "notifications",
+              "meetings",
+              "data",
+              "verification",
+              "ai",
+              "other"
+            ]
+          },
+          "logo_url": {
+            "type": "string"
+          },
+          "website_url": {
+            "type": "string"
+          },
+          "install_url": {
+            "type": "string",
+            "description": "HTTPS address the app's install starts from."
+          },
+          "support_url": {
+            "type": "string"
+          },
+          "privacy_url": {
+            "type": "string"
+          },
+          "developer": {
+            "type": "string",
+            "description": "Name of the publishing workspace."
+          },
+          "scopes": {
+            "type": "integer",
+            "description": "API-permission bitmask the app may request."
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "value",
+                "description",
+                "category"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "integer"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The same permissions, spelled out."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "published",
+              "featured"
+            ],
+            "description": "featured: picked by the instance's team. published: link only unless widely used."
+          },
+          "listed": {
+            "type": "boolean",
+            "description": "Shown in discovery: featured, or installed in at least 25 workspaces other than the publisher's, each at least two weeks old."
+          },
+          "installs": {
+            "type": "integer",
+            "description": "Workspaces on this instance with an active grant."
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "Whether anyone in the caller's workspace has authorized it."
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CommunityAppList": {
+        "type": "object",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommunityApp"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
           }
         }
       },

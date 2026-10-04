@@ -382,8 +382,11 @@ const router = createBrowserRouter([
             element: <Navigate to="/app/settings/oauth-apps" replace />,
           },
           {
-            path: "integrations",
+            // The store and every page in it (/connected, /category/:c, /:provider,
+            // /apps/:slug); one mounted page so search and drawers survive navigation.
+            path: "integrations/*",
             element: <IntegrationsPage />,
+            handle: { stableParams: ["*"] },
           },
           {
             path: "integrations/hubspot",

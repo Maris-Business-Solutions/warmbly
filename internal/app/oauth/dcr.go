@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/displayname"
 )
 
 // Dynamic Client Registration (RFC 7591). An MCP client (Claude Code, Cursor,
@@ -63,12 +64,10 @@ func (s *Service) RegisterDynamicClient(ctx context.Context, clientIP string, re
 		return nil, err
 	}
 
-	name := strings.TrimSpace(req.ClientName)
+	// A self-registered name nobody can be asked to correct is cleaned, not refused.
+	name := displayname.Clean(req.ClientName, displayname.Workspace)
 	if name == "" {
 		name = "MCP client"
-	}
-	if len(name) > 200 {
-		name = name[:200]
 	}
 
 	uris, err := validateDCRRedirectURIs(req.RedirectURIs)
@@ -105,8 +104,7 @@ func (s *Service) RegisterDynamicClient(ctx context.Context, clientIP string, re
 
 	app := &models.OAuthApplication{
 		Name:                  name,
-		WebsiteURL:            strings.TrimSpace(req.ClientURI),
-		LogoURL:               strings.TrimSpace(req.LogoURI),
+		WebsiteURL:            dcrWebsite(req.ClientURI),
 		ClientID:              clientID,
 		RedirectURIs:          uris,
 		AllowedWebhookDomains: []string{},
@@ -223,4 +221,15 @@ func (s *Service) checkDCRRate(ctx context.Context, ip string) error {
 		return errTooManyRegistrations()
 	}
 	return nil
+}
+
+// dcrWebsite keeps a self-registered client's website only when it is a plain
+// http(s) address. Its logo_uri is never kept: the consent screen shows only
+// images this instance stored.
+func dcrWebsite(raw string) string {
+	w, err := appWebsite(raw)
+	if err != nil {
+		return ""
+	}
+	return w
 }

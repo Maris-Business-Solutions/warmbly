@@ -37,6 +37,7 @@ import UserDetailPage from "@/app/dashboard/UserDetailPage";
 import AdminsPage from "@/app/dashboard/AdminsPage";
 import WarmupPage from "@/app/dashboard/WarmupPage";
 import WarmupAppealsPage from "@/app/dashboard/WarmupAppealsPage";
+import DeveloperAppsPage from "@/app/dashboard/DeveloperAppsPage";
 import WarmupContentLayout from "@/app/dashboard/warmup-content/WarmupContentLayout";
 import WarmupContentOverviewPage from "@/app/dashboard/warmup-content/OverviewPage";
 import WarmupContentLibraryPage from "@/app/dashboard/warmup-content/LibraryPage";
@@ -164,6 +165,8 @@ const router = createBrowserRouter([
                             { path: "organizations", element: gated(AdminPerm.ViewOrganizations, <OrganizationsPage />) },
                             { path: "organizations/:id", element: gated(AdminPerm.ViewOrganizations, <OrganizationDetailPage />) },
                             { path: "limit-requests", element: gated(AdminPerm.ViewOrganizations, <LimitRequestsPage />) },
+                            { path: "developer-apps", element: gated(AdminPerm.ViewOrganizations, <DeveloperAppsPage />) },
+                            { path: "app-listings", element: <Navigate to="/developer-apps?tab=directory" replace /> },
                             { path: "discounts", element: gated(AdminPerm.ViewOrganizations, <DiscountsPage />) },
                             { path: "outreach", element: gated(AdminPerm.ViewOrganizations, <OutreachPage />) },
                             { path: "admins", element: gated(AdminPerm.GrantAdminAccess, <AdminsPage />) },

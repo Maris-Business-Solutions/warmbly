@@ -5,7 +5,27 @@ description: "Connect third-party tools over OAuth and send data out via webhook
 
 Integrations push Warmbly events into the rest of your stack: a reply lands, a meeting is booked, an email bounces, and your CRM, chat channel, or automation tool hears about it.
 
-The Integrations page is a searchable directory with your existing connections along the top. State stays live, so a connection needing reauthorization surfaces without a refresh.
+The Integrations page is one directory for everything that connects to Warmbly: the built-in integrations below, apps other developers have published, and the tools to build your own. State stays live, so a connection needing reauthorization surfaces without a refresh.
+
+## Finding an integration
+
+The sidebar holds **Discover**, **All apps**, **Connected**, one view per category, **Community apps** and **Build your own**; on a phone the same views sit in a row of tabs.
+
+**Discover** shows a banner for any connection that is degraded or needs reconnecting, then **Recommended for you** (the gaps in your setup: a CRM if you have none, a chat alert so a reply never sits unseen, a scheduler so booked calls are credited to the campaign that earned them, and an address verifier), **Popular** (the integrations used by the most workspaces on the instance, or a curated order on a new one), and **Featured community apps**.
+
+Every app has its own page, at `/app/integrations/<provider>` for a built-in integration (for example `/app/integrations/hubspot`) and `/app/integrations/apps/<slug>` for a community app. It shows what the app does, the actions and triggers it adds to automations, the access it asks for, and your connections to it. **Connect** on a card or a page starts the connection in place; **Manage** opens one you already have. Built-in integrations carry a blue check next to Warmbly.
+
+### Search and filters
+
+The search box sits at the top of the sidebar (above the views on a phone). On Discover and on an app's page it suggests apps and categories as you type; the arrow keys move through them, Enter opens the highlighted one, and **See all results** (or Enter with nothing highlighted) opens **All apps** with your search. Press `/` to jump to the search box when you are not typing in another field. Every word you type has to match, a match in an app's name ranks above one in its description, and everyday words find their category: "chat" finds Slack and Discord, "calendar" finds the schedulers.
+
+On **All apps**, **Connected**, **Community apps** and each category, the same box filters the list as you type instead, and they share one toolbar:
+
+- **Sort** by best match (while searching), most popular, most installed, newest, or name.
+- **Category** (several at once, each with the number of apps it would leave), **Made by** (official or community), **Status** (connected or not), and under **More filters**, how an app connects (one-click sign in, API key or webhook URL), featured community apps only, and hiding integrations that are not available yet.
+- A grid or a list view.
+
+The active filters show as chips you can clear one at a time or all at once. Search, sort, filters and view are kept in the page address, so a filtered view can be bookmarked or shared with a teammate.
 
 ## Supported providers
 
@@ -55,6 +75,33 @@ An account with nothing left is only visible when a check is refused, so Warmbly
 ### One verifier at a time
 
 A workspace uses one verification service. Connecting a second one is refused while the first is connected, because which one ran would otherwise be decided by connection order alone and every check would quietly move to a different bill. Disconnect the current service first, then connect the new one.
+
+## Community apps
+
+A community app is an [OAuth app](/api/oauth/) another team built on the Warmbly API and published. Opening one shows who built it, what it does, how many workspaces use it, and every permission it can ask for.
+
+**Install** opens the app's own install page. The app then sends you back to Warmbly's consent screen, where you approve exactly what it gets, the same as any OAuth app. Nothing is granted by opening the listing or clicking Install. A row reads **Installed** once anyone in your workspace has authorized the app, and you can remove your own access from the listing or under **Settings > OAuth apps > Authorized apps**.
+
+Publishing an app does not put it in front of everyone. A published app is **link only**: its developer shares `/app/integrations/apps/<slug>` with the people who use it, and it stays out of the directory, search and recommendations. It joins the **Community apps** view in one of two ways:
+
+- **Featured**: the team picked it. It carries a Featured badge and also appears on Discover. Featured means chosen for the directory, not built or run by Warmbly.
+- **Widely used**: it is installed in 25 workspaces on the instance other than the publisher's, each at least two weeks old.
+
+An app opened from a link that is neither says so: it is shared by link and nobody has reviewed it, so install it only if you know who built it. The team can also **hide** an app, which takes it out of the directory and stops its link from opening.
+
+<Callout type="info" title="Community apps are per instance">
+An OAuth app can only authorize against the instance that registered it, so a self-hosted instance lists the apps published on that instance, and Warmbly Cloud lists the apps published on Cloud.
+</Callout>
+
+### Publish your app
+
+1. Register the app under **Settings > OAuth apps**: a name and logo, what it can do, and the address people return to after approving, then optionally the events it receives. Its name, logo, website and requested permissions are what the listing shows. See [register your app](/api/oauth/#register-your-app).
+2. On the app, choose **Publish** and fill in the listing: a link (the slug), a one-line tagline, a description, a category, and the **install URL** that Install opens. Start the OAuth flow from that page with your own `state`. Support and privacy links are optional.
+3. Copy the link and share it with the people who use your app.
+
+Any change to the listing, or to the app's name, logo, website or permissions, removes the Featured mark until the team picks it again, so a featured app cannot change after it was chosen. Saving without changing anything keeps it. A hidden listing stays hidden when edited, and shows the team's note. **Unpublish** removes the listing and its link; workspaces that already installed the app keep their access until they revoke it.
+
+A listing's link must be 3 to 48 lowercase letters, numbers or single dashes, and the names of the built-in integrations are reserved. The tagline is at most 120 characters and the description 2,000. Every link must be `https`.
 
 ## HubSpot as your CRM
 

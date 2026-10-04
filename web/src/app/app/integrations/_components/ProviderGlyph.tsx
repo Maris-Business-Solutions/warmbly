@@ -6,6 +6,7 @@
 import { cn } from "@/lib/utils";
 
 import { RAW_BRAND_LOGOS } from "./brandLogos";
+import { GLYPH_DIMS, type GlyphSize } from "./glyphSize";
 
 const BRAND_ICON: Record<string, { hex: string; path: string }> = {
     millionverifier: {
@@ -56,10 +57,9 @@ export default function ProviderGlyph({
 }: {
     provider: string;
     name: string;
-    size?: 7 | 9 | 10;
+    size?: GlyphSize;
 }) {
-    const tileDim = size === 7 ? "w-7 h-7" : size === 10 ? "w-10 h-10" : "w-9 h-9";
-    const iconDim = size === 7 ? "w-4 h-4" : size === 10 ? "w-6 h-6" : "w-5 h-5";
+    const { tile: tileDim, icon: iconDim, text: textDim } = GLYPH_DIMS[size];
 
     const raw = RAW_BRAND_LOGOS[provider];
     if (raw) {
@@ -67,7 +67,7 @@ export default function ProviderGlyph({
         // the rounded corners); the rest sit on a white tile at icon size.
         if (raw.fullBleed) {
             return (
-                <div className={cn("rounded-md ring-1 ring-black/5 overflow-hidden inline-flex shrink-0", tileDim)}>
+                <div className={cn("ring-1 ring-black/5 overflow-hidden inline-flex shrink-0", tileDim)}>
                     <svg
                         viewBox={raw.viewBox}
                         role="img"
@@ -81,7 +81,7 @@ export default function ProviderGlyph({
         return (
             <div
                 className={cn(
-                    "rounded-md ring-1 ring-slate-200 bg-white dark:bg-[#e6e8eb] inline-flex items-center justify-center shrink-0",
+                    "ring-1 ring-slate-200 bg-white dark:bg-[#e6e8eb] inline-flex items-center justify-center shrink-0",
                     tileDim,
                 )}
             >
@@ -101,7 +101,7 @@ export default function ProviderGlyph({
         return (
             <div
                 className={cn(
-                    "rounded-md ring-1 ring-slate-200 bg-white dark:bg-[#e6e8eb] inline-flex items-center justify-center shrink-0",
+                    "ring-1 ring-slate-200 bg-white dark:bg-[#e6e8eb] inline-flex items-center justify-center shrink-0",
                     tileDim,
                 )}
             >
@@ -112,12 +112,11 @@ export default function ProviderGlyph({
         );
     }
 
-    const textDim = size === 7 ? "text-[12px]" : size === 10 ? "text-[15px]" : "text-[13px]";
     const tint = BRAND_TINT[provider] ?? { bg: "bg-sky-50", ring: "ring-sky-100", text: "text-sky-700" };
     return (
         <div
             className={cn(
-                "rounded-md ring-1 inline-flex items-center justify-center font-semibold uppercase shrink-0",
+                "ring-1 inline-flex items-center justify-center font-semibold uppercase shrink-0",
                 tileDim,
                 textDim,
                 tint.bg,

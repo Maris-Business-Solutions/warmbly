@@ -9,6 +9,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/aitools"
 	"github.com/warmbly/warmbly/internal/app/analytics"
 	"github.com/warmbly/warmbly/internal/app/apikey"
+	"github.com/warmbly/warmbly/internal/app/appdirectory"
 	"github.com/warmbly/warmbly/internal/app/audit"
 	"github.com/warmbly/warmbly/internal/app/auth"
 	"github.com/warmbly/warmbly/internal/app/behavior"
@@ -291,6 +292,9 @@ type Handler struct {
 	// OAuth 2.1 authorization server (third-party app registration + the
 	// authorization-code-with-PKCE flow + bearer-token validation).
 	OAuthService *oauth.Service
+
+	// AppDirectoryService is the community app directory (published OAuth apps).
+	AppDirectoryService *appdirectory.Service
 
 	// Realtime publisher for handler paths that emit live dashboard events
 	// directly (inbound meeting webhooks have no service layer of their own).

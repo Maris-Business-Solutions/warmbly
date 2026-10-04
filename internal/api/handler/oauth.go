@@ -2,12 +2,10 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -43,7 +41,8 @@ func (h *Handler) ListOAuthApplications(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.Internal, "lookup failed"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"applications": apps})
+	userID, _ := middleware.GetUserUUID(c)
+	c.JSON(http.StatusOK, gin.H{"applications": apps, "developer_access": h.OAuthService.DeveloperAccess(c.Request.Context(), *orgID, userID)})
 }
 
 func (h *Handler) CreateOAuthApplication(c *gin.Context) {
@@ -62,9 +61,13 @@ func (h *Handler) CreateOAuthApplication(c *gin.Context) {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
+	if xerr := checkAppLogo(c.Request.Context(), h.Storage, *orgID, w.LogoURL, ""); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
 	app, err := h.OAuthService.RegisterApplication(c.Request.Context(), *orgID, userID, w)
 	if err != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, err.Error()))
+		errx.JSON(c, oauthAppWriteError(err))
 		return
 	}
 	c.JSON(http.StatusCreated, app)
@@ -109,10 +112,27 @@ func (h *Handler) UpdateOAuthApplication(c *gin.Context) {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
-	app, uerr := h.OAuthService.UpdateApplication(c.Request.Context(), *orgID, id, w)
-	if uerr != nil {
-		errx.JSON(c, errx.New(errx.BadRequest, uerr.Error()))
+	current, gerr := h.OAuthService.GetApplication(c.Request.Context(), *orgID, id)
+	if gerr != nil {
+		errx.JSON(c, errx.New(errx.Internal, "lookup failed"))
 		return
+	}
+	if current == nil {
+		errx.JSON(c, errx.New(errx.NotFound, "application not found"))
+		return
+	}
+	if xerr := checkAppLogo(c.Request.Context(), h.Storage, *orgID, w.LogoURL, current.LogoURL); xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	userID, _ := middleware.GetUserUUID(c)
+	app, uerr := h.OAuthService.UpdateApplication(c.Request.Context(), *orgID, userID, id, w)
+	if uerr != nil {
+		errx.JSON(c, oauthAppWriteError(uerr))
+		return
+	}
+	if app.LogoURL != current.LogoURL {
+		h.deleteAppLogo(c.Request.Context(), *orgID, id, current.LogoURL, "")
 	}
 	c.JSON(http.StatusOK, app)
 }
@@ -285,12 +305,21 @@ func (h *Handler) UploadOAuthAppLogo(c *gin.Context) {
 		errx.JSON(c, errx.New(errx.BadRequest, "no organization selected"))
 		return
 	}
-	body, mime, ext, xerr := readAvatarUpload(c)
+	raw, _, _, xerr := readAvatarUpload(c)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
 	}
-	key := fmt.Sprintf("oauth-app-logos/%s-%d%s", orgID.String(), time.Now().Unix(), ext)
+	body, mime, ext, xerr := reencodeLogo(raw)
+	if xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	key, err := appLogoKey(*orgID, ext)
+	if err != nil {
+		errx.JSON(c, errx.InternalError())
+		return
+	}
 	url, xerr := putPublicObject(c.Request.Context(), h.Storage, key, body, mime)
 	if xerr != nil {
 		errx.JSON(c, xerr)
@@ -538,4 +567,22 @@ func (h *Handler) OAuthProtectedResourceMetadata(c *gin.Context) {
 		"bearer_methods_supported": []string{"header"},
 		"resource_documentation":   "https://docs.warmbly.com/api/mcp/",
 	})
+}
+
+// oauthAppWriteError maps a register or update refusal to its response: a
+// naming rule keeps its own code, a block and a suspension have theirs, and
+// any other validation message is a plain 400.
+func oauthAppWriteError(err error) *errx.Error {
+	var xe *errx.Error
+	if errors.As(err, &xe) {
+		return xe
+	}
+	var blocked *oauth.DeveloperBlockedError
+	if errors.As(err, &blocked) {
+		return errx.NewWithIdentifier(errx.Forbidden, "developer_access_blocked", blocked.Error())
+	}
+	if errors.Is(err, oauth.ErrAppSuspended) {
+		return errx.NewWithIdentifier(errx.Conflict, "app_suspended", err.Error())
+	}
+	return errx.New(errx.BadRequest, err.Error())
 }

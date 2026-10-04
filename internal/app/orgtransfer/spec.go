@@ -251,6 +251,8 @@ var Tables = []Table{
 	{
 		Name: "oauth_applications", Group: models.OrgDataGroupCore,
 		Scope: scopeOrg,
+		// A suspension is the source operator's decision; the destination's operators make their own.
+		ResetOnImport: []string{"suspended_at", "suspended_reason", "suspended_by"},
 	},
 	{
 		Name: "oauth_access_grants", Group: models.OrgDataGroupCore,
@@ -941,6 +943,8 @@ var ExcludedTables = map[string]string{
 	"salesforce_activity_queue":    "Activity waiting to be logged in Salesforce, and the recent outcome of what was. What was logged is already in Salesforce; what was waiting belongs to this instance's drain.",
 	"salesforce_sync_state":        "Where this instance's pull loop got to in each Salesforce org, and the API calls it counted today. The destination starts its own cursor when the connection first syncs.",
 	"oauth_authorization_codes":    "Single-use authorization codes, valid for seconds.",
+	"oauth_developer_blocks":       "An operator's decision on the source instance about who may build apps there; the destination's operators decide for theirs.",
+	"app_directory_listings":       "A publication on the source instance's community directory, featured or hidden by its team. Publish again on the destination, where its own team decides.",
 	"scheduled_deletions":          "Instance lifecycle state. Importing a pending deletion would schedule the destination workspace for destruction.",
 	"dedicated_worker_assignments": "Worker topology, which is a property of the instance rather than the workspace.",
 	"warmup_spam_moves":            "Per-message attribution evidence for warmup mail this instance synced, kept only to decide recent tampering; the destination judges its own.",

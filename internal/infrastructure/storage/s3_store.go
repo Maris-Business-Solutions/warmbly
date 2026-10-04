@@ -69,10 +69,15 @@ func (c *Client) PutPublic(ctx context.Context, key string, body io.Reader, cont
 		return "", err
 	}
 	c.grantPublicRead(ctx, key)
+	return c.PublicURL(key), nil
+}
+
+// PublicURL is the URL PutPublic returns for key, without writing anything.
+func (c *Client) PublicURL(key string) string {
 	if c.PublicBaseURL != "" {
-		return strings.TrimRight(c.PublicBaseURL, "/") + "/" + key, nil
+		return strings.TrimRight(c.PublicBaseURL, "/") + "/" + key
 	}
-	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", c.Bucket, key), nil
+	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", c.Bucket, key)
 }
 
 // grantPublicRead marks an object world-readable on a store that still grants

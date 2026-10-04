@@ -5,7 +5,7 @@ import createOAuthApp from "@/lib/api/client/app/oauth/createOAuthApp";
 import updateOAuthApp from "@/lib/api/client/app/oauth/updateOAuthApp";
 import deleteOAuthApp from "@/lib/api/client/app/oauth/deleteOAuthApp";
 import rotateOAuthAppSecret from "@/lib/api/client/app/oauth/rotateOAuthAppSecret";
-import uploadOAuthAppLogo from "@/lib/api/client/app/oauth/uploadOAuthAppLogo";
+import { deleteOAuthApplicationLogo, uploadOAuthApplicationLogo } from "@/lib/api/client/app/oauth/oauthAppLogo";
 import getOAuthAppWebhookSecret from "@/lib/api/client/app/oauth/getOAuthAppWebhookSecret";
 import rotateOAuthAppWebhookSecret from "@/lib/api/client/app/oauth/rotateOAuthAppWebhookSecret";
 import listOAuthAppWebhookEndpoints from "@/lib/api/client/app/oauth/listOAuthAppWebhookEndpoints";
@@ -51,9 +51,19 @@ export function useRotateOAuthAppSecret() {
     });
 }
 
-export function useUploadOAuthAppLogo() {
+export function useSetOAuthAppLogo() {
+    const qc = useQueryClient();
     return useMutation({
-        mutationFn: (blob: Blob) => uploadOAuthAppLogo(blob),
+        mutationFn: ({ id, blob }: { id: string; blob: Blob }) => uploadOAuthApplicationLogo(id, blob),
+        onSuccess: () => void qc.invalidateQueries({ queryKey: ["oauth-apps"] }),
+    });
+}
+
+export function useDeleteOAuthAppLogo() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) => deleteOAuthApplicationLogo(id),
+        onSuccess: () => void qc.invalidateQueries({ queryKey: ["oauth-apps"] }),
     });
 }
 

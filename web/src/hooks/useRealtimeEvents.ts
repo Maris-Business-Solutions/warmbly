@@ -527,6 +527,8 @@ export function useRealtimeEvents() {
           ai_skill: [['ai', 'skills']],
           // Connected MCP servers (external tools).
           mcp_server: [['ai', 'connections']],
+          // A teammate published, edited or unpublished one of the workspace's apps.
+          app_listing: [['oauth-app-listing'], ['integrations', 'community']],
           // Advisor: a background evaluation that opened or resolved findings,
           // or a teammate applying/snoozing/dismissing one. Refreshes every
           // strip and every nav badge at once.

@@ -24,6 +24,8 @@ type OAuthRepository interface {
 	UpdateApplication(ctx context.Context, a *models.OAuthApplication) error
 	UpdateApplicationSecret(ctx context.Context, orgID, id uuid.UUID, secretHash string) error
 	DeleteApplication(ctx context.Context, orgID, id uuid.UUID) error
+	// UpdateApplicationLogo sets the logo the server stored for the app; "" clears it.
+	UpdateApplicationLogo(ctx context.Context, orgID, id uuid.UUID, logoURL string) error
 	// GetAllowedWebhookDomains fetches an app's webhook-domain allowlist by id
 	// alone (no org), for delivery-time enforcement on app-scoped endpoints.
 	GetAllowedWebhookDomains(ctx context.Context, id uuid.UUID) ([]string, error)
@@ -51,6 +53,10 @@ type OAuthRepository interface {
 	ListAuthorizedApps(ctx context.Context, orgID, userID uuid.UUID) ([]models.OAuthAuthorizedApp, error)
 	RevokeAuthorization(ctx context.Context, orgID, userID, appID uuid.UUID) error
 	RevokeMemberGrants(ctx context.Context, orgID, userID uuid.UUID) ([]uuid.UUID, error)
+
+	// DeveloperBlock returns the operator's block on this workspace or person,
+	// or nil when they may register and publish apps.
+	DeveloperBlock(ctx context.Context, orgID, userID uuid.UUID) (*models.OAuthDeveloperBlock, error)
 }
 
 type oauthRepository struct {
@@ -63,7 +69,8 @@ func NewOAuthRepository(db *pgxpool.Pool) OAuthRepository {
 
 const oauthAppCols = `id, organization_id, created_by, name, description, logo_url, website_url,
 	client_id, client_secret_hash, redirect_uris, allowed_webhook_domains,
-	webhook_url, webhook_events, webhook_secret, scopes, status, is_public, dynamically_registered, created_at, updated_at`
+	webhook_url, webhook_events, webhook_secret, scopes, status, is_public, dynamically_registered,
+	suspended_at, suspended_reason, created_at, updated_at`
 
 // nullableUUID renders uuid.Nil as SQL NULL, so a dynamically-registered client
 // (which has no owning org/user) writes NULL into the nullable FK columns rather
@@ -82,7 +89,8 @@ func scanOAuthApp(row pgx.Row, a *models.OAuthApplication) error {
 	var orgID, createdBy *uuid.UUID
 	if err := row.Scan(&a.ID, &orgID, &createdBy, &a.Name, &a.Description, &a.LogoURL, &a.WebsiteURL,
 		&a.ClientID, &a.ClientSecretHash, &a.RedirectURIs, &a.AllowedWebhookDomains,
-		&a.WebhookURL, &a.WebhookEvents, &a.WebhookSecret, &scopes, &status, &a.IsPublic, &a.DynamicallyRegistered, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		&a.WebhookURL, &a.WebhookEvents, &a.WebhookSecret, &scopes, &status, &a.IsPublic, &a.DynamicallyRegistered,
+		&a.SuspendedAt, &a.SuspendedReason, &a.CreatedAt, &a.UpdatedAt); err != nil {
 		return err
 	}
 	if orgID != nil {
@@ -326,9 +334,13 @@ func (r *oauthRepository) CreateAccessGrant(ctx context.Context, g *models.OAuth
 const grantHolderIsMember = ` AND EXISTS (SELECT 1 FROM organization_members m
 	WHERE m.organization_id = oauth_access_grants.organization_id AND m.user_id = oauth_access_grants.user_id)`
 
+// A token works only while its app is enabled by its owner and not suspended.
+const grantAppIsUsable = ` AND EXISTS (SELECT 1 FROM oauth_applications a
+	WHERE a.id = oauth_access_grants.application_id AND a.status = 'active' AND a.suspended_at IS NULL)`
+
 func (r *oauthRepository) GetGrantByAccessTokenHash(ctx context.Context, hash string) (*models.OAuthAccessGrant, error) {
 	var g models.OAuthAccessGrant
-	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE access_token_hash = $1`+grantHolderIsMember, hash)
+	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE access_token_hash = $1`+grantHolderIsMember+grantAppIsUsable, hash)
 	if err := scanOAuthGrant(row, &g); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -340,7 +352,7 @@ func (r *oauthRepository) GetGrantByAccessTokenHash(ctx context.Context, hash st
 
 func (r *oauthRepository) GetGrantByRefreshTokenHash(ctx context.Context, hash string) (*models.OAuthAccessGrant, error) {
 	var g models.OAuthAccessGrant
-	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE refresh_token_hash = $1`+grantHolderIsMember, hash)
+	row := r.db.QueryRow(ctx, `SELECT `+oauthGrantCols+` FROM oauth_access_grants WHERE refresh_token_hash = $1`+grantHolderIsMember+grantAppIsUsable, hash)
 	if err := scanOAuthGrant(row, &g); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -433,4 +445,30 @@ func (r *oauthRepository) RevokeAuthorization(ctx context.Context, orgID, userID
 		UPDATE oauth_access_grants SET revoked_at=now()
 		WHERE organization_id=$1 AND user_id=$2 AND application_id=$3 AND revoked_at IS NULL`, orgID, userID, appID)
 	return err
+}
+
+func (r *oauthRepository) DeveloperBlock(ctx context.Context, orgID, userID uuid.UUID) (*models.OAuthDeveloperBlock, error) {
+	var b models.OAuthDeveloperBlock
+	err := r.db.QueryRow(ctx, `
+		SELECT id, organization_id, user_id, reason, created_at FROM oauth_developer_blocks
+		WHERE organization_id = $1 OR (user_id = $2 AND $2 <> '00000000-0000-0000-0000-000000000000'::uuid)
+		ORDER BY organization_id NULLS LAST LIMIT 1`, orgID, userID).Scan(&b.ID, &b.OrganizationID, &b.UserID, &b.Reason, &b.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+func (r *oauthRepository) UpdateApplicationLogo(ctx context.Context, orgID, id uuid.UUID, logoURL string) error {
+	tag, err := r.db.Exec(ctx, `UPDATE oauth_applications SET logo_url = $3, updated_at = now() WHERE organization_id = $1 AND id = $2`, orgID, id, logoURL)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }

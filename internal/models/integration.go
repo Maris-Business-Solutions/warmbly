@@ -179,6 +179,10 @@ type IntegrationCatalogEntry struct {
 	// for this provider. OAuth providers without credentials render as
 	// "coming soon" instead of a dead Connect button.
 	Configured bool `json:"configured"`
+
+	// Rank is the provider's popularity on this instance, 1 being the most
+	// used: workspaces with a live connection, ties broken by catalog order.
+	Rank int `json:"rank"`
 }
 
 // IntegrationConnection is one org's link to one provider. Secrets

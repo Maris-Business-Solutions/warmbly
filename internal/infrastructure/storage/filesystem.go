@@ -125,7 +125,12 @@ func (s *FilesystemStore) PutPublic(ctx context.Context, key string, body io.Rea
 	if err := s.Put(ctx, key, body, contentType); err != nil {
 		return "", err
 	}
-	return s.publicBaseURL + "/" + key, nil
+	return s.PublicURL(key), nil
+}
+
+// PublicURL is the URL PutPublic returns for key, without writing anything.
+func (s *FilesystemStore) PublicURL(key string) string {
+	return s.publicBaseURL + "/" + key
 }
 
 func (s *FilesystemStore) Delete(_ context.Context, key string) error {

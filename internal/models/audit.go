@@ -147,6 +147,13 @@ const (
 	AuditEntityPoolLink  AuditEntityType = "pool_link"
 	AuditEntityCloudLink AuditEntityType = "cloud_link"
 
+	// Community directory listing of one of the workspace's OAuth apps.
+	AuditEntityAppListing AuditEntityType = "app_listing"
+
+	// Operator moderation of an OAuth app, and a block on who may register them.
+	AuditEntityOAuthApplication    AuditEntityType = "oauth_application"
+	AuditEntityOAuthDeveloperBlock AuditEntityType = "oauth_developer_block"
+
 	// Inbox placement: a test or batch started or cancelled, and a campaign's
 	// scheduled test set up, changed or removed.
 	AuditEntityPlacementTest    AuditEntityType = "placement_test"

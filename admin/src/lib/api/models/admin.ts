@@ -1141,3 +1141,103 @@ export type UpdateDiscountCodeRequest = Partial<
     starts_at?: string | null;
     expires_at?: string | null;
 };
+
+// Community app directory (/admin/app-listings). published = link only (listed
+// once enough workspaces use it), featured = picked by us, hidden = taken down.
+export type AppListingStatus = "published" | "featured" | "hidden";
+
+export interface AdminAppListing {
+    application_id: string;
+    organization_id: string;
+    slug: string;
+    tagline: string;
+    description: string;
+    category: string;
+    install_url: string;
+    support_url: string;
+    privacy_url: string;
+    status: AppListingStatus;
+    status_note?: string;
+    status_at?: string | null;
+    submitted_at: string;
+    created_at: string;
+    updated_at: string;
+    name: string;
+    logo_url: string;
+    website_url: string;
+    scopes: number;
+    permissions: { name: string; value: number; description: string; category: string }[];
+    app_status: string;
+    organization_name: string;
+    installs: number;
+    /** Shown in the directory: featured, or used by enough workspaces. */
+    listed: boolean;
+    status_by?: string | null;
+    status_by_email?: string;
+}
+
+export interface AdminAppListingsResult {
+    data: AdminAppListing[];
+    pagination: {
+        total?: number | null;
+        next_cursor?: string | null;
+        has_more: boolean;
+    };
+}
+
+export interface AdminAppListingSearch {
+    q?: string;
+    status?: AppListingStatus | "";
+    limit?: number;
+    cursor?: string;
+}
+
+// OAuth app moderation (/admin/oauth-apps) and developer blocks.
+export interface AdminOAuthApp {
+    id: string;
+    organization_id: string;
+    organization_name: string;
+    created_by: string;
+    created_by_email: string;
+    name: string;
+    description: string;
+    logo_url: string;
+    website_url: string;
+    client_id: string;
+    redirect_uris: string[];
+    webhook_url: string;
+    permissions: { name: string; value: number; description: string; category: string }[];
+    status: "active" | "disabled";
+    is_public: boolean;
+    suspended_at?: string | null;
+    suspended_reason?: string;
+    installs: number;
+    listing_slug?: string;
+    listing_status?: AppListingStatus | "";
+    org_blocked: boolean;
+    creator_blocked: boolean;
+    created_at: string;
+}
+
+export interface AdminOAuthAppsResult {
+    data: AdminOAuthApp[];
+    pagination: { total?: number | null; next_cursor?: string | null; has_more: boolean };
+}
+
+export interface AdminOAuthAppSearch {
+    q?: string;
+    status?: "active" | "disabled" | "suspended" | "";
+    limit?: number;
+    cursor?: string;
+}
+
+export interface OAuthDeveloperBlock {
+    id: string;
+    organization_id?: string | null;
+    organization_name?: string;
+    user_id?: string | null;
+    user_email?: string;
+    reason: string;
+    blocked_by_email?: string;
+    created_at: string;
+}

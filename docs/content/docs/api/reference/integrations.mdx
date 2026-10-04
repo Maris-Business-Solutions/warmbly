@@ -36,12 +36,71 @@ A `catalog` array of provider entries.
       "events": ["email.replied", "meeting.booked"],
       "action_types": ["hubspot.upsert_contact"],
       "supports_push": true,
-      "configured": true
+      "configured": true,
+      "rank": 1
     }
     // ... one entry per provider
   ]
 }
 ```
+
+`rank` is the provider's popularity on this instance, `1` being the most used: the number of workspaces with a live connection, ties broken by a curated order so a new instance still has one. The array keeps catalog order; sort by `rank` to show the most used first.
+
+## List community apps
+
+`GET /integrations/community`
+
+Returns the [community directory](/guides/integrations/#community-apps) listings shown in discovery: featured apps first, then published apps installed in at least 25 workspaces other than the publisher's, each at least two weeks old, most installed first. A link-only app is never returned here.
+
+Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
+
+| Parameter | In | Type | Description |
+| --- | --- | --- | --- |
+| `limit` | query | integer | Between 1 and 200, defaults to 100. Out-of-range values return `400`. |
+| `cursor` | query | string | Opaque cursor from `pagination.next_cursor`. A cursor this API did not issue returns `400`. |
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "application_id": "5a8f0c1e-2b3d-4e5f-8a9b-0c1d2e3f4a5b",
+      "slug": "acme-sync",
+      "name": "Acme Sync",
+      "tagline": "Push positive replies into Acme as deals",
+      "description": "",
+      "category": "crm",
+      "logo_url": "",
+      "website_url": "https://acme.com",
+      "install_url": "https://acme.com/warmbly/install",
+      "support_url": "https://acme.com/support",
+      "privacy_url": "",
+      "developer": "Acme Inc",
+      "scopes": 1,
+      "permissions": [
+        { "name": "READ_EMAILS", "value": 1, "description": "View email accounts and settings", "category": "read" }
+      ],
+      "status": "featured",
+      "listed": true,
+      "installs": 12,
+      "installed": false,
+      "published_at": "2026-10-03T09:00:00Z"
+    }
+  ],
+  "pagination": { "total": 1, "next_cursor": null, "has_more": false }
+}
+```
+
+`status` is `featured` or `published`, and `listed` says whether it shows in discovery. `developer` is the publishing workspace's name. `installs` counts workspaces on this instance with an active grant, and `installed` says whether anyone in the caller's workspace has one. No credential, redirect URI or webhook setting is ever included.
+
+## Get a community app
+
+`GET /integrations/community/{slug}`
+
+Returns one listing by its slug, listed or link only, in the same shape as a list item. This is how a shared link resolves. A hidden or unpublished listing, or one whose app is disabled, returns `404`.
+
+Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
 
 ## List connections
 
@@ -567,7 +626,7 @@ Creating an import is not deduplicated by request: a retried create saves a seco
 
 `GET /integrations/bookings`
 
-Returns up to 50 recent booked meetings, surfaced on the integrations page. For the full Meetings page list with filters and pagination, use `GET /meetings`.
+Returns up to 50 recent booked meetings. For the full Meetings page list with filters and pagination, use `GET /meetings`.
 
 Auth: **Scope** `INTEGRATIONS` (or session with **Org permission** `manage_settings` or `use_integrations`).
 
