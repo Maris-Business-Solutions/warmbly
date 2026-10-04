@@ -214,10 +214,12 @@ var Tables = []Table{
 		// instance; an archive must not add mailboxes to another instance's
 		// seed panel.
 		// avatar_checked_at is this instance's photo sweep checkpoint; the photo travels.
+		// A tracking host is verified per instance and per workspace, so the
+		// destination's own sweep verifies it again.
 		ResetOnImport: []string{
 			"worker_id", "auth_checked_at", "auth_failing_since", "cold_ramp_started_at",
 			"send_lifecycle", "send_lifecycle_since", "send_lifecycle_reason", "seed_scope",
-			"avatar_checked_at",
+			"avatar_checked_at", "tracking_domain_verified", "tracking_domain_verified_at",
 		},
 		Blobs: []BlobColumn{{Column: "avatar_url", Kind: BlobKindPublicURL}},
 	},
@@ -379,6 +381,8 @@ var Tables = []Table{
 	{
 		Name: "campaigns", Group: models.OrgDataGroupCampaigns,
 		Scope: scopeOrg,
+		// The tracking override is verified again on the destination.
+		ResetOnImport: []string{"tracking_domain_verified", "tracking_domain_verified_at"},
 	},
 	{
 		// A contacts-group table, but it sits here because campaign_id points at

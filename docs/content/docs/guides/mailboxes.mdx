@@ -315,6 +315,8 @@ Verification resolves the record live and reports what it finds:
 
 A provider that flattens `CNAME` records (ALIAS records, apex flattening, proxied records) still verifies: Warmbly compares the addresses when there is no `CNAME` to read.
 
+A tracking domain belongs to one workspace on an instance. Once a workspace has verified it, on a mailbox or as a campaign's override, no other workspace on the same instance can save or verify it (`409 tracking_domain_taken`). The workspace's own mailboxes and campaigns can all share it.
+
 Press **Check again** any time to re-resolve without changing the value. Warmbly also re-checks every custom tracking domain on its own, hourly, so a record that finishes propagating after you saved starts being used without you doing anything, and one that later stops pointing at the tracking host stops being used instead of quietly breaking every link.
 
 Until it verifies, tracking falls back to the shared host, so an unverified domain never breaks sending: links keep working, they just are not on your name yet. Links already sent keep working after a change; new sends pick up the new domain.

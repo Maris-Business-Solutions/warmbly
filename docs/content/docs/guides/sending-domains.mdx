@@ -168,7 +168,7 @@ The vendor's domain list is read with the workspace's own API key, only for conn
 
 ## What travels in an export
 
-Redirects travel in a [workspace export](/guides/workspace-export-import/). They arrive unverified and are served once the destination's own check sees both records. One Warmbly Cloud served for the source arrives served by the destination itself. The ownership value belongs to the workspace on the instance that issued it, so the destination lists its own value: publish that value in the `TXT` record, and point the root at the destination. A tracking host is part of each mailbox's settings and travels with the mailbox. Forwarding set through a vendor lives at the vendor and is unaffected by a move.
+Redirects travel in a [workspace export](/guides/workspace-export-import/). They arrive unverified and are served once the destination's own check sees both records. One Warmbly Cloud served for the source arrives served by the destination itself. The ownership value belongs to the workspace on the instance that issued it, so the destination lists its own value: publish that value in the `TXT` record, and point the root at the destination. A tracking host is part of each mailbox's settings and travels with the mailbox; it arrives unverified, and the destination's hourly check verifies it once the `CNAME` points at the destination. Forwarding set through a vendor lives at the vendor and is unaffected by a move.
 
 ## Related guides
 
