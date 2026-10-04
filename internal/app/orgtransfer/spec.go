@@ -51,6 +51,8 @@ type SecretColumn struct {
 	// column to hold ciphertext. email_tasks predates unconditional sealing,
 	// so its rows carry a flag rather than a format that can be sniffed.
 	Guard string
+	// PlaintextPrefix marks a value still stored in the clear from before sealing; it travels as is.
+	PlaintextPrefix string
 }
 
 // Table is one exported relation and the policy for moving it.
@@ -275,7 +277,7 @@ var Tables = []Table{
 		ResetOnImport: []string{"suspended_at", "suspended_reason", "suspended_by"},
 		// The app's webhook signing secret is sealed under the instance key, like each endpoint's copy.
 		Secrets: []SecretColumn{
-			{Column: "webhook_secret", Domain: KeyDomainInstance},
+			{Column: "webhook_secret", Domain: KeyDomainInstance, PlaintextPrefix: "whsec_"},
 		},
 	},
 	{
@@ -295,7 +297,7 @@ var Tables = []Table{
 		// re-sealed on the way across or the destination hands the receiver
 		// signatures computed from ciphertext it could not read.
 		Secrets: []SecretColumn{
-			{Column: "secret", Domain: KeyDomainInstance},
+			{Column: "secret", Domain: KeyDomainInstance, PlaintextPrefix: "whsec_"},
 		},
 	},
 	{
