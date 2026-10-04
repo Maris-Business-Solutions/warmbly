@@ -498,7 +498,7 @@ Add a variant to the campaign (or to one step via `step_id`). **Scope** `WRITE_C
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `name` | string | yes | Variant label. |
-| `step_id` | uuid | no | Step to scope the variant to, omit for campaign-level. |
+| `step_id` | uuid | no | Step to scope the variant to, omit for campaign-level. Must be a step of this campaign, or the request answers `400`. |
 | `weight` | integer | no | Relative selection weight (1-100). Shares are these weights normalized across the active arms, so two arms at equal weight split evenly. |
 | `subject` | string | no | Variant subject template. Blank reuses the step's. Ignored when the step replies in the contact's thread (`thread_reply`), which carries the conversation's subject. When the step opens a conversation, the follow-ups threading on it reply under the subject of whichever arm each contact was sent. |
 | `body_html` | string | no | Variant HTML body. |
