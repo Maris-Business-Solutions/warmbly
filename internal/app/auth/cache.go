@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,12 +17,6 @@ import (
 // Login and registration keep separate send budgets, so registering an address cannot spend its login budget.
 func getEmailVerificationKey(flow, email string) string {
 	return "email_verification:" + flow + ":" + crypt.SHA256(email)
-}
-
-// getKnownDeviceKey remembers a device that has already completed a full login,
-// so AUTH_LOGIN_CODE=new_device only challenges genuinely new ones.
-func getKnownDeviceKey(userID uuid.UUID, fingerprint string) string {
-	return "known_device:" + userID.String() + ":" + fingerprint
 }
 
 func getPasswordResetLimitKey(email string) string {
@@ -224,38 +217,6 @@ func (s *authService) getResetPasswordSession(ctx context.Context, sessionID uui
 	}
 
 	return val, nil
-}
-
-// rememberDevice marks this device as having completed a full login, so
-// AUTH_LOGIN_CODE=new_device stops challenging it.
-func (s *authService) rememberDevice(ctx context.Context, userID uuid.UUID, userAgent string) {
-	fp := deviceFingerprint(userAgent)
-	if fp == "" {
-		return
-	}
-	_ = s.cache.SetEx(ctx, getKnownDeviceKey(userID, fp), "1", KnownDeviceTTL).Err()
-}
-
-// isKnownDevice reports whether this device has completed a login inside the
-// retention window.
-func (s *authService) isKnownDevice(ctx context.Context, userID uuid.UUID, userAgent string) bool {
-	fp := deviceFingerprint(userAgent)
-	if fp == "" {
-		return false
-	}
-	n, err := s.cache.Exists(ctx, getKnownDeviceKey(userID, fp)).Result()
-	return err == nil && n > 0
-}
-
-// deviceFingerprint is deliberately weak: a user agent is trivially spoofable,
-// so this is a convenience signal for skipping a code on a device the user has
-// already used, never an authentication factor. An empty agent yields no
-// fingerprint, which fails closed into "new device".
-func deviceFingerprint(userAgent string) string {
-	if strings.TrimSpace(userAgent) == "" {
-		return ""
-	}
-	return crypt.SHA256(userAgent)
 }
 
 func (s *authService) deletePasswordResetSession(ctx context.Context, sessionID uuid.UUID) *errx.Error {

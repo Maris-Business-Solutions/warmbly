@@ -55,7 +55,7 @@ func (s *authService) LoginStart(ctx context.Context, data *AuthData, ipaddr, us
 	// Assessed once here: the verdict that decides the challenge is the same
 	// one recorded when the sign-in completes.
 	verdict := s.assessLogin(ctx, uid, ipaddr)
-	if !s.loginCodeRequired(ctx, uid, userAgent, verdict) {
+	if !s.loginCodeRequired(ctx, uid, data.DeviceToken, verdict) {
 		result, ferr := s.finishLoginWith(ctx, uid, ipaddr, userAgent, &verdict)
 		if ferr != nil {
 			return nil, ferr
@@ -131,7 +131,7 @@ func (s *authService) LoginStart(ctx context.Context, data *AuthData, ipaddr, us
 
 // loginCodeRequired applies AUTH_LOGIN_CODE. A transport that cannot deliver
 // never demands a code, because there would be no way to complete the login.
-func (s *authService) loginCodeRequired(ctx context.Context, userID uuid.UUID, userAgent string, verdict authrisk.Verdict) bool {
+func (s *authService) loginCodeRequired(ctx context.Context, userID uuid.UUID, deviceToken string, verdict authrisk.Verdict) bool {
 	if !s.mailDelivers {
 		return false
 	}
@@ -152,9 +152,9 @@ func (s *authService) loginCodeRequired(ctx context.Context, userID uuid.UUID, u
 		// without mail. Anomalies are still recorded for review.
 		return false
 	case config.LoginCodeNewDevice:
-		// A familiar browser in an impossible place is exactly the case the
-		// device fingerprint cannot catch: the attacker has the cookie.
-		return !s.isKnownDevice(ctx, userID, userAgent) || verdict.Flagged
+		// A trusted browser in an impossible place is exactly the case the
+		// device token cannot catch: the attacker has the token.
+		return !s.isTrustedDevice(ctx, userID, deviceToken) || verdict.Flagged
 	default:
 		return true
 	}
@@ -197,7 +197,16 @@ func (s *authService) LoginConfirm(ctx context.Context, data *ConfirmData, sessi
 		return nil, errx.ErrSession
 	}
 
-	return s.finishLoginWith(ctx, atoken.UserID, ipaddr, userAgent, challengeVerdict(sess))
+	result, ferr := s.finishLoginWith(ctx, atoken.UserID, ipaddr, userAgent, challengeVerdict(sess))
+	if ferr != nil {
+		return nil, ferr
+	}
+	// Issued once the code is proved, even ahead of a TOTP step: the token
+	// stands in for this emailed code and never for the second factor.
+	if data.RememberDevice {
+		result.DeviceToken = s.trustDevice(ctx, atoken.UserID)
+	}
+	return result, nil
 }
 
 // challengeVerdict recovers the verdict that issued this challenge rather than
@@ -284,8 +293,6 @@ func (s *authService) completeLogin(ctx context.Context, userID uuid.UUID, ipadd
 	if err != nil {
 		return nil, err
 	}
-
-	s.rememberDevice(ctx, userID, userAgent)
 
 	return &models.LoginResult{Token: newToken}, nil
 }

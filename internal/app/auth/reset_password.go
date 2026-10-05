@@ -187,6 +187,7 @@ func (s *authService) ResetPasswordConfirm(ctx context.Context, data *ResetPassw
 	if err := s.deletePasswordResetSession(ctx, sess.SessionID); err != nil {
 		return err
 	}
+	s.ForgetTrustedDevices(ctx, sess.UserID)
 
 	// Proving control of the mailbox clears any lockout that wrong passwords
 	// accumulated, so a person who was locked out is not still locked out after
@@ -270,6 +271,7 @@ func (s *authService) ChangePassword(ctx context.Context, userID uuid.UUID, curr
 	if err := s.authRepository.ResetPassword(ctx, userID, newHash); err != nil {
 		return nil, err
 	}
+	s.ForgetTrustedDevices(ctx, userID)
 
 	if s.tokenService == nil {
 		return nil, nil

@@ -132,6 +132,9 @@ func (h *Handler) LogoutAll(c *gin.Context) {
 		errx.Handle(c, err)
 		return
 	}
+	if uid, err := middleware.GetUserUUID(c); err == nil {
+		h.AuthService.ForgetTrustedDevices(c.Request.Context(), uid)
+	}
 
 	c.Status(http.StatusNoContent)
 }

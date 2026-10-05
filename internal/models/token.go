@@ -22,6 +22,10 @@ type LoginResult struct {
 	PendingToken  string `json:"pending_token,omitempty"`
 	ExpiresIn     int    `json:"expires_in,omitempty"`
 
+	// DeviceToken is set when a confirmed login code asked to remember the
+	// browser. The client sends it back with the next password sign-in.
+	DeviceToken string `json:"device_token,omitempty"`
+
 	// LinkRequired: a federated sign-in on an existing password account, which
 	// links and signs in only once that password reaches POST /auth/sso/link.
 	LinkRequired bool   `json:"link_required,omitempty"`

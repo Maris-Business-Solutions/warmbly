@@ -79,6 +79,11 @@ export function TurnstileModal({ visible, onToken }: Props) {
         // out of the layout unless a human actually has to do something.
         execution: "execute" as const,
         appearance: "interaction-only" as const,
+        // The auth screens are light-only: "auto" followed the OS and drew a
+        // black widget on a white card.
+        theme: "light" as const,
+        size: "flexible" as const,
+        className: "w-full",
     };
     return <Turnstile {...(turnstileProps as unknown as React.ComponentProps<typeof Turnstile>)} />;
 }
