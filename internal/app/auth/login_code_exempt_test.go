@@ -38,7 +38,7 @@ func TestExemptAccountSkipsTheLoginCode(t *testing.T) {
 	for _, mode := range []string{config.LoginCodeNewDevice, config.LoginCodeAlways} {
 		t.Run(mode, func(t *testing.T) {
 			s := svc(exemptUsers{exempt: true}, mode)
-			if s.loginCodeRequired(context.Background(), uuid.New(), "curl/8", authrisk.Verdict{}) {
+			if s.loginCodeRequired(context.Background(), uuid.New(), "", authrisk.Verdict{}) {
 				t.Errorf("an exempt account must not be asked for a code under %q", mode)
 			}
 		})
@@ -49,7 +49,7 @@ func TestExemptAccountSkipsTheLoginCode(t *testing.T) {
 // so the exemption is checked before the policy rather than inside it.
 func TestNonExemptAccountStillGetsTheCode(t *testing.T) {
 	s := svc(exemptUsers{exempt: false}, config.LoginCodeAlways)
-	if !s.loginCodeRequired(context.Background(), uuid.New(), "curl/8", authrisk.Verdict{}) {
+	if !s.loginCodeRequired(context.Background(), uuid.New(), "", authrisk.Verdict{}) {
 		t.Error("a normal account must still be asked for a code")
 	}
 }
@@ -58,7 +58,7 @@ func TestNonExemptAccountStillGetsTheCode(t *testing.T) {
 // turn one bad query into a silent, instance-wide removal of the check.
 func TestReadFailureIsNotAnExemption(t *testing.T) {
 	s := svc(exemptUsers{exempt: true, err: errors.New("db is down")}, config.LoginCodeAlways)
-	if !s.loginCodeRequired(context.Background(), uuid.New(), "curl/8", authrisk.Verdict{}) {
+	if !s.loginCodeRequired(context.Background(), uuid.New(), "", authrisk.Verdict{}) {
 		t.Error("a failed lookup must still demand the code")
 	}
 }
@@ -69,7 +69,7 @@ func TestReadFailureIsNotAnExemption(t *testing.T) {
 func TestUndeliverableMailStillShortCircuits(t *testing.T) {
 	s := svc(exemptUsers{exempt: false}, config.LoginCodeAlways)
 	s.mailDelivers = false
-	if s.loginCodeRequired(context.Background(), uuid.New(), "curl/8", authrisk.Verdict{}) {
+	if s.loginCodeRequired(context.Background(), uuid.New(), "", authrisk.Verdict{}) {
 		t.Error("a deployment that cannot send mail must never demand a code")
 	}
 }

@@ -35,6 +35,7 @@ import { hrefTarget } from "@/lib/routerSearch";
 import { captureException } from "@/lib/observability";
 import { isEmpty, readAcquisition } from "@/lib/acquisition";
 import type Token from "@/lib/api/models/auth/Token";
+import { getTrustedDevice, setTrustedDevice, forgetTrustedDevice } from "@/lib/trustedDevice";
 import {
     beginPasskeyLogin,
     passkeyChallengeUnavailable,
@@ -555,7 +556,12 @@ export default function LoginPage() {
         setPassword(data.password);
         withCaptcha(async (token) => {
             try {
-                const res = await loginMutation.mutateAsync({ email, password: data.password, turnstile: token });
+                const res = await loginMutation.mutateAsync({
+                    email,
+                    password: data.password,
+                    turnstile: token,
+                    device_token: getTrustedDevice(email),
+                });
                 // A deployment with the login code turned off, or a device this
                 // account has used before, completes here: there is nothing to
                 // confirm and nothing was emailed.
@@ -615,12 +621,17 @@ export default function LoginPage() {
     };
 
     /* ── Step 3: OTP ─────────────────────── */
-    const handleVerify = (code: string) => {
-        if (code.length !== 6) return;
-        withCaptcha(async (token) => {
+    // No captcha here: sign-in already spent one, and the signed, single-use
+    // session it issued is the proof. A Turnstile token is single use, so the
+    // old second challenge could only make people solve it twice.
+    const handleVerify = (code: string, rememberDevice: boolean) => {
+        if (code.length !== 6 || pending) return;
+        void (async () => {
             try {
                 if (mode === "signin") {
-                    const res = await loginConfirmMutation.mutateAsync({ session, code, turnstile: token });
+                    const res = await loginConfirmMutation.mutateAsync({ session, code, remember_device: rememberDevice });
+                    if (res.device_token) setTrustedDevice(email, res.device_token);
+                    else if (!rememberDevice) forgetTrustedDevice(email);
                     // 2FA gate: instead of a session we got a single-use pending
                     // token — collect the TOTP/recovery code in a dedicated step.
                     if (res.two_fa_required) {
@@ -644,7 +655,7 @@ export default function LoginPage() {
                     // shell never mounts without identity (no infinite loader).
                     await completeSession(res as unknown as Token);
                 } else {
-                    const created = await registerConfirmMutation.mutateAsync({ session, code, turnstile: token });
+                    const created = await registerConfirmMutation.mutateAsync({ session, code });
                     if (created?.token) {
                         toast.success("Welcome to Warmbly!");
                         await completeSession(created.token);
@@ -657,7 +668,7 @@ export default function LoginPage() {
             } catch (e) {
                 toast.error(buildError(e as AppError));
             }
-        });
+        })();
     };
 
     /* ── Step 4: 2FA (TOTP / recovery) ───── */
@@ -730,6 +741,30 @@ export default function LoginPage() {
         });
     }, [mode, email, password, inviteToken, acquisition, loginMutation, registerMutation, withCaptcha]);
 
+    // Rendered inside the form that needs it, so a challenge that does ask for
+    // interaction sits above the button at the inputs' width instead of
+    // dangling under the card. One step shows at a time, so one widget exists.
+    const captchaWidget = TURNSTILE_KEY && (!authConfigReady || captchaRequired) && !turnstileBypassToken ? (
+        <CaptchaWidget
+            onLoad={(bound) => {
+                turnstileRef.current = bound;
+                if (pendingRef.current) bound.execute();
+            }}
+            onUnmount={() => { turnstileRef.current = null; tokenRef.current = ""; }}
+            onVerify={onTurnstileVerify}
+            onError={onTurnstileError}
+            onExpire={() => { tokenRef.current = ""; turnstileRef.current?.reset(); }}
+            onBeforeInteractive={() => {
+                // A person is now solving a visible challenge; the timeout is
+                // for a widget that never answers, not for them.
+                if (captchaTimeoutRef.current) {
+                    clearTimeout(captchaTimeoutRef.current);
+                    captchaTimeoutRef.current = null;
+                }
+            }}
+        />
+    ) : null;
+
     return (
         <div className="relative">
             {authConfigUnreachable && (
@@ -791,6 +826,7 @@ export default function LoginPage() {
                             onSSO={handleSSO}
                             onBack={() => goTo("email", -1)}
                             onSubmit={handleSignIn}
+                            captcha={captchaWidget}
                         />
                     </MotionWrap>
                 )}
@@ -801,6 +837,7 @@ export default function LoginPage() {
                             pending={pending}
                             onBack={() => goTo("email", -1)}
                             onSubmit={handleSignUp}
+                            captcha={captchaWidget}
                         />
                     </MotionWrap>
                 )}
@@ -813,6 +850,8 @@ export default function LoginPage() {
                             onBack={() => goTo(mode === "signin" ? "signin" : "signup", -1)}
                             onSubmit={handleVerify}
                             onResend={handleResend}
+                            canRemember={mode === "signin" && authConfig.login_code === "new_device"}
+                            captcha={captchaWidget}
                         />
                     </MotionWrap>
                 )}
@@ -848,21 +887,6 @@ export default function LoginPage() {
                 )}
             </AnimatePresence>
 
-            {TURNSTILE_KEY && (!authConfigReady || captchaRequired) && !turnstileBypassToken && (
-                <Turnstile
-                    sitekey={TURNSTILE_KEY}
-                    execution="execute"
-                    onLoad={(_widgetId, bound) => {
-                        turnstileRef.current = bound;
-                        if (pendingRef.current) bound.execute();
-                    }}
-                    onVerify={onTurnstileVerify}
-                    onError={onTurnstileError}
-                    onTimeout={onTurnstileError}
-                    onExpire={() => { tokenRef.current = ""; turnstileRef.current?.reset(); }}
-                    appearance="interaction-only"
-                />
-            )}
         </div>
     );
 }
@@ -881,6 +905,49 @@ function MotionWrap({ children, direction }: { children: React.ReactNode; direct
         >
             {children}
         </motion.div>
+    );
+}
+
+/* ── Captcha ─────────────────────── */
+
+function CaptchaWidget({
+    onLoad,
+    onUnmount,
+    onVerify,
+    onError,
+    onExpire,
+    onBeforeInteractive,
+}: {
+    onLoad: (bound: BoundTurnstileObject) => void;
+    onUnmount: () => void;
+    onVerify: (token: string, bound?: BoundTurnstileObject) => void;
+    onError: (error?: unknown, bound?: BoundTurnstileObject) => void;
+    onExpire: () => void;
+    onBeforeInteractive: () => void;
+}) {
+    // A step change unmounts this widget; a stale handle would execute a
+    // widget Cloudflare has already removed.
+    const unmountRef = useRef(onUnmount);
+    unmountRef.current = onUnmount;
+    useEffect(() => () => unmountRef.current(), []);
+
+    return (
+        <Turnstile
+            sitekey={TURNSTILE_KEY}
+            execution="execute"
+            appearance="interaction-only"
+            // The auth screens are light-only. The default "auto" followed the
+            // OS and drew a black widget on the white card.
+            theme="light"
+            size="flexible"
+            className="w-full empty:hidden"
+            onLoad={(_widgetId, bound) => onLoad(bound)}
+            onVerify={onVerify}
+            onError={onError}
+            onTimeout={onError}
+            onExpire={onExpire}
+            onBeforeInteractive={() => onBeforeInteractive()}
+        />
     );
 }
 
@@ -1171,6 +1238,7 @@ function SignInStep({
     onSSO,
     onBack,
     onSubmit,
+    captcha,
 }: {
     email: string;
     pending: boolean;
@@ -1179,6 +1247,7 @@ function SignInStep({
     onSSO: () => void;
     onBack: () => void;
     onSubmit: (data: z.infer<typeof signInSchema>) => void;
+    captcha: React.ReactNode;
 }) {
     const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof signInSchema>>({
         resolver: zodResolver(signInSchema),
@@ -1210,6 +1279,8 @@ function SignInStep({
                     />
                     <FieldError message={errors.password?.message} />
                 </div>
+
+                {captcha}
 
                 <div className="pt-1">
                     <AuthButton loading={pending}>Sign in</AuthButton>
@@ -1307,11 +1378,13 @@ function SignUpStep({
     pending,
     onBack,
     onSubmit,
+    captcha,
 }: {
     email: string;
     pending: boolean;
     onBack: () => void;
     onSubmit: (data: z.infer<typeof signUpSchema>) => void;
+    captcha: React.ReactNode;
 }) {
     const { register, handleSubmit, watch, setError, formState: { errors } } = useForm<z.infer<typeof signUpSchema>>({
         resolver: zodResolver(signUpSchema),
@@ -1399,6 +1472,8 @@ function SignUpStep({
                 </label>
                 <FieldError message={errors.acceptTerms?.message} />
 
+                {captcha}
+
                 <div className="pt-1">
                     <AuthButton loading={pending}>Create account</AuthButton>
                 </div>
@@ -1416,15 +1491,20 @@ function VerifyStep({
     onBack,
     onSubmit,
     onResend,
+    canRemember,
+    captcha,
 }: {
     email: string;
     pending: boolean;
     mailDelivers: boolean;
     onBack: () => void;
-    onSubmit: (code: string) => void;
+    onSubmit: (code: string, rememberDevice: boolean) => void;
     onResend: () => void;
+    canRemember: boolean;
+    captcha: React.ReactNode;
 }) {
     const [otp, setOtp] = useState("");
+    const [remember, setRemember] = useState(false);
     const { count, expired, reset } = useCountdown(60);
 
     const handleResend = () => {
@@ -1473,6 +1553,30 @@ function VerifyStep({
                     </InputOTP>
                 </div>
 
+                {canRemember && (
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <div className="relative mt-0.5 shrink-0">
+                            <input
+                                type="checkbox"
+                                className="peer sr-only"
+                                checked={remember}
+                                onChange={(e) => setRemember(e.target.checked)}
+                            />
+                            <div className={`size-[18px] rounded-md border-2 transition-all duration-200 flex items-center justify-center peer-focus-visible:ring-4 peer-focus-visible:ring-sky-400/15 ${remember ? "bg-sky-500 border-sky-500" : "border-slate-300 bg-white"}`}>
+                                {remember && (
+                                    <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                            </div>
+                        </div>
+                        <span className="text-[13px] leading-relaxed">
+                            <span className="text-slate-600 font-medium">Remember this device for 30 days</span>
+                            <span className="block text-slate-400">Skip the email code when you sign in here. Don't use on a shared computer.</span>
+                        </span>
+                    </label>
+                )}
+
                 {/* Timer & resend */}
                 <div className="text-center">
                     {expired ? (
@@ -1490,7 +1594,11 @@ function VerifyStep({
                     )}
                 </div>
 
-                <div onClick={() => !pending && onSubmit(otp)}>
+                {/* Only a resend needs a captcha on this step: it starts the
+                    sign-in again. Verifying the code does not. */}
+                {captcha}
+
+                <div onClick={() => !pending && onSubmit(otp, remember)}>
                     <AuthButton loading={pending}>Verify</AuthButton>
                 </div>
             </div>

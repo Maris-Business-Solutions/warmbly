@@ -25,7 +25,9 @@ export default function Turnstile({setToken}: Props) {
             sitekey={TURNSTILE_KEY}
             onVerify={(token: string) => setToken(token)}
             onExpire={() => setToken("")}
-            theme={"light"}
+            theme="light"
+            size="flexible"
+            className="w-full"
         />
     </>
 }

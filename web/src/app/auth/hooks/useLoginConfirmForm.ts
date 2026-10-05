@@ -23,14 +23,13 @@ export function useLoginConfirmForm() {
     const mail = params.get("to") ?? "";
     const session = params.get("session") ?? "";
     const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
-    const [captcha, setCaptcha] = useState(false);
     const [pending, setPending] = useState(false);
 
-    const submit = async (token: string) => {
+    const submit = async () => {
         setPending(true);
         try {
             const r = await toast.promise(
-                loginConfirm.mutateAsync({ session, code: otp.map(v => v || "0").join(""), turnstile: token }),
+                loginConfirm.mutateAsync({ session, code: otp.map(v => v || "0").join("") }),
                 { loading: "Loading...", success: "Successfully authorized.", error: (err: AppError) => buildError(err) }
             );
             saveTokens(Object.fromEntries(Object.entries(r).map(([k, v]) => [k, String(v)])));
@@ -48,8 +47,10 @@ export function useLoginConfirmForm() {
         } finally { setPending(false); }
     };
 
-    const onSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!pending) setCaptcha(true); };
-    const onToken = async (t: string) => { setCaptcha(false); await submit(t); };
+    // No captcha here: the start step already spent one, and the signed,
+    // single-use session it issued is the proof. A Turnstile token is single
+    // use, so asking again only made people solve a second challenge.
+    const onSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!pending) await submit(); };
 
-    return { mail, otp, setOtp, captcha, pending, onSubmit, onToken };
+    return { mail, otp, setOtp, pending, onSubmit };
 }

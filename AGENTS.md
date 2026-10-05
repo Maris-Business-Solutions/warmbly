@@ -211,7 +211,7 @@ Every instance that has not updated yet runs the code an attacker can read here.
 
 - passwords are hashed with **Argon2id** and nothing else. No change may introduce a second scheme, weaken the parameters, or store a password in any reversible form
 - `crypt.CheckPassword` (`internal/pkg/crypt/validation.go`) is the only gate on a new or changed password, and it refuses anything on the embedded NCSC breached list (`internal/pkg/crypt/passwords/breached.txt`). Every path that accepts a password must call it: registration, reset, change, invitation acceptance, and any future one
-- every auth-sensitive entry point is behind CAPTCHA (`internal/pkg/captcha/turnstile.go`): login, registration, password reset, confirmation
+- every auth-sensitive entry point is behind CAPTCHA (`internal/pkg/captcha/turnstile.go`): login, registration, password reset. The login and registration code-confirmation steps take no second captcha: their signed, single-use session from the start step already proves it passed
 - TOTP verification records the step it consumed (`user_totp_settings.last_used_step`) and refuses a replay of it. Any new second factor needs equivalent single-use enforcement
 - **admin routes require a session that verified a second factor.** `middleware.AdminMiddleware` refuses `!session.MFAVerified` with `admin_mfa_required`, and `RequireAdminPermission` then checks the admin bit. Every admin route sits behind both; never add one outside them. The instance-wide Warmbly Cloud link is gated the same way, because it belongs to the instance, not to a workspace
 - an operation that changes who can get in, or moves money or ownership, requires a fresh authentication (`middleware.RequireFreshAuth`, `POST /v1/auth/reauth`). API-key and OAuth callers pass through, because they present a credential on every call and have no session to refresh
@@ -743,8 +743,9 @@ Authentication flows use Cloudflare Turnstile:
 
 - login
 - registration
-- password reset
-- confirmation flows
+- password reset and its confirmation
+
+Login and registration code confirmation are covered by the captcha on the start step: the signed, single-use session it issues is what the confirm step accepts.
 
 The Turnstile verifier also checks:
 

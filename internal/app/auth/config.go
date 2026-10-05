@@ -26,9 +26,10 @@ const (
 	PasswordResetLimit    = 2
 	PasswordResetLimitTTL = 4 * time.Hour
 
-	// KnownDeviceTTL is how long a device stays exempt from the login code
-	// under AUTH_LOGIN_CODE=new_device.
-	KnownDeviceTTL = 90 * 24 * time.Hour
+	// TrustedDeviceTTL is how long a device the user asked to remember stays
+	// exempt from the login code under AUTH_LOGIN_CODE=new_device. Absolute:
+	// signing in again does not extend it.
+	TrustedDeviceTTL = 30 * 24 * time.Hour
 )
 
 // Email send-budget flows. Separate keys so registration traffic cannot exhaust

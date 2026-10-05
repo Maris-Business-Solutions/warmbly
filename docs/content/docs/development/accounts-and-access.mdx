@@ -94,7 +94,11 @@ Older builds returned the invite-only refusal with the text "This server is not 
 
 That default is deliberate. Emailing a code on every sign-in makes the mail relay a single point of failure for all authentication, and it is not a second factor: NIST SP 800-63B states that email is not to be used for out-of-band authentication, and OWASP ASVS says the same. Codes stay in use for what email is appropriate for, which is verifying an address at signup and recovering an account.
 
-Set `new_device` to require one only from a device that has not signed in before, or `always` for the hosted behavior. If the transport does not deliver, `always` is demoted to `new_device` at boot, because otherwise nobody could complete a login at all.
+Set `new_device` to require one only from a device the user has not asked to remember, or `always` to require one on every sign-in. If the transport does not deliver, `always` is demoted to `new_device` at boot, because otherwise nobody could complete a login at all.
+
+### Remembered devices
+
+Under `new_device` the code step offers **Remember this device for 30 days**. Ticking it returns a random 256-bit token that the browser keeps. The server stores only its SHA-256, bound to that account, and the next password sign-in that sends it skips the emailed code. Nothing else changes for that sign-in: the password, the captcha and two-factor authentication still apply, and a sign-in the risk assessment flags (a new country, impossible travel) gets the code anyway. The 30 days are counted from when the box was ticked and are not extended by later sign-ins. Every remembered device is forgotten when the password is reset or changed, and when the user signs out everywhere or signs out their other sessions. `always` ignores remembered devices.
 
 ### Excusing one account
 
