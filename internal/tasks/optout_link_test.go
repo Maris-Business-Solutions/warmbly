@@ -153,7 +153,7 @@ func TestHTMLEmailNeverShowsTheOptOutAddressAsText(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rendered := previewTemplatesWith("Quick question", tc.body, "", models.Contact{}, url)
+			rendered := previewTemplatesWith("Quick question", tc.body, "", models.Contact{}, TemplateContext{UnsubscribeLink: url})
 			bodyHTML, bodyPlain := finishBody(rendered.BodyHTML, rendered.BodyPlain, false, account, &link, url)
 
 			if !strings.Contains(bodyHTML, `href="`+url+`"`) {

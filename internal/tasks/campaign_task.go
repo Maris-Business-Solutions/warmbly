@@ -600,7 +600,7 @@ func (s *tasksService) HandleCampaignTask(task *proto.ProcessTask) (result *errx
 		// in the email rather than naming the platform.
 		unsubscribeURL = s.mintUnsubscribeLink(ctx, resolveOptOutOrigin(account, campaign), orgID, campaign.ID, contact.ID)
 	}
-	extra := map[string]string{UnsubscribeLinkVar: unsubscribeURL}
+	extra := templateContext(account, unsubscribeURL)
 
 	// STEP 10: Render email template with contact variables, then expand any
 	// {a|b|c} spintax per-recipient (only real |-groups; literal braces/CSS are

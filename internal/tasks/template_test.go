@@ -1,12 +1,145 @@
 package tasks
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/warmbly/warmbly/internal/models"
 )
+
+func TestRenderTemplate_Sender(t *testing.T) {
+	stamp := time.Date(2026, 10, 5, 15, 0, 0, 0, time.FixedZone("local", 3600))
+	account := &models.Email{
+		Name: " Tareque M. ", Email: "tareque@example.com", SendAsEmail: "hello@example.com",
+		ReplyTo: "replies@example.com", Provider: "gmail", Timezone: "Europe/Budapest",
+		SignaturePlain: "Best, Tareque", SignatureHTML: "<b>Tareque</b>", SignatureSync: true,
+		CampaignLimit: 25, Tags: []string{"sales", "team"}, CreatedAt: stamp, Warmup: &stamp,
+	}
+	contact := models.Contact{FirstName: "Alex", Email: "alex@example.org", CustomFields: map[string]string{
+		"role": "CTO", "Job Title": "Founder", "Sender": "not the sender", "FirstName": "not Alex",
+	}}
+	context := templateContext(account, "https://example.com/unsubscribe/tok")
+	cases := []struct{ name, template, want string }{
+		{"identity", `Hi {{.FirstName}}, I'm {{.Sender.Name}} <{{.Sender.Email}}>`, "Hi Alex, I'm Tareque M. <hello@example.com>"},
+		{"addresses", `{{.Email}}|{{.Sender.MailboxEmail}}|{{.Sender.SendAsEmail}}|{{.Sender.ReplyTo}}`, "alex@example.org|tareque@example.com|hello@example.com|replies@example.com"},
+		{"contact and link", `{{.role}}|{{.Job Title}}|{{.UnsubscribeLink}}`, "CTO|Founder|https://example.com/unsubscribe/tok"},
+		{"native types", `{{if .Sender.SignatureSync}}{{.Sender.SignaturePlain}}{{end}}|{{if gt .Sender.CampaignLimit 20}}high{{end}}`, "Best, Tareque|high"},
+		{"with and range", `{{with .Sender}}{{.Name}}:{{range .Tags}}{{.}};{{end}}{{end}}`, "Tareque M.:sales;team;"},
+		{"helpers", `{{.Sender.Name | upper}}|{{.Sender.Vendor | default "direct"}}`, "TAREQUE M.|direct"},
+		{"timestamps", `{{.Sender.CreatedAt}}|{{.Sender.Warmup}}|{{.Sender.WarmupPausedAt}}`, "2026-10-05T14:00:00Z|2026-10-05T14:00:00Z|"},
+		{"html", `{{.Sender.SignatureHTML}}`, "<b>Tareque</b>"},
+		{"malformed fallback", `{{if .Company}}Hi {{.FirstName}}, {{.Sender.Name}} at {{.Sender.Email}}`, "{{if .Company}}Hi Alex, Tareque M. at hello@example.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := RenderTemplateWith(tc.template, contact, context); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+	account.Tags[0] = "changed"
+	if context.Sender.Tags[0] != "sales" {
+		t.Fatal("sender tags share the mailbox's mutable slice")
+	}
+}
+
+func TestTemplateSender_EmptyAndEffectiveIdentity(t *testing.T) {
+	if got := RenderTemplate(`{{.Sender.Name}}|{{.Sender.Email}}|{{.Sender.Name | default "our team"}}|{{if .Sender.SignatureSync}}yes{{else}}no{{end}}`, models.Contact{}); got != "||our team|no" {
+		t.Fatalf("empty sender: %q", got)
+	}
+	account := &models.Email{Name: "John S.", Email: "john@example.com", OrgTimezone: "America/New_York"}
+	sender := templateContext(account, "").Sender
+	if sender.Email != "john@example.com" || sender.MailboxEmail != sender.Email || sender.SendAsEmail != "" || sender.ReplyTo != "" || sender.Timezone != "America/New_York" {
+		t.Fatalf("incorrect effective sender: %+v", sender)
+	}
+	account.ReplyTo = "john@example.com"
+	if templateContext(account, "").Sender.ReplyTo != "" {
+		t.Fatal("redundant Reply-To did not match the outbound header")
+	}
+}
+
+func TestAIVarAvailableVarsSkipsReservedSenderNamespace(t *testing.T) {
+	vars := aiVarAvailableVars(&models.Contact{CustomFields: map[string]string{"Sender": "not a mailbox", "UnsubscribeLink": "not a link", "role": "CTO"}})
+	for _, token := range vars {
+		if token == "{{.Sender}}" || token == "{{.UnsubscribeLink}}" {
+			t.Fatalf("AI advertised a reserved contact field: %s", token)
+		}
+	}
+	if !strings.Contains(strings.Join(vars, " "), "{{.role}}") {
+		t.Fatal("valid custom field was excluded")
+	}
+}
+
+func TestTemplateSender_ExcludesInternalFieldsAndMethods(t *testing.T) {
+	typ := reflect.TypeOf(TemplateSender{})
+	for _, field := range []string{"ID", "UserID", "OrganizationID", "WorkerID", "DomainGrantID", "VendorConnectionID", "LastID", "OrgTimezone", "Password", "AccessToken", "RefreshToken"} {
+		if _, ok := typ.FieldByName(field); ok {
+			t.Errorf("unsafe sender field %s", field)
+		}
+	}
+	if typ.NumMethod() != 0 || reflect.PointerTo(typ).NumMethod() != 0 {
+		t.Fatal("sender exposes mailbox methods")
+	}
+	for _, field := range []string{"UserID", "WorkerID", "AccessToken", "SendFrom"} {
+		tmpl := "{{.Sender." + field + "}}"
+		preview := previewTemplatesWith(tmpl, "", "", models.Contact{}, templateContext(&models.Email{UserID: "private"}, ""))
+		if preview.Subject != tmpl || len(preview.Unresolved) != 1 {
+			t.Errorf("unknown sender field %s should remain unresolved: %+v", field, preview)
+		}
+	}
+}
+
+func TestTemplateSender_MapsEveryAllowedMailboxField(t *testing.T) {
+	account := &models.Email{}
+	mailbox := reflect.ValueOf(account).Elem()
+	stamp := time.Date(2026, 10, 5, 15, 0, 0, 0, time.UTC)
+	for i := 0; i < mailbox.NumField(); i++ {
+		field := mailbox.Field(i)
+		switch field.Kind() {
+		case reflect.String:
+			field.SetString(mailbox.Type().Field(i).Name + "-value")
+		case reflect.Bool:
+			field.SetBool(true)
+		case reflect.Int:
+			field.SetInt(37)
+		default:
+			switch field.Type() {
+			case reflect.TypeOf(stamp):
+				field.Set(reflect.ValueOf(stamp))
+			case reflect.TypeOf(&stamp):
+				field.Set(reflect.ValueOf(&stamp))
+			case reflect.TypeOf([]string{}):
+				field.Set(reflect.ValueOf([]string{"sales"}))
+			}
+		}
+	}
+	sender := reflect.ValueOf(templateContext(account, "").Sender)
+	for i := 0; i < sender.NumField(); i++ {
+		name := sender.Type().Field(i).Name
+		mailboxName := name
+		if name == "MailboxEmail" {
+			mailboxName = "Email"
+		}
+		var want any = mailbox.FieldByName(mailboxName).Interface()
+		switch v := want.(type) {
+		case time.Time:
+			want = templateTime(&v)
+		case *time.Time:
+			want = templateTime(v)
+		}
+		if name == "Email" {
+			want = account.SendFrom()
+		}
+		if name == "ReplyTo" {
+			want = account.ReplyToHeader()
+		}
+		if !reflect.DeepEqual(sender.Field(i).Interface(), want) {
+			t.Errorf("Sender.%s = %v, want %v", name, sender.Field(i).Interface(), want)
+		}
+	}
+}
 
 func TestRenderTemplate_RangeOverNumberRefused(t *testing.T) {
 	tmpl := "Hi {{.FirstName}}{{range 100000000000}}x{{end}}"

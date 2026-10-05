@@ -1,6 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { UNSUBSCRIBE_TOKEN, upgradeVariableTokens } from "./templateVars";
-import { linkifyUnsubscribe } from "@/components/app/campaigns/sequences/emailPreview";
+import { EMAIL_VARIABLES, SENDER_VARS, UNSUBSCRIBE_TOKEN, buildToken, parseToken, tokenLabel, upgradeVariableTokens } from "./templateVars";
+import { linkifyUnsubscribe, renderPreview } from "@/components/app/campaigns/sequences/emailPreview";
+
+describe("structured sender fields", () => {
+    it("round-trips every mailbox token as a chip", () => {
+        for (const v of SENDER_VARS) {
+            expect(EMAIL_VARIABLES).toContain(v.token);
+            expect(parseToken(v.token)).toEqual({ key: v.key, fallback: null });
+            expect(buildToken(v.key)).toBe(v.token);
+            expect(tokenLabel(v.token)).toBe(v.label);
+            expect(upgradeVariableTokens(`<p>${v.token}</p>`)).toBe(`<p><span data-var="">${v.token}</span></p>`);
+        }
+    });
+
+    it("retains nested fields when editing their fallback", () => {
+        const token = buildToken("Sender.Name", "our team");
+        expect(parseToken(token)).toEqual({ key: "Sender.Name", fallback: "our team" });
+        expect(upgradeVariableTokens(`<p>${token}</p>`)).toBe(`<p><span data-var="">${token}</span></p>`);
+    });
+
+    it("renders sender samples alongside existing contact variables", () => {
+        expect(renderPreview("{{.FirstName}}: {{.Sender.Name}} <{{.Sender.Email}}>"))
+            .toBe("Alex: Jamie Morgan <jamie@example.com>");
+    });
+
+    it("resolves sender fields and conditions against the provided preview context", () => {
+        const ctx = { "Sender.Name": "John S.", "Sender.Email": "john@example.com" };
+        expect(renderPreview('{{if eq .Sender.Name "John S."}}{{.Sender.Email}}{{else}}wrong{{end}}', ctx))
+            .toBe("john@example.com");
+        expect(renderPreview('{{if .Sender.Name}}{{.Sender.Name}}{{end}}', ctx)).toBe("John S.");
+        expect(renderPreview('{{.Sender.Name | default "our team"}}|{{.Sender.Email}}', {})).toBe("our team|");
+    });
+});
 
 describe("upgradeVariableTokens", () => {
     it("chips a token in text", () => {

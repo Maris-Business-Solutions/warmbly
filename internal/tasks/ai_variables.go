@@ -76,7 +76,7 @@ func aiVarAvailableVars(contact *models.Contact) []string {
 	vars := make([]string, 0, len(generation.StandardMergeVars)+len(contact.CustomFields))
 	vars = append(vars, generation.StandardMergeVars...)
 	seen := make(map[string]bool, len(vars)+len(contact.CustomFields))
-	standard := map[string]bool{"firstname": true, "lastname": true, "email": true, "company": true, "phone": true}
+	standard := map[string]bool{"firstname": true, "lastname": true, "email": true, "company": true, "phone": true, "sender": true, "unsubscribelink": true}
 	for k := range contact.CustomFields {
 		key := strings.TrimSpace(k)
 		if key == "" {
