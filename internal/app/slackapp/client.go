@@ -94,7 +94,9 @@ func (c *Client) do(ctx context.Context, token, method, contentType string, body
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
 		req.Header.Set("Content-Type", contentType)
 		resp, err := c.http.Do(req)
 		if err != nil {
@@ -332,4 +334,25 @@ func (c *Client) AuthTest(ctx context.Context, token string) (*authTest, error) 
 		return nil, err
 	}
 	return &out, nil
+}
+
+// OpenIDToken exchanges a Sign in with Slack authorization code for the
+// signed-in member's OpenID Connect id_token.
+func (c *Client) OpenIDToken(ctx context.Context, clientID, clientSecret, code, redirectURI string) (string, error) {
+	form := url.Values{
+		"client_id":     {clientID},
+		"client_secret": {clientSecret},
+		"code":          {code},
+		"redirect_uri":  {redirectURI},
+	}
+	var out struct {
+		IDToken string `json:"id_token"`
+	}
+	if err := c.callForm(ctx, "", "openid.connect.token", form, &out); err != nil {
+		return "", err
+	}
+	if out.IDToken == "" {
+		return "", &APIError{Method: "openid.connect.token", Code: "no_id_token"}
+	}
+	return out.IDToken, nil
 }

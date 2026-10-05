@@ -172,3 +172,7 @@ func (s *service) SlackOAuthConfigured() bool {
 func (s *service) SlackOAuthRedirectURL() string {
 	return s.oauth.RedirectURL()
 }
+
+func (s *service) SlackOAuthClient() (string, string) {
+	return s.oauth.ClientCredentials(models.IntegrationSlack)
+}

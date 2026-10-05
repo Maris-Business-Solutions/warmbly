@@ -82,7 +82,6 @@ export const dashboardPages = {
     automations: () => import("./app/app/automations/page"),
     automation: () => import("./app/app/automations/[id]/page"),
     audit: () => import("./app/app/audit/page"),
-    slackLink: () => import("./app/app/slack/link/page"),
     unibox: () => import("./app/app/unibox/page"),
     settingsLayout: () => import("./app/app/settings/layout"),
     profile: () => import("./app/app/settings/profile/page"),
@@ -236,6 +235,8 @@ const connectRoute = standalone("connect", () => import("./app/connect/page"), "
 const cliRoute = standalone("cli", () => import("./app/cli/page"), "Authorize CLI");
 // Where Warmbly Cloud sends the Google/Microsoft popup back to on a linked instance.
 const cloudOAuthDoneRoute = standalone("cloud-oauth/done", () => import("./app/cloud-oauth/done/page"), "Mailbox connected");
+// Where the Warmbly app in Slack sends a member to link their account.
+const slackLinkRoute = standalone("slack/link", () => import("./app/slack/link/page"), "Link Slack");
 // First-run claim link printed by the backend on an empty database.
 const setupRoute = standalone("setup", () => import("./app/setup/page"), "Set up Warmbly");
 
@@ -348,8 +349,8 @@ const salesforceRoute = dash(appRoute, "integrations/salesforce/$id", dashboardP
 const automationsRoute = dash(appRoute, "automations", dashboardPages.automations, "Automations", loaders.automationsLoader);
 const automationRoute = dash(appRoute, "automations/$id", dashboardPages.automation, "Automation", loaders.automationLoader);
 const auditRoute = dash(appRoute, "audit", dashboardPages.audit, "Audit log", loaders.auditLoader);
-// Where the Warmbly app in Slack sends a member to link their account.
-const slackLinkRoute = dash(appRoute, "slack/link", dashboardPages.slackLink, "Link Slack");
+// Link buttons sent before the link page moved out of the dashboard.
+const appSlackLinkRoute = forward(appRoute, "slack/link", "/slack/link", true);
 // The breadcrumb above the link page points here.
 const slackRoute = forward(appRoute, "slack", "/app/integrations");
 
@@ -408,6 +409,7 @@ const routeTree = rootRoute.addChildren([
     selectOrgRoute,
     inviteRoute,
     connectRoute,
+    slackLinkRoute,
     cliRoute,
     cloudOAuthDoneRoute,
     setupRoute,
@@ -441,7 +443,7 @@ const routeTree = rootRoute.addChildren([
         automationsRoute,
         automationRoute,
         auditRoute,
-        slackLinkRoute,
+        appSlackLinkRoute,
         slackRoute,
         settingsRoute.addChildren(settingsChildren),
         billingLegacy,

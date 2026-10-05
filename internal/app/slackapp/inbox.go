@@ -58,6 +58,7 @@ type CampaignLookup interface {
 // UserLookup names the member who sent a reply; satisfied by the user repository.
 type UserLookup interface {
 	GetUser(ctx context.Context, id uuid.UUID) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 }
 
 // InboxDeps builds an InboxPoster. Only Integrations and Repo are required.

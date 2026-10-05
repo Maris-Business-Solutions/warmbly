@@ -674,6 +674,7 @@ func Run(
 				slackPanel.PUT("/settings", m.RequireOrganization(), slackWrite, h.UpdateSlackSettings)
 				slackPanel.GET("/link/:code", h.PreviewSlackLink)
 				slackPanel.POST("/link", h.ConfirmSlackLink)
+				slackPanel.POST("/link/verify", h.StartSlackLinkVerify)
 				slackPanel.PATCH("/link", m.RequireOrganization(), h.UpdateMySlackLink)
 				slackPanel.DELETE("/link", m.RequireOrganization(), h.DeleteMySlackLink)
 				slackPanel.DELETE("/links/:id", m.RequireOrganization(), slackWrite, h.RemoveSlackLink)
