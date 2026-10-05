@@ -312,6 +312,11 @@ func (s *Service) handleAsk(ctx context.Context, a *actor, q ask) {
 		return
 	}
 	if a.link == nil {
+		if s.autoLink(ctx, a) {
+			// Routing depends on who the author is, so it runs again.
+			s.handleAsk(ctx, a, q)
+			return
+		}
 		s.promptLink(ctx, a, &q)
 		return
 	}
@@ -349,7 +354,7 @@ func (s *Service) onAssistantThreadStarted(ctx context.Context, env *eventEnvelo
 	if err := s.client.SetSuggestedPrompts(ctx, a.token, at.ChannelID, at.ThreadTS, "Try asking", suggestedPrompts); err != nil {
 		log.Warn().Err(err).Msg("slack: suggested prompts failed")
 	}
-	if a.link == nil {
+	if a.link == nil && !s.autoLink(ctx, a) {
 		s.promptLink(ctx, a, &ask{Channel: at.ChannelID, ThreadTS: at.ThreadTS, DM: true})
 	}
 }

@@ -4,7 +4,7 @@
 // `locked`, and that filter is hidden rather than shown as a choice.
 
 import React from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import {
     ArrowDownWideNarrowIcon,
     CheckIcon,

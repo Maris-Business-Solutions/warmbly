@@ -1,7 +1,8 @@
 // Issue #185: delete and duplicate from the campaigns UI. The list is an
 // infinite query with a 5 minute staleTime, so a deleted campaign has to leave
-// the cached pages immediately and a duplicate has to appear in them, or the
-// page keeps showing the old set until something else refetches it.
+// the cached pages immediately (before the server answers, and back if it
+// refuses) and a duplicate has to appear in them, or the page keeps showing
+// the old set until something else refetches it.
 
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -119,14 +120,40 @@ describe("campaign delete and duplicate keep the campaigns list current", () => 
         );
     });
 
-    it("surfaces a failed delete and leaves the list untouched", async () => {
+    it("takes the row off before the server answers", async () => {
+        let answer: () => void = () => {};
+        deleteCampaign.mockImplementationOnce(
+            (id: string) =>
+                new Promise<void>((resolve) => {
+                    answer = () => {
+                        server = server.filter((c) => c.id !== id);
+                        resolve();
+                    };
+                }),
+        );
+        const list = renderHook(() => useCampaigns({ query: "", folder: "" }), { wrapper: wrapper(client) });
+        await waitFor(() => expect(list.result.current.isSuccess).toBe(true));
+
+        const del = renderHook(() => useDeleteCampaign(), { wrapper: wrapper(client) });
+        const pending = del.result.current.mutateAsync("camp-a");
+        await waitFor(() => expect(cachedIds(client)).toEqual(["camp-b"]));
+        expect(list.result.current.campaigns.map((c) => c.id)).toEqual(["camp-b"]);
+
+        answer();
+        await pending;
+        await waitFor(() => expect(getCampaigns).toHaveBeenCalledTimes(2));
+        expect(cachedIds(client)).toEqual(["camp-b"]);
+    });
+
+    it("surfaces a failed delete and puts the row back", async () => {
         deleteCampaign.mockRejectedValueOnce(new Error("campaign is locked"));
         const list = renderHook(() => useCampaigns({ query: "", folder: "" }), { wrapper: wrapper(client) });
         await waitFor(() => expect(list.result.current.isSuccess).toBe(true));
 
         const del = renderHook(() => useDeleteCampaign(), { wrapper: wrapper(client) });
         await expect(del.result.current.mutateAsync("camp-a")).rejects.toThrow("campaign is locked");
+        // Restored from the snapshot at once, not by the resync refetch.
         expect(cachedIds(client)).toEqual(["camp-a", "camp-b"]);
-        expect(getCampaigns).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(list.result.current.campaigns.map((c) => c.id)).toEqual(["camp-a", "camp-b"]));
     });
 });

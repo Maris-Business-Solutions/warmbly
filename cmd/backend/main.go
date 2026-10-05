@@ -19,7 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconf "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/google/uuid"
-	"github.com/meszmate/apple-go"
 	"github.com/redis/go-redis/v9"
 	"github.com/warmbly/warmbly/internal/api"
 	"github.com/warmbly/warmbly/internal/api/handler"
@@ -51,6 +50,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/creditwatch"
 	"github.com/warmbly/warmbly/internal/app/crm"
+	"github.com/warmbly/warmbly/internal/app/crmmode"
 	"github.com/warmbly/warmbly/internal/app/dailythrottle"
 	"github.com/warmbly/warmbly/internal/app/dangerzone"
 	"github.com/warmbly/warmbly/internal/app/delegation"
@@ -86,6 +86,7 @@ import (
 	orgrisk "github.com/warmbly/warmbly/internal/app/orgrisk"
 	"github.com/warmbly/warmbly/internal/app/orgtransfer"
 	"github.com/warmbly/warmbly/internal/app/passkey"
+	"github.com/warmbly/warmbly/internal/app/pipedrive"
 	"github.com/warmbly/warmbly/internal/app/placement"
 	"github.com/warmbly/warmbly/internal/app/poollink"
 	"github.com/warmbly/warmbly/internal/app/ratelimit"
@@ -140,6 +141,7 @@ import (
 	"github.com/warmbly/warmbly/internal/notify"
 	"github.com/warmbly/warmbly/internal/observability"
 	productanalytics "github.com/warmbly/warmbly/internal/observability/analytics"
+	"github.com/warmbly/warmbly/internal/pkg/appleauth"
 	"github.com/warmbly/warmbly/internal/pkg/captcha"
 	"github.com/warmbly/warmbly/internal/pkg/domainproof"
 	"github.com/warmbly/warmbly/internal/pkg/emailverify"
@@ -187,6 +189,8 @@ func main() {
 	var mailboxImportService *mailboximport.Service
 	var contactImportService *contactimport.Service
 	var hubspotService *hubspot.Service
+	var pipedriveService *pipedrive.Service
+	var crmModes *crmmode.Registry
 	var delegationService *delegation.Service
 	var vendorConnService *vendorconn.Service
 	var sendingDomainService *sendingdomain.Service
@@ -568,9 +572,9 @@ func main() {
 		// Apple Sign in is optional. Skip it entirely when unconfigured (a
 		// self-host without Apple creds); only warn — never fatal — when creds
 		// are present but init fails, so Apple simply stays unavailable.
-		var appleAuthClient apple.AppleAuth
+		var appleAuthClient socialauth.AppleCodeExchanger
 		if authCfg.AppleAppID != "" || authCfg.AppleKeySecret != "" {
-			appleAuthInstance, appleErr := apple.NewB64(
+			appleAuthInstance, appleErr := appleauth.NewFromBase64(
 				authCfg.AppleAppID,
 				authCfg.AppleTeamID,
 				authCfg.AppleKeyID,
@@ -2083,11 +2087,32 @@ func main() {
 			AppURL:       os.Getenv("APP_URL"),
 			ClientSecret: strings.TrimSpace(os.Getenv("HUBSPOT_OAUTH_CLIENT_SECRET")),
 		})
-		crmService.SetExternal(hubspotService)
-		integrationServiceForHandler.SetCRMModeCheck(hubspotService.Active)
+		// Pipedrive as the workspace CRM: the same shape on Pipedrive's records,
+		// plus per-connection webhooks registered when a workspace switches.
+		pipedriveService = pipedrive.New(pipedrive.Deps{
+			Repo:         repository.NewCRMProviderRepository(primaryDB.Pool),
+			CRM:          crmRepository,
+			Tokens:       integrationServiceForHandler,
+			Contacts:     contactRepostory,
+			Holds:        campaignProgressRepository,
+			Suppress:     advancedRepository,
+			Importer:     pipedriveImporter(contactImportService),
+			Leads:        contactService,
+			Realtime:     streamingPublisher,
+			Cache:        cache,
+			AppURL:       os.Getenv("APP_URL"),
+			PublicURL:    config.BackendPublicURL(),
+			ClientSecret: strings.TrimSpace(os.Getenv("PIPEDRIVE_OAUTH_CLIENT_SECRET")),
+		})
+		crmModes = crmmode.New(repository.NewCRMProviderRepository(primaryDB.Pool), integrationServiceForHandler,
+			hubspotService, pipedriveService)
+		crmService.AddExternal(hubspotService)
+		crmService.AddExternal(pipedriveService)
+		integrationServiceForHandler.SetCRMModeCheck(crmModes.Mode)
 		webhookServiceForHandler.WireRecordSink(hubspotService.OnEvent)
+		webhookServiceForHandler.WireRecordSink(pipedriveService.OnEvent)
 		if advancedService != nil {
-			advancedService.WireCRMOutbox(hubspotService)
+			advancedService.WireCRMOutbox(crmModes)
 		}
 		emailVerifyService.SetVerdictHook(func(ctx context.Context, orgID uuid.UUID) {
 			if campaignService != nil {
@@ -2318,6 +2343,8 @@ func main() {
 		// CRM
 		CRMService: crmService,
 		HubSpot:    hubspotService,
+		Pipedrive:  pipedriveService,
+		CRMModes:   crmModes,
 
 		// Teams
 		TeamService: teamService,
@@ -2509,6 +2536,14 @@ func main() {
 // hubspotImporter keeps a missing import service a nil interface rather than
 // a typed nil, so HubSpot list import reports itself unavailable.
 func hubspotImporter(s *contactimport.Service) hubspot.Importer {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+// pipedriveImporter is hubspotImporter for Pipedrive filter import.
+func pipedriveImporter(s *contactimport.Service) pipedrive.Importer {
 	if s == nil {
 		return nil
 	}

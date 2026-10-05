@@ -23,10 +23,14 @@ import (
 
 // Stable error codes the dashboard branches on.
 var (
-	ErrSlackNotConfigured     = errx.NewWithIdentifier(errx.ServiceUnavailable, "slack_not_configured", "Slack is not set up on this Warmbly instance.")
-	ErrSlackNotConnected      = errx.NewWithIdentifier(errx.NotFound, "slack_not_connected", "This workspace has not connected Slack.")
-	ErrSlackLinkInvalid       = errx.NewWithIdentifier(errx.NotFound, "slack_link_invalid", "This link has expired or was already used. Ask Warmbly in Slack for a new one.")
-	ErrSlackLinkEmailMismatch = errx.NewWithIdentifier(errx.Forbidden, "slack_link_email_mismatch", "Your Slack account's email address must be the one you sign in to Warmbly with. Sign in with that address, or ask a Warmbly admin to reconnect Slack if Slack is not sharing your email.")
+	ErrSlackNotConfigured      = errx.NewWithIdentifier(errx.ServiceUnavailable, "slack_not_configured", "Slack is not set up on this Warmbly instance.")
+	ErrSlackNotConnected       = errx.NewWithIdentifier(errx.NotFound, "slack_not_connected", "This workspace has not connected Slack.")
+	ErrSlackLinkInvalid        = errx.NewWithIdentifier(errx.NotFound, "slack_link_invalid", "This link has expired or was already used. Ask Warmbly in Slack for a new one.")
+	ErrSlackLinkEmailMismatch  = errx.NewWithIdentifier(errx.Forbidden, "slack_link_email_mismatch", "This Slack account's email is not the one you sign in to Warmbly with. Continue with Slack to confirm the account is yours.")
+	ErrSlackVerifyUnavailable  = errx.NewWithIdentifier(errx.ServiceUnavailable, "slack_verify_unavailable", "Signing in with Slack is not set up on this Warmbly instance.")
+	ErrSlackVerifyFailed       = errx.NewWithIdentifier(errx.Forbidden, "slack_verify_failed", "Slack could not confirm your account. Try again.")
+	ErrSlackVerifyWrongAccount = errx.NewWithIdentifier(errx.Forbidden, "slack_verify_wrong_account", "You signed in to Slack as a different person than the one this link was made for. Sign in to Slack with that account and try again.")
+	errSlackLinkNotMember      = errx.New(errx.Forbidden, "You are not a member of the Warmbly workspace this link belongs to.")
 )
 
 // Timeouts for work done after Slack has been answered.
@@ -50,6 +54,9 @@ type Integrations interface {
 	MarkSlackTeamRevoked(ctx context.Context, teamID string, status models.IntegrationStatus, detail string) ([]uuid.UUID, error)
 	SlackOAuthConfigured() bool
 	SlackOAuthRedirectURL() string
+	// SlackOAuthClient is the Slack app's client id and secret, for Sign in
+	// with Slack.
+	SlackOAuthClient() (clientID, clientSecret string)
 }
 
 // Organizations resolves workspaces and live membership.

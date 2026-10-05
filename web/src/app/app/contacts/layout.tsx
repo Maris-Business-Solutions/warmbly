@@ -1,7 +1,7 @@
 // Contacts area: one tab strip over the contact list, saved segments and
 // labels, since all three are views of the same contact database.
 
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { BanIcon, LayersIcon, TagIcon, UsersIcon } from "lucide-react";
 
@@ -17,7 +17,7 @@ const TABS = [
 
 export default function ContactsLayout() {
     const canView = usePermission("VIEW_CONTACTS");
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     if (!canView) return <NoAccess feature="contacts" permissionLabel="View contacts" />;
 
     const current = pathname.replace(/\/$/, "");

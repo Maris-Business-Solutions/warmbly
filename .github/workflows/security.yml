@@ -86,6 +86,11 @@ jobs:
   rust:
     name: Rust Dependencies
     runs-on: ubuntu-latest
+    # audit-check reports its result as a check run, which the workflow-wide
+    # read-only token cannot create.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2

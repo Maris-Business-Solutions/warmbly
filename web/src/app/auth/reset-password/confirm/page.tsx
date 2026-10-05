@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { TurnstileModal } from "@/components/captcha/TurnstileModal";
 import AuthButton from "@/components/auth/button";

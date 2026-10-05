@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "blocks": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "$ref": "#/definitions/element-select",
+          "options": {
+            "label": "Warmbly campaigns",
+            "isRequired": true,
+            "items": [
+              { "label": "Pause every campaign", "value": "pause" },
+              { "label": "Resume every campaign", "value": "resume" }
+            ]
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "properties": {
+        "submit": {
+          "$ref": "#/definitions/action-primary",
+          "options": { "label": "Save", "handler": "request" }
+        },
+        "cancel": {
+          "$ref": "#/definitions/action-secondary",
+          "options": { "label": "Cancel", "handler": "cancel" }
+        }
+      }
+    }
+  }
+}

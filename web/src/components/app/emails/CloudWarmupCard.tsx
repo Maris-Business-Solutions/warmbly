@@ -3,7 +3,7 @@
 // pause/resume/remove, or the way in when it is not enrolled yet.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import { CloudIcon, Loader2Icon, PauseIcon, PlayIcon } from "lucide-react";
 import type { AppError } from "@/lib/api/client/normalizeError";

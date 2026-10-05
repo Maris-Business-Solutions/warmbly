@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
+import { hrefTarget } from "@/lib/routerSearch";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDownIcon, ClockIcon, UsersIcon } from "lucide-react";
 import useCampaignSendPlan from "@/lib/api/hooks/app/campaigns/useCampaignSendPlan";
@@ -350,7 +351,7 @@ export default function SendPlanCard({ campaignId }: { campaignId: string }) {
                                         return to ? (
                                             <Link
                                                 key={l.kind}
-                                                to={to}
+                                                {...hrefTarget(to)}
                                                 title={meta?.hint}
                                                 className="h-7 flex items-center gap-2 text-[12px] hover:bg-slate-50 -mx-2 px-2 rounded transition-colors"
                                             >

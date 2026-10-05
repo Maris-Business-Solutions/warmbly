@@ -32,7 +32,7 @@ func (s *Service) TaskTypesManaged() *errx.Error {
 
 // stageInfo resolves a local stage to its HubSpot id and metadata.
 func (s *Service) stageInfo(ctx context.Context, o *org, stageID uuid.UUID) (string, stageMeta, *errx.Error) {
-	l, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectStage, stageID)
+	l, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, provider, models.CRMObjectStage, stageID)
 	if err != nil {
 		return "", stageMeta{}, errx.InternalError()
 	}
@@ -44,7 +44,7 @@ func (s *Service) stageInfo(ctx context.Context, o *org, stageID uuid.UUID) (str
 }
 
 func (s *Service) pipelineExternal(ctx context.Context, o *org, pipelineID uuid.UUID) (string, *errx.Error) {
-	l, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, models.CRMObjectPipeline, pipelineID)
+	l, err := s.d.Repo.GetLinkByLocal(ctx, o.ID, provider, models.CRMObjectPipeline, pipelineID)
 	if err != nil {
 		return "", errx.InternalError()
 	}
@@ -78,7 +78,7 @@ func (s *Service) stageForStatus(ctx context.Context, o *org, pipelineID uuid.UU
 			}
 		}
 	}
-	links, err := s.d.Repo.LinksForLocal(ctx, o.ID, models.CRMObjectStage, stageIDs)
+	links, err := s.d.Repo.LinksForLocal(ctx, o.ID, provider, models.CRMObjectStage, stageIDs)
 	if err != nil {
 		return uuid.Nil, "", false
 	}
@@ -178,7 +178,7 @@ func (s *Service) PushDealUpdate(ctx context.Context, orgID uuid.UUID, before *m
 	if xerr != nil {
 		return nil, xerr
 	}
-	link, err := s.d.Repo.GetLinkByLocal(ctx, orgID, models.CRMObjectDeal, before.ID)
+	link, err := s.d.Repo.GetLinkByLocal(ctx, orgID, provider, models.CRMObjectDeal, before.ID)
 	if err != nil {
 		return nil, errx.InternalError()
 	}
@@ -281,7 +281,7 @@ func (s *Service) pushDelete(ctx context.Context, orgID uuid.UUID, objectType, h
 	if xerr != nil {
 		return xerr
 	}
-	links, err := s.d.Repo.LinksForLocal(ctx, orgID, objectType, ids)
+	links, err := s.d.Repo.LinksForLocal(ctx, orgID, provider, objectType, ids)
 	if err != nil {
 		return errx.InternalError()
 	}
@@ -301,7 +301,7 @@ func (s *Service) pushDelete(ctx context.Context, orgID uuid.UUID, objectType, h
 		return s.userError(ctx, o, err)
 	}
 	for id := range links {
-		_ = s.d.Repo.DeleteLinkByLocal(ctx, orgID, objectType, id)
+		_ = s.d.Repo.DeleteLinkByLocal(ctx, orgID, provider, objectType, id)
 	}
 	s.notify(ctx, orgID, "", objectType)
 	return nil
@@ -345,7 +345,7 @@ func (s *Service) PushTaskCreate(ctx context.Context, orgID uuid.UUID, task *mod
 		}
 	}
 	if task.DealID != nil {
-		if l, _ := s.d.Repo.GetLinkByLocal(ctx, orgID, models.CRMObjectDeal, *task.DealID); l != nil {
+		if l, _ := s.d.Repo.GetLinkByLocal(ctx, orgID, provider, models.CRMObjectDeal, *task.DealID); l != nil {
 			assocs = append(assocs, Assoc{ToID: l.ExternalID, TypeID: assocTaskToDeal})
 		}
 	}
@@ -370,7 +370,7 @@ func (s *Service) PushTaskUpdate(ctx context.Context, orgID uuid.UUID, before *m
 	if xerr != nil {
 		return xerr
 	}
-	link, err := s.d.Repo.GetLinkByLocal(ctx, orgID, models.CRMObjectTask, before.ID)
+	link, err := s.d.Repo.GetLinkByLocal(ctx, orgID, provider, models.CRMObjectTask, before.ID)
 	if err != nil {
 		return errx.InternalError()
 	}
@@ -446,7 +446,7 @@ func (s *Service) PushTasksBulk(ctx context.Context, orgID uuid.UUID, ids []uuid
 	if xerr != nil {
 		return xerr
 	}
-	links, err := s.d.Repo.LinksForLocal(ctx, orgID, models.CRMObjectTask, ids)
+	links, err := s.d.Repo.LinksForLocal(ctx, orgID, provider, models.CRMObjectTask, ids)
 	if err != nil {
 		return errx.InternalError()
 	}
@@ -513,7 +513,7 @@ func (s *Service) PushNoteUpdate(ctx context.Context, orgID, noteID uuid.UUID, c
 	if xerr != nil {
 		return xerr
 	}
-	link, err := s.d.Repo.GetLinkByLocal(ctx, orgID, models.CRMObjectNote, noteID)
+	link, err := s.d.Repo.GetLinkByLocal(ctx, orgID, provider, models.CRMObjectNote, noteID)
 	if err != nil {
 		return errx.InternalError()
 	}
@@ -567,7 +567,7 @@ func (s *Service) DecorateDeals(ctx context.Context, orgID uuid.UUID, deals []mo
 	for i := range deals {
 		ids[i] = deals[i].ID
 	}
-	links, err := s.d.Repo.LinksForLocal(ctx, orgID, models.CRMObjectDeal, ids)
+	links, err := s.d.Repo.LinksForLocal(ctx, orgID, provider, models.CRMObjectDeal, ids)
 	if err != nil {
 		return
 	}
@@ -595,7 +595,7 @@ func (s *Service) DecorateTasks(ctx context.Context, orgID uuid.UUID, tasks []mo
 	for i := range tasks {
 		ids[i] = tasks[i].ID
 	}
-	links, err := s.d.Repo.LinksForLocal(ctx, orgID, models.CRMObjectTask, ids)
+	links, err := s.d.Repo.LinksForLocal(ctx, orgID, provider, models.CRMObjectTask, ids)
 	if err != nil {
 		return
 	}
@@ -623,7 +623,7 @@ func (s *Service) DecorateNotes(ctx context.Context, orgID uuid.UUID, notes []mo
 	for i := range notes {
 		ids[i] = notes[i].ID
 	}
-	links, err := s.d.Repo.LinksForLocal(ctx, orgID, models.CRMObjectNote, ids)
+	links, err := s.d.Repo.LinksForLocal(ctx, orgID, provider, models.CRMObjectNote, ids)
 	if err != nil {
 		return
 	}
@@ -654,11 +654,11 @@ func (s *Service) DecoratePipelines(ctx context.Context, orgID uuid.UUID, pipes 
 			stageIDs = append(stageIDs, st.ID)
 		}
 	}
-	plinks, err := s.d.Repo.LinksForLocal(ctx, orgID, models.CRMObjectPipeline, ids)
+	plinks, err := s.d.Repo.LinksForLocal(ctx, orgID, provider, models.CRMObjectPipeline, ids)
 	if err != nil {
 		return
 	}
-	slinks, _ := s.d.Repo.LinksForLocal(ctx, orgID, models.CRMObjectStage, stageIDs)
+	slinks, _ := s.d.Repo.LinksForLocal(ctx, orgID, provider, models.CRMObjectStage, stageIDs)
 	for i := range pipes {
 		if l, ok := plinks[pipes[i].ID]; ok {
 			pipes[i].External = &models.CRMExternalRef{Provider: provider, ExternalID: l.ExternalID, URL: o.pipelineSettingsURL(), SyncedAt: l.SyncedAt}

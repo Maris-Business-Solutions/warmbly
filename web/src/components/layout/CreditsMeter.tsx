@@ -13,7 +13,7 @@
 // the realtime spine on purchases, resets, and the low-credit alert.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpRightIcon } from "lucide-react";
 import useClickOutside from "@/hooks/useClickOutside";
@@ -128,7 +128,8 @@ export function CreditsMeter() {
                     >
                         <MeterPanel credits={c} settings={settings.data} low={low} empty={empty} />
                         <Link
-                            to="/app/settings/billing/ai-credits"
+                            to="/app/settings/billing/{-$tab}"
+                            params={{ tab: "ai-credits" }}
                             onClick={close}
                             className="flex items-center gap-1 px-3 h-9 border-t border-slate-200 text-[11.5px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
                         >

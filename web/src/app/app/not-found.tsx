@@ -1,4 +1,4 @@
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   MailX,
@@ -23,12 +23,13 @@ const dests = [
 
 export default function DashboardNotFound() {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const router = useRouter();
+  const pathname = useLocation({ select: (l) => l.pathname });
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
 
   const goBack = () => {
-    if (window.history.state?.idx > 0) navigate(-1);
-    else navigate("/app");
+    if (router.history.canGoBack()) router.history.back();
+    else navigate({ to: "/app" });
   };
 
   return (

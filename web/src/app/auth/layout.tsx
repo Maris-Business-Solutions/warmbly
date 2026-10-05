@@ -1,5 +1,5 @@
 import React from "react";
-import { Navigate, useLocation, useNavigate, useOutlet } from "react-router-dom";
+import { Navigate, Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { APP_URL } from "@/lib/information";
 import useBrand from "@/hooks/useBrand";
@@ -21,14 +21,14 @@ export default function AuthLayout({
     redirectIfAuthenticated = true,
 }: { redirectIfAuthenticated?: boolean } = {}) {
     const navigate = useNavigate();
-    const location = useLocation();
-    const outlet = useOutlet();
+    // The rendered page's path, which changes with the Outlet rather than ahead of it.
+    const pathname = useMatches({ select: (m) => m[m.length - 1]?.pathname ?? "" });
     const brand = useBrand();
 
     React.useEffect(() => {
         const receiveMessage = (event: MessageEvent) => {
             if (event.origin !== APP_URL) return;
-            if (event.data?.type === "auth") navigate("/app/emails");
+            if (event.data?.type === "auth") navigate({ to: "/app/emails" });
         };
         window.addEventListener("message", receiveMessage);
         return () => window.removeEventListener("message", receiveMessage);
@@ -66,16 +66,16 @@ export default function AuthLayout({
                         <div className="mx-auto flex w-full max-w-[360px] flex-1 flex-col">
                             <div className="flex flex-1 items-center">
                                 <div className="w-full">
-                                    {/* Animate full route changes too (login → forgot password) */}
-                                    <AnimatePresence mode="wait" initial={false}>
+                                    {/* Animate full route changes too (login → forgot password).
+                                        Enter only: an exiting <Outlet /> would already render the next page. */}
+                                    <AnimatePresence initial={false}>
                                         <motion.div
-                                            key={location.pathname}
+                                            key={pathname}
                                             initial={{ opacity: 0, x: 12 }}
                                             animate={{ opacity: 1, x: 0 }}
-                                            exit={{ opacity: 0, x: -12 }}
                                             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                                         >
-                                            {outlet}
+                                            <Outlet />
                                         </motion.div>
                                     </AnimatePresence>
                                 </div>

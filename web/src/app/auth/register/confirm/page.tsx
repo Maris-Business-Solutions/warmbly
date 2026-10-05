@@ -1,12 +1,11 @@
-import { Link } from "react-router-dom";
-import { TurnstileModal } from "@/components/captcha/TurnstileModal";
+import { Link } from "@tanstack/react-router";
 import AuthButton from "@/components/auth/button";
 import OTPInput from "@/components/auth/OTP";
 import { useRegisterConfirmForm } from "../../hooks/useRegisterConfirmForm";
 import { ArrowLeft } from "lucide-react";
 
 export default function RegisterConfirmPage() {
-    const { mail, otp, setOtp, captcha, pending, onSubmit, onToken } = useRegisterConfirmForm();
+    const { mail, otp, setOtp, pending, onSubmit } = useRegisterConfirmForm();
 
     return (
         <div className="space-y-6">
@@ -26,7 +25,6 @@ export default function RegisterConfirmPage() {
             <form onSubmit={onSubmit} className="space-y-5">
                 <OTPInput value={otp} setValue={setOtp} />
                 <AuthButton loading={pending}>Verify</AuthButton>
-                <TurnstileModal visible={captcha} onToken={onToken} />
             </form>
 
             <div className="text-center pt-1">

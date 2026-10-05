@@ -10,9 +10,9 @@
 // and reach `route` through a lazy `await import` of this module.
 
 import React from "react";
-import { act, render, screen } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, screen } from "@testing-library/react";
+import { createRootRoute, createRoute, Outlet } from "@tanstack/react-router";
+import { appStaticData, createTestRouter, renderRouter } from "@/test/routerHarness";
 
 // jsdom has no layout: scrollTop is a hard 0, the height properties do not
 // exist, and getBoundingClientRect is all zeroes. Back them with real values so
@@ -179,35 +179,23 @@ function Elsewhere() {
 export async function mount(initial = "/app/unibox/all") {
     const RootAppLayout = (await import("../layout")).default;
     const UniboxPage = (await import("./page")).default;
-    const router = createMemoryRouter(
-        [
-            {
-                path: "/app",
-                element: <RootAppLayout />,
-                children: [
-                    {
-                        path: "unibox/:scope?/:threadId?",
-                        element: <UniboxPage />,
-                        handle: { stableParams: ["scope", "threadId"] },
-                    },
-                    { path: "analytics", element: <Elsewhere /> },
-                ],
-            },
-        ],
-        { initialEntries: [initial] },
-    );
-    render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-            <RouterProvider router={router} />
-        </QueryClientProvider>,
-    );
+    const root = createRootRoute({ component: Outlet });
+    const app = createRoute({ getParentRoute: () => root, path: "app", component: RootAppLayout });
+    const unibox = createRoute({
+        getParentRoute: () => app,
+        path: "unibox/{-$scope}/{-$threadId}",
+        component: UniboxPage,
+        staticData: appStaticData("/app/unibox/{-$scope}/{-$threadId}"),
+    });
+    const analytics = createRoute({ getParentRoute: () => app, path: "analytics", component: Elsewhere });
+    const router = createTestRouter(root.addChildren([app.addChildren([unibox, analytics])]), initial);
+    await renderRouter(router);
     return router;
 }
 
-// Mounting the whole shell in jsdom is slow, and slower again when the two
-// unibox suites run alongside each other, so they get more than the 5s default
-// rather than flaking on a loaded machine.
-export const SUITE = { timeout: 30_000 };
+// Mounting the whole shell in jsdom is slow, and a cold first mount in the full
+// run (a dozen unibox suites at once) can take ~30s, so they get far more than 5s.
+export const SUITE = { timeout: 60_000 };
 
 export async function settle() {
     await act(async () => {

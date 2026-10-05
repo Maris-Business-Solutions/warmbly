@@ -22,14 +22,16 @@ type CRMProviderRepository interface {
 	UpsertSettings(ctx context.Context, row *CRMSettingsRow) error
 	ListProviderOrgs(ctx context.Context, provider models.CRMProvider) ([]CRMSettingsRow, error)
 	OrgsForAccount(ctx context.Context, provider models.CRMProvider, externalAccountID string) ([]uuid.UUID, error)
+	OrgForConnection(ctx context.Context, provider models.CRMProvider, connID uuid.UUID) (uuid.UUID, error)
+	OrgsForCompany(ctx context.Context, provider models.CRMProvider, companyID string) ([]uuid.UUID, error)
 
-	GetLinkByLocal(ctx context.Context, orgID uuid.UUID, objectType string, localID uuid.UUID) (*models.CRMExternalLink, error)
+	GetLinkByLocal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType string, localID uuid.UUID) (*models.CRMExternalLink, error)
 	GetLinkByExternal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType, externalID string) (*models.CRMExternalLink, error)
-	LinksForLocal(ctx context.Context, orgID uuid.UUID, objectType string, ids []uuid.UUID) (map[uuid.UUID]models.CRMExternalLink, error)
+	LinksForLocal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType string, ids []uuid.UUID) (map[uuid.UUID]models.CRMExternalLink, error)
 	ListLinks(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType string) ([]models.CRMExternalLink, error)
 	UpsertLink(ctx context.Context, l *models.CRMExternalLink) error
 	ClaimLink(ctx context.Context, l *models.CRMExternalLink) error
-	DeleteLinkByLocal(ctx context.Context, orgID uuid.UUID, objectType string, localID uuid.UUID) error
+	DeleteLinkByLocal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType string, localID uuid.UUID) error
 
 	GetContactRecord(ctx context.Context, orgID, contactID uuid.UUID, provider models.CRMProvider) (*models.CRMContactRecord, error)
 	GetContactRecordByExternal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, externalID string) (*models.CRMContactRecord, error)
@@ -49,14 +51,15 @@ type CRMProviderRepository interface {
 	UserForOwner(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, externalID string) (*uuid.UUID, error)
 	FallbackActor(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
 	MemberForOwnerEmail(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, email string) (*uuid.UUID, models.OrganizationPermission, error)
+	MemberForOwner(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, externalID string) (*uuid.UUID, models.OrganizationPermission, error)
 
 	EnqueueJob(ctx context.Context, job *models.CRMSyncJob) error
-	ClaimJobs(ctx context.Context, limit int, lease time.Duration) ([]models.CRMSyncJob, error)
+	ClaimJobs(ctx context.Context, provider models.CRMProvider, limit int, lease time.Duration) ([]models.CRMSyncJob, error)
 	CompleteJob(ctx context.Context, job *models.CRMSyncJob) error
 	FailJob(ctx context.Context, job *models.CRMSyncJob, msg string, retryAt *time.Time) error
 	ContinueJob(ctx context.Context, job *models.CRMSyncJob, payload map[string]any) error
-	RetryFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error)
-	DiscardFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error)
+	RetryFailedJobs(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, ids []uuid.UUID) (int64, error)
+	DiscardFailedJobs(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, ids []uuid.UUID) (int64, error)
 	PurgeJobs(ctx context.Context) error
 	SyncHealth(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider) (*models.CRMSyncHealth, error)
 
@@ -165,13 +168,34 @@ func (r *crmProviderRepository) GetSettings(ctx context.Context, orgID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	row.Config = models.DefaultCRMProviderConfig()
-	if len(raw) > 2 {
-		if err := json.Unmarshal(raw, &row.Config); err != nil {
-			return nil, err
-		}
+	cfg, err := decodeCRMConfig(row.Provider, raw)
+	if err != nil {
+		return nil, err
 	}
+	row.Config = cfg
 	return &row, nil
+}
+
+// decodeCRMConfig reads stored choices over the provider's defaults. A stored
+// field map replaces the default one whole, so a mapping someone removed does
+// not come back from the defaults.
+func decodeCRMConfig(provider models.CRMProvider, raw []byte) (models.CRMProviderConfig, error) {
+	cfg := models.DefaultCRMProviderConfigFor(provider)
+	if len(raw) <= 2 {
+		return cfg, nil
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return cfg, err
+	}
+	if _, ok := keys["field_map"]; ok {
+		cfg.FieldMap = nil
+	}
+	if _, ok := keys["field_direction"]; ok {
+		cfg.FieldDirection = nil
+	}
+	err := json.Unmarshal(raw, &cfg)
+	return cfg, err
 }
 
 func (r *crmProviderRepository) UpsertSettings(ctx context.Context, row *CRMSettingsRow) error {
@@ -206,10 +230,7 @@ func (r *crmProviderRepository) ListProviderOrgs(ctx context.Context, provider m
 		if err := rows.Scan(&row.OrganizationID, &row.Provider, &row.ConnectionID, &raw, &row.SetupCompletedAt, &row.UpdatedAt); err != nil {
 			return nil, err
 		}
-		row.Config = models.DefaultCRMProviderConfig()
-		if len(raw) > 2 {
-			_ = json.Unmarshal(raw, &row.Config)
-		}
+		row.Config, _ = decodeCRMConfig(row.Provider, raw)
 		out = append(out, row)
 	}
 	return out, rows.Err()
@@ -224,6 +245,45 @@ func (r *crmProviderRepository) OrgsForAccount(ctx context.Context, provider mod
 		WHERE s.provider = $1 AND c.provider = $1 AND c.external_account_id = $2
 		  AND c.status IN ('connected', 'degraded')
 		ORDER BY s.created_at`, provider, externalAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// OrgForConnection is the workspace whose CRM runs on one connection, or
+// uuid.Nil when none does.
+func (r *crmProviderRepository) OrgForConnection(ctx context.Context, provider models.CRMProvider, connID uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := r.db.QueryRow(ctx, `
+		SELECT s.organization_id FROM crm_settings s
+		JOIN integration_connections c ON c.id = s.connection_id AND c.organization_id = s.organization_id
+		WHERE s.provider = $1 AND s.connection_id = $2 AND c.provider = $1 AND c.status IN ('connected', 'degraded')`,
+		provider, connID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, nil
+	}
+	return id, err
+}
+
+// OrgsForCompany lists the workspaces in provider mode with a live connection
+// to one provider company (a Pipedrive company id, kept on the connection).
+func (r *crmProviderRepository) OrgsForCompany(ctx context.Context, provider models.CRMProvider, companyID string) ([]uuid.UUID, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT s.organization_id FROM crm_settings s
+		JOIN integration_connections c ON c.id = s.connection_id AND c.organization_id = s.organization_id
+		WHERE s.provider = $1 AND c.provider = $1 AND c.display_fields->>'company_id' = $2
+		  AND c.status IN ('connected', 'degraded')
+		ORDER BY s.created_at`, provider, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -256,9 +316,9 @@ func scanLink(row pgx.Row) (*models.CRMExternalLink, error) {
 	return &l, nil
 }
 
-func (r *crmProviderRepository) GetLinkByLocal(ctx context.Context, orgID uuid.UUID, objectType string, localID uuid.UUID) (*models.CRMExternalLink, error) {
+func (r *crmProviderRepository) GetLinkByLocal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType string, localID uuid.UUID) (*models.CRMExternalLink, error) {
 	l, err := scanLink(r.db.QueryRow(ctx, `SELECT `+linkCols+` FROM crm_external_links
-		WHERE organization_id = $1 AND object_type = $2 AND local_id = $3 LIMIT 1`, orgID, objectType, localID))
+		WHERE organization_id = $1 AND provider = $2 AND object_type = $3 AND local_id = $4`, orgID, provider, objectType, localID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -274,13 +334,13 @@ func (r *crmProviderRepository) GetLinkByExternal(ctx context.Context, orgID uui
 	return l, err
 }
 
-func (r *crmProviderRepository) LinksForLocal(ctx context.Context, orgID uuid.UUID, objectType string, ids []uuid.UUID) (map[uuid.UUID]models.CRMExternalLink, error) {
+func (r *crmProviderRepository) LinksForLocal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType string, ids []uuid.UUID) (map[uuid.UUID]models.CRMExternalLink, error) {
 	out := map[uuid.UUID]models.CRMExternalLink{}
 	if len(ids) == 0 {
 		return out, nil
 	}
 	rows, err := r.db.Query(ctx, `SELECT `+linkCols+` FROM crm_external_links
-		WHERE organization_id = $1 AND object_type = $2 AND local_id = ANY($3)`, orgID, objectType, ids)
+		WHERE organization_id = $1 AND provider = $2 AND object_type = $3 AND local_id = ANY($4)`, orgID, provider, objectType, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -367,9 +427,9 @@ func (r *crmProviderRepository) ClaimLink(ctx context.Context, l *models.CRMExte
 	return tx.Commit(ctx)
 }
 
-func (r *crmProviderRepository) DeleteLinkByLocal(ctx context.Context, orgID uuid.UUID, objectType string, localID uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM crm_external_links WHERE organization_id = $1 AND object_type = $2 AND local_id = $3`,
-		orgID, objectType, localID)
+func (r *crmProviderRepository) DeleteLinkByLocal(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, objectType string, localID uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM crm_external_links WHERE organization_id = $1 AND provider = $2 AND object_type = $3 AND local_id = $4`,
+		orgID, provider, objectType, localID)
 	return err
 }
 
@@ -718,6 +778,31 @@ func (r *crmProviderRepository) MemberForOwnerEmail(ctx context.Context, orgID u
 	return &id, perms, nil
 }
 
+// MemberForOwner is the active member matched to a provider user, with that
+// member's permissions; nil when the user is not matched.
+func (r *crmProviderRepository) MemberForOwner(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, externalID string) (*uuid.UUID, models.OrganizationPermission, error) {
+	var id uuid.UUID
+	var perms models.OrganizationPermission
+	var role string
+	err := r.db.QueryRow(ctx, `
+		SELECT m.user_id, m.permissions, m.role FROM crm_owners o
+		JOIN organization_members m ON m.organization_id = o.organization_id AND m.user_id = o.user_id
+		JOIN users u ON u.id = m.user_id
+		WHERE o.organization_id = $1 AND o.provider = $2 AND o.external_id = $3 AND NOT o.archived
+		  AND m.accepted_at IS NOT NULL AND (u.ban_scope & 1) = 0`, orgID, provider, externalID).Scan(&id, &perms, &role)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	// The workspace owner holds every permission, whatever its stored mask says.
+	if role == "owner" {
+		perms = models.AllPermissions
+	}
+	return &id, perms, nil
+}
+
 // FallbackActor is who a mirrored note or task is recorded as created by when
 // its provider owner is not a member: the workspace owner.
 func (r *crmProviderRepository) FallbackActor(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
@@ -746,7 +831,7 @@ func (r *crmProviderRepository) EnqueueJob(ctx context.Context, job *models.CRMS
 	_, err = r.db.Exec(ctx, `
 		INSERT INTO crm_sync_jobs (organization_id, provider, kind, dedupe_key, subject, payload, next_attempt_at)
 		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, NOW()))
-		ON CONFLICT (organization_id, dedupe_key) WHERE dedupe_key IS NOT NULL AND status IN ('pending', 'running')
+		ON CONFLICT (organization_id, provider, dedupe_key) WHERE dedupe_key IS NOT NULL AND status IN ('pending', 'running')
 		DO NOTHING`,
 		job.OrganizationID, job.Provider, job.Kind, dedupe, truncate(job.Subject, 300), raw, nullTime(job.NextAttemptAt))
 	return err
@@ -782,20 +867,21 @@ func scanJob(row pgx.Row) (*models.CRMSyncJob, error) {
 
 // ClaimJobs leases due jobs. A lease that lapses (a crashed drainer) makes the
 // job claimable again, so nothing is stranded in running.
-func (r *crmProviderRepository) ClaimJobs(ctx context.Context, limit int, lease time.Duration) ([]models.CRMSyncJob, error) {
+func (r *crmProviderRepository) ClaimJobs(ctx context.Context, provider models.CRMProvider, limit int, lease time.Duration) ([]models.CRMSyncJob, error) {
 	rows, err := r.db.Query(ctx, `
 		UPDATE crm_sync_jobs j
 		SET status = 'running', attempts = j.attempts + 1, locked_until = NOW() + make_interval(secs => $2),
 		    lease_token = gen_random_uuid(), updated_at = NOW()
 		WHERE j.id IN (
 			SELECT id FROM crm_sync_jobs
-			WHERE (status = 'pending' AND next_attempt_at <= NOW())
-			   OR (status = 'running' AND locked_until < NOW())
+			WHERE provider = $3
+			  AND ((status = 'pending' AND next_attempt_at <= NOW())
+			   OR (status = 'running' AND locked_until < NOW()))
 			ORDER BY next_attempt_at
 			LIMIT $1
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING `+jobCols, limit, lease.Seconds())
+		RETURNING `+jobCols, limit, lease.Seconds(), provider)
 	if err != nil {
 		return nil, err
 	}
@@ -845,28 +931,29 @@ func (r *crmProviderRepository) ContinueJob(ctx context.Context, job *models.CRM
 
 // RetryFailedJobs requeues failed jobs (all when ids is empty). A failure whose
 // work is already queued again under the same key stays failed.
-func (r *crmProviderRepository) RetryFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error) {
+func (r *crmProviderRepository) RetryFailedJobs(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, ids []uuid.UUID) (int64, error) {
 	if ids == nil {
 		ids = []uuid.UUID{}
 	}
 	tag, err := r.db.Exec(ctx, `UPDATE crm_sync_jobs j SET status = 'pending', attempts = 0, next_attempt_at = NOW(),
 		finished_at = NULL, updated_at = NOW()
-		WHERE j.organization_id = $1 AND j.status = 'failed' AND (cardinality($2::uuid[]) = 0 OR j.id = ANY($2))
+		WHERE j.organization_id = $1 AND j.provider = $3 AND j.status = 'failed' AND (cardinality($2::uuid[]) = 0 OR j.id = ANY($2))
 		  AND (j.dedupe_key IS NULL OR NOT EXISTS (
-			SELECT 1 FROM crm_sync_jobs o WHERE o.organization_id = j.organization_id AND o.dedupe_key = j.dedupe_key
-			  AND o.status IN ('pending', 'running')))`, orgID, ids)
+			SELECT 1 FROM crm_sync_jobs o WHERE o.organization_id = j.organization_id AND o.provider = j.provider
+			  AND o.dedupe_key = j.dedupe_key AND o.status IN ('pending', 'running')))`, orgID, ids, provider)
 	if err != nil {
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
 }
 
-func (r *crmProviderRepository) DiscardFailedJobs(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) (int64, error) {
+func (r *crmProviderRepository) DiscardFailedJobs(ctx context.Context, orgID uuid.UUID, provider models.CRMProvider, ids []uuid.UUID) (int64, error) {
 	if ids == nil {
 		ids = []uuid.UUID{}
 	}
 	tag, err := r.db.Exec(ctx, `DELETE FROM crm_sync_jobs
-		WHERE organization_id = $1 AND status = 'failed' AND (cardinality($2::uuid[]) = 0 OR id = ANY($2))`, orgID, ids)
+		WHERE organization_id = $1 AND provider = $3 AND status = 'failed' AND (cardinality($2::uuid[]) = 0 OR id = ANY($2))`,
+		orgID, ids, provider)
 	if err != nil {
 		return 0, err
 	}
@@ -1342,7 +1429,8 @@ func (r *crmProviderRepository) UnlinkedNative(ctx context.Context, orgID uuid.U
 	rows, err := r.db.Query(ctx, `
 		SELECT t.id FROM `+table+` t
 		WHERE t.organization_id = $1 AND t.id > $4
-		  AND NOT EXISTS (SELECT 1 FROM crm_external_links l WHERE l.organization_id = $1 AND l.object_type = $2 AND l.local_id = t.id)
+		  AND NOT EXISTS (SELECT 1 FROM crm_external_links l
+		                  WHERE l.organization_id = $1 AND l.object_type = $2 AND l.local_id = t.id)
 		ORDER BY t.id LIMIT $3`, orgID, objectType, limit, after)
 	if err != nil {
 		return nil, err

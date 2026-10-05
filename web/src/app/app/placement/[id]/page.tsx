@@ -3,7 +3,7 @@
 // the two halves side by side. Live through PLACEMENT_TEST_UPDATED.
 
 import React from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "@tanstack/react-router";
 import { ArrowLeftIcon, ArrowUpRightIcon, Loader2Icon, SquareIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { EmptyBlock, SectionBar } from "@/components/layout/Page";
@@ -42,7 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function PlacementTestPage() {
-    const { id = "" } = useParams();
+    const { id = "" } = useParams({ from: "/app/placement/$id" });
     const q = usePlacementTest(id);
 
     return (
@@ -120,19 +120,19 @@ function Detail({ test }: { test: PlacementTestDetail }) {
                             </span>
                         )}
                         {test.campaign_id && (
-                            <Link to={`/app/campaigns/${test.campaign_id}/steps`} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
+                            <Link to="/app/campaigns/$id/steps" params={{ id: test.campaign_id }} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
                                 {campaign.data?.name ?? "Campaign"}
                                 <ArrowUpRightIcon className="w-3 h-3" />
                             </Link>
                         )}
                         {test.batch_id && (
-                            <Link to={`/app/placement/batches/${test.batch_id}`} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
+                            <Link to="/app/placement/batches/$id" params={{ id: test.batch_id }} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
                                 Part of a batch
                                 <ArrowUpRightIcon className="w-3 h-3" />
                             </Link>
                         )}
                         {test.compare && (
-                            <Link to={`/app/placement/${test.compare.id}`} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
+                            <Link to="/app/placement/$id" params={{ id: test.compare.id }} className="inline-flex items-center gap-0.5 text-sky-700 hover:text-sky-800">
                                 {isTracked(test.compare) ? "Tracked half" : "Untracked half"}
                                 <ArrowUpRightIcon className="w-3 h-3" />
                             </Link>
@@ -327,7 +327,7 @@ function Comparison({ test, other }: { test: PlacementTest; other: PlacementTest
                             <span className="text-[12.5px] font-medium text-slate-900">{title}</span>
                             <StatusChip status={t.status} counts={t.summary} />
                             {t.id !== test.id && (
-                                <Link to={`/app/placement/${t.id}`} className="ml-auto text-[11px] text-sky-700 hover:text-sky-800 inline-flex items-center gap-0.5">
+                                <Link to="/app/placement/$id" params={{ id: t.id }} className="ml-auto text-[11px] text-sky-700 hover:text-sky-800 inline-flex items-center gap-0.5">
                                     Open
                                     <ArrowUpRightIcon className="w-3 h-3" />
                                 </Link>

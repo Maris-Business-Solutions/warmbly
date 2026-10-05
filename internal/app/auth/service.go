@@ -112,6 +112,9 @@ type AuthService interface {
 	// pair of a new one for its device; current is the caller's session, whose
 	// workspace, sign-in method and MFA status the new one keeps.
 	ChangePassword(ctx context.Context, userID uuid.UUID, current *models.Session, ipaddr, userAgent string, data *ChangePassword) (*models.Token, *errx.Error)
+	// ForgetTrustedDevices drops every browser the user asked to remember, so
+	// each asks for an emailed login code again.
+	ForgetTrustedDevices(ctx context.Context, userID uuid.UUID) *errx.Error
 
 	// Policy is the resolved per-deployment auth behavior, exposed so the
 	// public /auth/config endpoint can report it to the login screen.

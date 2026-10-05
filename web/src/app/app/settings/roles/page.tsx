@@ -5,7 +5,7 @@
 // other role. Owner is a membership status, not a role.
 
 import { LockIcon } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import { useAppStore } from "@/stores";
 import { Section, SectionShell } from "../_components/SectionShell";

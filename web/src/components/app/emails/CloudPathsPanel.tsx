@@ -6,7 +6,7 @@
 // when the list is empty, one strip once mailboxes exist.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { CloudIcon, InboxIcon, PlusIcon } from "lucide-react";
 import useFeatureAccess from "@/hooks/useFeatureAccess";

@@ -5,15 +5,18 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/netip"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/fleetnode"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
@@ -155,6 +158,10 @@ func (h *Handler) FleetHeartbeat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "decode body"})
 		return
 	}
+	if middleware.IsNodeUpdateOnly(c) {
+		h.fleetUpdateOnlyHeartbeat(c, beat)
+		return
+	}
 	beat.Address = heartbeatAddress(beat.Address, c.ClientIP())
 	reply, err := h.FleetNodes.Heartbeat(c.Request.Context(), beat)
 	if err != nil {
@@ -186,6 +193,22 @@ func (h *Handler) FleetHeartbeat(c *gin.Context) {
 		}(beat.NodeID)
 	}
 
+	c.JSON(http.StatusOK, reply)
+}
+
+// legacyTokenNodes remembers which nodes were already warned about, so the log says it once per process.
+var legacyTokenNodes sync.Map
+
+// fleetUpdateOnlyHeartbeat answers a node still on INTERNAL_API_TOKEN with its version only.
+func (h *Handler) fleetUpdateOnlyHeartbeat(c *gin.Context, beat models.NodeHeartbeat) {
+	reply, err := h.FleetNodes.UpdateOnly(c.Request.Context(), beat)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, seen := legacyTokenNodes.LoadOrStore(beat.NodeID, struct{}{}); !seen {
+		log.Printf("fleet: node %s heartbeats with INTERNAL_API_TOKEN; it is told its version (%q) but not recorded as live. A node that stays on this token after updating needs to join again to receive NODE_BROKER_TOKEN", beat.NodeID, reply.DesiredVersion)
+	}
 	c.JSON(http.StatusOK, reply)
 }
 
@@ -301,10 +324,13 @@ var nodeEnvKeys = []string{
 
 // consumerEnvKeys reach a consumer and never a worker. A consumer runs the
 // integration actions, refreshes their OAuth tokens and drains the CRM outbox,
-// so it reads the integration client credentials (integration.NewOAuthManager)
-// and APP_URL (the "Open in Warmbly" link written to HubSpot).
+// so it reads the integration client credentials (integration.NewOAuthManager),
+// APP_URL (the "Open in Warmbly" link written to the CRM) and the backend's
+// public URL (where it registers Pipedrive's webhooks).
 var consumerEnvKeys = []string{
 	"APP_URL",
+	"BACKEND_PUBLIC_URL",
+	"API_PUBLIC_URL",
 	"HUBSPOT_OAUTH_CLIENT_ID",
 	"HUBSPOT_OAUTH_CLIENT_SECRET",
 	"SLACK_OAUTH_CLIENT_ID",

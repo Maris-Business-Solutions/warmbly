@@ -5,7 +5,7 @@
 "use client";
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     AlertTriangleIcon,
@@ -63,7 +63,7 @@ import { NOTIFICATION_CATEGORY_GROUPS } from "@/lib/api/models/app/notifications
 import { errorMessage } from "@/lib/errors/message";
 import { cn } from "@/lib/utils";
 
-import { SectionLabel } from "./Drawer";
+import { SectionTitle } from "./IntegrationDialog";
 
 export type SlackTab = "overview" | "assistant" | "inbox" | "notifications" | "members";
 
@@ -266,7 +266,7 @@ function AssistantTab({ status, canManage }: { status: SlackStatus; canManage: b
     return (
         <>
             <div className="px-5 py-4 border-b border-slate-200 space-y-3">
-                <SectionLabel>What it can do</SectionLabel>
+                <SectionTitle>What it can do</SectionTitle>
                 <div className="space-y-2.5">
                     {CAPABILITIES.map((c) => (
                         <div key={c.title} className="flex items-start gap-2.5">
@@ -289,7 +289,7 @@ function AssistantTab({ status, canManage }: { status: SlackStatus; canManage: b
 
             <div className="px-5 py-4 border-b border-slate-200 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                    <SectionLabel>Settings</SectionLabel>
+                    <SectionTitle>Settings</SectionTitle>
                     {saving && <Loader2Icon className="w-3 h-3 animate-spin text-slate-400" />}
                 </div>
                 <SettingRow
@@ -349,7 +349,7 @@ function InboxTab({ status, canManage }: { status: SlackStatus; canManage: boole
         <>
             <div className="px-5 py-4 border-b border-slate-200 space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
-                    <SectionLabel>Inbox in Slack</SectionLabel>
+                    <SectionTitle>Inbox in Slack</SectionTitle>
                     {saving ? (
                         <Loader2Icon className="w-3 h-3 animate-spin text-slate-400" />
                     ) : (
@@ -374,7 +374,7 @@ function InboxTab({ status, canManage }: { status: SlackStatus; canManage: boole
             </div>
 
             <div className="px-5 py-4 border-b border-slate-200 space-y-2">
-                <SectionLabel>What to post</SectionLabel>
+                <SectionTitle>What to post</SectionTitle>
                 <div
                     aria-disabled={locked || !on || undefined}
                     className={cn((locked || !on) && "pointer-events-none opacity-60")}
@@ -391,7 +391,7 @@ function InboxTab({ status, canManage }: { status: SlackStatus; canManage: boole
             </div>
 
             <div className="px-5 py-4 border-b border-slate-200 space-y-2.5">
-                <SectionLabel>From the thread, teammates can</SectionLabel>
+                <SectionTitle>From the thread, teammates can</SectionTitle>
                 <div className="space-y-1.5">
                     {INBOX_ACTIONS.map((a) => (
                         <div key={a.label} className="flex items-center gap-2 text-[12px] text-slate-700">
@@ -434,7 +434,7 @@ function NotificationsTab({ status, canManage }: { status: SlackStatus; canManag
         <>
             <div className="px-5 py-4 border-b border-slate-200 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                    <SectionLabel>Default channel</SectionLabel>
+                    <SectionTitle>Default channel</SectionTitle>
                     {saving && <Loader2Icon className="w-3 h-3 animate-spin text-slate-400" />}
                 </div>
                 <p className="text-[11.5px] text-slate-500 leading-relaxed">
@@ -450,7 +450,7 @@ function NotificationsTab({ status, canManage }: { status: SlackStatus; canManag
             </div>
 
             <div className="px-5 py-4 border-b border-slate-200 space-y-3">
-                <SectionLabel>Per category</SectionLabel>
+                <SectionTitle>Per category</SectionTitle>
                 {NOTIFICATION_CATEGORY_GROUPS.map((g) => (
                     <div key={g.id} className="space-y-1.5">
                         <div className="text-[11px] font-medium text-slate-500">{g.label}</div>
@@ -529,7 +529,7 @@ function MembersTab({ status, canManage }: { status: SlackStatus; canManage: boo
     return (
         <>
             <div className="px-5 py-4 border-b border-slate-200 space-y-3">
-                <SectionLabel>My Slack account</SectionLabel>
+                <SectionTitle>My Slack account</SectionTitle>
                 {mine ? (
                     <>
                         <div className="flex items-center gap-2.5">
@@ -582,7 +582,7 @@ function MembersTab({ status, canManage }: { status: SlackStatus; canManage: boo
             </div>
 
             <div className="px-5 py-4 border-b border-slate-200 space-y-2">
-                <SectionLabel>Linked members</SectionLabel>
+                <SectionTitle>Linked members</SectionTitle>
                 {!canManage ? (
                     <p className="text-[11.5px] text-slate-400">Members who manage settings can see and remove links.</p>
                 ) : links.length === 0 ? (

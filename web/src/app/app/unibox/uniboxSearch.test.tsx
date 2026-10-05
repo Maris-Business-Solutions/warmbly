@@ -138,7 +138,7 @@ describe("unibox search", SUITE, () => {
         await waitFor(() => expect(box().value).toBe("Subject 3"));
 
         await act(async () => {
-            await router.navigate("/app/unibox/inbox");
+            await router.navigate({ to: "/app/unibox/{-$scope}/{-$threadId}", params: { scope: "inbox", threadId: undefined } });
         });
         await settle();
 

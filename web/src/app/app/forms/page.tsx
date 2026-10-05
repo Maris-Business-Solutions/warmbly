@@ -4,7 +4,7 @@
 // row opens the builder.
 
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, ClipboardListIcon, LinkIcon, Loader2Icon, MoreHorizontalIcon, PlusIcon, XIcon } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -152,7 +152,7 @@ function FormsList() {
     async function createNew() {
         try {
             const f = await create.mutateAsync("Untitled form");
-            navigate(`/app/forms/${f.id}`);
+            navigate({ to: "/app/forms/$id", params: { id: f.id } });
         } catch (err) {
             toast.error(buildError(err as AppError));
         }
@@ -176,7 +176,7 @@ function FormsList() {
                 },
             });
             toast.success(`Duplicated as ${copy.name}`);
-            navigate(`/app/forms/${copy.id}`);
+            navigate({ to: "/app/forms/$id", params: { id: copy.id } });
         } catch (err) {
             toast.error(buildError(err as AppError));
         }
@@ -350,7 +350,7 @@ function FormsList() {
                                 return (
                                     <tr
                                         key={f.id}
-                                        onClick={() => navigate(`/app/forms/${f.id}`)}
+                                        onClick={() => navigate({ to: "/app/forms/$id", params: { id: f.id } })}
                                         className={`h-11 border-b border-slate-100 cursor-pointer transition-colors ${
                                             isSel ? "bg-sky-50/60 hover:bg-sky-50/80" : "hover:bg-slate-50/80"
                                         }`}
@@ -415,11 +415,11 @@ function FormsList() {
                                                     </button>
                                                 </PopoverMenuTrigger>
                                                 <PopoverMenuContent minWidth={190}>
-                                                    <PopoverMenuItem onSelect={() => navigate(`/app/forms/${f.id}`)}>Open builder</PopoverMenuItem>
-                                                    <PopoverMenuItem onSelect={() => navigate(`/app/forms/${f.id}?tab=analytics`)}>
+                                                    <PopoverMenuItem onSelect={() => navigate({ to: "/app/forms/$id", params: { id: f.id } })}>Open builder</PopoverMenuItem>
+                                                    <PopoverMenuItem onSelect={() => navigate({ to: "/app/forms/$id", params: { id: f.id }, search: { tab: "analytics" } })}>
                                                         View analytics
                                                     </PopoverMenuItem>
-                                                    <PopoverMenuItem onSelect={() => navigate(`/app/forms/${f.id}?tab=submissions`)}>
+                                                    <PopoverMenuItem onSelect={() => navigate({ to: "/app/forms/$id", params: { id: f.id }, search: { tab: "submissions" } })}>
                                                         View submissions
                                                     </PopoverMenuItem>
                                                     {f.status === "published" && (

@@ -25,18 +25,21 @@ On a self-hosted instance the Slack card stays unavailable until the operator cr
 
 The assistant and the inbox buttons do things in Warmbly on your behalf, so Warmbly has to know which Warmbly member you are. Linking ties your Slack account to your Warmbly account in this workspace. Until you link, the bot can post notifications and inbox replies but will not act for you.
 
-The member who connects Slack is linked automatically to the Slack account that approved the install, when the two use the same email. Everyone else links once:
+Most members never see a link step. When the email on your Slack profile is the email of a Warmbly account that is a member of the connected workspace, Warmbly links the two the first time you mention `@Warmbly`, message it, press one of its buttons or open its Home tab. It answers straight away and sends you a DM saying it linked you. The member who connects Slack is linked the same way to the Slack account that approved the install.
+
+When the emails differ, or Slack does not share yours, you link once:
 
 1. Ask the bot something: mention `@Warmbly` or message it. The bot sends you a **Link your Warmbly account** button in a DM. In a channel it also replies in the thread to say it is waiting for you, and the button itself is only ever sent to you.
-2. The button opens Warmbly. Sign in if you need to, check the workspace and the Slack account it shows (its name and picture), and confirm.
-3. Warmbly shows which Slack account it linked. The bot confirms in that account's DM and answers the question you asked, where you asked it. You do not have to ask again.
+2. The button opens Warmbly. Sign in if you need to, and check the Slack account and the Warmbly account it shows.
+3. Select **Continue with Slack**. Slack asks you to sign in to the Slack account the button was made for, which proves the account is yours whatever email it uses. When your Slack and Warmbly emails already match, the button is **Connect account** instead and needs no Slack sign-in.
+4. The bot confirms in that account's DM and answers the question you asked, where you asked it. You do not have to ask again.
 
 The link button works once and expires after 15 minutes; ask the bot for a new one if it lapses. A question waiting for the link is dropped with it. You can only link to a Warmbly workspace you are a member of.
 
-The email address on your Slack profile has to be the email you sign in to Warmbly with (capitalization does not matter). Warmbly reads it from Slack when you confirm and refuses the link when the two differ, so a link button only ever links the Slack account it was made for to the Warmbly account with the same email. If they differ, sign in to Warmbly with the address your Slack profile uses, or change one of them so they match.
+A link button only ever links the Slack account it was made for: either its Slack email is your Warmbly email (capitalization does not matter), or you signed in to that Slack account with **Continue with Slack**. Signing in to a different Slack account is refused.
 
-<Callout type="info" title="Connections made before email matching need a reconnect">
-Reading a Slack member's email needs the `users:read` and `users:read.email` permissions. A connection made before Warmbly asked for them lists them as missing under **Integrations > Slack**, and linking is refused until someone with **Manage settings** selects **Reconnect**. Links made before then keep working.
+<Callout type="info" title="Automatic linking needs Slack emails">
+Matching by email needs the `users:read` and `users:read.email` permissions. A connection made before Warmbly asked for them lists them as missing under **Integrations > Slack**. Until someone with **Manage settings** selects **Reconnect**, members link with **Continue with Slack**. Links made before then keep working.
 </Callout>
 
 A Slack account links to one Warmbly account at a time. Linking again replaces the previous link. Unlink from the app's Home tab or from **Integrations > Slack** in Warmbly. If your membership in the workspace ends, the link stops working and the bot asks you to link again.
@@ -189,7 +192,8 @@ Slack delivers other messages from channels the bot is in, including the team's 
 | Notifications post, but the bot never answers and buttons do nothing | The Slack app is only partly configured: posting works but Slack cannot reach Warmbly. On a self-hosted instance the operator needs to set the signing secret ([Slack app](/development/slack-app/#environment-variables)) |
 | The Slack panel lists missing permissions | Select **Reconnect**. A feature needing a permission the connection lacks stays off until then |
 | The bot says it sent you a link, or replies with a **Link your Warmbly account** button | Your Slack account is not linked yet, or the link was removed. Follow the button in your DM with Warmbly; the bot then answers what you asked |
-| Linking says your Slack email must match your Warmbly email | Sign in to Warmbly with the email on your Slack profile. If they already match, ask someone with **Manage settings** to select **Reconnect** under **Integrations > Slack** so Warmbly can read Slack email addresses |
+| Warmbly did not link you automatically | Your Slack email is not the email of a Warmbly member of the workspace, or the connection predates email matching. Follow the link button and select **Continue with Slack** |
+| **Continue with Slack** says you signed in as someone else | Slack signed you in to a different account than the one the button was made for. Sign in to Slack with that account, or ask the bot for a new link from the account you want to link |
 | The bot says the thread is someone else's conversation | The thread belongs to a member of a different Warmbly workspace. Start a new thread |
 | The bot does not answer in a channel | Check that it is a member of the channel, that the channel is not a Slack Connect channel, and that the assistant is not set to **DMs only** or **Off** |
 | An inbox button says you need inbox access | Your role lacks **Use unified inbox**. Ask a workspace admin |

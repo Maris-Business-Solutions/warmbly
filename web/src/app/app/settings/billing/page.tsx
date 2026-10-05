@@ -23,10 +23,11 @@ import {
     TicketIcon,
     XIcon,
 } from "lucide-react";
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { TopbarAction } from "@/components/layout/Page";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import useUpgradeFlow from "@/hooks/useUpgradeFlow";
 import { useUpgradeDialog } from "@/hooks/context/upgrade";
@@ -82,7 +83,7 @@ export default function BillingSettingsPage() {
     const upgradeDialog = useUpgradeDialog();
     const openPortal = flow.openPortal;
     const redemptions = useAppliedDiscounts();
-    const { tab: tabSlug } = useParams();
+    const { tab: tabSlug } = useParams({ from: "/app/settings/billing/{-$tab}" });
     const navigate = useNavigate();
     const [codeInput, setCodeInput] = React.useState("");
     const [applied, setApplied] = React.useState<DiscountPreview | null>(null);
@@ -110,11 +111,11 @@ export default function BillingSettingsPage() {
 
     const resolvedTab = tabForSlug(tabSlug);
     const tab: BillingTab = resolvedTab ?? "overview";
-    const setTab = (t: BillingTab) => navigate(pathForTab(t));
+    const setTab = (t: BillingTab) => navigate({ to: pathForTab(t) });
 
     // Unknown slug (stale link, typo) — normalize the URL to the overview.
     if (resolvedTab === null) {
-        return <Navigate to="/app/settings/billing" replace />;
+        return <Navigate to="/app/settings/billing/{-$tab}" params={{ tab: undefined }} replace />;
     }
 
     // No billing provider on this deployment: there is nothing to manage here.
@@ -292,7 +293,8 @@ export default function BillingSettingsPage() {
                                         ))}
                                     </div>
                                     <Link
-                                        to="/#pricing"
+                                        to="/"
+                                        hash="pricing"
                                         className="inline-flex items-center gap-1 text-[11.5px] text-slate-500 hover:text-slate-900 transition-colors"
                                     >
                                         <ArrowUpRightIcon className="w-3 h-3" />
@@ -399,7 +401,7 @@ export default function BillingSettingsPage() {
 
                         {tab === "payment" && !flow.hasBillingCustomer && (
                             <Section eyebrow="Payment" description="Complete checkout to set up billing. Operator-granted plans do not create a Stripe billing account.">
-                                <button type="button" onClick={() => navigate(pathForTab("plans"))} className="h-7 px-3 rounded-md bg-slate-900 text-white text-[12px]">Choose a plan</button>
+                                <button type="button" onClick={() => navigate({ to: pathForTab("plans") })} className="h-7 px-3 rounded-md bg-slate-900 text-white text-[12px]">Choose a plan</button>
                             </Section>
                         )}
 

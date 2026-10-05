@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import getSubscription from "@/lib/api/client/app/subscription/getSubscription";
 
 // Subscription state changes only when the user upgrades, downgrades,
@@ -7,14 +7,16 @@ import getSubscription from "@/lib/api/client/app/subscription/getSubscription";
 // explicitly from useChangePlan / useCancelSubscription / the realtime
 // channel. This kills the "header reloads on every page change"
 // flicker.
+export const subscriptionQuery = queryOptions({
+    queryKey: ["subscription"],
+    queryFn: () => getSubscription(),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+});
+
 export default function useSubscription() {
-    return useQuery({
-        queryKey: ["subscription"],
-        queryFn: () => getSubscription(),
-        staleTime: Infinity,
-        gcTime: Infinity,
-        refetchOnWindowFocus: false,
-        refetchOnMount: false,
-        refetchOnReconnect: false,
-    });
+    return useQuery(subscriptionQuery);
 }

@@ -54,10 +54,9 @@ import {
     type MeetingsSearch,
 } from "@/lib/api/models/app/integrations/Integration";
 import { cn } from "@/lib/utils";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import useCrmProvider from "@/hooks/useCrmProvider";
-import { HubSpotMark } from "@/components/app/crm/HubSpot";
-import { HUBSPOT_SETTINGS_PATH } from "@/components/app/crm/hubspotCrm";
+import { CrmMark } from "@/components/app/crm/crmProviders";
 
 type Timeframe = "upcoming" | "past" | "all";
 
@@ -158,9 +157,9 @@ export default function MeetingsPage() {
     const { data: summary } = useMeetingsSummary();
 
     const rows = meetings ?? [];
-    // HubSpot mode with meeting logging on: booked calls also land in HubSpot.
-    const { isHubSpot, settings } = useCrmProvider();
-    const logsToHubSpot = isHubSpot && !!settings?.config?.activity?.meetings;
+    // Provider mode with meeting logging on: booked calls also land in the CRM.
+    const { isExternal, crm, settings } = useCrmProvider();
+    const logsToCrm = isExternal && !!settings?.config?.activity?.meetings;
 
     return (
         <Page>
@@ -181,15 +180,15 @@ export default function MeetingsPage() {
             </StatStrip>
 
             <PageBody>
-                {logsToHubSpot && (
-                    <div className="px-5 py-2 border-b border-slate-200 bg-[#FF7A59]/[0.04] flex items-center gap-2 text-[11.5px] text-slate-600">
-                        <HubSpotMark className="w-3.5 h-3.5" />
+                {logsToCrm && (
+                    <div className={cn("px-5 py-2 border-b border-slate-200 flex items-center gap-2 text-[11.5px] text-slate-600", crm.tint)}>
+                        <CrmMark provider={crm.id} className="w-3.5 h-3.5" />
                         <span className="min-w-0 flex-1">
-                            Calls booked through Calendly or Cal.com are logged to HubSpot as meetings on the contact.
+                            Calls booked through Calendly or Cal.com are logged to {crm.name} as meetings on the {crm.words.contact}.
                         </span>
                         <Link
-                            to={HUBSPOT_SETTINGS_PATH}
-                            className="shrink-0 text-[11.5px] font-medium text-slate-600 hover:text-orange-700 transition-colors"
+                            to={crm.settingsPath}
+                            className={cn("shrink-0 text-[11.5px] font-medium text-slate-600 transition-colors", crm.hoverText)}
                         >
                             Settings
                         </Link>

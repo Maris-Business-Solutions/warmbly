@@ -62,12 +62,13 @@ type CRMService interface {
 	UpdateTaskType(ctx context.Context, orgID, typeID uuid.UUID, data *models.UpdateCRMTaskType) (*models.CRMTaskType, *errx.Error)
 	DeleteTaskType(ctx context.Context, orgID, typeID uuid.UUID) *errx.Error
 
-	// SetExternal attaches the connected CRM the service writes through to.
-	SetExternal(e External)
+	// AddExternal attaches a connected CRM the service writes through to.
+	AddExternal(e External)
 }
 
-// External is a connected CRM (HubSpot). While it is active for a workspace,
-// every change is written to it first and the local rows are its mirror.
+// External is a connected CRM (HubSpot, Pipedrive). While it is active for a
+// workspace, every change is written to it first and the local rows are its
+// mirror. At most one is active for a workspace at a time.
 type External interface {
 	Active(ctx context.Context, orgID uuid.UUID) bool
 	PushDealCreate(ctx context.Context, orgID uuid.UUID, deal *models.Deal) *errx.Error
@@ -95,15 +96,21 @@ const maxTaskBulkBatch = 1000
 
 type crmService struct {
 	repo repository.CRMRepository
-	ext  External
+	exts []External
 }
 
-func (s *crmService) SetExternal(e External) { s.ext = e }
+func (s *crmService) AddExternal(e External) {
+	if e != nil {
+		s.exts = append(s.exts, e)
+	}
+}
 
-// external returns the connected CRM when it runs this workspace's CRM.
+// external returns the connected CRM when one runs this workspace's CRM.
 func (s *crmService) external(ctx context.Context, orgID uuid.UUID) External {
-	if s.ext != nil && s.ext.Active(ctx, orgID) {
-		return s.ext
+	for _, e := range s.exts {
+		if e.Active(ctx, orgID) {
+			return e
+		}
 	}
 	return nil
 }
@@ -288,7 +295,7 @@ func (s *crmService) ListPipelines(ctx context.Context, orgID uuid.UUID) ([]mode
 		return nil, toErrx(err)
 	}
 	if ext := s.external(ctx, orgID); ext != nil {
-		// Only HubSpot's pipelines exist while HubSpot is the CRM.
+		// Only the connected CRM's pipelines exist while it is the CRM.
 		ext.DecoratePipelines(ctx, orgID, pipelines)
 		kept := pipelines[:0]
 		for _, p := range pipelines {
@@ -436,7 +443,7 @@ func (s *crmService) SearchDeals(ctx context.Context, orgID uuid.UUID, filters m
 	}
 	ext := s.external(ctx, orgID)
 	if ext != nil {
-		filters = s.hubspotPipelinesOnly(ctx, orgID, filters)
+		filters = s.providerPipelinesOnly(ctx, orgID, filters)
 	}
 	result, err := s.repo.SearchDeals(ctx, orgID, filters, limit, offset)
 	if err != nil {
@@ -450,7 +457,7 @@ func (s *crmService) SearchDeals(ctx context.Context, orgID uuid.UUID, filters m
 
 func (s *crmService) DealsSummary(ctx context.Context, orgID uuid.UUID, filters models.SearchDeals) (*models.DealsSummary, *errx.Error) {
 	if s.external(ctx, orgID) != nil {
-		filters = s.hubspotPipelinesOnly(ctx, orgID, filters)
+		filters = s.providerPipelinesOnly(ctx, orgID, filters)
 	}
 	result, err := s.repo.DealsSummary(ctx, orgID, filters)
 	if err != nil {
@@ -830,9 +837,9 @@ func (s *crmService) DeleteCRMTask(ctx context.Context, orgID, taskID uuid.UUID)
 	return nil
 }
 
-// hubspotPipelinesOnly narrows a deal search to the connected CRM's pipelines
-// when it names none, so Warmbly-only deals stay out of HubSpot's board.
-func (s *crmService) hubspotPipelinesOnly(ctx context.Context, orgID uuid.UUID, f models.SearchDeals) models.SearchDeals {
+// providerPipelinesOnly narrows a deal search to the connected CRM's pipelines
+// when it names none, so Warmbly-only deals stay out of the provider's board.
+func (s *crmService) providerPipelinesOnly(ctx context.Context, orgID uuid.UUID, f models.SearchDeals) models.SearchDeals {
 	if len(f.PipelineIDs) > 0 {
 		return f
 	}
@@ -845,7 +852,7 @@ func (s *crmService) hubspotPipelinesOnly(ctx context.Context, orgID uuid.UUID, 
 		f.PipelineIDs = append(f.PipelineIDs, p.ID.String())
 	}
 	if len(f.PipelineIDs) == 0 {
-		// No HubSpot pipelines mirrored yet: match nothing rather than everything.
+		// No provider pipelines mirrored yet: match nothing rather than everything.
 		f.PipelineIDs = []string{uuid.Nil.String()}
 	}
 	return f

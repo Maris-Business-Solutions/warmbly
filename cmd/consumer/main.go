@@ -25,6 +25,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/contact"
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/creditwatch"
+	"github.com/warmbly/warmbly/internal/app/crmmode"
 	"github.com/warmbly/warmbly/internal/app/feature"
 	"github.com/warmbly/warmbly/internal/app/hubspot"
 	"github.com/warmbly/warmbly/internal/app/inboxagent"
@@ -34,6 +35,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/nativeactions"
 	"github.com/warmbly/warmbly/internal/app/notification"
 	"github.com/warmbly/warmbly/internal/app/opsnotify"
+	"github.com/warmbly/warmbly/internal/app/pipedrive"
 	"github.com/warmbly/warmbly/internal/app/replyclassify"
 	"github.com/warmbly/warmbly/internal/app/salesforce"
 	warmupapp "github.com/warmbly/warmbly/internal/app/warmup"
@@ -346,11 +348,29 @@ func main() {
 		AppURL:       os.Getenv("APP_URL"),
 		ClientSecret: strings.TrimSpace(os.Getenv("HUBSPOT_OAUTH_CLIENT_SECRET")),
 	})
+	// Pipedrive mode: the same in this process, on Pipedrive's records.
+	pipedriveService := pipedrive.New(pipedrive.Deps{
+		Repo:         repository.NewCRMProviderRepository(primaryDB.Pool),
+		CRM:          crmRepo,
+		Tokens:       integrationServiceC,
+		Contacts:     contactRepo,
+		Holds:        campaignProgressRepo,
+		Suppress:     advancedRepo,
+		Realtime:     streamingPublisher,
+		Cache:        redisCache,
+		AppURL:       os.Getenv("APP_URL"),
+		PublicURL:    config.BackendPublicURL(),
+		ClientSecret: strings.TrimSpace(os.Getenv("PIPEDRIVE_OAUTH_CLIENT_SECRET")),
+	})
+	crmModes := crmmode.New(repository.NewCRMProviderRepository(primaryDB.Pool), integrationServiceC, hubspotService, pipedriveService)
 	webhookService.WireRecordSink(hubspotService.OnEvent)
-	advancedService.WireCRMOutbox(hubspotService)
-	integrationServiceC.SetCRMModeCheck(hubspotService.Active)
+	webhookService.WireRecordSink(pipedriveService.OnEvent)
+	advancedService.WireCRMOutbox(crmModes)
+	integrationServiceC.SetCRMModeCheck(crmModes.Mode)
 	go hubspotService.RunDrainer(ctx)
 	go hubspotService.RunPuller(ctx)
+	go pipedriveService.RunDrainer(ctx)
+	go pipedriveService.RunPuller(ctx)
 	// Replies, bounces, opens and clicks teach verification what real mail
 	// showed about each address.
 	verificationEvidence := emailverifyapp.NewEvidence(repository.NewVerificationEvidenceRepository(primaryDB))

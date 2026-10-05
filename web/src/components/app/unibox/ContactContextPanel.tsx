@@ -28,7 +28,7 @@ import {
     CheckSquareIcon,
     XIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { TextInput } from "@/components/ui/field";
 import NewMeetingDialog from "@/components/app/meetings/NewMeetingDialog";
 import BookACallButton from "@/components/app/integrations/BookACallButton";
@@ -69,10 +69,9 @@ import type CRMTask from "@/lib/api/models/app/crm/CRMTask";
 import type { CRMTaskWrite } from "@/lib/api/models/app/crm/CRMTask";
 import type { CRMExternalRef } from "@/lib/api/models/app/crm/CRMProvider";
 import useCrmProvider from "@/hooks/useCrmProvider";
-import HubSpotContactCard from "@/components/app/crm/HubSpotContactCard";
-import { HubSpotBadge, OpenInHubSpot } from "@/components/app/crm/HubSpot";
-import { HUBSPOT_SETTINGS_PATH } from "@/components/app/crm/hubspotCrm";
-import { crmErrorMessage } from "@/components/app/crm/hubspotUtils";
+import CrmContactCard from "@/components/app/crm/CrmContactCard";
+import { CrmBadge, OpenInCrm } from "@/components/app/crm/crmProviders";
+import { crmErrorMessage } from "@/components/app/crm/crmModeUtils";
 
 const DEAL_STATUS: Record<Deal["status"], { label: string; cls: string; dot: string }> = {
     open: { label: "Open", cls: "text-slate-600", dot: "bg-slate-400" },
@@ -128,7 +127,7 @@ export default function ContactContextPanel({
     const tasksQ = useCRMTasks({ contact_id: contactId, limit: 50 }, !!contactId);
     const notesQ = useContactNotes(contactId ?? "");
     const dealDefault = usePipelinesDefault();
-    const { isHubSpot } = useCrmProvider();
+    const { isExternal } = useCrmProvider();
 
     const campaigns = detail?.campaigns ?? contact?.campaigns ?? [];
     const eng = detail?.engagement;
@@ -225,7 +224,8 @@ export default function ContactContextPanel({
                                     </Badge>
                                 )}
                                 <Link
-                                    to={`/app/contacts?contact=${encodeURIComponent(contact.id)}`}
+                                    to="/app/contacts"
+                                    search={{ contact: contact.id }}
                                     className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-slate-400 hover:text-sky-700 transition-colors"
                                 >
                                     Open contact
@@ -256,10 +256,10 @@ export default function ContactContextPanel({
                             )}
                         </div>
 
-                        {/* HubSpot mode: the contact's sales context, edited in place. */}
-                        {isHubSpot && (
+                        {/* Provider mode: the contact's sales context, edited in place. */}
+                        {isExternal && (
                             <div className="px-4 py-3">
-                                <HubSpotContactCard contactId={contact.id} density="panel" />
+                                <CrmContactCard contactId={contact.id} density="panel" />
                             </div>
                         )}
                         {/* The linked Salesforce record, when the workspace syncs with Salesforce. */}
@@ -290,7 +290,7 @@ export default function ContactContextPanel({
                             mailboxId={mailboxId}
                             pipelineId={dealDefault.pipelineId}
                             stages={dealDefault.stages}
-                            hubspot={isHubSpot}
+                            external={isExternal}
                         />
 
                         {/* Tasks */}
@@ -302,7 +302,7 @@ export default function ContactContextPanel({
                             contactName={name}
                             company={contact.company}
                             dealId={(dealsQ.data ?? []).find((d) => d.status === "open")?.id}
-                            hubspot={isHubSpot}
+                            external={isExternal}
                         />
 
                         {/* Notes */}
@@ -310,7 +310,7 @@ export default function ContactContextPanel({
                             contactId={contact.id}
                             notes={asNoteList(notesQ.data)}
                             loading={notesQ.isPending}
-                            hubspot={isHubSpot}
+                            external={isExternal}
                         />
                     </div>
                 )}
@@ -355,7 +355,8 @@ function CampaignsSection({
                         {fallback.map((c) => (
                             <Link
                                 key={c.id}
-                                to={`/app/campaigns/${c.id}/leads`}
+                                to="/app/campaigns/$id/leads"
+                                params={{ id: c.id }}
                                 className="inline-flex items-center gap-1 h-5 px-1.5 rounded bg-white border border-slate-200 hover:border-sky-300 text-[10.5px] text-slate-600 hover:text-sky-700 transition-colors"
                             >
                                 <MegaphoneIcon className="w-2.5 h-2.5 text-slate-400" />
@@ -378,7 +379,8 @@ function CampaignsSection({
                             <div className="flex items-center gap-1.5 min-w-0">
                                 <MegaphoneIcon className="w-3 h-3 text-slate-400 shrink-0" />
                                 <Link
-                                    to={`/app/campaigns/${s.campaign_id}/leads`}
+                                    to="/app/campaigns/$id/leads"
+                                    params={{ id: s.campaign_id }}
                                     title={s.campaign_name}
                                     className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-800 hover:text-sky-700 transition-colors"
                                 >
@@ -462,7 +464,7 @@ function DealsSection({
     mailboxId,
     pipelineId,
     stages,
-    hubspot,
+    external,
 }: {
     contactId: string;
     deals: Deal[];
@@ -472,8 +474,9 @@ function DealsSection({
     mailboxId?: string;
     pipelineId?: string;
     stages: Stage[];
-    hubspot: boolean;
+    external: boolean;
 }) {
+    const { crm } = useCrmProvider();
     const create = useCreateDeal();
     const updateDeal = useUpdateDeal();
     const [open, setOpen] = React.useState(false);
@@ -531,12 +534,12 @@ function DealsSection({
     return (
         <Section
             label="Deals"
-            badge={hubspot ? <HubSpotBadge /> : undefined}
+            badge={external ? <CrmBadge provider={crm.id} /> : undefined}
             action={
                 canAdd ? (
                     <AddButton open={open} onClick={() => setOpen((o) => !o)} />
-                ) : hubspot ? (
-                    <Link to={HUBSPOT_SETTINGS_PATH} className="text-[10.5px] text-slate-400 hover:text-sky-700">
+                ) : external ? (
+                    <Link to={crm.settingsPath} className="text-[10.5px] text-slate-400 hover:text-sky-700">
                         Choose pipelines
                     </Link>
                 ) : (
@@ -557,7 +560,7 @@ function DealsSection({
                         <p className="text-[10px] text-slate-400 leading-snug">
                             Attributed to this {campaignId ? "campaign" : ""}
                             {campaignId && mailboxId ? " + " : ""}
-                            {mailboxId ? "mailbox" : ""}.{hubspot ? " Created in HubSpot." : ""}
+                            {mailboxId ? "mailbox" : ""}.{external ? ` Created in ${crm.name}.` : ""}
                         </p>
                     )}
                     <button
@@ -609,7 +612,7 @@ function DealsSection({
                                         {money(d.value, d.currency)}
                                     </span>
                                 )}
-                                {hubspot && <OpenInHubSpot external={d.external} compact label="Open deal in HubSpot" />}
+                                {external && <OpenInCrm external={d.external} compact label={`Open deal in ${crm.name}`} />}
                             </div>
                         );
                     })}
@@ -688,7 +691,7 @@ function TasksSection({
     contactName,
     company,
     dealId,
-    hubspot,
+    external,
 }: {
     contactId: string;
     tasks: CRMTask[];
@@ -697,8 +700,9 @@ function TasksSection({
     contactName: string;
     company?: string;
     dealId?: string;
-    hubspot: boolean;
+    external: boolean;
 }) {
+    const { crm } = useCrmProvider();
     const create = useCreateCRMTask();
     const [open, setOpen] = React.useState(false);
     const [title, setTitle] = React.useState(defaultTitle);
@@ -742,7 +746,7 @@ function TasksSection({
     return (
         <Section
             label="Tasks"
-            badge={hubspot ? <HubSpotBadge /> : undefined}
+            badge={external ? <CrmBadge provider={crm.id} /> : undefined}
             action={<AddButton open={open} onClick={() => setOpen((o) => !o)} />}
         >
             {open && (
@@ -783,7 +787,7 @@ function TasksSection({
                     <p className="text-[10px] text-slate-400 leading-snug">
                         Linked to {contactName}
                         {company ? ` · ${company}` : ""}
-                        {dealId ? " · open deal" : ""}.{hubspot ? " Created in HubSpot." : ""}
+                        {dealId ? " · open deal" : ""}.{external ? ` Created in ${crm.name}.` : ""}
                     </p>
                     <button
                         type="button"
@@ -811,7 +815,7 @@ function TasksSection({
                                     {fmtDate(t.due_date)}
                                 </span>
                             )}
-                            {hubspot && <OpenInHubSpot external={t.external} compact label="Open task in HubSpot" />}
+                            {external && <OpenInCrm external={t.external} compact label={`Open task in ${crm.name}`} />}
                         </div>
                     ))}
                 </div>
@@ -824,13 +828,14 @@ function NotesSection({
     contactId,
     notes,
     loading,
-    hubspot,
+    external,
 }: {
     contactId: string;
     notes: PanelNote[];
     loading: boolean;
-    hubspot: boolean;
+    external: boolean;
 }) {
+    const { crm } = useCrmProvider();
     const create = useCreateContactNote();
     const [draft, setDraft] = React.useState("");
 
@@ -845,12 +850,12 @@ function NotesSection({
     }
 
     return (
-        <Section label="Notes" badge={hubspot ? <HubSpotBadge /> : undefined}>
+        <Section label="Notes" badge={external ? <CrmBadge provider={crm.id} /> : undefined}>
             <div className="mb-2 rounded-md border border-slate-200 bg-white p-2">
                 <textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    placeholder={hubspot ? "Add a note to HubSpot…" : "Add a note…"}
+                    placeholder={external ? `Add a note to ${crm.name}…` : "Add a note…"}
                     rows={2}
                     className="w-full bg-transparent text-[11.5px] text-slate-900 placeholder:text-slate-400 outline-none resize-none"
                 />
@@ -877,11 +882,11 @@ function NotesSection({
                             <p className="text-[11.5px] text-slate-700 leading-snug whitespace-pre-wrap break-words">{n.content}</p>
                             <div className="mt-1 flex items-center gap-1">
                                 <p className="text-[10px] text-slate-400 font-mono">{fmtDate(n.created_at)}</p>
-                                {hubspot && (
-                                    <OpenInHubSpot
+                                {external && (
+                                    <OpenInCrm
                                         external={n.external}
                                         compact
-                                        label="Open note in HubSpot"
+                                        label={`Open note in ${crm.name}`}
                                         className="ml-auto h-5 w-5"
                                     />
                                 )}

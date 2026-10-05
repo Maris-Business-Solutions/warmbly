@@ -1,4 +1,4 @@
-if (!process.env.VITE_SENTRY_RELEASE && process.env.CF_PAGES_COMMIT_SHA) process.env.VITE_SENTRY_RELEASE = process.env.CF_PAGES_COMMIT_SHA;import { defineConfig } from "vite";
+if (!process.env.VITE_SENTRY_RELEASE && process.env.CF_PAGES_COMMIT_SHA) process.env.VITE_SENTRY_RELEASE = process.env.CF_PAGES_COMMIT_SHA;import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import tailwindcss from "@tailwindcss/vite";
@@ -39,10 +39,33 @@ const sentryPlugins = uploadToSentry
       ]
     : [];
 
+// Requests the interface font from the head, in parallel with the scripts, not after the stylesheet parses.
+function preloadInterfaceFont(): Plugin {
+    return {
+        name: "warmbly:preload-interface-font",
+        apply: "build",
+        transformIndexHtml: {
+            order: "post",
+            handler(_html, ctx) {
+                const file = Object.keys(ctx.bundle ?? {}).find((name) => /inter-latin-opsz-normal-[^/]*\.woff2$/.test(name));
+                if (!file) return [];
+                return [
+                    {
+                        tag: "link",
+                        attrs: { rel: "preload", as: "font", type: "font/woff2", href: `/${file}`, crossorigin: "" },
+                        injectTo: "head-prepend",
+                    },
+                ];
+            },
+        },
+    };
+}
+
 export default defineConfig({
     plugins: [
         react(),
         tailwindcss(),
+        preloadInterfaceFont(),
         ...sentryPlugins,
     ],
     build: {
@@ -62,7 +85,7 @@ export default defineConfig({
         include: [
             "react",
             "react-dom",
-            "react-router-dom",
+            "@tanstack/react-router",
             "axios",
             "framer-motion",
             "@tanstack/react-query",
@@ -79,15 +102,14 @@ export default defineConfig({
         // inert for normal local dev. Lets `make web PUBLIC_HOST=<name>` work
         // when reached at https://<host>.<tailnet>.ts.net.
         allowedHosts: [".ts.net", ...(process.env.VITE_ALLOWED_HOSTS?.split(",").filter(Boolean) ?? [])],
-        // Warm up the most-mounted entry points before the user
-        // clicks them so navigation doesn't trigger a cold compile.
+        // Compile every dashboard page at startup, so no first click waits
+        // on the dev server.
         warmup: {
             clientFiles: [
                 "./src/main.tsx",
-                "./src/app/app/layout.tsx",
-                "./src/app/app/emails/page.tsx",
-                "./src/app/app/campaigns/page.tsx",
-                "./src/app/app/contacts/page.tsx",
+                "./src/router.tsx",
+                "./src/app/app/**/page.tsx",
+                "./src/app/app/**/layout.tsx",
             ],
         },
     },

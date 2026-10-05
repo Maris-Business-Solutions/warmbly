@@ -1,14 +1,32 @@
 import updateEmail from "@/lib/api/client/app/emails/updateEmail";
 import type Inbox from "@/lib/api/models/app/emails/Inbox";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { overlapping, patchQueries, restoreQueries, settle, updateEntity } from "@/lib/api/hooks/optimistic";
 import patchEmailLists from "./patchEmailLists";
 
+// Writes to one mailbox share this prefix, so a reply only lands when it is the last one out.
+export const mailboxMutationKey = (id: string) => ["emails", id];
+
+// Optimistic: the switch, the rename and the tags show on the click; the reply replaces them.
 export default function useUpdateEmail(id: string) {
     const queryClient = useQueryClient();
+    const mutationKey = [...mailboxMutationKey(id), "update"];
 
     return useMutation({
+        mutationKey,
         mutationFn: (inbox: Partial<Inbox>) => updateEmail(id, inbox),
+        onMutate: (inbox) =>
+            patchQueries(
+                queryClient,
+                [["emails", "list"]],
+                updateEntity<Inbox>(id, (row) => ({ ...row, ...inbox, id })),
+            ),
+        onError: (_err, _inbox, snapshot) => {
+            restoreQueries(queryClient, snapshot);
+            settle(queryClient, mailboxMutationKey(id), [["emails", "list"]]);
+        },
         onSuccess: (data) => {
+            if (overlapping(queryClient, mailboxMutationKey(id))) return;
             patchEmailLists(queryClient, (rows) => rows.map((c) => (c.id === id ? data : c)));
 
             queryClient.setQueryData<Inbox>(

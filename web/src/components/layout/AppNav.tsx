@@ -6,7 +6,7 @@
 // generic "+ New Campaign" pill. Cold-email work is always-on; the
 // sidebar should reflect that rather than nag with a CTA.
 
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
     ClipboardListIcon,
     BarChart3Icon,
@@ -69,7 +69,7 @@ import ShortcutTooltip from "@/components/ui/shortcut-tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import useCrmProvider from "@/hooks/useCrmProvider";
-import { HubSpotMark } from "@/components/app/crm/HubSpot";
+import { CrmMark } from "@/components/app/crm/crmProviders";
 
 // Stable (module-level) empty contacts search so the sidebar's contact-count
 // query key never changes identity between renders (which would refetch-loop).
@@ -100,7 +100,7 @@ interface NavItem {
      *  recommendations the Advisor has open for that area, so a problem is
      *  visible from the sidebar on the tab where its fix lives. */
     advisorSurface?: AdvisorSurface;
-    /** CRM screen that shows the connected CRM's records (HubSpot mark). */
+    /** CRM screen that shows the connected CRM's records (its logo). */
     crmProvider?: boolean;
     /** Live indicator key — renders an ambient, realtime activity cluster.
      *  Each key has its OWN motif (campaigns = dot-grid, accounts = flame,
@@ -245,7 +245,7 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
 }
 
 function NavRow({ item, collapsed = false }: { item: NavItem; collapsed?: boolean }) {
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const unseen = useAppStore((s) => s.unseenCount);
     const access = useFeatureAccess();
     const hasItemPermission = usePermission(item.permission ?? "VIEW_CAMPAIGNS");
@@ -423,17 +423,17 @@ function NavRow({ item, collapsed = false }: { item: NavItem; collapsed?: boolea
     );
 }
 
-// The HubSpot mark on a CRM row while the workspace runs HubSpot mode, with an
+// The connected CRM's logo on a CRM row while the workspace runs on it, with an
 // amber dot when the connection needs to be reconnected.
 function CrmProviderMark() {
-    const { isHubSpot, needsReconnect } = useCrmProvider();
-    if (!isHubSpot) return null;
+    const { isExternal, crm, needsReconnect } = useCrmProvider();
+    if (!isExternal) return null;
     return (
         <span
             className="relative inline-flex shrink-0"
-            title={needsReconnect ? "HubSpot needs to be reconnected" : "Records from HubSpot"}
+            title={needsReconnect ? `${crm.name} needs to be reconnected` : `Records from ${crm.name}`}
         >
-            <HubSpotMark className="w-3 h-3" title={needsReconnect ? "HubSpot needs to be reconnected" : "HubSpot"} />
+            <CrmMark provider={crm.id} className="w-3 h-3" title={needsReconnect ? `${crm.name} needs to be reconnected` : crm.name} />
             {needsReconnect && (
                 <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-amber-500 ring-1 ring-white" />
             )}
@@ -443,11 +443,11 @@ function CrmProviderMark() {
 
 // Collapsed rail: only the reconnect warning survives, as a dot on the icon.
 function CrmReconnectDot() {
-    const { needsReconnect } = useCrmProvider();
+    const { needsReconnect, crm } = useCrmProvider();
     if (!needsReconnect) return null;
     return (
         <span className={cn("absolute right-1 top-1 size-1.5 rounded-full bg-amber-500 ring-2 ring-white", RAIL_MARK_IN)}>
-            <span className="sr-only">HubSpot needs to be reconnected</span>
+            <span className="sr-only">{crm.name} needs to be reconnected</span>
         </span>
     );
 }
@@ -758,7 +758,7 @@ function Section({
     collapsed?: boolean;
 }) {
     const id = useId();
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const folded = useAppStore((s) => s.navCollapsedSections[section.id] ?? false);
     const toggleNavSection = useAppStore((s) => s.toggleNavSection);
     const org = useAppStore((s) => s.currentOrganization);

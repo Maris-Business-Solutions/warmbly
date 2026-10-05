@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
 import { NumberInput } from "@/components/ui/field";
 import { Section, SectionShell } from "../_components/SectionShell";
@@ -194,7 +194,7 @@ export default function LimitsSettingsPage() {
                     <p className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
                         This workspace warms mailboxes and does not send, so sending, contact, campaign and seat limits do
                         not apply yet. They come with a{" "}
-                        <Link to="/app/settings/billing" className="font-medium underline hover:text-slate-900">
+                        <Link to="/app/settings/billing/{-$tab}" params={{ tab: undefined }} className="font-medium underline hover:text-slate-900">
                             plan that sends
                         </Link>
                         .

@@ -14,13 +14,16 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/warmbly/warmbly/internal/api/middleware"
+	"github.com/warmbly/warmbly/internal/app/crmmode"
 	"github.com/warmbly/warmbly/internal/app/hubspot"
+	"github.com/warmbly/warmbly/internal/app/pipedrive"
 	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 )
 
-// CRM mode: which CRM the workspace runs on, and the HubSpot side of it.
+// CRM mode: which CRM the workspace runs on (Warmbly's own, HubSpot or
+// Pipedrive), and the connected side of it.
 
 func (h *Handler) crmReady(c *gin.Context) (uuid.UUID, bool) {
 	orgID := middleware.GetOrganizationID(c)
@@ -28,11 +31,25 @@ func (h *Handler) crmReady(c *gin.Context) (uuid.UUID, bool) {
 		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
 		return uuid.Nil, false
 	}
-	if h.HubSpot == nil {
+	if h.CRMModes == nil {
 		errx.Handle(c, errx.New(errx.NotImplemented, "CRM providers are not available on this instance"))
 		return uuid.Nil, false
 	}
 	return *orgID, true
+}
+
+// crmProvider resolves the CRM the workspace runs on.
+func (h *Handler) crmProvider(c *gin.Context) (crmmode.Provider, uuid.UUID, bool) {
+	orgID, ok := h.crmReady(c)
+	if !ok {
+		return nil, uuid.Nil, false
+	}
+	p, xerr := h.CRMModes.For(c.Request.Context(), orgID)
+	if xerr != nil {
+		errx.Handle(c, xerr)
+		return nil, uuid.Nil, false
+	}
+	return p, orgID, true
 }
 
 // GetCRMSettings returns the workspace's CRM mode and the connected account.
@@ -41,7 +58,7 @@ func (h *Handler) GetCRMSettings(c *gin.Context) {
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.Settings(c.Request.Context(), orgID)
+	out, xerr := h.CRMModes.Settings(c.Request.Context(), orgID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -60,7 +77,7 @@ func (h *Handler) UpdateCRMSettings(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	out, xerr := h.HubSpot.UpdateSettings(c.Request.Context(), orgID, &body)
+	out, xerr := h.CRMModes.UpdateSettings(c.Request.Context(), orgID, &body)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -73,11 +90,11 @@ func (h *Handler) UpdateCRMSettings(c *gin.Context) {
 // GetCRMMetadata returns the provider's lifecycle stages, lead statuses, task
 // types, contact properties and pipelines for the pickers.
 func (h *Handler) GetCRMMetadata(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.Metadata(c.Request.Context(), orgID)
+	out, xerr := p.Metadata(c.Request.Context(), orgID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -87,11 +104,11 @@ func (h *Handler) GetCRMMetadata(c *gin.Context) {
 
 // ListCRMOwners lists the provider's owners and the member each one is.
 func (h *Handler) ListCRMOwners(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.Owners(c.Request.Context(), orgID)
+	out, xerr := p.Owners(c.Request.Context(), orgID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -101,7 +118,7 @@ func (h *Handler) ListCRMOwners(c *gin.Context) {
 
 // MapCRMOwner pins an owner to a member (or clears the match).
 func (h *Handler) MapCRMOwner(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -115,7 +132,7 @@ func (h *Handler) MapCRMOwner(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	if xerr := h.HubSpot.MapOwner(c.Request.Context(), orgID, ext, body.UserID); xerr != nil {
+	if xerr := p.MapOwner(c.Request.Context(), orgID, ext, body.UserID); xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
@@ -125,11 +142,11 @@ func (h *Handler) MapCRMOwner(c *gin.Context) {
 
 // GetCRMSyncHealth reports what is waiting, what failed and when each pull ran.
 func (h *Handler) GetCRMSyncHealth(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.SyncHealth(c.Request.Context(), orgID)
+	out, xerr := p.SyncHealth(c.Request.Context(), orgID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -144,7 +161,7 @@ type crmJobSelection struct {
 // RetryCRMSyncFailures requeues failed sync jobs (all, or the ids given).
 // Naturally idempotent: requeueing a requeued job changes nothing.
 func (h *Handler) RetryCRMSyncFailures(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -153,7 +170,7 @@ func (h *Handler) RetryCRMSyncFailures(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	n, xerr := h.HubSpot.RetryFailed(c.Request.Context(), orgID, body.IDs)
+	n, xerr := p.RetryFailed(c.Request.Context(), orgID, body.IDs)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -163,7 +180,7 @@ func (h *Handler) RetryCRMSyncFailures(c *gin.Context) {
 
 // DiscardCRMSyncFailures drops failed sync jobs (all, or the ids given).
 func (h *Handler) DiscardCRMSyncFailures(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -172,7 +189,7 @@ func (h *Handler) DiscardCRMSyncFailures(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	n, xerr := h.HubSpot.DiscardFailed(c.Request.Context(), orgID, body.IDs)
+	n, xerr := p.DiscardFailed(c.Request.Context(), orgID, body.IDs)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -182,11 +199,11 @@ func (h *Handler) DiscardCRMSyncFailures(c *gin.Context) {
 
 // SyncCRMNow starts a full pull from the provider.
 func (h *Handler) SyncCRMNow(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
-	if xerr := h.HubSpot.SyncNow(c.Request.Context(), orgID); xerr != nil {
+	if xerr := p.SyncNow(c.Request.Context(), orgID); xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
@@ -205,7 +222,7 @@ func (h *Handler) crmContactID(c *gin.Context) (uuid.UUID, bool) {
 // GetCRMContact returns the provider side of a contact: owner, lifecycle stage,
 // lead status, company and the chosen properties.
 func (h *Handler) GetCRMContact(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -213,7 +230,7 @@ func (h *Handler) GetCRMContact(c *gin.Context) {
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.ContactView(c.Request.Context(), orgID, contactID)
+	out, xerr := p.ContactView(c.Request.Context(), orgID, contactID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -224,7 +241,7 @@ func (h *Handler) GetCRMContact(c *gin.Context) {
 // RefreshCRMContact pulls a contact's provider record, deals, tasks and notes
 // now. Debounced per contact, so it is safe to call whenever a panel opens.
 func (h *Handler) RefreshCRMContact(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -232,7 +249,7 @@ func (h *Handler) RefreshCRMContact(c *gin.Context) {
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.RefreshContact(c.Request.Context(), orgID, contactID)
+	out, xerr := p.RefreshContact(c.Request.Context(), orgID, contactID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -242,7 +259,7 @@ func (h *Handler) RefreshCRMContact(c *gin.Context) {
 
 // LinkCRMContact finds or creates the contact in the provider.
 func (h *Handler) LinkCRMContact(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -250,18 +267,18 @@ func (h *Handler) LinkCRMContact(c *gin.Context) {
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.LinkContact(c.Request.Context(), orgID, contactID)
+	out, xerr := p.LinkContact(c.Request.Context(), orgID, contactID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
-	h.auditOrg(c, models.AuditActionConnect, models.AuditEntityContact, &contactID, nil, map[string]string{"crm": "hubspot"})
+	h.auditOrg(c, models.AuditActionConnect, models.AuditEntityContact, &contactID, nil, map[string]string{"crm": string(p.Name())})
 	c.JSON(http.StatusOK, out)
 }
 
 // UpdateCRMContact edits owner, lifecycle stage or lead status in place.
 func (h *Handler) UpdateCRMContact(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -280,18 +297,18 @@ func (h *Handler) UpdateCRMContact(c *gin.Context) {
 			return
 		}
 	}
-	out, xerr := h.HubSpot.UpdateContactRecord(c.Request.Context(), orgID, contactID, &body)
+	out, xerr := p.UpdateContactRecord(c.Request.Context(), orgID, contactID, &body)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
-	h.auditOrg(c, models.AuditActionUpdate, models.AuditEntityContact, &contactID, nil, map[string]string{"crm": "hubspot"})
+	h.auditOrg(c, models.AuditActionUpdate, models.AuditEntityContact, &contactID, nil, map[string]string{"crm": string(p.Name())})
 	c.JSON(http.StatusOK, out)
 }
 
 // ListCRMLists lists the provider's contact lists for import.
 func (h *Handler) ListCRMLists(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -309,7 +326,7 @@ func (h *Handler) ListCRMLists(c *gin.Context) {
 		errx.Handle(c, errx.New(errx.BadRequest, "query too long"))
 		return
 	}
-	out, xerr := h.HubSpot.Lists(c.Request.Context(), orgID, q, c.Query("cursor"), limit)
+	out, xerr := p.Lists(c.Request.Context(), orgID, q, c.Query("cursor"), limit)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -319,7 +336,7 @@ func (h *Handler) ListCRMLists(c *gin.Context) {
 
 // PreviewCRMImport counts who a list import brings in and who it skips.
 func (h *Handler) PreviewCRMImport(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -328,7 +345,7 @@ func (h *Handler) PreviewCRMImport(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	out, xerr := h.HubSpot.PreviewImport(c.Request.Context(), orgID, &body)
+	out, xerr := p.PreviewImport(c.Request.Context(), orgID, &body)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -339,7 +356,7 @@ func (h *Handler) PreviewCRMImport(c *gin.Context) {
 // ImportCRMList turns a provider list into a contact import draft, finished in
 // the regular import review.
 func (h *Handler) ImportCRMList(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -353,7 +370,7 @@ func (h *Handler) ImportCRMList(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	out, xerr := h.HubSpot.Import(c.Request.Context(), orgID, userID, &body)
+	out, xerr := p.Import(c.Request.Context(), orgID, userID, &body)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -364,11 +381,11 @@ func (h *Handler) ImportCRMList(c *gin.Context) {
 
 // GetCRMBackfill counts the Warmbly-only records a switch would copy.
 func (h *Handler) GetCRMBackfill(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
-	out, xerr := h.HubSpot.BackfillPreview(c.Request.Context(), orgID)
+	out, xerr := p.BackfillPreview(c.Request.Context(), orgID)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -380,7 +397,7 @@ func (h *Handler) GetCRMBackfill(c *gin.Context) {
 // provider once. Idempotent: a second call while one runs is folded into it,
 // and copied records are never copied twice.
 func (h *Handler) StartCRMBackfill(c *gin.Context) {
-	orgID, ok := h.crmReady(c)
+	p, orgID, ok := h.crmProvider(c)
 	if !ok {
 		return
 	}
@@ -389,11 +406,11 @@ func (h *Handler) StartCRMBackfill(c *gin.Context) {
 		errx.Handle(c, errx.InvalidBody(err))
 		return
 	}
-	if xerr := h.HubSpot.StartBackfill(c.Request.Context(), orgID, &body); xerr != nil {
+	if xerr := p.StartBackfill(c.Request.Context(), orgID, &body); xerr != nil {
 		errx.Handle(c, xerr)
 		return
 	}
-	h.auditOrg(c, models.AuditActionImport, models.AuditEntityIntegration, nil, nil, map[string]string{"crm_backfill": "hubspot"})
+	h.auditOrg(c, models.AuditActionImport, models.AuditEntityIntegration, nil, nil, map[string]string{"crm_backfill": string(p.Name())})
 	c.Status(http.StatusAccepted)
 }
 
@@ -597,4 +614,169 @@ func (h *Handler) HubSpotActionCampaigns(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"options": opts, "searchable": true})
+}
+
+// PipedriveWebhook receives a Pipedrive webhook for one connection. It only
+// queues a re-read, so a delivery can at most make a pull come sooner. A
+// connection no workspace runs its CRM on answers 410, so Pipedrive retires
+// the webhook.
+func (h *Handler) PipedriveWebhook(c *gin.Context) {
+	if h.Pipedrive == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	connID, err := uuid.Parse(c.Param("connectionId"))
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	user, pass, _ := c.Request.BasicAuth()
+	if !h.Pipedrive.VerifyWebhook(connID, user, pass) {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	live, err := h.Pipedrive.HandleWebhook(c.Request.Context(), connID, body)
+	switch {
+	case !live:
+		c.Status(http.StatusGone)
+	case err != nil:
+		c.Status(http.StatusBadRequest)
+	default:
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// pipedriveAppCall reads and verifies a panel or modal call: the JWT Pipedrive
+// signs with the app's client secret, naming the user and company in the query.
+func (h *Handler) pipedriveAppCall(c *gin.Context) (pipedrive.AppCall, bool) {
+	if h.Pipedrive == nil {
+		c.Status(http.StatusNotFound)
+		return pipedrive.AppCall{}, false
+	}
+	q := c.Request.URL.Query()
+	for _, k := range []string{"userId", "companyId", "selectedIds", "token"} {
+		if len(q[k]) > 1 {
+			c.Status(http.StatusBadRequest)
+			return pipedrive.AppCall{}, false
+		}
+	}
+	call := pipedrive.AppCall{
+		CompanyID: strings.TrimSpace(q.Get("companyId")),
+		UserID:    strings.TrimSpace(q.Get("userId")),
+		Resource:  strings.TrimSpace(q.Get("resource")),
+		RecordID:  strings.TrimSpace(q.Get("selectedIds")),
+	}
+	if !h.Pipedrive.VerifyAppToken(q.Get("token"), call) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"message": "Pipedrive did not sign this request."}})
+		return pipedrive.AppCall{}, false
+	}
+	return call, true
+}
+
+// PipedrivePanel answers the Warmbly JSON panel on Pipedrive person and deal
+// pages. A refusal is shown in the panel with its reason.
+func (h *Handler) PipedrivePanel(c *gin.Context) {
+	call, ok := h.pipedriveAppCall(c)
+	if !ok {
+		return
+	}
+	out, xerr := h.Pipedrive.AppPanel(c.Request.Context(), call)
+	if xerr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"title": "Warmbly", "subtitle": xerr.Message}})
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+type pipedriveModalBody struct {
+	Campaign string `json:"campaign"`
+	Action   string `json:"action"`
+}
+
+func (h *Handler) pipedriveModalBody(c *gin.Context) (*pipedriveModalBody, bool) {
+	var body pipedriveModalBody
+	if err := json.NewDecoder(io.LimitReader(c.Request.Body, 64<<10)).Decode(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Warmbly could not read the form."}})
+		return nil, false
+	}
+	return &body, true
+}
+
+func pipedriveModalError(c *gin.Context, xerr *errx.Error) {
+	c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": xerr.Message}})
+}
+
+// PipedriveEnroll is the "Add to Warmbly campaign" modal: opening it lists the
+// campaigns, submitting it adds the person. Idempotent: enrolling a lead twice
+// leaves one lead.
+func (h *Handler) PipedriveEnroll(c *gin.Context) {
+	call, ok := h.pipedriveAppCall(c)
+	if !ok {
+		return
+	}
+	ctx := c.Request.Context()
+	if c.Request.Method == http.MethodGet {
+		items, xerr := h.Pipedrive.EnrollChoices(ctx, call)
+		if xerr != nil {
+			pipedriveModalError(c, xerr)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"blocks": gin.H{"campaign": gin.H{"items": items}}, "actions": gin.H{}}})
+		return
+	}
+	body, ok := h.pipedriveModalBody(c)
+	if !ok {
+		return
+	}
+	name, xerr := h.Pipedrive.AppEnroll(ctx, call, body.Campaign)
+	if xerr != nil {
+		pipedriveModalError(c, xerr)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": gin.H{"message": "Added to " + name, "type": "snackbar"}})
+}
+
+// PipedrivePause is the "Pause or resume in Warmbly" modal. Idempotent: it sets
+// a state rather than toggling one.
+func (h *Handler) PipedrivePause(c *gin.Context) {
+	call, ok := h.pipedriveAppCall(c)
+	if !ok {
+		return
+	}
+	ctx := c.Request.Context()
+	if c.Request.Method == http.MethodGet {
+		held, xerr := h.Pipedrive.AppHeld(ctx, call)
+		if xerr != nil {
+			pipedriveModalError(c, xerr)
+			return
+		}
+		value := "pause"
+		if held {
+			value = "resume"
+		}
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"blocks": gin.H{"action": gin.H{"value": value}}, "actions": gin.H{}}})
+		return
+	}
+	body, ok := h.pipedriveModalBody(c)
+	if !ok {
+		return
+	}
+	if body.Action != "pause" && body.Action != "resume" {
+		pipedriveModalError(c, errx.New(errx.BadRequest, "Choose pause or resume."))
+		return
+	}
+	if xerr := h.Pipedrive.AppSetPaused(ctx, call, body.Action == "pause"); xerr != nil {
+		pipedriveModalError(c, xerr)
+		return
+	}
+	msg := "Campaigns paused"
+	if body.Action == "resume" {
+		msg = "Campaigns resumed"
+	}
+	c.JSON(http.StatusOK, gin.H{"success": gin.H{"message": msg, "type": "snackbar"}})
 }

@@ -5,7 +5,7 @@
 import React from "react";
 import { InboxIcon, Loader2Icon } from "lucide-react";
 import toast from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import { EmptyBlock, SectionBar } from "@/components/layout/Page";
 import { SearchInput } from "@/components/ui/field";

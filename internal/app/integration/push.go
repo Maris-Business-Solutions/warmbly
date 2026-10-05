@@ -136,7 +136,7 @@ func (s *service) PushContacts(ctx context.Context, orgID, connID uuid.UUID, con
 		case models.IntegrationHubSpot:
 			aerr = hubspotUpsertContact(ctx, token, ct.Email, props, "Synced from Warmbly")
 		case models.IntegrationPipedrive:
-			aerr = pipedriveUpsertPerson(ctx, token, ct.Email, props)
+			aerr = pipedriveUpsertPerson(ctx, pipedriveBase(conn), token, ct.Email, props)
 		case models.IntegrationClose:
 			aerr = closeUpsertLead(ctx, apiKey, ct.Email, props)
 		default:

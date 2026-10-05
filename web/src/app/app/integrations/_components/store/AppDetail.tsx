@@ -4,7 +4,7 @@
 // consent screen.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, CheckIcon, ExternalLinkIcon, LinkIcon, Loader2Icon, ShieldAlertIcon } from "lucide-react";

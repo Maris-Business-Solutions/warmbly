@@ -1,82 +1,18 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './global.css'
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
-import RootLayout from './app/layout';
+import "@fontsource-variable/inter/opsz.css";
 
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/600.css";
-import "@fontsource/poppins/400.css";
-import "@fontsource/poppins/600.css";
-import "@fontsource/poppins/700.css";
-import RootAppLayout from './app/app/layout';
-import AddressesPage from './app/app/emails/page';
-import SendingDomainsPage from './app/app/emails/domains/page';
-import ContactsPage from './app/app/contacts/page';
-import FormsPage from './app/app/forms/page';
-import FormBuilderPage from './app/app/forms/[id]/page';
-import ContactsLayout from './app/app/contacts/layout';
-import SegmentsPage from './app/app/contacts/segments/page';
-import LabelsPage from './app/app/contacts/labels/page';
-import SuppressionsPage from './app/app/contacts/suppressions/page';
-import SegmentPage from './app/app/contacts/segments/[id]/page';
-import CampaignsPage from './app/app/campaigns/page';
-import CampaignLayout from './app/app/campaigns/[id]/layout';
-import CampaignPreview from './app/app/campaigns/[id]/page';
-import CampaignLeads from './app/app/campaigns/[id]/leads/page';
-import CampaignPreferences from './app/app/campaigns/[id]/preferences/page';
-import CampaignSchedule from './app/app/campaigns/[id]/schedule/page';
-import CampaignSteps from './app/app/campaigns/[id]/steps/page';
-import AnalyticsPage from './app/app/analytics/page';
-import DeliverabilityPage from './app/app/deliverability/page';
-import PlacementPage from './app/app/placement/page';
-import PlacementTestPage from './app/app/placement/[id]/page';
-import PlacementBatchPage from './app/app/placement/batches/[id]/page';
-import PipelinesPage from './app/app/crm/pipelines/page';
-import DealsPage from './app/app/crm/deals/page';
-import TasksPage from './app/app/crm/tasks/page';
-import MeetingsPage from './app/app/crm/meetings/page';
-import TemplatesPage from './app/app/templates/page';
-import APIKeysPage from './app/app/api-keys/page';
-import OAuthAppsPage from './app/app/settings/oauth-apps/page';
-import WebhooksSettingsPage from './app/app/settings/webhooks/page';
-import OAuthLayout from './app/oauth/layout';
-import OAuthConsentPage from './app/oauth/authorize/page';
-import IntegrationsPage from './app/app/integrations/page';
-import HubSpotPage from './app/app/integrations/hubspot/page';
-import SalesforcePage from './app/app/integrations/salesforce/[id]/page';
-import AutomationsPage from './app/app/automations/page';
-import AutomationBuilderPage from './app/app/automations/[id]/page';
-import AuditPage from './app/app/audit/page';
-import SlackLinkPage from './app/app/slack/link/page';
-import AppDefault from './app/app/page';
-import SettingsLayout from './app/app/settings/layout';
-import ProfileSettingsPage from './app/app/settings/profile/page';
-import NotificationsSettingsPage from './app/app/settings/notifications/page';
-import SecuritySettingsPage from './app/app/settings/security/page';
-import MembersSettingsPage from './app/app/settings/members/page';
-import TeamsSettingsPage from './app/app/settings/teams/page';
-import WorkspaceSettingsPage from './app/app/settings/workspace/page';
-import SkillsSettingsPage from './app/app/settings/ai-skills/page';
-import ConnectionsSettingsPage from './app/app/settings/connections/page';
-import DangerSettingsPage from './app/app/settings/danger/page';
-import DataSettingsPage from './app/app/settings/data/page';
-import BillingSettingsPage from './app/app/settings/billing/page';
-import ReferralSettingsPage from './app/app/settings/referral/page';
-import LimitsSettingsPage from './app/app/settings/limits/page';
-import SendingSettingsPage from './app/app/settings/sending/page';
-import WebsiteTrackingSettingsPage from './app/app/settings/tracking/page';
-import InboxTaggingSettingsPage from './app/app/settings/inbox-tagging/page';
-import RolesSettingsPage from './app/app/settings/roles/page';
-import UniboxPage from './app/app/unibox/page';
-import DashboardNotFound from './app/app/not-found';
-import NotFound from './app/not-found';
+import { QueryClientProvider } from "@tanstack/react-query"
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
+import { RouterProvider } from "@tanstack/react-router";
 
 import { Toaster } from '@/components/ui/toaster';
-
 import { initErrorReporting } from "@/lib/observability";
 import { initProductAnalytics } from "@/lib/productAnalytics";
 import { installDomMutationGuard } from "@/lib/domGuard";
+import { queryClient } from "@/lib/queryClient";
+import { dashboardPages, router } from "./router";
 
 // Before the first render, so a translated page never commits unguarded.
 installDomMutationGuard();
@@ -85,399 +21,6 @@ installDomMutationGuard();
 initErrorReporting();
 // Off unless the deployment configured a key; a self-host never loads it.
 initProductAnalytics();
-
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
-import Home from './app/page';
-import AuthLayout from './app/auth/layout';
-import RegisterConfirmPage from './app/auth/register/confirm/page';
-import LoginLayout from './app/auth/login/layout';
-import LoginPage from './app/auth/login/page';
-import LoginConfirmPage from './app/auth/login/confirm/page';
-import ResetPasswordLayout from './app/auth/reset-password/layout';
-import ResetPasswordPage from './app/auth/reset-password/page';
-import ResetPasswordConfirmPage from './app/auth/reset-password/confirm/page';
-import OnboardingLayout from './app/onboarding/layout';
-import OnboardingPage from './app/onboarding/page';
-import SelectOrgPage from './app/select-org/page';
-import InviteAcceptPage from './app/invite/page';
-import ConnectPage from './app/connect/page';
-import CLIAuthPage from './app/cli/page';
-import CloudOAuthDonePage from './app/cloud-oauth/done/page';
-import WarmblyCloudSettingsPage from './app/app/settings/warmbly-cloud/page';
-import SetupPage from './app/setup/page';
-import SSOCallbackPage from './app/auth/sso/page';
-import shareDeep from './lib/helper/shareDeep';
-
-// React-Query defaults tuned for a dashboard. The library's
-// out-of-the-box behaviour treats every query as immediately stale
-// and refetches on every mount + window focus, so a 3-query page
-// fired 6+ network calls on every navigation. The new defaults:
-//
-//   - staleTime: 30s  — most lists are fine for half a minute. The
-//     few that need to be real-time (subscription, audit) override.
-//   - gcTime: 5min    — keep responses in cache through normal
-//     navigation so the back button is instant.
-//   - refetchOnWindowFocus: false — annoying behaviour in a tool you
-//     actually focus often. Realtime updates flow through the
-//     websocket layer instead.
-//   - refetchOnReconnect: 'always' — when the network drops and
-//     comes back, do refresh once.
-//   - retry: 1 — react-query's default of 3 turns a 500ms backend
-//     hiccup into ~5s of stacked retries on the user.
-//   - structuralSharing: shareDeep — keeps equal revived Dates, so
-//     unchanged data keeps its identity across a refetch.
-const queryClient = new QueryClient({
-    defaultOptions: {
-        queries: {
-            staleTime: 30_000,
-            gcTime: 5 * 60_000,
-            refetchOnWindowFocus: false,
-            refetchOnReconnect: "always",
-            retry: 1,
-            structuralSharing: shareDeep,
-        },
-        mutations: {
-            retry: 0,
-        },
-    },
-});
-
-const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <RootLayout />,
-    children: [
-      {
-        index: true,
-        element: <Home />
-      },
-      {
-        path: "auth",
-        element: <AuthLayout />,
-        children: [
-          {
-            path: "register",
-            element: <LoginLayout />,
-            children: [
-              {
-                index: true,
-                element: <LoginPage />,
-              },
-              {
-                path: "confirm",
-                element: <RegisterConfirmPage />,
-              }
-            ]
-          },
-          {
-            path: "login",
-            element: <LoginLayout />,
-            children: [
-              {
-                index: true,
-                element: <LoginPage />
-              },
-              {
-                path: "confirm",
-                element: <LoginConfirmPage />,
-              }
-            ]
-          },
-          {
-            // Landing for the single-use code an SSO redirect carries.
-            path: "sso",
-            element: <SSOCallbackPage />,
-          },
-          {
-            path: "reset-password",
-            element: <ResetPasswordLayout />,
-            children: [
-              {
-                index: true,
-                element: <ResetPasswordPage />
-              },
-              {
-                path: "confirm",
-                element: <ResetPasswordConfirmPage />,
-              }
-            ]
-          }
-        ]
-      },
-      {
-        path: "onboarding",
-        element: <OnboardingLayout />,
-        children: [
-          {
-            index: true,
-            element: <OnboardingPage />,
-          }
-        ]
-      },
-      {
-        path: "select-org",
-        element: <SelectOrgPage />,
-      },
-      {
-        path: "invite",
-        element: <InviteAcceptPage />,
-      },
-      {
-        path: "connect",
-        element: <ConnectPage />,
-      },
-      {
-        // Where `warmbly auth login` sends the browser to approve its code.
-        path: "cli",
-        element: <CLIAuthPage />,
-      },
-      {
-        // Where Warmbly Cloud sends the Google/Microsoft popup back to on a linked instance.
-        path: "cloud-oauth/done",
-        element: <CloudOAuthDonePage />,
-      },
-      {
-        // First-run claim link printed by the backend on an empty database.
-        path: "setup",
-        element: <SetupPage />,
-      },
-      {
-        path: "oauth",
-        element: <OAuthLayout />,
-        children: [
-          {
-            path: "authorize",
-            element: <OAuthConsentPage />,
-          },
-        ],
-      },
-      {
-        path: "app",
-        element: <RootAppLayout />,
-        children: [
-          {
-            // Keeps the query string, so /app?agent_session=… still opens the assistant.
-            index: true,
-            element: <AppDefault />,
-          },
-          {
-            path: "emails",
-            children: [
-              { index: true, element: <AddressesPage /> },
-              { path: "domains", element: <SendingDomainsPage /> },
-            ],
-          },
-          {
-            path: "contacts",
-            element: <ContactsLayout />,
-            children: [
-              { index: true, element: <ContactsPage /> },
-              {
-                path: "segments",
-                children: [
-                  { index: true, element: <SegmentsPage /> },
-                  { path: ":id", element: <SegmentPage /> },
-                ],
-              },
-              { path: "labels", element: <LabelsPage /> },
-              { path: "categories", element: <Navigate to="/app/contacts/labels" replace /> },
-              { path: "suppressions", element: <SuppressionsPage /> },
-            ],
-          },
-          {
-            path: "forms",
-            children: [
-              { index: true, element: <FormsPage /> },
-              { path: ":id", element: <FormBuilderPage /> },
-            ],
-          },
-          {
-            path: "campaigns",
-            children: [
-              {
-                index: true,
-                element: <CampaignsPage />,
-              },
-              {
-                path: ":id",
-                element: <CampaignLayout />,
-                children: [
-                  {
-                    index: true,
-                    element: <CampaignPreview />,
-                  },
-                  {
-                    path: "leads",
-                    element: <CampaignLeads />,
-                  },
-                  {
-                    path: "preferences",
-                    element: <CampaignPreferences />,
-                  },
-                  {
-                    path: "schedule",
-                    element: <CampaignSchedule />,
-                  },
-                  {
-                    path: "steps",
-                    element: <CampaignSteps />,
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            path: "analytics",
-            element: <AnalyticsPage />,
-          },
-          {
-            path: "deliverability",
-            element: <DeliverabilityPage />,
-          },
-          {
-            path: "placement",
-            children: [
-              { index: true, element: <PlacementPage /> },
-              { path: "batches/:id", element: <PlacementBatchPage /> },
-              { path: ":id", element: <PlacementTestPage /> },
-            ],
-          },
-          {
-            path: "crm",
-            children: [
-              {
-                index: true,
-                element: <Navigate to="/app/crm/pipelines" replace />,
-              },
-              {
-                path: "pipelines",
-                element: <PipelinesPage />,
-              },
-              {
-                path: "deals",
-                element: <DealsPage />,
-              },
-              {
-                path: "tasks",
-                element: <TasksPage />,
-              },
-              {
-                path: "meetings",
-                element: <MeetingsPage />,
-              }
-            ]
-          },
-          {
-            path: "templates",
-            element: <TemplatesPage />,
-          },
-          {
-            path: "api-keys",
-            element: <APIKeysPage />,
-          },
-          {
-            // OAuth apps moved into Settings; keep the old path working.
-            path: "oauth-apps",
-            element: <Navigate to="/app/settings/oauth-apps" replace />,
-          },
-          {
-            // The store and every page in it (/connected, /category/:c, /:provider,
-            // /apps/:slug); one mounted page so search and drawers survive navigation.
-            path: "integrations/*",
-            element: <IntegrationsPage />,
-            handle: { stableParams: ["*"] },
-          },
-          {
-            path: "integrations/hubspot",
-            element: <HubSpotPage />,
-          },
-          {
-            path: "integrations/salesforce/:id",
-            element: <SalesforcePage />,
-          },
-          {
-            path: "automations",
-            element: <AutomationsPage />,
-          },
-          {
-            path: "automations/:id",
-            element: <AutomationBuilderPage />,
-          },
-          {
-            path: "audit",
-            element: <AuditPage />,
-          },
-          {
-            // Where the Warmbly app in Slack sends a member to link their account.
-            path: "slack/link",
-            element: <SlackLinkPage />,
-          },
-          {
-            // The breadcrumb above the link page points here.
-            path: "slack",
-            element: <Navigate to="/app/integrations" replace />,
-          },
-          {
-            path: "settings",
-            element: <SettingsLayout />,
-            children: [
-              { index: true, element: <Navigate to="/app/settings/profile" replace /> },
-              { path: "profile", element: <ProfileSettingsPage /> },
-              { path: "notifications", element: <NotificationsSettingsPage /> },
-              { path: "security", element: <SecuritySettingsPage /> },
-              { path: "members", element: <MembersSettingsPage /> },
-              { path: "teams", element: <TeamsSettingsPage /> },
-              { path: "workspace", element: <WorkspaceSettingsPage /> },
-              { path: "ai-skills", element: <SkillsSettingsPage /> },
-              { path: "billing/:tab?", element: <BillingSettingsPage /> },
-              { path: "referral", element: <ReferralSettingsPage /> },
-              { path: "limits", element: <LimitsSettingsPage /> },
-              { path: "sending", element: <SendingSettingsPage /> },
-              { path: "tracking", element: <WebsiteTrackingSettingsPage /> },
-              { path: "inbox-tagging", element: <InboxTaggingSettingsPage /> },
-              { path: "roles", element: <RolesSettingsPage /> },
-              { path: "warmbly-cloud", element: <WarmblyCloudSettingsPage /> },
-              { path: "oauth-apps", element: <OAuthAppsPage /> },
-              { path: "webhooks", element: <WebhooksSettingsPage /> },
-              { path: "connections", element: <ConnectionsSettingsPage /> },
-              { path: "data", element: <DataSettingsPage /> },
-              { path: "danger", element: <DangerSettingsPage /> },
-            ],
-          },
-          {
-            // Legacy /app/billing entry points → redirect to settings.
-            path: "billing",
-            element: <Navigate to="/app/settings/billing" replace />,
-          },
-          {
-            // Path-based, readable inbox URLs: /app/unibox/<scope>[/<threadId>].
-            // Both segments optional, so /app/unibox opens the Inbox folder.
-            // Both are state inside one page, not different pages, so the shell
-            // keeps the page mounted across them and the conversation list holds
-            // its scroll offset when a thread opens (issue #396).
-            path: "unibox/:scope?/:threadId?",
-            element: <UniboxPage />,
-            handle: { stableParams: ["scope", "threadId"] },
-          },
-          {
-            // Legacy /app/team entry points → the Members settings section.
-            path: "team",
-            element: <Navigate to="/app/settings/members" replace />,
-          },
-          {
-            path: "*",
-            element: <DashboardNotFound />,
-          },
-        ]
-      },
-      {
-        path: "*",
-        element: <NotFound />,
-      }
-    ],
-  },
-]);
 
 const rootEl = document.getElementById('root')!
 createRoot(rootEl).render(
@@ -490,10 +33,25 @@ createRoot(rootEl).render(
   </StrictMode>,
 )
 
-// Reveal the app only once its CSS is in effect (the stylesheet is imported
-// above, so it's applied by the first frame after render). This removes the
-// brief flash of unstyled content. The timeout is a safety net so the page can
-// never stay hidden if a frame callback is missed.
+// Reveal once styles and the interface font apply, so text never repaints; the timeouts cap a slow font.
 const revealApp = () => rootEl.classList.add('app-ready')
-requestAnimationFrame(() => requestAnimationFrame(revealApp))
+Promise.race([
+  document.fonts?.ready ?? Promise.resolve(),
+  new Promise((resolve) => setTimeout(resolve, 700)),
+]).then(() => requestAnimationFrame(revealApp))
 setTimeout(revealApp, 1500)
+
+// Once the dashboard is idle, fetch every page's code, so no navigation ever
+// waits on a chunk.
+const warmPages = () => {
+  for (const load of Object.values(dashboardPages)) void load().catch(() => {})
+}
+const idle = (cb: () => void) =>
+  typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(cb) : setTimeout(cb, 1200)
+let warmed = false
+const stopWarming = router.subscribe('onResolved', ({ toLocation }) => {
+  if (warmed || !toLocation.pathname.startsWith('/app')) return
+  warmed = true
+  idle(warmPages)
+  stopWarming()
+})

@@ -1,6 +1,15 @@
 import { useContext } from "react";
 import { SocketContext } from "@/hooks/context/socket";
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import {
+    infiniteQueryOptions,
+    keepPreviousData,
+    queryOptions,
+    useInfiniteQuery,
+    useMutation,
+    useQuery,
+    useQueryClient,
+    type InfiniteData,
+} from "@tanstack/react-query";
 import {
     cancelPlacementBatch,
     cancelPlacementTest,
@@ -36,16 +45,20 @@ import type {
 // stay live with no polling.
 export const PLACEMENT_KEY = ["placement"] as const;
 
+export const placementOverviewQuery = queryOptions({
+    queryKey: [...PLACEMENT_KEY, "overview"],
+    queryFn: getPlacementOverview,
+});
+
 export function usePlacementOverview(enabled = true) {
     return useQuery({
-        queryKey: [...PLACEMENT_KEY, "overview"],
-        queryFn: getPlacementOverview,
+        ...placementOverviewQuery,
         enabled,
     });
 }
 
-export function usePlacementTests(campaignId: string | null = null, limit = 25) {
-    const query = useInfiniteQuery<
+export const placementTestsQuery = (campaignId: string | null = null, limit = 25) =>
+    infiniteQueryOptions<
         PlacementTestList,
         Error,
         InfiniteData<PlacementTestList, string | null>,
@@ -56,6 +69,11 @@ export function usePlacementTests(campaignId: string | null = null, limit = 25) 
         queryFn: ({ pageParam }) => listPlacementTests(pageParam, limit, campaignId),
         initialPageParam: null,
         getNextPageParam: (last) => (last.pagination.has_more ? last.pagination.next_cursor : undefined),
+    });
+
+export function usePlacementTests(campaignId: string | null = null, limit = 25) {
+    const query = useInfiniteQuery({
+        ...placementTestsQuery(campaignId, limit),
         placeholderData: keepPreviousData,
     });
     const tests = query.data?.pages.flatMap((p) => p.data ?? []) ?? [];
@@ -63,12 +81,17 @@ export function usePlacementTests(campaignId: string | null = null, limit = 25) 
     return { ...query, tests, total };
 }
 
+export const placementTestQuery = (id: string) =>
+    queryOptions({
+        queryKey: [...PLACEMENT_KEY, "test", id],
+        queryFn: () => getPlacementTest(id),
+    });
+
 export function usePlacementTest(id: string) {
     // Realtime drives a running test; only a dropped socket falls back to a slow poll.
     const socketUp = useContext(SocketContext)?.isConnected ?? true;
     return useQuery({
-        queryKey: [...PLACEMENT_KEY, "test", id],
-        queryFn: () => getPlacementTest(id),
+        ...placementTestQuery(id),
         enabled: !!id,
         refetchInterval: (query) => (!socketUp && query.state.data?.status === "running" ? 15_000 : false),
     });
@@ -144,8 +167,8 @@ export function useDeletePlacementMonitor(campaignId: string) {
     });
 }
 
-export function usePlacementBatches(limit = 10, enabled = true) {
-    const query = useInfiniteQuery<
+export const placementBatchesQuery = (limit = 10) =>
+    infiniteQueryOptions<
         PlacementBatchList,
         Error,
         InfiniteData<PlacementBatchList, string | null>,
@@ -156,6 +179,11 @@ export function usePlacementBatches(limit = 10, enabled = true) {
         queryFn: ({ pageParam }) => listPlacementBatches(pageParam, limit),
         initialPageParam: null,
         getNextPageParam: (last) => (last.pagination.has_more ? last.pagination.next_cursor : undefined),
+    });
+
+export function usePlacementBatches(limit = 10, enabled = true) {
+    const query = useInfiniteQuery({
+        ...placementBatchesQuery(limit),
         placeholderData: keepPreviousData,
         enabled,
     });
@@ -164,12 +192,17 @@ export function usePlacementBatches(limit = 10, enabled = true) {
     return { ...query, batches, total };
 }
 
+export const placementBatchQuery = (id: string) =>
+    queryOptions({
+        queryKey: [...PLACEMENT_KEY, "batch", id],
+        queryFn: () => getPlacementBatch(id),
+    });
+
 export function usePlacementBatch(id: string) {
     // Child test events drive a running batch; a dropped socket falls back to a slow poll.
     const socketUp = useContext(SocketContext)?.isConnected ?? true;
     return useQuery({
-        queryKey: [...PLACEMENT_KEY, "batch", id],
-        queryFn: () => getPlacementBatch(id),
+        ...placementBatchQuery(id),
         enabled: !!id,
         refetchInterval: (query) => {
             const status = query.state.data?.status;
@@ -178,12 +211,11 @@ export function usePlacementBatch(id: string) {
     });
 }
 
-export function usePlacementBatchSenders(
-    id: string,
-    opts: { sort: PlacementBatchSenderSort; status: PlacementBatchSenderStatus | ""; q: string; limit?: number },
-) {
+type PlacementBatchSendersOpts = { sort: PlacementBatchSenderSort; status: PlacementBatchSenderStatus | ""; q: string; limit?: number };
+
+export const placementBatchSendersQuery = (id: string, opts: PlacementBatchSendersOpts) => {
     const limit = opts.limit ?? 50;
-    const query = useInfiniteQuery<
+    return infiniteQueryOptions<
         PlacementBatchSenderList,
         Error,
         InfiniteData<PlacementBatchSenderList, string | null>,
@@ -195,6 +227,12 @@ export function usePlacementBatchSenders(
             listPlacementBatchSenders(id, { cursor: pageParam, limit, sort: opts.sort, status: opts.status, q: opts.q }),
         initialPageParam: null,
         getNextPageParam: (last) => (last.pagination.has_more ? last.pagination.next_cursor : undefined),
+    });
+};
+
+export function usePlacementBatchSenders(id: string, opts: PlacementBatchSendersOpts) {
+    const query = useInfiniteQuery({
+        ...placementBatchSendersQuery(id, opts),
         placeholderData: keepPreviousData,
         enabled: !!id,
     });
@@ -231,10 +269,14 @@ export function useCancelPlacementBatch() {
     });
 }
 
+export const placementCoverageQuery = queryOptions({
+    queryKey: [...PLACEMENT_KEY, "coverage"],
+    queryFn: getPlacementCoverage,
+});
+
 export function usePlacementCoverage(enabled = true) {
     return useQuery({
-        queryKey: [...PLACEMENT_KEY, "coverage"],
-        queryFn: getPlacementCoverage,
+        ...placementCoverageQuery,
         enabled,
     });
 }

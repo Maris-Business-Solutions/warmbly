@@ -1,7 +1,7 @@
 // Automation builder — the visual flow canvas for one automation.
 
 import React from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { Loader2Icon } from "lucide-react";
 import { useAutomation } from "@/lib/api/hooks/app/automations/useAutomation";
 import useIntegrationConnections from "@/lib/api/hooks/app/integrations/useIntegrationConnections";
@@ -10,13 +10,13 @@ import { EmptyBlock } from "@/components/layout/Page";
 import AutomationFlow from "@/components/app/automations/AutomationFlow";
 
 export default function AutomationBuilderPage() {
-    const { id } = useParams();
+    const { id } = useParams({ from: "/app/automations/$id" });
     const navigate = useNavigate();
     const autoQ = useAutomation(id ?? "");
     const connQ = useIntegrationConnections();
     const catQ = useIntegrationCatalog();
 
-    const back = () => navigate("/app/automations");
+    const back = () => navigate({ to: "/app/automations" });
 
     // Wait for connections + catalog too: the canvas seeds action-node labels
     // (integration name, glyph, available actions) from them once on mount.

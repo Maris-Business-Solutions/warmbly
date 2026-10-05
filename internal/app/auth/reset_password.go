@@ -184,6 +184,10 @@ func (s *authService) ResetPasswordConfirm(ctx context.Context, data *ResetPassw
 		}
 	}
 
+	if err := s.ForgetTrustedDevices(ctx, sess.UserID); err != nil {
+		return err
+	}
+
 	if err := s.deletePasswordResetSession(ctx, sess.SessionID); err != nil {
 		return err
 	}
@@ -266,6 +270,11 @@ func (s *authService) ChangePassword(ctx context.Context, userID uuid.UUID, curr
 	if hashErr != nil {
 		errs.CaptureException(hashErr)
 		return nil, errx.InternalError()
+	}
+	// Forgotten before the new password is stored, so a failure leaves the old
+	// password in place rather than a changed one with devices still trusted.
+	if err := s.ForgetTrustedDevices(ctx, userID); err != nil {
+		return nil, err
 	}
 	if err := s.authRepository.ResetPassword(ctx, userID, newHash); err != nil {
 		return nil, err

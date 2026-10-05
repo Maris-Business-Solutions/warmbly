@@ -14,7 +14,7 @@ import {
     LockIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { Navigate } from "react-router-dom";
+import { Navigate } from "@tanstack/react-router";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import useReferral from "@/lib/api/hooks/app/subscription/useReferral";
 import useReferralAttributions from "@/lib/api/hooks/app/subscription/useReferralAttributions";

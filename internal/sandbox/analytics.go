@@ -63,9 +63,9 @@ func seedTeam(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO users (id, first_name, last_name, email, password_hash)
-		VALUES ($1, 'Marco', 'Diaz', $2, $3)
-		ON CONFLICT (id) DO NOTHING`,
+		INSERT INTO users (id, first_name, last_name, email, password_hash, onboarding_completed_at)
+		VALUES ($1, 'Marco', 'Diaz', $2, $3, NOW())
+		ON CONFLICT (id) DO UPDATE SET onboarding_completed_at = COALESCE(users.onboarding_completed_at, NOW())`,
 		sandboxUser2, sandboxUser2Em, hash); err != nil {
 		return err
 	}

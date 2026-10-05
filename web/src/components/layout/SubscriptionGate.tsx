@@ -4,7 +4,7 @@
 // plan chooser until a plan is active.
 
 import React from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "@tanstack/react-router";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import SubscriptionLockedScreen from "./SubscriptionLockedScreen";
 
@@ -26,7 +26,7 @@ const FEATURE_BY_PREFIX: [string, string][] = [
 
 export default function SubscriptionGate({ children }: { children: React.ReactNode }) {
     const access = useFeatureAccess();
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     const open = OPEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
     if (!access.locked || open) return <>{children}</>;
     const feature = FEATURE_BY_PREFIX.find(([p]) => pathname === p || pathname.startsWith(p + "/"))?.[1] ?? "This page";

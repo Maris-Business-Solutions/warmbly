@@ -3,7 +3,8 @@
 // in a local draft; saving PATCHes the whole document (last write wins).
 
 import React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     ArrowLeftIcon,

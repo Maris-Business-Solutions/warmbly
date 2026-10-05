@@ -9,7 +9,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import {
     AlertTriangleIcon,
     ArrowRightIcon,
@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { Page, PageTopbar, TopbarAction } from "@/components/layout/Page";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import ScrollStrip from "@/components/ui/scroll-strip";
 import { useCommunityApps } from "@/lib/api/hooks/app/integrations/useCommunityApps";
 import useIntegrationCatalog from "@/lib/api/hooks/app/integrations/useIntegrationCatalog";
@@ -38,6 +39,7 @@ import type {
     IntegrationConnection,
     IntegrationProvider,
 } from "@/lib/api/models/app/integrations/Integration";
+import { hrefTarget } from "@/lib/routerSearch";
 import { cn } from "@/lib/utils";
 
 import ConnectDialog from "./_components/ConnectDialog";
@@ -61,6 +63,9 @@ import {
     type StoreItem,
     withQuery,
 } from "./_components/store/model";
+
+// Providers with their own home page instead of the generic drawers.
+const CRM_HOMES = new Set<string>(["hubspot", "pipedrive"]);
 
 type Route =
     | { kind: "home" }
@@ -95,8 +100,8 @@ const GAPS: { category: IntegrationCategory; prefer?: IntegrationProvider }[] = 
 ];
 
 export default function IntegrationsPage() {
-    const params = useParams();
-    const splat = params["*"] ?? "";
+    // Mounted for both /app/integrations and its splat, so read the splat loosely.
+    const splat = useParams({ strict: false })._splat ?? "";
     const route = parseRoute(splat);
     if (!route) return <Navigate to={STORE_BASE} replace />;
     return <IntegrationsStore route={route} routeKey={splat} />;
@@ -181,13 +186,13 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
     const connectedCount = React.useMemo(() => allItems.filter(isConnected).length, [allItems, isConnected]);
 
     function go(path: string) {
-        navigate(path);
+        navigate(hrefTarget(path));
     }
 
-    // HubSpot has its own home (connect, CRM setup and settings), so every way
-    // into it leads there rather than to the generic drawers.
+    // HubSpot and Pipedrive have their own home (connect, CRM setup and
+    // settings), so every way into them leads there, not to the generic drawers.
     function manage(c: IntegrationConnection) {
-        if (c.provider === "hubspot") go(`${STORE_BASE}/hubspot`);
+        if (CRM_HOMES.has(c.provider)) go(`${STORE_BASE}/${c.provider}`);
         else setManageTarget(c);
     }
 
@@ -201,8 +206,8 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
             openItem(item);
             return;
         }
-        if (item.entry.provider === "hubspot") {
-            go(`${STORE_BASE}/hubspot`);
+        if (CRM_HOMES.has(item.entry.provider)) {
+            go(`${STORE_BASE}/${item.entry.provider}`);
             return;
         }
         const existing = connByProvider[item.entry.provider];
@@ -363,7 +368,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
 
                 <p className="text-[12.5px] text-slate-500">
                     Don’t see your tool? Connect it through Zapier, Make or n8n, or{" "}
-                    <Link to={`${STORE_BASE}/build`} className="text-sky-700 hover:text-sky-800">
+                    <Link to="/app/integrations/$" params={{ _splat: "build" }} className="text-sky-700 hover:text-sky-800">
                         build your own
                     </Link>
                     .
@@ -439,6 +444,7 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                                     <Link
                                         key={it.key}
                                         to={it.to}
+                                        activeOptions={{ exact: true, includeSearch: false }}
                                         data-active={active === it.key ? "true" : undefined}
                                         className={cn(
                                             "h-8 px-2.5 rounded-md text-[12.5px] whitespace-nowrap inline-flex items-center transition-colors",
@@ -476,8 +482,8 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                         onSetup={(conn) => {
                             if (conn.inbound_webhook_url) {
                                 setInboundUrl({ provider: conn.provider, url: conn.inbound_webhook_url });
-                            } else if (conn.provider === "hubspot") {
-                                go(`${STORE_BASE}/hubspot`);
+                            } else if (CRM_HOMES.has(conn.provider)) {
+                                go(`${STORE_BASE}/${conn.provider}`);
                             } else if (conn.provider === "salesforce") {
                                 // Setup continues on the Salesforce page: rules, mapping, imports.
                                 go(`${STORE_BASE}/salesforce/${conn.id}`);
@@ -488,16 +494,19 @@ function IntegrationsStore({ route, routeKey }: { route: Route; routeKey: string
                     />
                 )}
             </AnimatePresence>
-            {manageTarget && (
-                <ConnectionDetail
-                    connection={manageTarget}
-                    entry={entryByProvider[manageTarget.provider]}
-                    onClose={() => {
-                        setManageTarget(null);
-                        void connectionsQuery.refetch();
-                    }}
-                />
-            )}
+            <AnimatePresence>
+                {manageTarget && (
+                    <ConnectionDetail
+                        key={manageTarget.id}
+                        connection={manageTarget}
+                        entry={entryByProvider[manageTarget.provider]}
+                        onClose={() => {
+                            setManageTarget(null);
+                            void connectionsQuery.refetch();
+                        }}
+                    />
+                )}
+            </AnimatePresence>
             {inboundUrl && (
                 <InboundUrlDialog provider={inboundUrl.provider} url={inboundUrl.url} onClose={() => setInboundUrl(null)} />
             )}

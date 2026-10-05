@@ -136,6 +136,8 @@ func main() {
 		result.Print(os.Stdout)
 	}
 
+	seed.ForgetCachedUsers(ctx, pool)
+
 	fmt.Println("seed complete")
 }
 
@@ -383,15 +385,17 @@ func upsertUser(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID, first, la
 		return err
 	}
 	if exists {
-		return nil
+		// Fixture accounts skip the first-run wizard, including ones seeded before this rule.
+		_, err := pool.Exec(ctx, `UPDATE users SET onboarding_completed_at = NOW(), updated_at = NOW() WHERE email = $1 AND onboarding_completed_at IS NULL`, email)
+		return err
 	}
 	hash, err := argon2.Hash(password)
 	if err != nil {
 		return err
 	}
 	_, err = pool.Exec(ctx, `
-		INSERT INTO users (id, first_name, last_name, email, password_hash)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO users (id, first_name, last_name, email, password_hash, onboarding_completed_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
 		ON CONFLICT (id) DO NOTHING`,
 		id, first, last, email, hash)
 	return err

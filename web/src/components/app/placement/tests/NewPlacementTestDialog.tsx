@@ -6,7 +6,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Loader2Icon, MailCheckIcon, MailIcon, PlayIcon, XIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { Label, SearchInput } from "@/components/ui/field";
@@ -299,7 +299,7 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
             const tests = await create.mutateAsync({ body, idempotencyKey: idemKey.current });
             toast.success(tests.length > 1 ? "Comparison started." : "Placement test started.");
             onClose();
-            if (tests[0]) navigate(`/app/placement/${tests[0].id}`);
+            if (tests[0]) navigate({ to: "/app/placement/$id", params: { id: tests[0].id } });
         } catch (err) {
             setError(placementErrorMessage(err as AppError, { resetsOn: usage?.period_end, panel: draft.panel, chosen: chosenSeeds.length > 0 }));
         }
@@ -453,7 +453,8 @@ function DialogBody({ onClose, prefill }: { onClose: () => void; prefill?: NewPl
                                 </label>
                             ) : canBuy ? (
                                 <Link
-                                    to="/app/settings/billing/ai-credits"
+                                    to="/app/settings/billing/{-$tab}"
+                                    params={{ tab: "ai-credits" }}
                                     target="_blank"
                                     rel="noopener"
                                     className="mt-2 inline-flex text-[12px] font-medium text-sky-700 hover:underline"

@@ -1,12 +1,12 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { infiniteQueryOptions, keepPreviousData, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { DEFAULT_PAGINATION_LIMIT } from "@/lib/information";
 import { addSuppressions, listSuppressions, removeSuppression } from "@/lib/api/client/app/suppressions/suppressions";
 import type { AddSuppressionsRequest, SuppressionListResult } from "@/lib/api/models/app/suppressions/Suppression";
 
 export const SUPPRESSIONS_KEY = ["suppressions"];
 
-export function useSuppressions(q: string, limit = DEFAULT_PAGINATION_LIMIT) {
-    const query = useInfiniteQuery<
+export const suppressionsListQuery = (q: string, limit = DEFAULT_PAGINATION_LIMIT) =>
+    infiniteQueryOptions<
         SuppressionListResult,
         Error,
         InfiniteData<SuppressionListResult, string | null>,
@@ -17,8 +17,13 @@ export function useSuppressions(q: string, limit = DEFAULT_PAGINATION_LIMIT) {
         queryFn: ({ pageParam }) => listSuppressions(q, pageParam, limit),
         initialPageParam: null,
         getNextPageParam: (last) => (last.pagination.has_more ? last.pagination.next_cursor : undefined),
-        placeholderData: keepPreviousData,
         staleTime: 30_000,
+    });
+
+export function useSuppressions(q: string, limit = DEFAULT_PAGINATION_LIMIT) {
+    const query = useInfiniteQuery({
+        ...suppressionsListQuery(q, limit),
+        placeholderData: keepPreviousData,
     });
     const entries = query.data?.pages.flatMap((p) => p.data ?? []) ?? [];
     return { ...query, entries };

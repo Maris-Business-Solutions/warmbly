@@ -11,6 +11,8 @@ export interface LoginResult extends Partial<Token> {
     link_required?: boolean;
     link_email?: string;
     link_provider?: string;
+    /** Set when the confirm asked to remember this browser. */
+    device_token?: string;
 }
 
 // What the login screen needs to run the link step.

@@ -88,12 +88,12 @@ describe("unibox list shortcuts (#484)", SUITE, () => {
         expect(searchRequests.every((url) => new URL(url, "https://test.local").searchParams.get("folder") === "inbox")).toBe(true);
 
         searchRequests.length = 0;
-        await act(async () => { await router.navigate("/app/unibox/sent"); });
+        await act(async () => { await router.navigate({ to: "/app/unibox/{-$scope}/{-$threadId}", params: { scope: "sent", threadId: undefined } }); });
         await waitFor(() => expect(searchRequests.length).toBeGreaterThan(0));
         expect(searchRequests.every((url) => new URL(url, "https://test.local").searchParams.get("folder") === "sent")).toBe(true);
 
         searchRequests.length = 0;
-        await act(async () => { await router.navigate("/app/unibox/all"); });
+        await act(async () => { await router.navigate({ to: "/app/unibox/{-$scope}/{-$threadId}", params: { scope: "all", threadId: undefined } }); });
         await waitFor(() => expect(searchRequests.length).toBeGreaterThan(0));
         expect(searchRequests.every((url) => !new URL(url, "https://test.local").searchParams.has("folder"))).toBe(true);
     });

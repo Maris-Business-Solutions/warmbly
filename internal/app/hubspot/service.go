@@ -132,6 +132,19 @@ func (s *Service) settingsRow(ctx context.Context, orgID uuid.UUID) (*repository
 	return row, nil
 }
 
+// Name is the CRM this service runs.
+func (s *Service) Name() models.CRMProvider { return provider }
+
+// Integration is the connection type HubSpot mode runs on.
+func (s *Service) Integration() models.IntegrationProvider { return models.IntegrationHubSpot }
+
+// Forget drops this process's cached view of a workspace's mode.
+func (s *Service) Forget(orgID uuid.UUID) { s.forget(orgID) }
+
+// Left runs when a workspace stops using HubSpot; HubSpot keeps nothing that
+// needs undoing.
+func (s *Service) Left(context.Context, uuid.UUID, uuid.UUID) {}
+
 func (s *Service) forget(orgID uuid.UUID) {
 	s.mu.Lock()
 	delete(s.settings, orgID)

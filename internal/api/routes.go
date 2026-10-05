@@ -89,6 +89,17 @@ func Run(
 	r.POST("/api/v1/integrations/hubspot/app/pause", h.HubSpotCardPause)
 	r.POST("/api/v1/integrations/hubspot/actions/enroll", h.HubSpotActionEnroll)
 	r.POST("/api/v1/integrations/hubspot/actions/campaigns", h.HubSpotActionCampaigns)
+	// Pipedrive webhooks, one URL per connection, authenticated by a Basic auth
+	// password derived from the connection and the app's client secret.
+	r.POST("/api/v1/integrations/pipedrive/webhooks/:connectionId", h.PipedriveWebhook)
+	// The Warmbly panel on Pipedrive person and deal pages and its two modals,
+	// each signed by Pipedrive with a JWT over the app's client secret.
+	r.GET("/api/v1/integrations/pipedrive/app/panel", h.PipedrivePanel)
+	r.POST("/api/v1/integrations/pipedrive/app/panel", h.PipedrivePanel)
+	r.GET("/api/v1/integrations/pipedrive/app/enroll", h.PipedriveEnroll)
+	r.POST("/api/v1/integrations/pipedrive/app/enroll", h.PipedriveEnroll)
+	r.GET("/api/v1/integrations/pipedrive/app/pause", h.PipedrivePause)
+	r.POST("/api/v1/integrations/pipedrive/app/pause", h.PipedrivePause)
 
 	// OAuth 2.1 authorization-server discovery (RFC 8414): public + unversioned.
 	r.GET("/.well-known/oauth-authorization-server", h.OAuthServerMetadata)
@@ -194,10 +205,15 @@ func Run(
 		// has in a folder, so the worker can report the ones that moved.
 		node.GET("/sync/provider-folder-messages", h.InternalSyncProviderFolderMessages)
 
-		// Worker runtime config and the role-agnostic node heartbeat.
+		// Worker runtime config.
 		node.GET("/worker/config", h.InternalWorkerConfig)
-		node.POST("/fleet/heartbeat", h.FleetHeartbeat)
 	}
+
+	// The role-agnostic node heartbeat. A node still sending INTERNAL_API_TOKEN
+	// is told its version and nothing else, so it can always update itself.
+	heartbeat := r.Group("/api/v1/internal")
+	heartbeat.Use(m.NodeHeartbeatAuthMiddleware())
+	heartbeat.POST("/fleet/heartbeat", h.FleetHeartbeat)
 
 	// The edge group is what the tracking and forms services call, on
 	// INTERNAL_API_TOKEN.
@@ -663,6 +679,7 @@ func Run(
 				slackPanel.PUT("/settings", m.RequireOrganization(), slackWrite, h.UpdateSlackSettings)
 				slackPanel.GET("/link/:code", h.PreviewSlackLink)
 				slackPanel.POST("/link", h.ConfirmSlackLink)
+				slackPanel.POST("/link/verify", h.StartSlackLinkVerify)
 				slackPanel.PATCH("/link", m.RequireOrganization(), h.UpdateMySlackLink)
 				slackPanel.DELETE("/link", m.RequireOrganization(), h.DeleteMySlackLink)
 				slackPanel.DELETE("/links/:id", m.RequireOrganization(), slackWrite, h.RemoveSlackLink)
@@ -1383,7 +1400,7 @@ func Run(
 					taskTypes.DELETE("/:id", m.RequireAccess(models.PermManageContacts, models.APIPermWriteCRM), h.DeleteTaskType)
 				}
 
-				// CRM mode: Warmbly's own CRM or a connected one (HubSpot).
+				// CRM mode: Warmbly's own CRM or a connected one (HubSpot, Pipedrive).
 				// Every member reads the mode; changing it is a settings change.
 				crmRead := m.RequireAccess(models.PermViewContacts, models.APIPermReadCRM)
 				crmWrite := m.RequireAccess(models.PermManageContacts, models.APIPermWriteCRM)

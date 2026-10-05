@@ -6,7 +6,7 @@
 "use client";
 
 import React from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { CheckIcon, ExternalLinkIcon, MinusIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react";
 
 import getAuthorizeDetails from "@/lib/api/client/app/oauth/getAuthorizeDetails";

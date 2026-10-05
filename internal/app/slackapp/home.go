@@ -22,6 +22,9 @@ func (s *Service) publishHome(ctx context.Context, teamID, appID, slackUserID st
 	if a == nil {
 		return
 	}
+	if a.link == nil {
+		s.autoLink(ctx, a)
+	}
 	if err := s.client.PublishView(ctx, a.token, slackUserID, s.homeView(ctx, a, appID)); err != nil {
 		log.Warn().Err(err).Msg("slack: publishing the home tab failed")
 	}

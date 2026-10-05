@@ -9,7 +9,7 @@
 // We deliberately don't make these dismissible — they need to nag.
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AlertOctagonIcon, Loader2Icon, UndoIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import useFeatureAccess from "@/hooks/useFeatureAccess";

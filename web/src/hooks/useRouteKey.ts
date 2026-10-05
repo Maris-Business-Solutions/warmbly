@@ -1,38 +1,23 @@
-// Identity of the page the router is currently showing.
-//
-// The shell uses it for the two things that must happen when you move to a
-// different page and must NOT happen when you only move around inside one:
-// remounting the route's Suspense boundary, and putting the content panel back
-// at the top.
-//
-// Default identity is the full pathname, so every URL change is a new page.
-// A route whose path also carries in-page state opts those params out:
-//
-//   { path: "unibox/:scope?/:threadId?", element: <UniboxPage />,
-//     handle: { stableParams: ["scope", "threadId"] } }
-//
-// Changing only a stable param keeps the page mounted, so its lists keep their
-// scroll offset and its inputs keep their text (issue #396).
+// The page being shown: its pathname, except params a route marks `stableParams` (in-page state, issue #396).
 
-import { useLocation, useMatches } from "react-router-dom";
-
-export interface RouteHandle {
-    /** Route params that address state inside the page, not a different page. */
-    stableParams?: string[];
-}
+import { useMatches } from "@tanstack/react-router";
 
 export function useRouteKey(): string {
-    const { pathname } = useLocation();
-    const matches = useMatches();
-    const deepest = matches[matches.length - 1];
-    const stable = (deepest?.handle as RouteHandle | undefined)?.stableParams;
-    if (!deepest || !stable || stable.length === 0) return pathname;
-
-    const params = (deepest.params ?? {}) as Record<string, string | undefined>;
-    const rest = Object.keys(params)
-        .filter((name) => !stable.includes(name))
-        .sort()
-        .map((name) => `${name}=${params[name] ?? ""}`)
-        .join("&");
-    return `${deepest.id}?${rest}`;
+    return useMatches({
+        select: (matches) => {
+            const deepest = matches[matches.length - 1];
+            if (!deepest) return "";
+            // A layout that marks params stable owns the identity of every page under it.
+            const owner = matches.find((m) => m.staticData?.stableParams?.length) ?? deepest;
+            const stable = owner.staticData?.stableParams;
+            if (!stable || stable.length === 0) return deepest.pathname;
+            const params = owner.params as Record<string, string | undefined>;
+            const rest = Object.keys(params)
+                .filter((name) => !stable.includes(name))
+                .sort()
+                .map((name) => `${name}=${params[name] ?? ""}`)
+                .join("&");
+            return `${owner.routeId}?${rest}`;
+        },
+    });
 }

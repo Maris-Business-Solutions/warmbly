@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "properties": {
+    "blocks": {
+      "type": "object",
+      "properties": {
+        "campaign": {
+          "$ref": "#/definitions/element-select",
+          "options": {
+            "label": "Campaign",
+            "placeholder": "Choose a campaign",
+            "isRequired": true,
+            "filter": true
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "properties": {
+        "submit": {
+          "$ref": "#/definitions/action-primary",
+          "options": { "label": "Add to campaign", "handler": "request" }
+        },
+        "cancel": {
+          "$ref": "#/definitions/action-secondary",
+          "options": { "label": "Cancel", "handler": "cancel" }
+        }
+      }
+    }
+  }
+}

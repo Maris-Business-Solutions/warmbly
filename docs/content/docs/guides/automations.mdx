@@ -91,7 +91,7 @@ Each action node picks a **Run** target (an integration, or Warmbly built-in) an
 | --- | --- |
 | Send a Slack / Discord message | Posts to a channel (Slack needs `#channel`) |
 | Send a webhook | HTTP request to a URL you provide |
-| Create / update HubSpot contact, Pipedrive person, Salesforce record, Close lead | Upserts the record. In [HubSpot mode](/guides/hubspot/) contacts already sync on their own, so the HubSpot action is only needed for fields the sync does not map. Salesforce finds the Lead or Contact, or creates one, with the [connection's rules](/guides/salesforce/#how-people-are-matched) |
+| Create / update HubSpot contact, Pipedrive person, Salesforce record, Close lead | Upserts the record. In [HubSpot mode](/guides/hubspot/) or [Pipedrive mode](/guides/pipedrive/) contacts already sync on their own, so that CRM's action is not needed and steps aside. Salesforce finds the Lead or Contact, or creates one, with the [connection's rules](/guides/salesforce/#how-people-are-matched) |
 
 Slack, Discord, and webhook actions take an optional message template. Slack and Discord arrive as a branded card in Warmbly's accent color with contact and subject fields, not a plain line. Slack shows the text as written: `<`, `>` and `&` are escaped, so a subject or template cannot form a Slack link or mention.
 
@@ -113,7 +113,7 @@ Saving an automation with either of these actions turns on the picked campaign's
 
 Three constraints worth knowing: **Move the deal stage** does nothing if the contact has no open deal in that pipeline, **Unsubscribe** needs an event carrying a campaign, and **Label the conversation** works only on a Reply received automation, since it needs a thread to label.
 
-In [HubSpot mode](/guides/hubspot/), the pipelines these actions pick from are your HubSpot pipelines, and the tasks and deals they write are sent on to HubSpot through its sync queue.
+In [HubSpot mode](/guides/hubspot/) or [Pipedrive mode](/guides/pipedrive/), the pipelines these actions pick from are that CRM's pipelines, and the tasks and deals they write are sent on to it through its sync queue. In Pipedrive a task becomes an activity.
 
 **Add to campaign** and every other contact action need a contact to act on: the event must carry `contact_id` or `contact_email`, which every Warmbly trigger does. On an inbound webhook, put **Create or update contact** first and the contact it writes becomes the event's contact for the steps after it.
 

@@ -19,10 +19,11 @@
 //   </Page>
 
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
+import { hrefTarget } from "@/lib/routerSearch";
 import { cn } from "@/lib/utils";
 
-// Internal app paths navigate client-side (React Router Link, no full reload);
+// Internal app paths navigate client-side (router Link, no full reload);
 // external URLs (http..., mailto:, //) stay as a plain anchor.
 function isInternalHref(href: string): boolean {
     return href.startsWith("/") && !href.startsWith("//");
@@ -118,7 +119,7 @@ export function TopbarAction({
         );
         if (isInternalHref(href)) {
             return (
-                <Link to={href} className={actionCls}>
+                <Link {...hrefTarget(href)} className={actionCls}>
                     {icon}
                     {children}
                 </Link>
@@ -225,7 +226,7 @@ export function Stat({
     );
     if (href) {
         return isInternalHref(href) ? (
-            <Link to={href} className={cls}>
+            <Link {...hrefTarget(href)} className={cls}>
                 {inner}
             </Link>
         ) : (
@@ -319,7 +320,7 @@ export function Row({
     );
     if (href) {
         return isInternalHref(href) ? (
-            <Link to={href} className={cls}>{children}</Link>
+            <Link {...hrefTarget(href)} className={cls}>{children}</Link>
         ) : (
             <a href={href} className={cls}>{children}</a>
         );

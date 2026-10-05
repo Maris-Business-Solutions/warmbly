@@ -2,7 +2,8 @@
 // the tracking host its mailboxes use, whether its root redirects to the
 // company website, and the inbox vendor that holds it. A row opens the drawer.
 import React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
+import { useSearchParams } from "@/hooks/useSearchParams";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeftIcon, ChevronRightIcon, GlobeIcon, PlusIcon, SparklesIcon, XIcon } from "lucide-react";
 import { NoAccess } from "@/components/layout/NoAccess";

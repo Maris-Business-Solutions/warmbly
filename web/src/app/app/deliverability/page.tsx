@@ -5,7 +5,7 @@
 // The visible sections and the time window are user-customizable and persisted.
 
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { AlertTriangleIcon, ArrowUpRightIcon, CheckIcon, RefreshCcwIcon, SlidersHorizontalIcon } from "lucide-react";
 import { EmptyBlock, Page, PageBody, PageTopbar, SectionBar, Stat, StatStrip } from "@/components/layout/Page";
 import { MultiTrend, type TrendSeries } from "@/components/ui/charts";
@@ -373,7 +373,8 @@ export default function DeliverabilityPage() {
                                     {d!.by_campaign.map((c) => (
                                         <Link
                                             key={c.campaign_id}
-                                            to={`/app/campaigns/${c.campaign_id}`}
+                                            to="/app/campaigns/$id"
+                                            params={{ id: c.campaign_id }}
                                             className="group h-11 px-5 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                                         >
                                             <span className={`size-1.5 rounded-full shrink-0 ${BAND_DOT[c.band]}`} />

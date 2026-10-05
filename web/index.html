@@ -36,10 +36,10 @@
       })();
     </script>
     <style>
-      /* Prevent a flash of unstyled content: paint the app background
-         immediately and keep #root hidden until the stylesheet has applied
-         (main.tsx adds .app-ready on the first frame after render). */
-      html { background-color: #ffffff; }
+      /* Paint the dashboard chrome's colour at once and keep #root hidden
+         until the stylesheet and the interface font are in effect (main.tsx
+         adds .app-ready), so the first visible frame is the finished one. */
+      html { background-color: #f5f6f8; }
       html.dark { background-color: #070708; }
       #root { opacity: 0; }
       #root.app-ready { opacity: 1; transition: opacity 120ms ease-out; }

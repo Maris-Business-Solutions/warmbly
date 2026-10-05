@@ -1,0 +1,16 @@
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "header"],
+    "properties": {
+      "id": { "$ref": "#/definitions/numerical" },
+      "header": { "$ref": "#/definitions/header" },
+      "status": { "$ref": "#/definitions/label", "label": "Status" },
+      "progress": { "$ref": "#/definitions/text", "label": "Progress" },
+      "note": { "$ref": "#/definitions/text", "label": "Paused because" },
+      "last_activity": { "$ref": "#/definitions/date-time", "label": "Last activity" },
+      "open": { "$ref": "#/definitions/link", "label": "Link" }
+    }
+  }
+}

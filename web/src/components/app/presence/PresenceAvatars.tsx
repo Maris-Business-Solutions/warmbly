@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRightIcon, EyeIcon, PencilIcon, ReplyIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useOnlineMembers, type PresenceUser } from "@/hooks/PresenceProvider";
 import useClickOutside from "@/hooks/useClickOutside";
+import { hrefTarget } from "@/lib/routerSearch";
 import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE = 4;
@@ -75,7 +76,7 @@ export default function PresenceAvatars() {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
-    const { pathname } = useLocation();
+    const pathname = useLocation({ select: (l) => l.pathname });
     useClickOutside(open, () => setOpen(false), ref);
 
     if (members.length === 0) return null;
@@ -160,7 +161,7 @@ export default function PresenceAvatars() {
                                     onClick={() => {
                                         setOpen(false);
                                         if (!jumpable || m.page === pathname) return;
-                                        navigate(m.page!);
+                                        navigate(hrefTarget(m.page!));
                                     }}
                                     className={cn(
                                         "group w-full px-3 py-1.5 flex items-center gap-2.5 text-left",

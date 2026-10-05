@@ -55,7 +55,7 @@ func (s *Service) mintLink(ctx context.Context, conn *models.IntegrationConnecti
 		log.Warn().Err(err).Msg("slack: storing a link code failed")
 		return "", ""
 	}
-	return appURL("/app/slack/link?code=" + url.QueryEscape(code)), code
+	return appURL("/slack/link?code=" + url.QueryEscape(code)), code
 }
 
 // LinkPreview is GET /v1/integrations/slack/link/:code.
@@ -63,6 +63,11 @@ type LinkPreview struct {
 	OrganizationID   uuid.UUID `json:"organization_id"`
 	OrganizationName string    `json:"organization_name"`
 	IsMember         bool      `json:"is_member"`
+	// UserEmail is the signed-in Warmbly account the link would be made for.
+	UserEmail string `json:"user_email"`
+	// VerifyAvailable: Sign in with Slack can confirm the link when the
+	// emails do not match.
+	VerifyAvailable bool `json:"verify_available"`
 	models.SlackLinkPreview
 }
 
@@ -103,9 +108,11 @@ func (s *Service) PreviewLink(ctx context.Context, userID uuid.UUID, code string
 	}
 	if s.users != nil {
 		if u, err := s.users.GetUser(ctx, userID); err == nil && u != nil {
+			out.UserEmail = u.Email
 			out.EmailMatches = models.SlackLinkEmailMatches(prof.Email, u.Email)
 		}
 	}
+	out.VerifyAvailable = s.VerifyAvailable()
 	if org, xerr := s.orgs.Get(ctx, c.OrganizationID); xerr == nil && org != nil {
 		out.OrganizationName = org.Name
 	}
@@ -168,9 +175,10 @@ func (s *Service) slackProfile(ctx context.Context, c *models.SlackLinkCode) (li
 }
 
 // ConfirmLink redeems a code for the signed-in user, who must be an accepted
-// member of the code's workspace whose email is the Slack account's email.
-// The code is spent in the same transaction.
-func (s *Service) ConfirmLink(ctx context.Context, userID uuid.UUID, code string) (*models.SlackUserLink, *errx.Error) {
+// member of the code's workspace, and either carries a Sign in with Slack
+// proof for the code's Slack account or has that account's email. The code
+// is spent in the same transaction.
+func (s *Service) ConfirmLink(ctx context.Context, userID uuid.UUID, code string, proof *LinkProof) (*models.SlackUserLink, *errx.Error) {
 	code = strings.TrimSpace(code)
 	if !validCode(code) {
 		return nil, ErrSlackLinkInvalid
@@ -182,16 +190,25 @@ func (s *Service) ConfirmLink(ctx context.Context, userID uuid.UUID, code string
 	if c == nil {
 		return nil, ErrSlackLinkInvalid
 	}
-	prof, xerr := s.slackProfile(ctx, c)
-	if xerr != nil {
-		return nil, xerr
+	verified := proof != nil && proof.Code != ""
+	email := ""
+	if verified {
+		if xerr := s.verifyProof(ctx, userID, code, c, *proof); xerr != nil {
+			return nil, xerr
+		}
+	} else {
+		prof, xerr := s.slackProfile(ctx, c)
+		if xerr != nil {
+			return nil, xerr
+		}
+		email = prof.Email
 	}
-	link, err := s.repo.ConsumeLinkCode(ctx, hashLinkCode(code), userID, prof.Email)
+	link, err := s.repo.ConsumeLinkCode(ctx, hashLinkCode(code), userID, email, verified)
 	switch {
 	case errors.Is(err, repository.ErrSlackLinkCodeInvalid):
 		return nil, ErrSlackLinkInvalid
 	case errors.Is(err, repository.ErrSlackLinkNotMember):
-		return nil, errx.New(errx.Forbidden, "You are not a member of the Warmbly workspace this link belongs to.")
+		return nil, errSlackLinkNotMember
 	case errors.Is(err, repository.ErrSlackLinkEmailMismatch):
 		return nil, ErrSlackLinkEmailMismatch
 	case err != nil || link == nil:
@@ -246,6 +263,86 @@ func (s *Service) linkInstaller(ctx context.Context, conn *models.IntegrationCon
 			&link.ConnectionID, "", "Slack", nil, map[string]string{"slack_link": "linked_on_install"})
 	}
 	s.sendLinkConfirmation(ctx, link, false)
+}
+
+// autoLinkMissTTL is how long a Slack member with no matching Warmbly
+// account is left alone before their email is looked up again.
+const autoLinkMissTTL = 10 * time.Minute
+
+// autoLink links an unlinked Slack member to the Warmbly account with their
+// Slack email in any workspace connected to the team, so a member whose
+// emails match never sees a link page. A miss is remembered for a while.
+func (s *Service) autoLink(ctx context.Context, a *actor) bool {
+	if a == nil || a.link != nil || a.unknown || s.users == nil {
+		return false
+	}
+	missKey := "slack:autolink:miss:" + a.teamID + ":" + a.userID
+	if s.guard.get(ctx, missKey) != "" {
+		return false
+	}
+	miss := func() bool {
+		s.guard.put(ctx, missKey, "1", autoLinkMissTTL)
+		return false
+	}
+	u, err := s.client.UserInfo(ctx, a.token, a.userID)
+	if err != nil {
+		if IsAPIError(err, "missing_scope", "user_not_found") {
+			return miss()
+		}
+		return false
+	}
+	email := profileFrom(u).Email
+	if !strings.Contains(email, "@") {
+		return miss()
+	}
+	wu, err := s.users.GetUserByEmail(ctx, email)
+	if err != nil || wu == nil {
+		return miss()
+	}
+	conns, err := s.integ.SlackConnectionsForTeam(ctx, a.teamID)
+	if err != nil {
+		return false
+	}
+	for i := range conns {
+		conn := &conns[i]
+		link, err := s.repo.LinkInstaller(ctx, conn.OrganizationID, conn.ID, a.teamID, a.userID, email, wu.ID)
+		if err != nil {
+			log.Warn().Err(err).Msg("slack: linking by email failed")
+			return false
+		}
+		if link == nil {
+			continue
+		}
+		token := a.token
+		if conn.ID != a.conn.ID {
+			if token, err = s.integ.SlackBotToken(ctx, conn.OrganizationID, conn.ID); err != nil {
+				return false
+			}
+		}
+		m, st := s.membership(ctx, link)
+		if st != memberOK {
+			return false
+		}
+		a.conn, a.token, a.link, a.member, a.gone = conn, token, link, m, false
+		if s.audit != nil {
+			s.audit.LogAction(ctx, link.OrganizationID, link.UserID, models.AuditActionCreate, models.AuditEntityIntegration,
+				&link.ConnectionID, "", "Slack", nil, map[string]string{"slack_link": "linked_by_email"})
+		}
+		s.sendAutoLinkNotice(ctx, a)
+		return true
+	}
+	return miss()
+}
+
+func (s *Service) sendAutoLinkNotice(ctx context.Context, a *actor) {
+	dm, err := s.client.OpenDM(ctx, a.token, a.userID)
+	if err != nil {
+		return
+	}
+	text := s.linkedLine(ctx, a) + " Your Slack email matches your Warmbly account, so I linked them for you. Unlink any time from my Home tab."
+	if _, err := s.client.PostMessage(ctx, a.token, Message{Channel: dm, Text: "You're linked to Warmbly", Blocks: blocks(sectionBlock(text))}); err != nil {
+		log.Warn().Err(err).Msg("slack: auto-link notice DM failed")
+	}
 }
 
 // resumeAsk answers the question that was held while its author linked.

@@ -15,8 +15,8 @@ import useDeleteContactNote from "@/lib/api/hooks/app/contacts/useDeleteContactN
 import { useConfirm } from "@/hooks/context/confirm";
 import type ContactNote from "@/lib/api/models/app/crm/ContactNote";
 import useCrmProvider from "@/hooks/useCrmProvider";
-import { HubSpotBadge, HubSpotMark, OpenInHubSpot } from "@/components/app/crm/HubSpot";
-import { crmErrorMessage } from "@/components/app/crm/hubspotUtils";
+import { CrmBadge, crmInfo, CrmMark, OpenInCrm } from "@/components/app/crm/crmProviders";
+import { crmErrorMessage } from "@/components/app/crm/crmModeUtils";
 import { fmtRelative, fmtAbsolute } from "./format";
 
 // The notes endpoint returns either a bare array or a paginated
@@ -35,7 +35,7 @@ export default function NotesTab({ contactId }: { contactId: string }) {
     const create = useCreateContactNote();
     const remove = useDeleteContactNote();
     const confirm = useConfirm();
-    const { isHubSpot } = useCrmProvider();
+    const { isExternal, crm } = useCrmProvider();
 
     const [draft, setDraft] = React.useState("");
 
@@ -48,7 +48,7 @@ export default function NotesTab({ contactId }: { contactId: string }) {
             await toast.promise(
                 create.mutateAsync({ contactId, data: { content } }),
                 {
-                    loading: isHubSpot ? "Adding note to HubSpot…" : "Adding note…",
+                    loading: isExternal ? `Adding note to ${crm.name}…` : "Adding note…",
                     success: "Note added",
                     error: (e: unknown) => crmErrorMessage(e),
                 },
@@ -83,8 +83,8 @@ export default function NotesTab({ contactId }: { contactId: string }) {
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     placeholder={
-                        isHubSpot
-                            ? "Add a note. It is saved to the contact in HubSpot."
+                        isExternal
+                            ? `Add a note. It is saved to the contact in ${crm.name}.`
                             : "Add a note about this contact, context for the next person who looks them up."
                     }
                     rows={3}
@@ -92,7 +92,7 @@ export default function NotesTab({ contactId }: { contactId: string }) {
                 />
                 <div className="flex items-center justify-between border-t border-slate-100 px-2 py-1.5">
                     <span className="inline-flex items-center gap-2 text-[10.5px] text-slate-400">
-                        {isHubSpot && <HubSpotBadge />}
+                        {isExternal && <CrmBadge provider={crm.id} />}
                         {draft.length}/10000
                     </span>
                     <button
@@ -152,6 +152,7 @@ function NoteRow({
     const update = useUpdateContactNote();
     const [editing, setEditing] = React.useState(false);
     const [draft, setDraft] = React.useState(note.content);
+    const crm = crmInfo(note.external?.provider);
 
     async function save() {
         const content = draft.trim();
@@ -174,7 +175,7 @@ function NoteRow({
         <div className="rounded-md border border-slate-200 bg-white px-3 py-2 group">
             <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 min-w-0">
-                    {note.external && <HubSpotMark className="w-3 h-3" title="Saved in HubSpot" />}
+                    {note.external && <CrmMark provider={crm.id} className="w-3 h-3" title={`Saved in ${crm.name}`} />}
                     <span
                         className="text-[10.5px] text-slate-400 tabular-nums"
                         title={fmtAbsolute(note.created_at)}
@@ -184,7 +185,7 @@ function NoteRow({
                 </span>
                 <div className="flex items-center gap-0.5">
                     {note.external?.url && (
-                        <OpenInHubSpot external={note.external} compact label="Open note in HubSpot" />
+                        <OpenInCrm external={note.external} compact label={`Open note in ${crm.name}`} />
                     )}
                     <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         {!editing && (

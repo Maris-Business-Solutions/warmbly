@@ -31,10 +31,11 @@
 // mount to guarantee the session row matches the local pointer.
 
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import useOrganizations from "@/lib/api/hooks/app/organizations/useOrganizations";
 import useSwitchOrganization from "@/lib/api/hooks/app/organizations/useSwitchOrganization";
 import { useAppStore } from "@/stores";
+import { isOrgSynced } from "@/lib/boot";
 
 export function OrgGate() {
     const navigate = useNavigate();
@@ -85,7 +86,8 @@ export function OrgGate() {
             // Persisted local pointer is valid, but a fresh login's
             // session row may still be NULL. Re-POST the switch once so
             // the server session matches what the UI is showing.
-            if (syncedOrgId.current !== currentOrg.id) {
+            // The dashboard boot normally put it there already.
+            if (syncedOrgId.current !== currentOrg.id && !isOrgSynced(currentOrg.id)) {
                 syncedOrgId.current = currentOrg.id;
                 switchOrgMutate(currentOrg.id, {
                     onError: () => {
@@ -101,7 +103,7 @@ export function OrgGate() {
             const key = "empty";
             if (lastRedirectKey.current === key) return;
             lastRedirectKey.current = key;
-            navigate("/select-org", { replace: true });
+            navigate({ to: "/select-org", replace: true });
             return;
         }
 
@@ -114,7 +116,7 @@ export function OrgGate() {
                     syncedOrgId.current = only.id;
                     setCurrentOrganization(only);
                 },
-                onError: () => navigate("/select-org", { replace: true }),
+                onError: () => navigate({ to: "/select-org", replace: true }),
                 onSettled: () => {
                     autoPickInFlight.current = false;
                 },
@@ -125,7 +127,7 @@ export function OrgGate() {
         const key = `multi:${list.map((o) => o.id).join(",")}`;
         if (lastRedirectKey.current === key) return;
         lastRedirectKey.current = key;
-        navigate("/select-org", { replace: true });
+        navigate({ to: "/select-org", replace: true });
     }, [
         orgs.isPending,
         orgs.data,

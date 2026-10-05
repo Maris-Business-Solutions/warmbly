@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '@tanstack/react-router'
 import {
   MailIcon,
   UsersIcon,
@@ -47,18 +47,18 @@ export function CommandPalette() {
   }
 
   const navigationCommands: CommandItem[] = [
-    { icon: MailIcon, label: 'Email Accounts', shortcut: 'g e', onSelect: () => navigate('/app/emails') },
-    { icon: UsersIcon, label: 'Contacts', shortcut: 'g c', onSelect: () => navigate('/app/contacts') },
-    { icon: MegaphoneIcon, label: 'Campaigns', shortcut: 'g m', onSelect: () => navigate('/app/campaigns') },
-    { icon: InboxIcon, label: 'Unibox', shortcut: 'g u', onSelect: () => navigate('/app/unibox') },
-    { icon: BarChart3Icon, label: 'Analytics', shortcut: 'g a', onSelect: () => navigate('/app/analytics') },
-    { icon: GitBranchIcon, label: 'Pipelines', shortcut: 'g p', onSelect: () => navigate('/app/crm/pipelines') },
-    { icon: CircleDollarSignIcon, label: 'Deals', shortcut: 'g d', onSelect: () => navigate('/app/crm/deals') },
-    { icon: CheckSquareIcon, label: 'Tasks', shortcut: 'g t', onSelect: () => navigate('/app/crm/tasks') },
-    { icon: FileTextIcon, label: 'Templates', shortcut: 'g l', onSelect: () => navigate('/app/templates') },
-    { icon: KeyIcon, label: 'API Keys', shortcut: 'g k', onSelect: () => navigate('/app/api-keys') },
-    { icon: SettingsIcon, label: 'Settings', shortcut: 'g s', onSelect: () => navigate('/app/settings') },
-    { icon: CreditCardIcon, label: 'Billing', onSelect: () => navigate('/app/settings/billing') },
+    { icon: MailIcon, label: 'Email Accounts', shortcut: 'g e', onSelect: () => navigate({ to: '/app/emails' }) },
+    { icon: UsersIcon, label: 'Contacts', shortcut: 'g c', onSelect: () => navigate({ to: '/app/contacts' }) },
+    { icon: MegaphoneIcon, label: 'Campaigns', shortcut: 'g m', onSelect: () => navigate({ to: '/app/campaigns' }) },
+    { icon: InboxIcon, label: 'Unibox', shortcut: 'g u', onSelect: () => navigate({ to: '/app/unibox/{-$scope}/{-$threadId}', params: { scope: undefined, threadId: undefined } }) },
+    { icon: BarChart3Icon, label: 'Analytics', shortcut: 'g a', onSelect: () => navigate({ to: '/app/analytics' }) },
+    { icon: GitBranchIcon, label: 'Pipelines', shortcut: 'g p', onSelect: () => navigate({ to: '/app/crm/pipelines' }) },
+    { icon: CircleDollarSignIcon, label: 'Deals', shortcut: 'g d', onSelect: () => navigate({ to: '/app/crm/deals' }) },
+    { icon: CheckSquareIcon, label: 'Tasks', shortcut: 'g t', onSelect: () => navigate({ to: '/app/crm/tasks' }) },
+    { icon: FileTextIcon, label: 'Templates', shortcut: 'g l', onSelect: () => navigate({ to: '/app/templates' }) },
+    { icon: KeyIcon, label: 'API Keys', shortcut: 'g k', onSelect: () => navigate({ to: '/app/api-keys' }) },
+    { icon: SettingsIcon, label: 'Settings', shortcut: 'g s', onSelect: () => navigate({ to: '/app/settings' }) },
+    { icon: CreditCardIcon, label: 'Billing', onSelect: () => navigate({ to: '/app/settings/billing/{-$tab}', params: { tab: undefined } }) },
   ]
 
   return (

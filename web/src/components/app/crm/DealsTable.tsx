@@ -44,7 +44,8 @@ import { EMPTY_DEAL_SEARCH } from "@/lib/api/models/app/crm/SearchDeals";
 import useMembers from "@/lib/api/hooks/app/organizations/useMembers";
 import type OrganizationMember from "@/lib/api/models/app/organizations/OrganizationMember";
 import useCrmProvider from "@/hooks/useCrmProvider";
-import { OpenInHubSpot } from "./HubSpot";
+import { crmInfo, OpenInCrm } from "./crmProviders";
+import { cn } from "@/lib/utils";
 
 const STATUS_TABS: { id: "all" | "open" | "won" | "lost"; label: string }[] = [
     { id: "all", label: "All" },
@@ -89,8 +90,8 @@ export default function DealsTable({
         return m;
     }, [pipelines]);
 
-    // HubSpot mode adds an Owner column and an "Open in HubSpot" link per row.
-    const { isHubSpot } = useCrmProvider();
+    // Provider mode adds an Owner column and an "Open in" link per row.
+    const { isExternal, crm } = useCrmProvider();
     const { data: members } = useMembers();
     const memberByUser = React.useMemo(() => {
         const m = new Map<string, OrganizationMember>();
@@ -173,7 +174,7 @@ export default function DealsTable({
                     Couldn’t load deals. Try again.
                 </div>
             ) : !search.isPending && deals.length === 0 ? (
-                <EmptyDeals hasFilters={total === 0 && hasAnyFilter(filters)} onClear={() => setFilters(EMPTY_DEAL_SEARCH)} hubspot={isHubSpot} />
+                <EmptyDeals hasFilters={total === 0 && hasAnyFilter(filters)} onClear={() => setFilters(EMPTY_DEAL_SEARCH)} provider={isExternal ? crm.name : undefined} />
             ) : (
                 <div className="flex-1 min-h-0 overflow-auto">
                     <table className="w-full border-collapse">
@@ -185,21 +186,21 @@ export default function DealsTable({
                                 <Th className="text-left">Stage</Th>
                                 <Th className="text-right">Value</Th>
                                 <Th className="text-left hidden md:table-cell">Status</Th>
-                                <Th className="text-left hidden md:table-cell">{isHubSpot ? "Close date" : "Close"}</Th>
-                                {isHubSpot && <Th className="text-left hidden md:table-cell">Deal owner</Th>}
-                                {isHubSpot && <Th className="text-right"> </Th>}
+                                <Th className="text-left hidden md:table-cell">{isExternal ? "Close date" : "Close"}</Th>
+                                {isExternal && <Th className="text-left hidden md:table-cell">Deal owner</Th>}
+                                {isExternal && <Th className="text-right"> </Th>}
                             </tr>
                         </thead>
                         <tbody>
                             {search.isPending
-                                ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={isHubSpot ? 9 : 7} />)
+                                ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={isExternal ? 9 : 7} />)
                                 : deals.map((d) => (
                                       <DealRow
                                           key={d.id}
                                           deal={d}
                                           pipelineName={pipelineName.get(d.pipeline_id)}
                                           onOpen={() => onOpenDeal(d)}
-                                          hubspot={isHubSpot}
+                                          external={isExternal}
                                           owner={d.assigned_to ? memberByUser.get(d.assigned_to) : undefined}
                                       />
                                   ))}
@@ -243,13 +244,13 @@ function DealRow({
     deal,
     pipelineName,
     onOpen,
-    hubspot = false,
+    external = false,
     owner,
 }: {
     deal: Deal;
     pipelineName?: string;
     onOpen: () => void;
-    hubspot?: boolean;
+    external?: boolean;
     owner?: OrganizationMember;
 }) {
     const status = STATUS_STYLE[deal.status];
@@ -320,16 +321,16 @@ function DealRow({
                     <span className="text-slate-300 text-[11.5px]">—</span>
                 )}
             </td>
-            {hubspot && (
+            {external && (
                 <td className="px-3 max-w-0 hidden md:table-cell">
                     <DealOwner deal={deal} owner={owner} />
                 </td>
             )}
-            {hubspot && (
+            {external && (
                 <td className="px-2 w-9 text-right">
-                    <OpenInHubSpot
+                    <OpenInCrm
                         external={deal.external}
-                        label="Open deal in HubSpot"
+                        label={`Open deal in ${crmInfo(deal.external?.provider).name}`}
                         compact
                         className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
                     />
@@ -339,8 +340,8 @@ function DealRow({
     );
 }
 
-// The deal owner: a member, or the HubSpot owner's name when that owner is
-// not in this workspace.
+// The deal owner: a member, or the CRM owner's name when that owner is not in
+// this workspace.
 export function DealOwner({ deal, owner, compact = false }: { deal: Deal; owner?: OrganizationMember; compact?: boolean }) {
     if (deal.assigned_to) {
         const label = owner?.name?.trim() || owner?.email?.trim() || `Member ${deal.assigned_to.slice(0, 6)}`;
@@ -355,9 +356,17 @@ export function DealOwner({ deal, owner, compact = false }: { deal: Deal; owner?
     }
     const ext = deal.external?.owner_name?.trim();
     if (ext) {
+        const info = crmInfo(deal.external?.provider);
         return (
-            <span className="inline-flex items-center gap-1.5 min-w-0" title={`${ext} (HubSpot owner, not a workspace member)`}>
-                <span className="size-5 shrink-0 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[9px] font-semibold inline-flex items-center justify-center uppercase tracking-tight">
+            <span className="inline-flex items-center gap-1.5 min-w-0" title={`${ext} (${info.name} ${info.words.owner}, not a workspace member)`}>
+                <span
+                    className={cn(
+                        "size-5 shrink-0 rounded-full border text-[9px] font-semibold inline-flex items-center justify-center uppercase tracking-tight",
+                        info.tint,
+                        info.border,
+                        info.tintText,
+                    )}
+                >
                     {initials(ext)}
                 </span>
                 {!compact && <span className="text-[11.5px] text-slate-600 truncate">{ext}</span>}
@@ -563,7 +572,7 @@ function FilterPopover({
     );
 }
 
-function EmptyDeals({ hasFilters, onClear, hubspot = false }: { hasFilters: boolean; onClear: () => void; hubspot?: boolean }) {
+function EmptyDeals({ hasFilters, onClear, provider }: { hasFilters: boolean; onClear: () => void; provider?: string }) {
     return (
         <div className="px-5 py-16 text-center">
             <div className="mx-auto size-9 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center mb-3">
@@ -575,8 +584,8 @@ function EmptyDeals({ hasFilters, onClear, hubspot = false }: { hasFilters: bool
             <p className="text-[11.5px] text-slate-400 mb-4 max-w-[40ch] mx-auto leading-relaxed">
                 {hasFilters
                     ? "Try widening or clearing the filters to see more."
-                    : hubspot
-                      ? "Deals from your HubSpot pipelines show up here, and deals you create here are saved to HubSpot."
+                    : provider
+                      ? `Deals from your ${provider} pipelines show up here, and deals you create here are saved to ${provider}.`
                       : "Deals you create across any pipeline show up here: searchable, sortable, and totalled across every pipeline."}
             </p>
             {hasFilters && (

@@ -5,8 +5,6 @@ import ConfirmProvider from "@/hooks/ConfirmProvider";
 import UpgradeDialogProvider from "@/hooks/UpgradeDialogProvider";
 import { AppLayout } from "@/components/layout/AppLayout";
 
-import getToken from "@/lib/helper/getToken";
-import { Navigate } from "react-router-dom";
 import { DataSyncProvider } from "@/hooks/DataSyncProvider";
 import { RealtimeManager } from "@/hooks/RealtimeManager";
 import { OrgGate } from "@/hooks/OrgGate";
@@ -20,16 +18,8 @@ import PermissionDeniedModal from "@/components/app/modals/PermissionDeniedModal
 import ReauthModal from "@/components/app/modals/ReauthModal";
 
 export default function RootAppLayout() {
-    const token = getToken();
-    if (!token) {
-        // A Slack link code is single-use and short-lived, so it survives sign-in.
-        if (window.location.pathname === "/app/slack/link") {
-            const next = encodeURIComponent(window.location.pathname + window.location.search);
-            return <Navigate to={`/auth/login?next=${next}`} replace />;
-        }
-        return <Navigate to="/auth/login" replace />;
-    }
-
+    // The route already checked the session (bootDashboard in router.tsx).
+    //
     // Global modals live inside ConfirmProvider so useConfirm() works
     // inside their action handlers (delete confirmations etc.). They
     // need UserProvider too (state lives there: tagsEdit, foldersEdit,
