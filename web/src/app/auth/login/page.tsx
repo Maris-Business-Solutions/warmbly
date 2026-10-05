@@ -850,7 +850,7 @@ export default function LoginPage() {
                             onBack={() => goTo(mode === "signin" ? "signin" : "signup", -1)}
                             onSubmit={handleVerify}
                             onResend={handleResend}
-                            canRemember={mode === "signin"}
+                            canRemember={mode === "signin" && authConfig.login_code === "new_device"}
                             captcha={captchaWidget}
                         />
                     </MotionWrap>
