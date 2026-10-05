@@ -72,7 +72,10 @@ func (h *Handler) SessionRevokeOthers(c *gin.Context) {
 	}
 	// Remembered browsers go too, this one included: whoever is being locked
 	// out may hold a device token, and the tokens are not tied to sessions.
-	h.AuthService.ForgetTrustedDevices(c.Request.Context(), uid)
+	if ferr := h.AuthService.ForgetTrustedDevices(c.Request.Context(), uid); ferr != nil {
+		errx.Handle(c, ferr)
+		return
+	}
 
 	c.Status(http.StatusNoContent)
 }

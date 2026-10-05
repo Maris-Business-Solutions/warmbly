@@ -731,7 +731,7 @@ export default function LoginPage() {
         withCaptcha(async (token) => {
             try {
                 const res = mode === "signin"
-                    ? await loginMutation.mutateAsync({ email, password, turnstile: token, device_token: getTrustedDevice(email) })
+                    ? await loginMutation.mutateAsync({ email, password, turnstile: token })
                     : await registerMutation.mutateAsync({ email, password, turnstile: token, invite: inviteToken || undefined, acquisition });
                 toast.success("Code resent!");
                 setSession(res.session ?? "");

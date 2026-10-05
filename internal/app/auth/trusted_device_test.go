@@ -32,7 +32,7 @@ func TestTrustedDeviceSkipsTheCodeOnlyForItsOwner(t *testing.T) {
 	s := trustedSvc(t, config.LoginCodeNewDevice)
 	ctx := context.Background()
 	owner, other := uuid.New(), uuid.New()
-	t.Cleanup(func() { s.ForgetTrustedDevices(ctx, owner) })
+	t.Cleanup(func() { _ = s.ForgetTrustedDevices(ctx, owner) })
 
 	tok := s.trustDevice(ctx, owner)
 	if tok == "" {
@@ -56,7 +56,7 @@ func TestTrustedDeviceDoesNotOverrideAlways(t *testing.T) {
 	s := trustedSvc(t, config.LoginCodeAlways)
 	ctx := context.Background()
 	uid := uuid.New()
-	t.Cleanup(func() { s.ForgetTrustedDevices(ctx, uid) })
+	t.Cleanup(func() { _ = s.ForgetTrustedDevices(ctx, uid) })
 
 	if !s.loginCodeRequired(ctx, uid, s.trustDevice(ctx, uid), authrisk.Verdict{}) {
 		t.Error("AUTH_LOGIN_CODE=always must ignore trusted devices")
@@ -67,11 +67,13 @@ func TestForgetTrustedDevicesRevokesEveryToken(t *testing.T) {
 	s := trustedSvc(t, config.LoginCodeNewDevice)
 	ctx := context.Background()
 	uid, other := uuid.New(), uuid.New()
-	t.Cleanup(func() { s.ForgetTrustedDevices(ctx, other) })
+	t.Cleanup(func() { _ = s.ForgetTrustedDevices(ctx, other) })
 
 	a, b := s.trustDevice(ctx, uid), s.trustDevice(ctx, uid)
 	keep := s.trustDevice(ctx, other)
-	s.ForgetTrustedDevices(ctx, uid)
+	if err := s.ForgetTrustedDevices(ctx, uid); err != nil {
+		t.Fatal(err)
+	}
 
 	if s.isTrustedDevice(ctx, uid, a) || s.isTrustedDevice(ctx, uid, b) {
 		t.Error("a forgotten device still skips the code")

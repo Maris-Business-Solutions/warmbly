@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/observability/errs"
 	"github.com/warmbly/warmbly/internal/pkg/crypt"
 )
@@ -57,10 +58,11 @@ func (s *authService) isTrustedDevice(ctx context.Context, userID uuid.UUID, tok
 }
 
 // ForgetTrustedDevices drops every remembered device for the user, so the next
-// sign-in from each of them asks for an emailed code again.
-func (s *authService) ForgetTrustedDevices(ctx context.Context, userID uuid.UUID) {
+// sign-in from each of them asks for an emailed code again. An error means
+// some may survive, so callers must not report the revocation as done.
+func (s *authService) ForgetTrustedDevices(ctx context.Context, userID uuid.UUID) *errx.Error {
 	if s.cache == nil {
-		return
+		return nil
 	}
 	iter := s.cache.Scan(ctx, 0, getTrustedDevicePrefix(userID)+"*", 100).Iterator()
 	var keys []string
@@ -69,11 +71,14 @@ func (s *authService) ForgetTrustedDevices(ctx context.Context, userID uuid.UUID
 	}
 	if err := iter.Err(); err != nil {
 		errs.CaptureExceptionContext(ctx, err, errs.Tag("area", "trusted_device"))
+		return errx.InternalError()
 	}
 	if len(keys) == 0 {
-		return
+		return nil
 	}
 	if err := s.cache.Del(ctx, keys...).Err(); err != nil {
 		errs.CaptureExceptionContext(ctx, err, errs.Tag("area", "trusted_device"))
+		return errx.InternalError()
 	}
+	return nil
 }
