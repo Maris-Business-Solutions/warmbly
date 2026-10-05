@@ -5,6 +5,7 @@
 
 import { Request } from "@/lib/api/client";
 import type { WorkerHealthState } from "@/lib/api/models/admin";
+import type { NodeUsage } from "./fleetNodes";
 
 export interface AdminFleetWorkerRow {
     worker_id: string;
@@ -18,13 +19,14 @@ export interface AdminFleetWorkerRow {
     live: boolean;
     account_count: number;
     tags: string[] | null;
+    usage: NodeUsage;
 
     load_score: number;
     base_capacity: number;
     health_multiplier: number;
     age_multiplier: number;
     effective_capacity: number;
-    /** Weighted load over the worker's local workload target. */
+    /** Assigned mailbox count divided by the worker's planning target. */
     utilization: number;
     sends_attempted_1h: number;
     sends_succeeded_1h: number;

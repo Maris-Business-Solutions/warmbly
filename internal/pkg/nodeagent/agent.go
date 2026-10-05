@@ -60,9 +60,12 @@ type Config struct {
 }
 
 type Agent struct {
-	cfg     Config
-	http    *http.Client
-	started time.Time
+	cfg            Config
+	http           *http.Client
+	started        time.Time
+	usage          usageSampler
+	address        string
+	addressChecked time.Time
 
 	// lastErr is reported on the next beat and then cleared, so the dashboard
 	// shows what went wrong without it sticking forever.
@@ -141,10 +144,10 @@ func (a *Agent) beat(ctx context.Context, booted, stopping bool) *models.NodeHea
 		Role:           a.cfg.Role,
 		Name:           a.cfg.Name,
 		Region:         a.cfg.Region,
-		Address:        a.cfg.Address,
+		Address:        a.publicAddress(ctx),
 		CapacityTarget: a.cfg.CapacityTarget,
 		Version:        a.cfg.Version,
-		Usage:          sampleUsage(a.started),
+		Usage:          a.sampleUsage(),
 		Booted:         booted,
 		Stopping:       stopping,
 	}
@@ -216,15 +219,17 @@ func (a *Agent) applyTarget(version string) {
 		version, a.cfg.Version)
 }
 
-func sampleUsage(started time.Time) models.NodeUsage {
+func (a *Agent) sampleUsage() models.NodeUsage {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	mem := int(m.Sys / 1024 / 1024)
 	goroutines := runtime.NumGoroutine()
-	uptime := int64(time.Since(started).Seconds())
-	return models.NodeUsage{
+	uptime := int64(time.Since(a.started).Seconds())
+	usage := models.NodeUsage{
 		MemoryMB:      &mem,
 		Goroutines:    &goroutines,
 		UptimeSeconds: &uptime,
 	}
+	a.usage.sample(&usage)
+	return usage
 }

@@ -42,13 +42,15 @@ func (r *adminFleetRepository) Capacity(ctx context.Context) ([]models.AdminFlee
 		       (n.active AND n.last_seen_at > now() - $1::interval) AS live,
 		       w.account_count,
 		       COALESCE(t.tags, '{}'::text[]) AS tags,
-		       COALESCE(v.load_score, w.load_score, 0)::float8,
-		       COALESCE(v.base_capacity, 0)::float8,
+		       w.account_count::float8,
+		       n.capacity_target::float8,
 		       COALESCE(v.health_multiplier, 1)::float8,
 		       COALESCE(v.age_multiplier, 1)::float8,
 		       COALESCE(v.sends_attempted_1h, 0), COALESCE(v.sends_succeeded_1h, 0),
 		       COALESCE(v.bounces_hard_1h, 0), COALESCE(v.bounces_soft_1h, 0),
-		       COALESCE(v.complaints_1h, 0), COALESCE(v.auth_errors_1h, 0)
+		       COALESCE(v.complaints_1h, 0), COALESCE(v.auth_errors_1h, 0),
+		       n.cpu_percent, n.memory_mb, n.goroutines, n.uptime_seconds,
+		       n.cpu_scope, n.memory_scope, n.memory_used_mb, n.memory_limit_mb, n.resident_mb
 		  FROM workers w
 		  JOIN fleet_nodes n ON n.id = w.id
 		  LEFT JOIN worker_capacity_view v ON v.worker_id = w.id
@@ -73,6 +75,8 @@ func (r *adminFleetRepository) Capacity(ctx context.Context) ([]models.AdminFlee
 			&row.LoadScore, &row.BaseCapacity, &row.HealthMultiplier, &row.AgeMultiplier,
 			&row.SendsAttempted1h, &row.SendsSucceeded1h,
 			&row.BouncesHard1h, &row.BouncesSoft1h, &row.Complaints1h, &row.AuthErrors1h,
+			&row.Usage.CPUPercent, &row.Usage.MemoryMB, &row.Usage.Goroutines, &row.Usage.UptimeSeconds,
+			&row.Usage.CPUScope, &row.Usage.MemoryScope, &row.Usage.MemoryUsedMB, &row.Usage.MemoryLimitMB, &row.Usage.ResidentMB,
 		); err != nil {
 			return nil, err
 		}

@@ -55,6 +55,7 @@ import type { AdminWorkerEmail } from "@/lib/api/models/admin";
 import { TONE_PANEL, TONE_TEXT } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import { NodeStatePill } from "./fleet/tones";
+import { ResourceUsage } from "./fleet/ResourceUsage";
 
 const CRUMBS = [{ label: "Workers", to: "/workers" }];
 
@@ -366,7 +367,7 @@ export default function WorkerDetailPage() {
                                     <Mono>{node.pinned_version}</Mono>
                                 </Property>
                             )}
-                            <Property label="Address">
+                            <Property label="Public IPv4">
                                 <Mono>{node.address || "—"}</Mono>
                             </Property>
                             <Property label="Region">
@@ -377,10 +378,14 @@ export default function WorkerDetailPage() {
                                     <span className="tabular-nums">{(node.capacity_target || 100).toLocaleString()}</span>
                                 </Property>
                             )}
-                            <Property label="Memory">
-                                <span className="tabular-nums">
-                                    {node.usage?.memory_mb !== undefined ? `${node.usage.memory_mb} MB` : "—"}
-                                </span>
+                            <Property label="CPU">
+                                <ResourceUsage usage={node.usage} kind="cpu" live={state === "live"} />
+                            </Property>
+                            <Property label="RAM">
+                                <ResourceUsage usage={node.usage} kind="memory" live={state === "live"} />
+                            </Property>
+                            <Property label="Process RAM">
+                                <ResourceUsage usage={node.usage} kind="resident" live={state === "live"} />
                             </Property>
                             <Property label="Goroutines">
                                 <span className="tabular-nums">{node.usage?.goroutines ?? "—"}</span>

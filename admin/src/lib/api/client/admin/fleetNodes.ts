@@ -13,6 +13,11 @@ export interface NodeUsage {
     memory_mb?: number;
     goroutines?: number;
     uptime_seconds?: number;
+    cpu_scope?: "host" | "container";
+    memory_scope?: "host" | "container";
+    memory_used_mb?: number;
+    memory_limit_mb?: number;
+    resident_mb?: number;
 }
 
 export interface FleetNode {

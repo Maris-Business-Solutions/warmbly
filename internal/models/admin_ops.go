@@ -208,6 +208,7 @@ type AdminFleetWorkerRow struct {
 	Live         bool              `json:"live"`
 	AccountCount int               `json:"account_count"`
 	Tags         []string          `json:"tags"`
+	Usage        NodeUsage         `json:"usage"`
 
 	LoadScore         float64 `json:"load_score"`
 	BaseCapacity      float64 `json:"base_capacity"`

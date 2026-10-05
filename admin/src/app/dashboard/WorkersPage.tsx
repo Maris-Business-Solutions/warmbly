@@ -23,7 +23,9 @@ import {
 } from "@/components/data/Explorer";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { emptyRange, rangeActive, type DateRange } from "@/lib/dateRange";
-import { listFleetNodes, nodeNeedsUpdate, type FleetNode } from "@/lib/api/client/admin/fleetNodes";
+import { listFleetNodes, nodeNeedsUpdate, nodeIsLive, type FleetNode } from "@/lib/api/client/admin/fleetNodes";
+import { ResourceUsage } from "./fleet/ResourceUsage";
+import { resourceCSV } from "./fleet/format";
 import { TONE_TEXT, type Tone } from "@/lib/tones";
 
 const OFFLINE_MS = 5 * 60_000;
@@ -147,17 +149,14 @@ const columns: Column<FleetNode>[] = [
     },
     {
         id: "memory",
-        header: "Memory",
+        header: "Process RAM",
         align: "right",
-        cell: (w) =>
-            w.usage?.memory_mb === undefined ? (
-                <Empty />
-            ) : (
-                <span className="tabular-nums text-muted-foreground">{w.usage.memory_mb} MB</span>
-            ),
-        csv: (w) => w.usage?.memory_mb ?? "",
+        cell: (w) => <ResourceUsage usage={w.usage} kind="resident" live={nodeIsLive(w)} />,
+        csv: (w) => nodeIsLive(w) ? w.usage?.resident_mb ?? "" : "stale",
         defaultHidden: true,
     },
+    { id: "cpu", header: "CPU", align: "right", cell: (w) => <ResourceUsage usage={w.usage} kind="cpu" live={nodeIsLive(w)} />, csv: (w) => resourceCSV(w.usage, "cpu", nodeIsLive(w)), defaultHidden: true },
+    { id: "ram", header: "RAM", align: "right", cell: (w) => <ResourceUsage usage={w.usage} kind="memory" live={nodeIsLive(w)} />, csv: (w) => resourceCSV(w.usage, "memory", nodeIsLive(w)), defaultHidden: true },
     {
         id: "tags",
         header: "Tags",

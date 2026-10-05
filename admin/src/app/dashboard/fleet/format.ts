@@ -1,4 +1,11 @@
 // Small formatting helpers shared by the fleet, transfers and admins pages.
+import type { NodeUsage } from "@/lib/api/client/admin/fleetNodes";
+
+export function resourceCSV(usage: NodeUsage | undefined, kind: "cpu" | "memory", live: boolean): string {
+    if (!live) return "stale";
+    if (kind === "cpu") return usage?.cpu_percent == null || !usage.cpu_scope ? "" : `${usage.cpu_percent.toFixed(1)}% ${usage.cpu_scope}`;
+    return usage?.memory_used_mb == null || usage.memory_limit_mb == null || !usage.memory_scope ? "" : `${usage.memory_used_mb}/${usage.memory_limit_mb} MiB ${usage.memory_scope}`;
+}
 
 export function shortId(id: string | null | undefined): string {
     return id ? id.slice(0, 8) : "—";

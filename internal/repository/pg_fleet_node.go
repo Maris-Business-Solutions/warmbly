@@ -55,6 +55,7 @@ const fleetNodeSelect = `
 	SELECT n.id, n.role, n.name, n.notes, n.region, n.address, n.capacity_target, n.version, n.pinned_version,
 	       n.active, n.last_seen_at, n.enrolled_at,
 	       n.cpu_percent, n.memory_mb, n.goroutines, n.uptime_seconds,
+	       n.cpu_scope, n.memory_scope, n.memory_used_mb, n.memory_limit_mb, n.resident_mb,
 	       n.last_error, n.created_at, n.updated_at,
 	       w.account_count
 	  FROM fleet_nodes n
@@ -67,6 +68,7 @@ func scanFleetNode(row pgx.Row) (*models.FleetNode, error) {
 		&n.Version, &n.PinnedVersion,
 		&n.Active, &n.LastSeenAt, &n.EnrolledAt,
 		&n.Usage.CPUPercent, &n.Usage.MemoryMB, &n.Usage.Goroutines, &n.Usage.UptimeSeconds,
+		&n.Usage.CPUScope, &n.Usage.MemoryScope, &n.Usage.MemoryUsedMB, &n.Usage.MemoryLimitMB, &n.Usage.ResidentMB,
 		&n.LastError, &n.CreatedAt, &n.UpdatedAt,
 		&n.MailboxCount,
 	)
@@ -88,8 +90,9 @@ func (r *fleetNodeRepository) UpsertOnHeartbeat(ctx context.Context, beat models
 	const q = `
 		INSERT INTO fleet_nodes (
 			id, role, name, region, address, capacity_target, version, active, last_seen_at,
-			cpu_percent, memory_mb, goroutines, uptime_seconds, last_error
-		) VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF($6, 0), 100), $7, TRUE, now(), $8, $9, $10, $11, $12)
+			cpu_percent, memory_mb, goroutines, uptime_seconds, last_error,
+			cpu_scope, memory_scope, memory_used_mb, memory_limit_mb, resident_mb
+		) VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF($6, 0), 100), $7, TRUE, now(), $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT (id) DO UPDATE SET
 			-- Role is NOT updated. A node that re-registers under a different
 			-- role would keep its workers row and the mailboxes assigned to
@@ -98,15 +101,20 @@ func (r *fleetNodeRepository) UpsertOnHeartbeat(ctx context.Context, beat models
 			-- removing the node and joining again, which releases the
 			-- mailboxes properly.
 			region       = CASE WHEN EXCLUDED.region  <> '' THEN EXCLUDED.region  ELSE fleet_nodes.region  END,
-			address      = CASE WHEN EXCLUDED.address <> '' THEN EXCLUDED.address ELSE fleet_nodes.address END,
+			address      = EXCLUDED.address,
 			capacity_target = CASE WHEN $6 > 0 THEN $6 ELSE fleet_nodes.capacity_target END,
 			version      = CASE WHEN EXCLUDED.version <> '' THEN EXCLUDED.version ELSE fleet_nodes.version END,
 			active       = TRUE,
 			last_seen_at = now(),
-			cpu_percent    = COALESCE(EXCLUDED.cpu_percent, fleet_nodes.cpu_percent),
-			memory_mb      = COALESCE(EXCLUDED.memory_mb, fleet_nodes.memory_mb),
-			goroutines     = COALESCE(EXCLUDED.goroutines, fleet_nodes.goroutines),
-			uptime_seconds = COALESCE(EXCLUDED.uptime_seconds, fleet_nodes.uptime_seconds),
+			cpu_percent    = EXCLUDED.cpu_percent,
+			memory_mb      = EXCLUDED.memory_mb,
+			goroutines     = EXCLUDED.goroutines,
+			uptime_seconds = EXCLUDED.uptime_seconds,
+			cpu_scope      = EXCLUDED.cpu_scope,
+			memory_scope   = EXCLUDED.memory_scope,
+			memory_used_mb = EXCLUDED.memory_used_mb,
+			memory_limit_mb = EXCLUDED.memory_limit_mb,
+			resident_mb    = EXCLUDED.resident_mb,
 			last_error   = EXCLUDED.last_error,
 			updated_at   = now()
 	`
@@ -114,6 +122,7 @@ func (r *fleetNodeRepository) UpsertOnHeartbeat(ctx context.Context, beat models
 		beat.NodeID, string(beat.Role), name, beat.Region, beat.Address, beat.CapacityTarget, beat.Version,
 		beat.Usage.CPUPercent, beat.Usage.MemoryMB, beat.Usage.Goroutines, beat.Usage.UptimeSeconds,
 		beat.LastError,
+		beat.Usage.CPUScope, beat.Usage.MemoryScope, beat.Usage.MemoryUsedMB, beat.Usage.MemoryLimitMB, beat.Usage.ResidentMB,
 	)
 	return err
 }
