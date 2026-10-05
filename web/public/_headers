@@ -18,3 +18,7 @@
 # page chunk from cache. Same rule as the nginx image.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# config.js is the runtime configuration and must never outlive a change to it; same rule as the nginx image.
+/config.js
+  Cache-Control: no-store
