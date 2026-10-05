@@ -203,6 +203,41 @@ Set these as build environment variables on the host:
 
 Whichever origin you serve them from has to be in the backend's `CORS_ALLOW_ORIGINS`, or the dashboard loads and every API call fails preflight.
 
+### Deploy the dashboard only on releases
+
+For Cloudflare Pages, keep the existing project and custom domain. The repository's `Release` workflow can upload the dashboard after it successfully publishes a stable GitHub Release. Ordinary merges and prerelease tags do not run this deployment job. The job is opt-in, so forks and self-hosts do not need Cloudflare credentials.
+
+The build checks out the release commit, runs `pnpm build:pages` in `web`, and uploads `web/dist` with Wrangler. It explicitly uses the project's production branch rather than the release tag as its branch name, so the upload updates production instead of creating a preview. Before building, it checks that the configured branch matches the existing Pages project's production branch.
+
+<Callout type="warn" title="Configure GitHub before disabling automatic deployments">
+GitHub Actions builds do not inherit environment variables from the Pages dashboard. Copy the production frontend configuration to GitHub first. The Cloudflare API token and source-map upload credentials are secrets; the `WARMBLY_*` values below are public frontend configuration and are shipped to browsers.
+</Callout>
+
+1. In GitHub, create the repository environment **dashboard-production** under **Settings > Environments**. Add any approval requirements there if production deployments should need a human approval.
+2. In that environment, add the secret `CLOUDFLARE_API_TOKEN`. Create a Cloudflare custom API token with **Account > Cloudflare Pages > Edit**, restricted to the account containing this Pages project.
+3. Add these environment variables in **dashboard-production**:
+
+   | Variable | Value |
+   |---|---|
+   | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account ID containing the existing project |
+   | `CLOUDFLARE_PAGES_PROJECT_NAME` | The existing Pages project name, not its custom domain |
+   | `CLOUDFLARE_PAGES_PRODUCTION_BRANCH` | The project's configured production branch, usually `main` |
+   | `WARMBLY_API_URL` | The production API origin, such as `https://api.example.com` |
+   | `WARMBLY_APP_URL` | The production dashboard origin, such as `https://app.example.com` |
+   | `WARMBLY_TURNSTILE_KEY` | The production Turnstile site key, not its secret key |
+
+   These values are required when deployment is enabled. Copy any configured `WARMBLY_BETA_NOTICE`, `WARMBLY_SENTRY_DSN`, `WARMBLY_SENTRY_ENVIRONMENT`, `WARMBLY_POSTHOG_KEY`, `WARMBLY_POSTHOG_HOST`, `WARMBLY_POSTHOG_UI_HOST`, `WARMBLY_POSTHOG_ERROR_TRACKING`, `WARMBLY_POSTHOG_SESSION_REPLAY`, and `WARMBLY_COMPANY_LOGOS` variables too. Repository-level variables and secrets also work; environment-level values take precedence.
+
+   Optional source-map uploads use the existing repository variables `SENTRY_ORG`, `SENTRY_PROJECT_WEB`, `POSTHOG_CLI_PROJECT_ID`, and `POSTHOG_CLI_HOST`, with the secrets `SENTRY_AUTH_TOKEN` and `POSTHOG_CLI_API_KEY`. The Sentry release identity is the release tag. See [source maps](/development/configuration/#source-maps).
+
+4. In Cloudflare, go to **Workers & Pages > your dashboard project > Settings > Builds & deployments > Configure Production deployments**, uncheck **Enable automatic production branch deployments**, and save. Keep preview branch deployments enabled if you want PR previews, with their existing Pages build configuration. Do not switch or recreate the project as a Direct Upload project: Git-integrated projects also accept Wrangler uploads.
+5. In GitHub's **Settings > Secrets and variables > Actions > Variables**, set the **repository-level** variable `CLOUDFLARE_PAGES_DEPLOY_ENABLED` to `true`. This toggle must be repository-level because GitHub evaluates the job condition before loading environment-level variables.
+6. Publish the next stable release using the normal version-tag flow. In **Actions > Release**, confirm **Deploy dashboard to Cloudflare Pages** succeeds and the production deployment in Pages shows the release commit.
+
+The deployment is part of the existing release workflow, not a separate `release: published` workflow. Releases created with `GITHUB_TOKEN`, as this workflow does, do not trigger another release-event workflow.
+
+If a build or upload fails, the existing Pages deployment stays live. After fixing the configuration, use **Re-run failed jobs** on that release run to retry the same release commit without creating another tag or rebuilding successful release jobs. Do not retry an older release after a newer one has deployed unless you intend to roll the dashboard back. To pause release uploads, set `CLOUDFLARE_PAGES_DEPLOY_ENABLED` to `false`; this leaves the current deployment live and does not re-enable Cloudflare's automatic deployments. This job changes only the dashboard; it does not deploy the API, admin panel, or docs.
+
 ## Anything the control plane cannot know
 
 `warmbly join` writes `/etc/warmbly/node.env` from the control plane's answer and rewrites it on every join. Next to it, `/etc/warmbly/node.local.env` is created once and never written again, and the container reads it second, so a name repeated there wins.

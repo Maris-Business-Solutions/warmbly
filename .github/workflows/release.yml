@@ -504,3 +504,90 @@ jobs:
             /tmp/cli/*
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  deploy-pages:
+    name: Deploy dashboard to Cloudflare Pages
+    needs: create-release
+    if: ${{ vars.CLOUDFLARE_PAGES_DEPLOY_ENABLED == 'true' && !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    environment: dashboard-production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+      CLOUDFLARE_PAGES_PRODUCTION_BRANCH: ${{ vars.CLOUDFLARE_PAGES_PRODUCTION_BRANCH }}
+      WARMBLY_API_URL: ${{ vars.WARMBLY_API_URL }}
+      WARMBLY_APP_URL: ${{ vars.WARMBLY_APP_URL }}
+      WARMBLY_TURNSTILE_KEY: ${{ vars.WARMBLY_TURNSTILE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Validate production deployment configuration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_PAGES_PROJECT_NAME CLOUDFLARE_PAGES_PRODUCTION_BRANCH WARMBLY_API_URL WARMBLY_APP_URL WARMBLY_TURNSTILE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Set $name before enabling Cloudflare Pages release deployments."
+              exit 1
+            fi
+          done
+          project=$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$CLOUDFLARE_PAGES_PROJECT_NAME")
+          if ! jq --exit-status --arg branch "$CLOUDFLARE_PAGES_PRODUCTION_BRANCH" \
+            '.success == true and .result.production_branch == $branch' <<< "$project" > /dev/null; then
+            echo "::error::CLOUDFLARE_PAGES_PRODUCTION_BRANCH must match the existing Pages project's production branch."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.9.0"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dashboard dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production dashboard
+        working-directory: web
+        env:
+          VITE_SENTRY_RELEASE: ${{ github.ref_name }}
+          WARMBLY_BETA_NOTICE: ${{ vars.WARMBLY_BETA_NOTICE }}
+          WARMBLY_SENTRY_DSN: ${{ vars.WARMBLY_SENTRY_DSN }}
+          WARMBLY_SENTRY_ENVIRONMENT: ${{ vars.WARMBLY_SENTRY_ENVIRONMENT }}
+          WARMBLY_POSTHOG_KEY: ${{ vars.WARMBLY_POSTHOG_KEY }}
+          WARMBLY_POSTHOG_HOST: ${{ vars.WARMBLY_POSTHOG_HOST }}
+          WARMBLY_POSTHOG_UI_HOST: ${{ vars.WARMBLY_POSTHOG_UI_HOST }}
+          WARMBLY_POSTHOG_ERROR_TRACKING: ${{ vars.WARMBLY_POSTHOG_ERROR_TRACKING }}
+          WARMBLY_POSTHOG_SESSION_REPLAY: ${{ vars.WARMBLY_POSTHOG_SESSION_REPLAY }}
+          WARMBLY_COMPANY_LOGOS: ${{ vars.WARMBLY_COMPANY_LOGOS }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_WEB }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          POSTHOG_CLI_PROJECT_ID: ${{ vars.POSTHOG_CLI_PROJECT_ID }}
+          POSTHOG_CLI_HOST: ${{ vars.POSTHOG_CLI_HOST }}
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
+        run: pnpm build:pages
+
+      - name: Deploy tagged dashboard to production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          pnpm dlx wrangler@4.45.0 pages deploy web/dist \
+            --project-name "$CLOUDFLARE_PAGES_PROJECT_NAME" \
+            --branch "$CLOUDFLARE_PAGES_PRODUCTION_BRANCH" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "$RELEASE_TAG"
