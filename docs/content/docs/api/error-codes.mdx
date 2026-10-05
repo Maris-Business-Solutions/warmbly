@@ -355,6 +355,10 @@ The [Salesforce](/guides/salesforce/) endpoints answer with their own codes. Whe
 |--------|--------|---------|
 | `action_provider_mismatch` | 400 | `POST /automations`, `PATCH /automations/:id` or `POST /integrations/connections/:id/events` paired an action with a connection whose provider does not run it, such as a Slack message on a HubSpot connection. Each action runs only on the integration it belongs to; the provider's actions are listed under `capability.actions` in `GET /integrations/catalog` |
 
+#### `mailbox_oauth_return_origin`
+
+A `400` with `code: "mailbox_oauth_return_origin"` means a Google or Microsoft mailbox connect or reauthorization came from a dashboard origin the backend does not allow. Add its exact HTTP(S) origin to `CORS_ALLOW_ORIGINS`, as in [shared-backend dashboard configuration](/development/configuration/#google-sign-in-per-dashboard-deployment). A wildcard is not an OAuth return allowlist.
+
 ### 401 Unauthorized
 
 Returned when authentication fails.
@@ -430,10 +434,6 @@ Returned when authenticated but lacking necessary permissions.
 - Check your API key's permissions
 - Verify IP restrictions if configured
 - Request additional permissions if needed
-
-#### `mailbox_oauth_return_origin`
-
-A `400` with `code: "mailbox_oauth_return_origin"` instead means a Google mailbox connect or reauthorization came from a dashboard origin the backend does not allow. Add its exact HTTP(S) origin to `CORS_ALLOW_ORIGINS`, as in [shared-backend dashboard configuration](/development/configuration/#google-sign-in-per-dashboard-deployment). A wildcard is not an OAuth return allowlist.
 
 #### `mailbox_gmail_oauth_disabled`
 
