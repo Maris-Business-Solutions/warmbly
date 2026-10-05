@@ -1,29 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
-
-const runtimeVariables = [
-  "WARMBLY_API_URL",
-  "WARMBLY_APP_URL",
-  "WARMBLY_TURNSTILE_KEY",
-  "WARMBLY_BETA_NOTICE",
-  "WARMBLY_SENTRY_DSN",
-  "WARMBLY_SENTRY_ENVIRONMENT",
-  "WARMBLY_POSTHOG_KEY",
-  "WARMBLY_POSTHOG_HOST",
-  "WARMBLY_POSTHOG_UI_HOST",
-  "WARMBLY_POSTHOG_ERROR_TRACKING",
-  "WARMBLY_POSTHOG_SESSION_REPLAY",
-  "WARMBLY_COMPANY_LOGOS",
-];
-const requiredVariables = new Set([
-  "WARMBLY_API_URL",
-  "WARMBLY_APP_URL",
-  "WARMBLY_TURNSTILE_KEY",
-]);
+import { apps } from "./pages-projects.mjs";
 
 class ConfigurationError extends Error {}
 
 try {
+  const app = process.env.PAGES_APP || "web";
+  if (!Object.hasOwn(apps, app)) throw new ConfigurationError("Unsupported Pages app. Use web, admin, site, or docs.");
   const project = JSON.parse(readFileSync(0, "utf8"));
   const branch = project.result?.production_branch;
   if (project.success !== true || typeof branch !== "string" || !branch.trim() || /[\r\n]/.test(branch)) {
@@ -31,6 +14,17 @@ try {
   }
 
   const variables = project.result.deployment_configs?.production?.env_vars ?? {};
+  let runtimeVariables;
+  let requiredVariables = new Set();
+  if (app === "web" || app === "admin") {
+    const entrypoint = readFileSync(new URL(`../../${app}/docker-entrypoint.sh`, import.meta.url), "utf8");
+    runtimeVariables = [...new Set([...entrypoint.matchAll(/\$\{(WARMBLY_[A-Z_]+)/g)].map((match) => match[1]))]
+      .filter((name) => name !== "WARMBLY_CONFIG_OUT");
+    requiredVariables = new Set(["WARMBLY_API_URL", app === "web" ? "WARMBLY_APP_URL" : "WARMBLY_DASHBOARD_URL", "WARMBLY_TURNSTILE_KEY"]);
+  } else {
+    const prefix = app === "site" ? /^PUBLIC_[A-Z0-9_]+$/ : /^NEXT_PUBLIC_[A-Z0-9_]+$/;
+    runtimeVariables = Object.keys(variables).filter((name) => prefix.test(name));
+  }
   const entries = runtimeVariables.map((name) => {
     const variable = variables[name];
     if (variable != null && (variable.type !== "plain_text" || typeof variable.value !== "string")) {

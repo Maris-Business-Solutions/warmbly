@@ -505,18 +505,45 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
 
-  deploy-pages:
-    name: Deploy dashboard to Cloudflare Pages
+  pages-targets:
+    name: Configure Pages release deployments
     needs: create-release
     if: ${{ vars.CLOUDFLARE_PAGES_DEPLOY_ENABLED == 'true' && !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate deployment targets
+        id: targets
+        env:
+          CLOUDFLARE_PAGES_PROJECTS: ${{ vars.CLOUDFLARE_PAGES_PROJECTS }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+        run: node .github/scripts/pages-projects.mjs
+
+  deploy-pages:
+    name: Deploy ${{ matrix.app }} to Pages (${{ matrix.project }})
+    needs: pages-targets
+    if: ${{ needs.pages-targets.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pages-targets.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-    environment: dashboard-production
+    environment: ${{ matrix.environment }}
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+      CLOUDFLARE_PAGES_PROJECT_NAME: ${{ matrix.project }}
+      PAGES_APP: ${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -550,32 +577,34 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: ${{ matrix.directory }}/pnpm-lock.yaml
 
-      - name: Install dashboard dependencies
-        working-directory: web
+      - name: Install frontend dependencies
+        working-directory: ${{ matrix.directory }}
         run: pnpm install --frozen-lockfile
 
-      - name: Build production dashboard
-        working-directory: web
+      - name: Build production frontend
+        working-directory: ${{ matrix.directory }}
         env:
           VITE_SENTRY_RELEASE: ${{ github.ref_name }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_WEB }}
+          SENTRY_PROJECT: ${{ vars[matrix.sentry_project_var] }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           POSTHOG_CLI_PROJECT_ID: ${{ vars.POSTHOG_CLI_PROJECT_ID }}
           POSTHOG_CLI_HOST: ${{ vars.POSTHOG_CLI_HOST }}
           POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
-        run: pnpm build:pages
+          BUILD_SCRIPT: ${{ matrix.build_script }}
+        run: pnpm run "$BUILD_SCRIPT"
 
-      - name: Deploy tagged dashboard to production
+      - name: Deploy tagged frontend to production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_PAGES_PRODUCTION_BRANCH: ${{ steps.pages-config.outputs.production_branch }}
           RELEASE_TAG: ${{ github.ref_name }}
           WRANGLER_SEND_METRICS: "false"
+          PAGES_OUTPUT_DIR: ${{ matrix.output_dir }}
         run: |
-          pnpm dlx wrangler@4.45.0 pages deploy web/dist \
+          pnpm dlx wrangler@4.45.0 pages deploy "$PAGES_OUTPUT_DIR" \
             --project-name "$CLOUDFLARE_PAGES_PROJECT_NAME" \
             --branch "$CLOUDFLARE_PAGES_PRODUCTION_BRANCH" \
             --commit-hash "$GITHUB_SHA" \

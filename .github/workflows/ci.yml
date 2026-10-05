@@ -99,10 +99,16 @@ jobs:
               - 'scripts/check-cli-installer.sh'
               - 'scripts/build-cli.sh'
             pages:
-              - '.github/scripts/pages-production-config*'
+              - '.github/scripts/pages-*'
               - '.github/workflows/release.yml'
               - '.github/workflows/ci.yml'
               - 'web/docker-entrypoint.sh'
+              - 'admin/docker-entrypoint.sh'
+              - 'web/package.json'
+              - 'admin/package.json'
+              - 'site/package.json'
+              - 'docs/package.json'
+              - 'docs/next.config.mjs'
 
   pages-ci:
     name: Pages release configuration
@@ -115,7 +121,7 @@ jobs:
         with:
           node-version: "22"
       - name: Check production configuration import
-        run: node --test .github/scripts/pages-production-config.test.mjs
+        run: node --test .github/scripts/pages-*.test.mjs
 
   migrations-ci:
     name: Migrations

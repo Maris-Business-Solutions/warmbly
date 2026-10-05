@@ -27,14 +27,14 @@ function fixture() {
   };
 }
 
-function run(project) {
+function run(project, app = "web") {
   const work = mkdtempSync(join(tmpdir(), "pages-config-"));
   try {
     const envFile = join(work, "env");
     const outputFile = join(work, "output");
     const result = spawnSync(process.execPath, [script], {
       input: typeof project === "string" ? project : JSON.stringify(project),
-      env: { ...process.env, GITHUB_ENV: envFile, GITHUB_OUTPUT: outputFile },
+      env: { ...process.env, PAGES_APP: app, GITHUB_ENV: envFile, GITHUB_OUTPUT: outputFile },
       encoding: "utf8",
     });
     const read = (file) => {
@@ -146,4 +146,54 @@ test("rejects malformed API responses, missing production config, and runner out
     assert.equal(result.env + result.output, "");
     assert.ok(!result.stderr.includes("invalid-private-response"));
   }
+});
+
+test("imports and renders the admin's distinct runtime configuration", () => {
+  const entry = new URL("../../admin/docker-entrypoint.sh", import.meta.url);
+  const adminNames = [...new Set([...readFileSync(entry, "utf8").matchAll(/\$\{(WARMBLY_[A-Z_]+)/g)].map((match) => match[1]))]
+    .filter((name) => name !== "WARMBLY_CONFIG_OUT");
+  const project = fixture();
+  project.result.production_branch = "admin-release";
+  project.result.deployment_configs.production.env_vars = Object.fromEntries(adminNames.map((name) => [name, { type: "plain_text", value: `admin-${name}` }]));
+  const imported = run(project, "admin");
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(imported.output, "production_branch=admin-release\n");
+  assert.deepEqual(Object.keys(decode(imported.env)).sort(), adminNames.sort());
+  const work = mkdtempSync(join(tmpdir(), "pages-admin-"));
+  try {
+    const output = join(work, "config.js");
+    const rendered = spawnSync("sh", [fileURLToPath(entry)], {
+      env: { ...process.env, ...decode(imported.env), WARMBLY_CONFIG_OUT: output },
+      encoding: "utf8",
+    });
+    assert.equal(rendered.status, 0, rendered.stderr);
+    const window = {};
+    runInNewContext(readFileSync(output, "utf8"), { window });
+    assert.equal(window.__WARMBLY_ENV__.DASHBOARD_URL, "admin-WARMBLY_DASHBOARD_URL");
+    assert.equal(window.__WARMBLY_ENV__.ENV_LABEL, "admin-WARMBLY_ENV_LABEL");
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+  delete project.result.deployment_configs.production.env_vars.WARMBLY_DASHBOARD_URL;
+  assert.equal(run(project, "admin").status, 1);
+});
+
+test("site and docs import only their public build variables, without dashboard requirements", () => {
+  for (const [app, name] of [["site", "PUBLIC_POSTHOG_KEY"], ["docs", "NEXT_PUBLIC_ANALYTICS_KEY"]]) {
+    const project = fixture();
+    project.result.deployment_configs.production.env_vars = {
+      [name]: { type: "plain_text", value: `${app}-public` },
+      API_KEY: { type: "secret_text", value: "private" },
+      NODE_OPTIONS: { type: "plain_text", value: "untrusted" },
+      WARMBLY_API_URL: { type: "plain_text", value: "not-this-app" },
+    };
+    const imported = run(project, app);
+    assert.equal(imported.status, 0, imported.stderr);
+    assert.deepEqual(decode(imported.env), { [name]: `${app}-public` });
+    project.result.deployment_configs.production.env_vars[name].type = "secret_text";
+    assert.equal(run(project, app).status, 1);
+    project.result.deployment_configs.production.env_vars = {};
+    assert.equal(run(project, app).status, 0);
+  }
+  assert.equal(run(fixture(), "unsupported").status, 1);
 });
