@@ -8,6 +8,7 @@
 // allows from the address bar still finishes the sign-in.
 
 import toast from "react-hot-toast";
+import { listenForOAuthReturn } from "@/lib/oauthReturn";
 
 export interface PopupSize {
     width: number;
@@ -44,6 +45,7 @@ const HOLDING_PAGE =
  * browser blocked it.
  */
 export function reservePopup(name: string, size: PopupSize = DEFAULT_SIZE): Window | null {
+    listenForOAuthReturn();
     let w: Window | null = null;
     try {
         w = window.open("", name, features(size));

@@ -23,9 +23,27 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// WebStatePrefix marks a state the dashboard started, so a sign-in window that lost its opener returns
+// to the dashboard rather than the native app scheme. A base64url nonce never contains '.'.
+const WebStatePrefix = "w."
+
+// IsWebState reports whether a callback state belongs to a flow the dashboard started.
+func IsWebState(state string) bool {
+	return strings.HasPrefix(state, WebStatePrefix)
+}
+
+// newState mints a state nonce, marked when the dashboard started the flow.
+func newState(web bool) (string, error) {
+	n, err := crypt.Nonce()
+	if err != nil || !web {
+		return n, err
+	}
+	return WebStatePrefix + n, nil
+}
+
 // OAuthStart issues a fresh state nonce and returns the provider-specific authorization URL.
 // The caller is expected to redirect the user to the URL and post back to OAuthFinish on return.
-func (s *emailService) OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string) (*models.EmailOnboardingStartResponse, *errx.Error) {
+func (s *emailService) OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string, web bool) (*models.EmailOnboardingStartResponse, *errx.Error) {
 	// A new mailbox only; OAuthReauth renews an existing one and is not gated.
 	if provider == models.InboxProviderGoogle && !config.GoogleOAuthConnect() {
 		return nil, errx.ErrEmailOnboardGoogleOAuthDisabled
@@ -41,7 +59,7 @@ func (s *emailService) OAuthStart(ctx context.Context, userID string, orgID *uui
 		return nil, xerr
 	}
 
-	state, err := crypt.Nonce()
+	state, err := newState(web)
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()

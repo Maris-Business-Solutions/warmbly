@@ -18,7 +18,7 @@ func TestOAuthStart_GmailRefusedUnlessEnabled(t *testing.T) {
 	org := uuid.New()
 	svc := &emailService{}
 
-	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "")
+	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "", false)
 	if xerr != errx.ErrEmailOnboardGoogleOAuthDisabled {
 		t.Fatalf("expected ErrEmailOnboardGoogleOAuthDisabled, got %v", xerr)
 	}
@@ -34,7 +34,7 @@ func TestOAuthStart_GmailAllowedWhenEnabled(t *testing.T) {
 	org := uuid.New()
 	svc := &emailService{}
 
-	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "")
+	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "", false)
 	if xerr != errx.ErrEmailOnboardGoogleNotConfigured {
 		t.Fatalf("expected the gate to step aside (ErrEmailOnboardGoogleNotConfigured), got %v", xerr)
 	}

@@ -15,7 +15,6 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/observability/errs"
-	"github.com/warmbly/warmbly/internal/pkg/crypt"
 	"golang.org/x/oauth2"
 )
 
@@ -55,7 +54,8 @@ func (s *emailService) OAuthReauth(ctx context.Context, userID string, orgID *uu
 		return nil, xerr
 	}
 
-	state, err := crypt.Nonce()
+	// Only the dashboard renews a mailbox's sign-in.
+	state, err := newState(true)
 	if err != nil {
 		errs.CaptureException(err)
 		return nil, errx.InternalError()

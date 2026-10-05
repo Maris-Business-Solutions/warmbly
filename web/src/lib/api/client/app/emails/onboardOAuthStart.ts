@@ -7,12 +7,13 @@ export interface OAuthStartResponse {
     admin_consent_url?: string;
 }
 
-// loginHint pre-selects the account on the provider's consent screen.
+// loginHint pre-selects the account on the provider's consent screen. return: "web" sends a
+// sign-in window that lost its opener back to the dashboard instead of the native app.
 export default async function onboardOAuthStart(provider: "gmail" | "outlook", loginHint?: string): Promise<OAuthStartResponse> {
     return await Request<OAuthStartResponse>({
         method: "POST",
         url: `/emails/onboarding/oauth/start`,
-        data: loginHint ? { provider, login_hint: loginHint } : { provider },
+        data: loginHint ? { provider, login_hint: loginHint, return: "web" } : { provider, return: "web" },
         authorization: true,
     });
 }

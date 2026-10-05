@@ -82,7 +82,7 @@ type EmailService interface {
 	// trip renewed an existing mailbox (OAuthReauth) rather than connecting
 	// a new one, so the handler can audit and answer accordingly.
 	// loginHint preselects an address in the provider's picker; "" for none.
-	OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string) (*models.EmailOnboardingStartResponse, *errx.Error)
+	OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string, web bool) (*models.EmailOnboardingStartResponse, *errx.Error)
 	// authorize runs before the code is exchanged, against the organization the
 	// state names, so a caller removed mid-flow cannot finish it.
 	OAuthFinish(ctx context.Context, userID, code, state string, authorize FinishAuthorizer) (*models.Email, bool, *errx.Error)

@@ -236,6 +236,8 @@ const connectRoute = standalone("connect", () => import("./app/connect/page"), "
 const cliRoute = standalone("cli", () => import("./app/cli/page"), "Authorize CLI");
 // Where Warmbly Cloud sends the Google/Microsoft popup back to on a linked instance.
 const cloudOAuthDoneRoute = standalone("cloud-oauth/done", () => import("./app/cloud-oauth/done/page"), "Mailbox connected");
+// Where a sign-in window without an opener hands its result to the waiting dashboard tab.
+const oauthReturnRoute = standalone("oauth-return", () => import("./app/oauth-return/page"), "Signing in");
 // First-run claim link printed by the backend on an empty database.
 const setupRoute = standalone("setup", () => import("./app/setup/page"), "Set up Warmbly");
 
@@ -410,6 +412,7 @@ const routeTree = rootRoute.addChildren([
     connectRoute,
     cliRoute,
     cloudOAuthDoneRoute,
+    oauthReturnRoute,
     setupRoute,
     oauthRoute.addChildren([oauthAuthorize]),
     appRoute.addChildren([
