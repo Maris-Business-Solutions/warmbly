@@ -6,8 +6,8 @@
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Callout, EmptyState, StatusBadge } from "@/components/ui/kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     Dialog,
@@ -17,14 +17,16 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { useCursorPager } from "@/lib/useCursorPager";
+import type { Tone } from "@/lib/tones";
 import { listDiscountRedemptions } from "@/lib/api/client/admin/discounts";
 import type { DiscountCode, DiscountRedemption, DiscountRedemptionStatus } from "@/lib/api/models/admin";
+import { AlertTriangle, Receipt } from "lucide-react";
 import { describeDiscount, formatMoney } from "./summary";
 
-const STATUS_TONE: Record<DiscountRedemptionStatus, string> = {
-    applied: "border-emerald-300 text-emerald-700 bg-emerald-50",
-    pending: "border-amber-300 text-amber-700 bg-amber-50",
-    canceled: "border-zinc-300 text-zinc-600 bg-zinc-50",
+const STATUS_TONE: Record<DiscountRedemptionStatus, Tone> = {
+    applied: "success",
+    pending: "warning",
+    canceled: "neutral",
 };
 
 function grantedValue(r: DiscountRedemption): string {
@@ -57,12 +59,12 @@ export function DiscountRedemptionsDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
-                <DialogHeader className="shrink-0 px-4 pt-4 pb-3">
-                    <DialogTitle className="flex items-center gap-2 text-[13px]">
+                <DialogHeader className="shrink-0 px-5 pt-5 pb-4">
+                    <DialogTitle className="flex items-center gap-2">
                         <span className="font-mono">{discount.code}</span>
                         <span className="font-normal text-muted-foreground">redemptions</span>
                     </DialogTitle>
-                    <DialogDescription className="text-[11px]">
+                    <DialogDescription className="tabular-nums">
                         {describeDiscount(discount)} · redeemed{" "}
                         {discount.times_redeemed.toLocaleString()}
                         {discount.max_redemptions != null
@@ -80,59 +82,57 @@ export function DiscountRedemptionsDialog({
                             <Skeleton className="h-8 w-full" />
                         </div>
                     ) : isError ? (
-                        <div className="p-4 text-[12.5px] text-red-600">
-                            Could not load redemptions, so this list is not authoritative.
+                        <div className="p-4">
+                            <Callout tone="danger" icon={AlertTriangle}>
+                                Could not load redemptions, so this list is not authoritative.
+                            </Callout>
                         </div>
                     ) : rows.length === 0 ? (
-                        <div className="p-4 text-[12.5px] text-muted-foreground">
-                            Nobody has redeemed this code yet.
-                        </div>
+                        <EmptyState icon={Receipt} title="Nobody has redeemed this code yet." className="py-10" />
                     ) : (
-                        <table className="w-full text-[12.5px]">
-                            <thead className="sticky top-0 bg-muted/60 text-[10px] uppercase tracking-wider text-muted-foreground">
-                                <tr>
-                                    <th className="px-4 py-2 text-left font-semibold">Workspace</th>
-                                    <th className="px-4 py-2 text-left font-semibold">Granted</th>
-                                    <th className="px-4 py-2 text-left font-semibold">Status</th>
-                                    <th className="px-4 py-2 text-left font-semibold">Redeemed</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                                {rows.map((r) => (
-                                    <tr key={r.id}>
-                                        <td className="px-4 py-2">
-                                            <Link
-                                                to={`/organizations/${r.organization_id}`}
-                                                className="font-mono text-[11px] text-[var(--admin-accent-strong)] hover:underline"
-                                            >
-                                                {r.organization_id.slice(0, 8)}
-                                            </Link>
-                                        </td>
-                                        <td className="px-4 py-2 tabular-nums">{grantedValue(r)}</td>
-                                        <td className="px-4 py-2">
-                                            <Badge
-                                                variant="outline"
-                                                className={`text-[10px] ${STATUS_TONE[r.status]}`}
-                                            >
-                                                {r.status}
-                                            </Badge>
-                                        </td>
-                                        <td className="px-4 py-2 text-muted-foreground">
-                                            {new Date(r.redeemed_at).toLocaleString()}
-                                        </td>
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[520px] text-[13px]">
+                                <thead className="sticky top-0 z-10 bg-background">
+                                    <tr className="h-9 border-b border-border text-xs text-muted-foreground">
+                                        <th className="pr-3 pl-5 text-left font-medium">Workspace</th>
+                                        <th className="px-3 text-left font-medium">Granted</th>
+                                        <th className="px-3 text-left font-medium">Status</th>
+                                        <th className="pr-5 pl-3 text-left font-medium">Redeemed</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {rows.map((r) => (
+                                        <tr key={r.id} className="h-10 border-b border-border/70 last:border-b-0 hover:bg-accent/50">
+                                            <td className="pr-3 pl-5">
+                                                <Link
+                                                    to={`/organizations/${r.organization_id}`}
+                                                    className="font-mono text-xs text-[var(--admin-accent-strong)] hover:underline"
+                                                >
+                                                    {r.organization_id.slice(0, 8)}
+                                                </Link>
+                                            </td>
+                                            <td className="px-3 tabular-nums">{grantedValue(r)}</td>
+                                            <td className="px-3">
+                                                <StatusBadge tone={STATUS_TONE[r.status]} dot className="capitalize">
+                                                    {r.status}
+                                                </StatusBadge>
+                                            </td>
+                                            <td className="pr-5 pl-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                                                {new Date(r.redeemed_at).toLocaleString()}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </div>
 
                 {(pager.canPrev || data?.pagination?.has_more) && (
-                    <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-4 py-2.5">
+                    <div className="flex shrink-0 items-center justify-end gap-1.5 border-t border-border px-5 py-2.5">
                         <Button
                             size="sm"
                             variant="outline"
-                            className="h-7"
                             disabled={!pager.canPrev}
                             onClick={pager.prev}
                         >
@@ -141,7 +141,6 @@ export function DiscountRedemptionsDialog({
                         <Button
                             size="sm"
                             variant="outline"
-                            className="h-7"
                             // keepPreviousData keeps the old page's cursor on
                             // screen while the next one loads, and the pager
                             // appends without deduplicating, so a second click

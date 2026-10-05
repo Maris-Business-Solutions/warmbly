@@ -20,6 +20,8 @@ const (
 	EventWorkerOffline     = "worker.offline"
 	EventOrgRisk           = "org_risk.escalated"
 	EventSubscriptionIssue = "subscription.payment_failed"
+	EventAdminSignIn       = "admin.signed_in"
+	EventAdminAccess       = "admin.access_changed"
 	EventTest              = "test"
 )
 
@@ -82,6 +84,18 @@ var Catalog = []EventDef{
 		Label:       "Worker went offline",
 		Description: "A worker stopped heartbeating, so its mailboxes cannot send until it returns or they are reassigned.",
 		Severity:    SeverityUrgent, SelfHostRelevant: true,
+	},
+	{
+		Key: EventAdminSignIn, Group: "Security",
+		Label:       "Admin signed in",
+		Description: "An account holding platform admin access started a new session, in the admin panel or the dashboard.",
+		Severity:    SeverityInfo, SelfHostRelevant: true,
+	},
+	{
+		Key: EventAdminAccess, Group: "Security",
+		Label:       "Admin access changed",
+		Description: "Platform admin permissions were granted to, changed for, or revoked from an account.",
+		Severity:    SeverityWarning, SelfHostRelevant: true,
 	},
 	{
 		Key: EventWarmupAppeal, Group: "Abuse",

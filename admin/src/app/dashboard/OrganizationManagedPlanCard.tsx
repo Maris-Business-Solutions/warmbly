@@ -12,8 +12,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { BadgeCheck, CalendarClock, Gift, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/kit";
+import { ErrorState } from "@/components/ErrorState";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 import { AdminPerm } from "@/lib/auth/permissions";
 import {
@@ -41,16 +51,16 @@ function fmt(ts?: string | null) {
 export function ManagedPlanBadge({ managed, expired }: { managed: boolean; expired: boolean }) {
     if (managed) {
         return (
-            <Badge variant="outline" className="text-[10px] border-sky-300 bg-sky-50 text-sky-700">
+            <StatusBadge tone="info" dot>
                 managed
-            </Badge>
+            </StatusBadge>
         );
     }
     if (expired) {
         return (
-            <Badge variant="outline" className="text-[10px] border-amber-300 bg-amber-50 text-amber-700">
+            <StatusBadge tone="warning" dot>
                 grant lapsed
-            </Badge>
+            </StatusBadge>
         );
     }
     return null;
@@ -111,12 +121,14 @@ export function OrganizationManagedPlanCard({ orgId }: { orgId: string }) {
         onError: (e: Error) => toast.error(e.message || "Failed to revoke the grant"),
     });
 
-    if (managedQuery.isLoading) return <Skeleton className="h-28 w-full" />;
+    if (managedQuery.isLoading) return <Skeleton className="h-28 w-full rounded-lg" />;
     if (managedQuery.error || !managedQuery.data) {
         return (
-            <div className="text-sm text-red-600 border border-red-200 bg-red-50 rounded-md p-3">
-                Failed to load the plan grant.
-            </div>
+            <ErrorState
+                error={managedQuery.error}
+                title="Failed to load the plan grant."
+                onRetry={() => managedQuery.refetch()}
+            />
         );
     }
 
@@ -124,24 +136,24 @@ export function OrganizationManagedPlanCard({ orgId }: { orgId: string }) {
     const plans = plansQuery.data?.plans ?? [];
 
     return (
-        <div className="border border-border rounded-lg bg-card">
-            <div className="flex items-start justify-between gap-3 p-3 border-b border-border">
-                <div>
+        <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
+            <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                        <Gift className="size-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">Managed plan</span>
+                        <Gift className="size-4 text-subtle-foreground" />
+                        <span className="text-[13px] font-medium text-foreground">Managed plan</span>
                         <ManagedPlanBadge managed={m.managed} expired={m.expired} />
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
+                    <p className="mt-1 text-[12.5px] text-muted-foreground">
                         {m.managed
                             ? "Paid because we granted it, not because Stripe says so."
                             : m.expired
                               ? "The grant has lapsed; the workspace is back on what it pays for."
                               : "No grant. This workspace is entitled by Stripe alone."}
-                    </div>
+                    </p>
                 </div>
                 {canManage && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1.5">
                         {(m.managed || m.expired) && (
                             <Button
                                 size="sm"
@@ -149,11 +161,11 @@ export function OrganizationManagedPlanCard({ orgId }: { orgId: string }) {
                                 onClick={() => revokeMutation.mutate()}
                                 disabled={revokeMutation.isPending}
                             >
-                                <X className="size-3.5 mr-1" /> Revoke
+                                <X className="size-3.5" /> Revoke
                             </Button>
                         )}
                         <Button size="sm" variant="outline" onClick={() => setGranting((v) => !v)}>
-                            <BadgeCheck className="size-3.5 mr-1" />
+                            <BadgeCheck className="size-3.5" />
                             {m.managed ? "Change" : "Grant"}
                         </Button>
                     </div>
@@ -161,21 +173,21 @@ export function OrganizationManagedPlanCard({ orgId }: { orgId: string }) {
             </div>
 
             {(m.managed || m.expired) && (
-                <dl className="p-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs border-b border-border">
-                    <div>
-                        <dt className="text-muted-foreground">Reason</dt>
-                        <dd className="mt-0.5">{m.reason || "—"}</dd>
+                <dl className="grid grid-cols-1 gap-px border-t border-border bg-border sm:grid-cols-3">
+                    <div className="bg-card px-4 py-2.5">
+                        <dt className="text-xs text-muted-foreground">Reason</dt>
+                        <dd className="mt-0.5 break-words text-[13px] text-foreground">{m.reason || "—"}</dd>
                     </div>
-                    <div>
-                        <dt className="text-muted-foreground">Granted</dt>
-                        <dd className="mt-0.5">{fmt(m.granted_at) ?? "—"}</dd>
+                    <div className="bg-card px-4 py-2.5">
+                        <dt className="text-xs text-muted-foreground">Granted</dt>
+                        <dd className="mt-0.5 text-[13px] tabular-nums text-foreground">{fmt(m.granted_at) ?? "—"}</dd>
                     </div>
-                    <div>
-                        <dt className="text-muted-foreground">Expires</dt>
-                        <dd className="mt-0.5 inline-flex items-center gap-1">
+                    <div className="bg-card px-4 py-2.5">
+                        <dt className="text-xs text-muted-foreground">Expires</dt>
+                        <dd className="mt-0.5 inline-flex items-center gap-1.5 text-[13px] tabular-nums text-foreground">
                             {m.until ? (
                                 <>
-                                    <CalendarClock className="size-3" /> {fmt(m.until)}
+                                    <CalendarClock className="size-3.5 text-subtle-foreground" /> {fmt(m.until)}
                                 </>
                             ) : (
                                 "open-ended"
@@ -186,46 +198,54 @@ export function OrganizationManagedPlanCard({ orgId }: { orgId: string }) {
             )}
 
             {granting && canManage && (
-                <div className="p-3 space-y-2">
-                    <label className="block text-xs text-muted-foreground">
-                        Plan
-                        <select
-                            className="mt-1 w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
-                            value={planId}
-                            onChange={(e) => setPlanId(e.target.value)}
-                        >
-                            <option value="">Choose a plan…</option>
-                            {plans.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name}
-                                    {p.public === false ? " (private)" : ""}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                        Reason
-                        <input
-                            className="mt-1 w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
+                <div className="space-y-3 border-t border-border bg-muted/30 px-4 py-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="managed-plan-plan" className="text-xs font-medium text-muted-foreground">
+                                Plan
+                            </Label>
+                            <Select value={planId} onValueChange={setPlanId}>
+                                <SelectTrigger id="managed-plan-plan">
+                                    <SelectValue placeholder={plansQuery.isLoading ? "Loading plans…" : "Choose a plan…"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {plans.map((p) => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                            {p.name}
+                                            {p.public === false ? " (private)" : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="managed-plan-until" className="text-xs font-medium text-muted-foreground">
+                                Expires (optional)
+                            </Label>
+                            <Input
+                                id="managed-plan-until"
+                                type="date"
+                                value={until}
+                                onChange={(e) => setUntil(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="managed-plan-reason" className="text-xs font-medium text-muted-foreground">
+                            Reason
+                        </Label>
+                        <Input
+                            id="managed-plan-reason"
                             placeholder="Why this workspace is paid without paying"
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
                         />
-                    </label>
-                    <label className="block text-xs text-muted-foreground">
-                        Expires (optional)
-                        <input
-                            type="date"
-                            className="mt-1 w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
-                            value={until}
-                            onChange={(e) => setUntil(e.target.value)}
-                        />
-                        <span className="block mt-1 text-[11px]">
-                            Leave empty for an open-ended grant. A date lapses on its own, so nobody has to
-                            remember to revoke it.
-                        </span>
-                    </label>
-                    <div className="flex items-center gap-2 pt-1">
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                        Leave the expiry empty for an open-ended grant. A date lapses on its own, so nobody has to
+                        remember to revoke it.
+                    </p>
+                    <div className="flex items-center gap-1.5">
                         <Button
                             size="sm"
                             onClick={() => grantMutation.mutate()}

@@ -13,6 +13,9 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { docsUrl } from "@/lib/docs";
+import { Callout, StatusDot } from "@/components/ui/kit";
+import { TONE_TEXT } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import {
     deleteOrgExport,
     downloadOrgExport,
@@ -89,7 +92,7 @@ export default function TransfersPage() {
                     >
                         {j.organization_name || shortId(j.organization_id)}
                     </Link>
-                    <div className="font-mono text-[10px] text-muted-foreground">{shortId(j.id)}</div>
+                    <div className="font-mono text-[11px] text-subtle-foreground">{shortId(j.id)}</div>
                 </div>
             ),
             csv: (j) => j.organization_name,
@@ -97,7 +100,7 @@ export default function TransfersPage() {
         {
             id: "by",
             header: "Requested by",
-            cell: (j) => <span className="text-xs">{j.requested_by_email || <span className="text-muted-foreground">system</span>}</span>,
+            cell: (j) => <span className="text-muted-foreground">{j.requested_by_email || <span className="text-subtle-foreground">system</span>}</span>,
             csv: (j) => j.requested_by_email,
         },
         {
@@ -106,17 +109,17 @@ export default function TransfersPage() {
             cell: (j) => (
                 <div>
                     <StatusPill status={j.status} progress={j.progress_percent} stage={j.progress_stage} />
-                    {j.error_message && <div className="mt-0.5 max-w-xs text-[11px] text-red-600">{j.error_message}</div>}
+                    {j.error_message && <div className={cn("mt-0.5 max-w-xs text-xs", TONE_TEXT.danger)}>{j.error_message}</div>}
                 </div>
             ),
             csv: (j) => j.status,
         },
-        { id: "size", header: "Size", align: "right", cell: (j) => <span className="text-xs tabular-nums">{formatBytes(j.archive_bytes)}</span>, csv: (j) => j.archive_bytes ?? "" },
-        { id: "groups", header: "Groups", align: "right", cell: (j) => <span className="text-xs tabular-nums">{j.groups?.length ?? 0}</span>, csv: (j) => j.groups?.length ?? 0 },
-        { id: "secrets", header: "Secrets", cell: (j) => <span className="text-xs">{j.include_secrets ? "yes" : "no"}</span>, csv: (j) => (j.include_secrets ? "yes" : "no") },
-        { id: "started", header: "Started", cell: (j) => <span className="text-xs text-muted-foreground">{fmtDateTime(j.started_at ?? j.created_at)}</span>, csv: (j) => j.started_at ?? j.created_at },
-        { id: "completed", header: "Completed", cell: (j) => <span className="text-xs text-muted-foreground">{fmtDateTime(j.completed_at)}</span>, csv: (j) => j.completed_at ?? "" },
-        { id: "expires", header: "Expires", cell: (j) => <span className="text-xs text-muted-foreground">{fmtDateTime(j.expires_at)}</span>, csv: (j) => j.expires_at ?? "", defaultHidden: true },
+        { id: "size", header: "Size", align: "right", cell: (j) => <span className="tabular-nums">{formatBytes(j.archive_bytes)}</span>, csv: (j) => j.archive_bytes ?? "" },
+        { id: "groups", header: "Groups", align: "right", cell: (j) => <span className="tabular-nums">{j.groups?.length ?? 0}</span>, csv: (j) => j.groups?.length ?? 0 },
+        { id: "secrets", header: "Secrets", cell: (j) => <span className="text-muted-foreground">{j.include_secrets ? "yes" : "no"}</span>, csv: (j) => (j.include_secrets ? "yes" : "no") },
+        { id: "started", header: "Started", cell: (j) => <span className="whitespace-nowrap text-muted-foreground">{fmtDateTime(j.started_at ?? j.created_at)}</span>, csv: (j) => j.started_at ?? j.created_at },
+        { id: "completed", header: "Completed", cell: (j) => <span className="whitespace-nowrap text-muted-foreground">{fmtDateTime(j.completed_at)}</span>, csv: (j) => j.completed_at ?? "" },
+        { id: "expires", header: "Expires", cell: (j) => <span className="whitespace-nowrap text-muted-foreground">{fmtDateTime(j.expires_at)}</span>, csv: (j) => j.expires_at ?? "", defaultHidden: true },
         {
             id: "actions",
             header: "",
@@ -133,13 +136,13 @@ export default function TransfersPage() {
                                 void onDownload(j);
                             }}
                         >
-                            <Download className="size-3" />
+                            <Download />
                             {downloading === j.id ? "Fetching…" : "Download"}
                         </Button>
                         <Button
-                            size="xs"
-                            variant="outline"
-                            className="text-red-700 hover:bg-red-50"
+                            size="icon-xs"
+                            variant="ghost"
+                            className="text-muted-foreground hover:bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] hover:text-destructive"
                             disabled={isTransferActive(j.status) || del.isPending}
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -147,7 +150,7 @@ export default function TransfersPage() {
                             }}
                             aria-label="Delete archive"
                         >
-                            <Trash2 className="size-3" />
+                            <Trash2 />
                         </Button>
                     </div>
                 ) : null,
@@ -158,31 +161,36 @@ export default function TransfersPage() {
         <div>
             <PageHeader
                 title="Transfers"
+                meta={
+                    active > 0 && (
+                        <StatusDot tone="info" pulse className="ml-1 text-xs text-muted-foreground tabular-nums">
+                            {active} running, refreshing every 15s
+                        </StatusDot>
+                    )
+                }
                 description="Workspace archives across the instance: the same exports and imports owners build from Settings > Data, started by them or by an operator."
             >
                 <Button size="sm" onClick={() => setExportOpen(true)}>
-                    <PackageOpen className="size-4" />
+                    <PackageOpen />
                     Export a workspace
                 </Button>
             </PageHeader>
 
-            <div className="mb-4 flex items-start gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-[12.5px] text-muted-foreground">
-                <Terminal className="mt-0.5 size-4 shrink-0" />
-                <span>
-                    These move one workspace at a time. A whole-instance backup, including every workspace, the
-                    encryption keys and blob storage, is <code>warmblyctl backup</code> and <code>warmblyctl restore</code>{" "}
-                    from a shell on the host.{" "}
-                    <a
-                        href={docsUrl("/development/warmblyctl/")}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-0.5 text-[var(--admin-accent-strong)] hover:underline"
-                    >
-                        warmblyctl docs <ExternalLink className="size-3" />
-                    </a>
-                    {active > 0 && <span className="ml-1.5 tabular-nums">· {active} running, refreshing every 15s</span>}
-                </span>
-            </div>
+            <Callout tone="neutral" icon={Terminal} className="mb-6">
+                These move one workspace at a time. A whole-instance backup, including every workspace, the
+                encryption keys and blob storage, is{" "}
+                <code className="rounded bg-muted px-1 py-px font-mono text-[12px] text-foreground">warmblyctl backup</code> and{" "}
+                <code className="rounded bg-muted px-1 py-px font-mono text-[12px] text-foreground">warmblyctl restore</code>{" "}
+                from a shell on the host.{" "}
+                <a
+                    href={docsUrl("/development/warmblyctl/")}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-0.5 font-medium text-[var(--admin-accent-strong)] hover:underline"
+                >
+                    warmblyctl docs <ExternalLink className="size-3" />
+                </a>
+            </Callout>
 
             <DataTable
                 columns={columns}

@@ -1,4 +1,4 @@
-// Tester accounts — the operator view.
+// Tester accounts: the operator view.
 //
 // A tester is an account handed to somebody outside the team: a vendor's
 // reviewer during an OAuth verification, an auditor, a support engineer. It is
@@ -18,10 +18,14 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CopyIcon, FlaskConicalIcon, TrashIcon } from "lucide-react";
+import { AlertTriangle, CopyIcon, FlaskConicalIcon, RotateCw, TrashIcon } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Callout, EmptyState, Panel, Segmented, StatusBadge } from "@/components/ui/kit";
+import { cn } from "@/lib/utils";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 import { AdminPerm } from "@/lib/auth/permissions";
 import { createTester, listTesters, listOrganizationRoles, revokeTester } from "@/lib/api/client/admin/testers";
@@ -126,266 +130,324 @@ export default function TestersPage() {
         !/^https?:\/\/localhost(:|\/|$)/.test(window.location.origin);
 
     return (
-        <div className="p-4 space-y-6">
-            <div>
-                <h1 className="text-sm font-semibold flex items-center gap-2">
-                    <FlaskConicalIcon className="size-4 text-muted-foreground" />
-                    Testers
-                </h1>
-                <p className="text-xs text-muted-foreground mt-1 max-w-[70ch]">
-                    Accounts for people outside the team. Each skips the emailed login code, because the
-                    holder cannot read this instance&apos;s mail. Everything else still applies: the password,
-                    the captcha and the sign-in risk assessment. A tester either gets a workspace of its own
-                    or joins one that already exists. Its password stops working on the date you choose, and
-                    revoking it ends the password and signs out every session at once.
-                </p>
-            </div>
+        <div>
+            <PageHeader
+                title="Testers"
+                meta={
+                    rows.length > 0 ? (
+                        <span className="text-[12.5px] tabular-nums text-muted-foreground">{rows.length}</span>
+                    ) : undefined
+                }
+                description={
+                    <>
+                        Accounts for people outside the team. Each skips the emailed login code, because the
+                        holder cannot read this instance&apos;s mail. Everything else still applies: the password,
+                        the captcha and the sign-in risk assessment. A tester either gets a workspace of its own
+                        or joins one that already exists. Its password stops working on the date you choose, and
+                        revoking it ends the password and signs out every session at once.
+                    </>
+                }
+            />
 
             {created && (
-                <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
-                    <div className="text-[12.5px] font-medium text-amber-900">
-                        Copy these now. The password is not stored anywhere readable.
+                <div className="mb-8 overflow-hidden rounded-lg border border-amber-500/25 bg-amber-500/[0.07]">
+                    <div className="flex items-start gap-3 px-4 py-3">
+                        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div className="min-w-0 flex-1">
+                            <div className="text-[13px] font-medium text-foreground">
+                                Copy these now. The password is not stored anywhere readable.
+                            </div>
+                            <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+                                {created.joined_existing
+                                    ? "This account is a member of an existing workspace and will land in it on sign-in."
+                                    : "This account owns a new, empty workspace."}
+                            </div>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => setCreated(null)}>
+                            Done
+                        </Button>
                     </div>
-                    <div className="text-[11px] text-amber-800 mt-0.5">
-                        {created.joined_existing
-                            ? "This account is a member of an existing workspace and will land in it on sign-in."
-                            : "This account owns a new, empty workspace."}
-                    </div>
-                    <dl className="mt-2 grid gap-1.5 text-xs">
+                    <dl className="divide-y divide-border/70 border-t border-amber-500/20 bg-card">
                         {[
                             ["Sign in at", DASHBOARD_URL],
                             ["Email", created.email],
                             ["Password", created.password],
                             ["Expires", fmt(created.password_expires_at)],
                         ].map(([k, v]) => (
-                            <div key={k} className="flex items-center gap-2">
-                                <dt className="w-20 shrink-0 text-amber-800">{k}</dt>
-                                <dd className="font-mono break-all" data-ph-mask={k === "Password" ? "" : undefined}>
+                            <div key={k} className="flex min-h-10 items-center gap-3 px-4 py-1.5 text-[13px]">
+                                <dt className="w-24 shrink-0 text-muted-foreground">{k}</dt>
+                                <dd
+                                    className="min-w-0 flex-1 font-mono text-[12.5px] break-all text-foreground"
+                                    data-ph-mask={k === "Password" ? "" : undefined}
+                                >
                                     {v}
                                 </dd>
-                                <button
-                                    type="button"
+                                <Button
+                                    size="icon-xs"
+                                    variant="ghost"
                                     onClick={() => copy(String(v))}
-                                    className="shrink-0 rounded p-1 hover:bg-amber-100"
                                     aria-label={`Copy ${k}`}
                                 >
                                     <CopyIcon className="size-3" />
-                                </button>
+                                </Button>
                             </div>
                         ))}
                     </dl>
                     {looksUnset && (
-                        <div className="text-[11px] text-red-700 mt-1.5">
+                        <div className="border-t border-red-500/20 bg-red-500/[0.06] px-4 py-2.5 text-[12.5px] text-red-700 dark:text-red-400">
                             That sign-in address is this panel&apos;s build-time default, not this
-                            deployment&apos;s dashboard. Set <code>VITE_DASHBOARD_URL</code> (or{" "}
-                            <code>WARMBLY_DASHBOARD_URL</code>) before sending it to anyone.
+                            deployment&apos;s dashboard. Set <code className="font-mono">VITE_DASHBOARD_URL</code> (or{" "}
+                            <code className="font-mono">WARMBLY_DASHBOARD_URL</code>) before sending it to anyone.
                         </div>
                     )}
-                    <Button size="sm" variant="ghost" className="mt-2 h-7" onClick={() => setCreated(null)}>
-                        Done
-                    </Button>
                 </div>
             )}
 
-            {canManage && (
-                <div className="border border-border rounded-lg bg-card p-3 space-y-2 max-w-[520px]">
-                    <div className="text-[12.5px] font-medium">Create a tester</div>
-                    <input
-                        className="w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
-                        placeholder="reviewer@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                    />
-
-                    <div className="flex gap-1 pt-0.5">
-                        {(["new", "existing"] as const).map((m) => (
-                            <button
-                                key={m}
-                                type="button"
-                                onClick={() => setMode(m)}
-                                className={
-                                    "h-7 px-2.5 rounded-md text-xs border " +
-                                    (mode === m
-                                        ? "border-foreground/20 bg-muted font-medium"
-                                        : "border-border text-muted-foreground hover:bg-muted/50")
-                                }
-                            >
-                                {m === "new" ? "New workspace" : "Join an existing workspace"}
-                            </button>
-                        ))}
-                    </div>
-
-                    {mode === "new" ? (
-                        <input
-                            className="w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
-                            placeholder="Workspace name (optional)"
-                            maxLength={64}
-                            value={orgName}
-                            onChange={(e) => setOrgName(e.target.value)}
-                        />
-                    ) : (
-                        <div className="space-y-2">
-                            <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                The tester becomes a member of this workspace and gets none of its own, so
-                                signing in lands straight in it. It can see whatever the role below allows,
-                                including real mailboxes and real contacts.
-                            </p>
-
-                            {org ? (
-                                <div className="flex items-center gap-2 rounded-md border border-border px-2 h-8 text-xs">
-                                    <span className="truncate font-medium">{org.name}</span>
-                                    <span className="text-muted-foreground truncate">{org.owner_email}</span>
-                                    <button
-                                        type="button"
-                                        className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
-                                        onClick={() => {
-                                            setOrg(null);
-                                            setRoleID("");
-                                        }}
-                                    >
-                                        Change
-                                    </button>
+            <div className={cn("grid items-start gap-8", canManage && "lg:grid-cols-[minmax(0,1fr)_380px]")}>
+                <section className="min-w-0">
+                    <h2 className="mb-3 text-[13px] font-semibold text-foreground">
+                        Active testers
+                        {rows.length > 0 && (
+                            <span className="ml-1.5 font-normal tabular-nums text-muted-foreground">{rows.length}</span>
+                        )}
+                    </h2>
+                    {testers.isLoading ? (
+                        <div className="space-y-px overflow-hidden surface-lit rounded-xl border border-border bg-card">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="flex h-14 items-center px-4">
+                                    <Skeleton className="h-4 w-2/3" />
                                 </div>
-                            ) : (
-                                <>
-                                    <input
-                                        className="w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
-                                        placeholder="Search workspaces by name or owner"
-                                        value={orgQuery}
-                                        onChange={(e) => setOrgQuery(e.target.value)}
-                                    />
-                                    {orgs.isError ? (
-                                        <div className="text-[11px] text-red-600">
-                                            Could not search workspaces. Retry before concluding there is no match.
-                                        </div>
-                                    ) : orgs.isFetching ? (
-                                        <Skeleton className="h-8 w-full" />
-                                    ) : (orgs.data?.data.length ?? 0) > 0 ? (
-                                        <ul className="max-h-40 overflow-auto rounded-md border border-border divide-y divide-border">
-                                            {orgs.data!.data.map((o) => (
-                                                <li key={o.id}>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setOrg(o)}
-                                                        className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted/50"
-                                                    >
-                                                        <div className="font-medium truncate">{o.name}</div>
-                                                        <div className="text-muted-foreground truncate">
-                                                            {o.owner_email} · {o.member_count} members
-                                                        </div>
-                                                    </button>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    ) : orgQuery.trim().length >= 2 ? (
-                                        <div className="text-[11px] text-muted-foreground">No workspace matches that.</div>
-                                    ) : null}
-                                </>
-                            )}
-
-                            {org && (
-                                <select
-                                    className="w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
-                                    value={roleID}
-                                    onChange={(e) => setRoleID(e.target.value)}
-                                >
-                                    <option value="">
-                                        {roles.isFetching ? "Loading roles…" : "Choose a role…"}
-                                    </option>
-                                    {(roles.data?.data ?? []).map((r) => (
-                                        <option key={r.id} value={r.id}>
-                                            {r.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
-                            {org && roles.isError && (
-                                <div className="text-[11px] text-red-600">
-                                    Could not load this workspace&apos;s roles, so there is nothing safe to pick.
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    <input
-                        className="w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
-                        placeholder="Why this account exists, e.g. Google OAuth verification"
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                    />
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                        Password works for
-                        <select
-                            className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
-                            value={passwordDays}
-                            onChange={(e) => setPasswordDays(Number(e.target.value))}
-                        >
-                            {[7, 14, 30, 60, 90].map((d) => (
-                                <option key={d} value={d}>
-                                    {d} days
-                                </option>
                             ))}
-                        </select>
-                    </label>
-                    <Button
-                        size="sm"
-                        className="h-8"
-                        disabled={!ready || create.isPending}
-                        onClick={() => create.mutate()}
-                    >
-                        Create
-                    </Button>
-                </div>
-            )}
-
-            <div className="border border-border rounded-lg bg-card">
-                <div className="px-3 py-2 border-b border-border text-[12.5px] font-medium">
-                    Active testers {rows.length > 0 && <Badge variant="outline" className="ml-1">{rows.length}</Badge>}
-                </div>
-                {testers.isLoading ? (
-                    <div className="p-3"><Skeleton className="h-16 w-full" /></div>
-                ) : testers.isError ? (
-                    // Never fall through to the empty state here: "nothing is
-                    // skipping the login code" is exactly the wrong thing to
-                    // tell someone when the query failed.
-                    <div className="p-3 text-xs text-red-600">
-                        Could not load tester accounts, so this list is not authoritative. Retry before
-                        concluding that none exist.
-                    </div>
-                ) : rows.length === 0 ? (
-                    <div className="p-3 text-xs text-muted-foreground">
-                        None. Nothing on this instance is skipping the login code.
-                    </div>
-                ) : (
-                    <ul className="divide-y divide-border">
-                        {rows.map((t) => (
-                            <li key={t.user_id} className="flex items-center gap-3 px-3 py-2 text-xs">
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-medium truncate">{t.email}</div>
-                                    <div className="text-muted-foreground truncate">
-                                        {t.reason || "no reason recorded"} · since {fmt(t.granted_at)}
-                                        {t.password_expires_at &&
-                                            ` · password ${
-                                                new Date(t.password_expires_at) <= new Date() ? "expired" : "expires"
-                                            } ${fmt(t.password_expires_at)}`}
-                                    </div>
-                                </div>
-                                {canManage && (
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 shrink-0"
-                                        disabled={revoke.isPending}
-                                        onClick={() => revoke.mutate(t.user_id)}
+                        </div>
+                    ) : testers.isError ? (
+                        // Never fall through to the empty state here: "nothing is
+                        // skipping the login code" is exactly the wrong thing to
+                        // tell someone when the query failed.
+                        <Callout
+                            tone="danger"
+                            icon={AlertTriangle}
+                            title="Could not load tester accounts"
+                            actions={
+                                <Button size="sm" variant="outline" onClick={() => testers.refetch()}>
+                                    <RotateCw className="size-3.5" />
+                                    Retry
+                                </Button>
+                            }
+                        >
+                            This list is not authoritative. Retry before concluding that none exist.
+                        </Callout>
+                    ) : rows.length === 0 ? (
+                        <div className="surface-lit rounded-xl border border-border bg-card">
+                            <EmptyState
+                                icon={FlaskConicalIcon}
+                                title="No testers"
+                                hint="None. Nothing on this instance is skipping the login code."
+                            />
+                        </div>
+                    ) : (
+                        <ul className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
+                            {rows.map((t) => {
+                                const expired =
+                                    !!t.password_expires_at && new Date(t.password_expires_at) <= new Date();
+                                return (
+                                    <li
+                                        key={t.user_id}
+                                        className="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-accent/50"
                                     >
-                                        <TrashIcon className="size-3 mr-1" /> Revoke
-                                    </Button>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
+                                        <span
+                                            aria-hidden
+                                            className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-subtle-foreground"
+                                        >
+                                            <FlaskConicalIcon className="size-3.5" />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate text-[13px] font-medium text-foreground">{t.email}</div>
+                                            <div className="truncate text-xs text-muted-foreground">
+                                                {t.reason || "no reason recorded"} · since {fmt(t.granted_at)}
+                                            </div>
+                                        </div>
+                                        {t.password_expires_at && (
+                                            <StatusBadge
+                                                tone={expired ? "danger" : "neutral"}
+                                                dot={expired}
+                                                className="hidden sm:inline-flex"
+                                            >
+                                                Password {expired ? "expired" : "expires"} {fmt(t.password_expires_at)}
+                                            </StatusBadge>
+                                        )}
+                                        {canManage && (
+                                            <Button
+                                                size="xs"
+                                                variant="ghost"
+                                                className="shrink-0 text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                                disabled={revoke.isPending}
+                                                onClick={() => revoke.mutate(t.user_id)}
+                                            >
+                                                <TrashIcon className="size-3" /> Revoke
+                                            </Button>
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </section>
+
+                {canManage && (
+                    <Panel title="Create a tester" className="lg:sticky lg:top-16" bodyClassName="space-y-4">
+                        <Field label="Email">
+                            <Input
+                                type="email"
+                                placeholder="reviewer@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                            />
+                        </Field>
+
+                        <Field label="Workspace">
+                            <Segmented
+                                ariaLabel="Workspace"
+                                value={mode}
+                                onChange={setMode}
+                                fullWidth
+                                options={[
+                                    { value: "new", label: "New workspace" },
+                                    { value: "existing", label: "Existing workspace" },
+                                ]}
+                            />
+                            {mode === "new" ? (
+                                <Input
+                                    className="mt-2"
+                                    placeholder="Workspace name (optional)"
+                                    maxLength={64}
+                                    value={orgName}
+                                    onChange={(e) => setOrgName(e.target.value)}
+                                />
+                            ) : (
+                                <div className="mt-2 space-y-2">
+                                    <p className="text-xs leading-relaxed text-muted-foreground">
+                                        The tester becomes a member of this workspace and gets none of its own, so
+                                        signing in lands straight in it. It can see whatever the role below allows,
+                                        including real mailboxes and real contacts.
+                                    </p>
+
+                                    {org ? (
+                                        <div className="flex h-8 items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 text-[13px]">
+                                            <span className="truncate font-medium text-foreground">{org.name}</span>
+                                            <span className="truncate text-xs text-muted-foreground">{org.owner_email}</span>
+                                            <Button
+                                                size="xs"
+                                                variant="ghost"
+                                                className="-mr-1.5 ml-auto"
+                                                onClick={() => {
+                                                    setOrg(null);
+                                                    setRoleID("");
+                                                }}
+                                            >
+                                                Change
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Input
+                                                placeholder="Search workspaces by name or owner"
+                                                value={orgQuery}
+                                                onChange={(e) => setOrgQuery(e.target.value)}
+                                            />
+                                            {orgs.isError ? (
+                                                <div className="text-xs text-red-600 dark:text-red-400">
+                                                    Could not search workspaces. Retry before concluding there is no match.
+                                                </div>
+                                            ) : orgs.isFetching ? (
+                                                <Skeleton className="h-8 w-full" />
+                                            ) : (orgs.data?.data.length ?? 0) > 0 ? (
+                                                <ul className="max-h-40 divide-y divide-border/70 overflow-auto rounded-md border border-border">
+                                                    {orgs.data!.data.map((o) => (
+                                                        <li key={o.id}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setOrg(o)}
+                                                                className="w-full px-2.5 py-1.5 text-left transition-colors hover:bg-accent/60"
+                                                            >
+                                                                <div className="truncate text-[13px] font-medium text-foreground">{o.name}</div>
+                                                                <div className="truncate text-xs text-muted-foreground">
+                                                                    {o.owner_email} · {o.member_count} members
+                                                                </div>
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : orgQuery.trim().length >= 2 ? (
+                                                <div className="text-xs text-muted-foreground">No workspace matches that.</div>
+                                            ) : null}
+                                        </>
+                                    )}
+
+                                    {org && (
+                                        <Select value={roleID} onValueChange={setRoleID}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue
+                                                    placeholder={roles.isFetching ? "Loading roles…" : "Choose a role…"}
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {(roles.data?.data ?? []).map((r) => (
+                                                    <SelectItem key={r.id} value={r.id}>
+                                                        {r.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                    {org && roles.isError && (
+                                        <div className="text-xs text-red-600 dark:text-red-400">
+                                            Could not load this workspace&apos;s roles, so there is nothing safe to pick.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </Field>
+
+                        <Field label="Reason">
+                            <Input
+                                placeholder="Why this account exists, e.g. Google OAuth verification"
+                                value={reason}
+                                onChange={(e) => setReason(e.target.value)}
+                            />
+                        </Field>
+
+                        <Field label="Password works for">
+                            <Select value={String(passwordDays)} onValueChange={(v) => setPasswordDays(Number(v))}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[7, 14, 30, 60, 90].map((d) => (
+                                        <SelectItem key={d} value={String(d)}>
+                                            {d} days
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </Field>
+
+                        <div className="flex justify-end border-t border-border pt-4">
+                            <Button size="sm" disabled={!ready || create.isPending} onClick={() => create.mutate()}>
+                                Create
+                            </Button>
+                        </div>
+                    </Panel>
                 )}
             </div>
+        </div>
+    );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <div>
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground">{label}</div>
+            {children}
         </div>
     );
 }

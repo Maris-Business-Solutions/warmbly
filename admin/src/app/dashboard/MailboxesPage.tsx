@@ -6,10 +6,11 @@
 import { useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { X } from "lucide-react";
+import { AlertTriangle, Building2, User, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge, StatusDot } from "@/components/ui/kit";
 import {
     Explorer,
     FilterGroup,
@@ -26,6 +27,8 @@ import { emptyRange, rangeActive, rangeWithin, rangeAfter, rangeBefore, type Dat
 import { searchMailboxes } from "@/lib/api/client/admin/mailboxes";
 import { listFleetNodes, type FleetNode } from "@/lib/api/client/admin/fleetNodes";
 import type { AdminMailboxRow } from "@/lib/api/models/admin";
+import { TONE_TEXT, type Tone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 
 type StatusFilter = "active" | "inactive" | "all";
 type WarmupFilter = "all" | "on" | "off";
@@ -52,11 +55,21 @@ const POOL_OPTIONS = [
     { value: "premium", label: "Premium pool" },
 ];
 
-const RISK_TONE: Record<string, string> = {
-    clean: "border-emerald-300 bg-emerald-50 text-emerald-700",
-    risky: "border-amber-300 bg-amber-50 text-amber-700",
-    quarantine: "border-red-300 bg-red-50 text-red-700",
+const PROVIDER_LABEL: Record<string, string> = {
+    gmail: "Gmail",
+    outlook: "Outlook",
+    smtp_imap: "SMTP / IMAP",
 };
+
+const RISK_TONE: Record<string, Tone> = {
+    clean: "success",
+    risky: "warning",
+    quarantine: "danger",
+};
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+const linkCls = "truncate text-foreground decoration-border-strong underline-offset-2 hover:text-[var(--admin-accent-strong)] hover:underline";
 
 const columns: Column<AdminMailboxRow>[] = [
     {
@@ -65,9 +78,9 @@ const columns: Column<AdminMailboxRow>[] = [
         sortable: true,
         sortKey: "email",
         cell: (m) => (
-            <div>
-                <div className="font-medium">{m.email}</div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{m.provider}</div>
+            <div className="min-w-0 py-1">
+                <div className="truncate font-medium text-foreground">{m.email}</div>
+                <div className="text-xs text-muted-foreground">{PROVIDER_LABEL[m.provider] ?? m.provider}</div>
             </div>
         ),
         csv: (m) => m.email,
@@ -76,7 +89,7 @@ const columns: Column<AdminMailboxRow>[] = [
         id: "owner",
         header: "Owner",
         cell: (m) => (
-            <Link to={`/users/${m.user_id}`} className="text-xs text-[var(--admin-accent-strong)] hover:underline">
+            <Link to={`/users/${m.user_id}`} className={linkCls} onClick={(e) => e.stopPropagation()}>
                 {m.owner_email}
             </Link>
         ),
@@ -87,11 +100,11 @@ const columns: Column<AdminMailboxRow>[] = [
         header: "Organization",
         cell: (m) =>
             m.organization_id ? (
-                <Link to={`/organizations/${m.organization_id}`} className="text-xs text-[var(--admin-accent-strong)] hover:underline">
+                <Link to={`/organizations/${m.organization_id}`} className={linkCls} onClick={(e) => e.stopPropagation()}>
                     {m.org_name || m.organization_id}
                 </Link>
             ) : (
-                <span className="text-xs text-muted-foreground">—</span>
+                <span className="text-subtle-foreground">No org</span>
             ),
         csv: (m) => m.org_name || "",
     },
@@ -100,11 +113,9 @@ const columns: Column<AdminMailboxRow>[] = [
         header: "Status",
         cell: (m) =>
             m.status === "active" ? (
-                <span className="text-xs text-emerald-600">active</span>
+                <StatusDot tone="success" className="text-muted-foreground">Active</StatusDot>
             ) : (
-                <Badge variant="outline" className="text-[10px] border-zinc-300 text-zinc-600">
-                    {m.status}
-                </Badge>
+                <StatusBadge tone="neutral">{cap(m.status)}</StatusBadge>
             ),
         csv: (m) => m.status,
     },
@@ -112,9 +123,9 @@ const columns: Column<AdminMailboxRow>[] = [
         id: "risk",
         header: "Risk",
         cell: (m) => (
-            <Badge variant="outline" className={`text-[10px] ${RISK_TONE[m.risk_band] ?? "border-zinc-300 text-zinc-600"}`}>
-                {m.risk_band}
-            </Badge>
+            <StatusBadge tone={RISK_TONE[m.risk_band] ?? "neutral"} dot>
+                {cap(m.risk_band)}
+            </StatusBadge>
         ),
         csv: (m) => m.risk_band,
     },
@@ -123,11 +134,9 @@ const columns: Column<AdminMailboxRow>[] = [
         header: "Warmup",
         cell: (m) =>
             m.warmup_enabled ? (
-                <Badge variant="outline" className="text-[10px] border-amber-300 bg-amber-50 text-amber-700">
-                    {m.warmup_pool_type ? `on · ${m.warmup_pool_type}` : "on"}
-                </Badge>
+                <StatusBadge tone="accent">{m.warmup_pool_type ? `On · ${m.warmup_pool_type}` : "On"}</StatusBadge>
             ) : (
-                <span className="text-xs text-muted-foreground">off</span>
+                <span className="text-subtle-foreground">Off</span>
             ),
         csv: (m) => (m.warmup_enabled ? "on" : "off"),
     },
@@ -138,12 +147,15 @@ const columns: Column<AdminMailboxRow>[] = [
         sortable: true,
         sortKey: "last_synced_at",
         cell: (m) => {
-            if (!m.last_synced_at) return <span className="text-xs text-muted-foreground">never</span>;
+            if (!m.last_synced_at) return <span className="text-subtle-foreground">Never</span>;
             const stale = Date.now() - new Date(m.last_synced_at).getTime() > STALE_MS;
             return (
-                <span className={stale ? "text-xs text-amber-700" : "text-xs text-muted-foreground"}>
+                <span
+                    className={cn("inline-flex items-center gap-1 whitespace-nowrap tabular-nums", stale ? TONE_TEXT.warning : "text-muted-foreground")}
+                    title={stale ? "Not synced in the last 24 hours" : undefined}
+                >
+                    {stale && <AlertTriangle className="size-3.5" />}
                     {new Date(m.last_synced_at).toLocaleString()}
-                    {stale && " ⚠"}
                 </span>
             );
         },
@@ -154,7 +166,7 @@ const columns: Column<AdminMailboxRow>[] = [
         header: "Connected",
         sortable: true,
         sortKey: "created_at",
-        cell: (m) => <span className="text-xs text-muted-foreground">{new Date(m.created_at).toLocaleDateString()}</span>,
+        cell: (m) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{new Date(m.created_at).toLocaleDateString()}</span>,
         csv: (m) => m.created_at,
         defaultHidden: true,
     },
@@ -320,7 +332,15 @@ export default function MailboxesPage() {
 
     return (
         <div>
-            <PageHeader title="Mailboxes" description="Every connected mailbox across the platform. Filter by owner, org, worker, provider, warmup, risk, pool, credentials, limits, and timeline; scope to one entity and export." />
+            <PageHeader
+                title="Mailboxes"
+                meta={
+                    data?.pagination.total != null ? (
+                        <span className="text-[13px] tabular-nums text-subtle-foreground">{data.pagination.total.toLocaleString()}</span>
+                    ) : undefined
+                }
+                description="Every connected mailbox across the platform. Filter by owner, org, worker, provider, warmup, risk, pool, credentials, limits, and timeline; scope to one entity and export."
+            />
             <Explorer
                 activeCount={activeCount}
                 onReset={resetAll}
@@ -331,23 +351,9 @@ export default function MailboxesPage() {
                         </FilterGroup>
                         {(orgId || userId) && (
                             <FilterGroup label="Scope">
-                                <div className="flex flex-col gap-1.5">
-                                    {orgId && (
-                                        <div className="flex items-center justify-between rounded-md border border-[var(--admin-accent)]/30 bg-[var(--admin-accent-soft)]/40 px-2 py-1.5 text-[12px]">
-                                            <span className="truncate">One organization</span>
-                                            <Button variant="ghost" size="icon-xs" onClick={() => clearParam("org")} title="Clear org filter">
-                                                <X className="size-3" />
-                                            </Button>
-                                        </div>
-                                    )}
-                                    {userId && (
-                                        <div className="flex items-center justify-between rounded-md border border-[var(--admin-accent)]/30 bg-[var(--admin-accent-soft)]/40 px-2 py-1.5 text-[12px]">
-                                            <span className="truncate">One user</span>
-                                            <Button variant="ghost" size="icon-xs" onClick={() => clearParam("user")} title="Clear user filter">
-                                                <X className="size-3" />
-                                            </Button>
-                                        </div>
-                                    )}
+                                <div className="flex flex-col gap-1">
+                                    {orgId && <ScopeChip icon={Building2} label="One organization" title="Clear org filter" onClear={() => clearParam("org")} />}
+                                    {userId && <ScopeChip icon={User} label="One user" title="Clear user filter" onClear={() => clearParam("user")} />}
                                 </div>
                             </FilterGroup>
                         )}
@@ -453,6 +459,18 @@ export default function MailboxesPage() {
                     }}
                 />
             </Explorer>
+        </div>
+    );
+}
+
+function ScopeChip({ icon: Icon, label, title, onClear }: { icon: LucideIcon; label: string; title: string; onClear: () => void }) {
+    return (
+        <div className="flex h-7 items-center gap-1.5 rounded-md border border-[color-mix(in_oklab,var(--admin-accent)_30%,transparent)] bg-[var(--admin-accent-weak)] pr-0.5 pl-2 text-[12.5px] text-[var(--admin-accent-strong)]">
+            <Icon className="size-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+            <Button variant="ghost" size="icon-xs" onClick={onClear} title={title} className="text-[var(--admin-accent-strong)] hover:bg-[var(--admin-accent-soft)]">
+                <X className="size-3" />
+            </Button>
         </div>
     );
 }

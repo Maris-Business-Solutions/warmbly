@@ -3,7 +3,7 @@ title: Operator notifications
 description: Send instance events to Discord, Slack, a signed webhook, or an email address.
 ---
 
-Your instance can tell you when something happens on it: a new signup, a worker going offline, a workspace asking for more capacity. Configure the destinations in the admin panel under **Instance > Configuration > Notifications**.
+Your instance can tell you when something happens on it: a new signup, a worker going offline, a workspace asking for more capacity. Configure the destinations in the admin panel under **Instance > Configuration > Notifications**, also reachable from **Notifications** in the account menu at the bottom of the sidebar and from the `Cmd K` palette.
 
 These are operator alerts, not customer alerts. They are instance-wide and go to you. The per-workspace event delivery your customers configure is [Webhooks](/guides/webhooks/), which is a separate, queued and retried system.
 
@@ -67,8 +67,12 @@ A chat webhook URL is a bearer credential: anyone holding it can post to that ch
 | Worker went offline | A worker stops heartbeating; the alert reports complete, partial, or failed recovery with moved and paused mailbox counts |
 | Warmup ban appealed | A blocked mailbox asks to rejoin the warmup pool |
 | Workspace risk escalated | Risk scoring moves a workspace into a different posture |
+| Admin signed in | An account holding platform admin access starts a new session, in the admin panel or the dashboard. The alert names the account, sign-in method, whether a second factor was presented, the device (flagged when it is new), the location and the IP address |
+| Admin access changed | Admin permissions are granted to, changed for, or revoked from an account, with who made the change |
 
 A self-hosted instance is offered the subset that means something without billing, so the panel never lists an event that cannot fire there.
+
+Sign-in alerts are not deduplicated: every admin sign-in is reported, because an unexpected one is exactly what the alert exists to catch. A session re-issued after a password change is not a sign-in and is not reported.
 
 Worker and risk alerts are deduplicated: a worker that stays down does not re-alert for six hours, and a risk alert only fires on an actual change of posture.
 

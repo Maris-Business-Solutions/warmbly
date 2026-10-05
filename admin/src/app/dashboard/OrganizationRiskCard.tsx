@@ -5,12 +5,14 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Pin, PinOff, ShieldAlert, X } from "lucide-react";
+import { Pin, PinOff, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Callout, EmptyState, StatusBadge } from "@/components/ui/kit";
+import { ErrorState } from "@/components/ErrorState";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 import { AdminPerm } from "@/lib/auth/permissions";
+import { TONE_TEXT, type Tone } from "@/lib/tones";
 import {
     clearOrganizationRiskOverride,
     clearOrganizationRiskSignal,
@@ -19,12 +21,12 @@ import {
 import type { OrgRisk, OrgRiskSignal, OrgRiskState } from "@/lib/api/models/admin";
 import { OrganizationRiskDialog } from "./OrganizationRiskDialog";
 
-/** Band colours, in one place so the pill reads the same everywhere. */
-const BAND_STYLES: Record<OrgRiskState, string> = {
-    trusted: "border-emerald-300 text-emerald-700 bg-emerald-50",
-    watch: "border-slate-300 text-slate-700 bg-slate-50",
-    restricted: "border-amber-300 text-amber-700 bg-amber-50",
-    suspended: "border-red-300 text-red-700 bg-red-50",
+/** Band tones, in one place so the pill reads the same everywhere. */
+const BAND_TONE: Record<OrgRiskState, Tone> = {
+    trusted: "success",
+    watch: "warning",
+    restricted: "orange",
+    suspended: "danger",
 };
 
 const BAND_EFFECT: Record<OrgRiskState, string> = {
@@ -36,9 +38,9 @@ const BAND_EFFECT: Record<OrgRiskState, string> = {
 
 export function RiskBadge({ state }: { state: OrgRiskState }) {
     return (
-        <Badge variant="outline" className={`text-[10px] ${BAND_STYLES[state]}`}>
+        <StatusBadge tone={BAND_TONE[state]} dot>
             {state}
-        </Badge>
+        </StatusBadge>
     );
 }
 
@@ -79,12 +81,14 @@ export function OrganizationRiskCard({ orgId }: { orgId: string }) {
         onError: (e: Error) => toast.error(e.message || "Failed to retract the finding"),
     });
 
-    if (riskQuery.isLoading) return <Skeleton className="h-40 w-full" />;
+    if (riskQuery.isLoading) return <Skeleton className="h-40 w-full rounded-lg" />;
     if (riskQuery.error || !riskQuery.data) {
         return (
-            <div className="text-sm text-red-600 border border-red-200 bg-red-50 rounded-md p-3">
-                Failed to load the workspace posture.
-            </div>
+            <ErrorState
+                error={riskQuery.error}
+                title="Failed to load the workspace posture."
+                onRetry={() => riskQuery.refetch()}
+            />
         );
     }
 
@@ -93,37 +97,35 @@ export function OrganizationRiskCard({ orgId }: { orgId: string }) {
     const pinned = risk.override ?? null;
 
     return (
-        <div className="border border-border rounded-lg bg-card">
-            <div className="flex items-start justify-between gap-3 p-3 border-b border-border">
-                <div>
-                    <div className="flex items-center gap-2">
+        <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
+            <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                         <RiskBadge state={risk.state} />
-                        <span className="text-sm font-medium tabular-nums">
-                            score {risk.score}
+                        <span className="text-[13px] font-medium tabular-nums text-foreground">
+                            Score {risk.score}
                         </span>
                         {pinned && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-[var(--admin-accent-strong)]">
+                            <span className="inline-flex items-center gap-1 text-xs text-[var(--admin-accent-strong)]">
                                 <Pin className="size-3" /> pinned by an operator
                             </span>
                         )}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                        {BAND_EFFECT[risk.state]}
-                    </div>
+                    <p className="mt-1.5 text-[12.5px] text-muted-foreground">{BAND_EFFECT[risk.state]}</p>
                     {risk.reason && (
-                        <div className="text-xs mt-1">
+                        <p className="mt-1 text-[12.5px] text-foreground">
                             <span className="text-muted-foreground">Shown to the workspace: </span>
                             {risk.reason}
-                        </div>
+                        </p>
                     )}
                     {risk.evaluated_at && (
-                        <div className="text-[10px] text-muted-foreground mt-1">
+                        <p className="mt-1 text-xs text-subtle-foreground">
                             Last evaluated {new Date(risk.evaluated_at).toLocaleString()}
-                        </div>
+                        </p>
                     )}
                 </div>
                 {canManage && (
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex shrink-0 items-center gap-1.5">
                         {pinned && (
                             <Button
                                 size="sm"
@@ -144,22 +146,27 @@ export function OrganizationRiskCard({ orgId }: { orgId: string }) {
             </div>
 
             {pinned && (
-                <div className="px-3 py-2 border-b border-border bg-muted/30 text-xs">
-                    Pinned to <strong>{pinned.state}</strong>
-                    {pinned.at && <> on {new Date(pinned.at).toLocaleString()}</>}
-                    {pinned.reason && <> — "{pinned.reason}"</>}
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
-                        Detectors keep scoring the evidence, but the band stays here until
-                        the override is lifted.
-                    </div>
+                <div className="px-4 pb-3">
+                    <Callout tone="accent" icon={Pin}>
+                        <span className="text-foreground">
+                            Pinned to <span className="font-medium">{pinned.state}</span>
+                            {pinned.at && <> on {new Date(pinned.at).toLocaleString()}</>}
+                            {pinned.reason && <>: "{pinned.reason}"</>}
+                        </span>
+                        <span className="mt-0.5 block text-xs">
+                            Detectors keep scoring the evidence, but the band stays here until the override is lifted.
+                        </span>
+                    </Callout>
                 </div>
             )}
 
-            <SignalsTable
-                signals={signals}
-                onRetract={canManage ? (key) => retractMutation.mutate(key) : undefined}
-                busyKey={retractMutation.isPending ? retractMutation.variables : undefined}
-            />
+            <div className="border-t border-border">
+                <SignalsTable
+                    signals={signals}
+                    onRetract={canManage ? (key) => retractMutation.mutate(key) : undefined}
+                    busyKey={retractMutation.isPending ? retractMutation.variables : undefined}
+                />
+            </div>
 
             {canManage && (
                 <OrganizationRiskDialog
@@ -185,9 +192,12 @@ function SignalsTable({
 }) {
     if (signals.length === 0) {
         return (
-            <div className="p-3 text-xs text-muted-foreground">
-                No detector has filed anything against this workspace.
-            </div>
+            <EmptyState
+                icon={ShieldCheck}
+                title="No findings"
+                hint="No detector has filed anything against this workspace."
+                className="py-8"
+            />
         );
     }
     // Heaviest first, matching the sentence the customer is shown.
@@ -195,61 +205,69 @@ function SignalsTable({
         (a, b) => (b[1].weight ?? 0) - (a[1].weight ?? 0),
     );
     return (
-        <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                <tr>
-                    <th className="text-left px-3 py-2 font-medium">Detector</th>
-                    <th className="text-right px-3 py-2 font-medium">Weight</th>
-                    <th className="text-left px-3 py-2 font-medium">Finding</th>
-                    <th className="text-left px-3 py-2 font-medium">Ages out</th>
-                    {onRetract && <th className="px-3 py-2 w-8" />}
-                </tr>
-            </thead>
-            <tbody>
-                {rows.map(([key, signal]) => {
-                    const expires = signal.expires_at
-                        ? new Date(signal.expires_at)
-                        : null;
-                    const expired = expires ? expires.getTime() < Date.now() : false;
-                    return (
-                        <tr key={key} className="border-t border-border align-top">
-                            <td className="px-3 py-2 font-medium">{key}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                                {signal.weight ?? 0}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                                {signal.detail || "—"}
-                            </td>
-                            <td className="px-3 py-2 text-xs text-muted-foreground">
-                                {expires ? (
-                                    expired ? (
-                                        <span className="text-amber-700">
-                                            expired, awaiting sweep
-                                        </span>
-                                    ) : (
-                                        expires.toLocaleDateString()
-                                    )
-                                ) : (
-                                    "only when retracted"
-                                )}
-                            </td>
-                            {onRetract && (
-                                <td className="px-3 py-2">
-                                    <button
-                                        type="button"
-                                        title="Retract this finding"
-                                        onClick={() => onRetract(key)}
-                                        disabled={busyKey === key}
-                                        className="text-muted-foreground hover:text-red-600 disabled:opacity-40"
-                                    >
-                                        <X className="size-3.5" />
-                                    </button>
+        <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13px]">
+                <thead>
+                    <tr className="border-b border-border">
+                        <th className="h-9 px-3 pl-4 text-left text-xs font-medium text-muted-foreground">Detector</th>
+                        <th className="h-9 px-3 text-right text-xs font-medium text-muted-foreground">Weight</th>
+                        <th className="h-9 px-3 text-left text-xs font-medium text-muted-foreground">Finding</th>
+                        <th className="h-9 px-3 pr-4 text-left text-xs font-medium text-muted-foreground">Ages out</th>
+                        {onRetract && <th className="h-9 w-10 pr-4" />}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map(([key, signal]) => {
+                        const expires = signal.expires_at
+                            ? new Date(signal.expires_at)
+                            : null;
+                        const expired = expires ? expires.getTime() < Date.now() : false;
+                        return (
+                            <tr
+                                key={key}
+                                className="group border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
+                            >
+                                <td className="h-10 px-3 pl-4 font-mono text-[12px] font-medium text-foreground">{key}</td>
+                                <td className="px-3 text-right tabular-nums">
+                                    {signal.weight ?? 0}
                                 </td>
-                            )}
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
+                                <td className="px-3 py-2 text-muted-foreground">
+                                    {signal.detail || "—"}
+                                </td>
+                                <td className="whitespace-nowrap px-3 pr-4 text-xs text-muted-foreground">
+                                    {expires ? (
+                                        expired ? (
+                                            <span className={TONE_TEXT.warning}>
+                                                expired, awaiting sweep
+                                            </span>
+                                        ) : (
+                                            expires.toLocaleDateString()
+                                        )
+                                    ) : (
+                                        "only when retracted"
+                                    )}
+                                </td>
+                                {onRetract && (
+                                    <td className="pr-4 text-right">
+                                        <Button
+                                            type="button"
+                                            size="icon-xs"
+                                            variant="ghost"
+                                            title="Retract this finding"
+                                            aria-label="Retract this finding"
+                                            onClick={() => onRetract(key)}
+                                            disabled={busyKey === key}
+                                            className="opacity-100 hover:text-red-600 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 dark:hover:text-red-400"
+                                        >
+                                            <X className="size-3.5" />
+                                        </Button>
+                                    </td>
+                                )}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
     );
 }

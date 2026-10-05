@@ -5,6 +5,7 @@
 
 import { CircleHelp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { TONE } from "@/lib/tones";
 import {
     Tooltip,
     TooltipContent,
@@ -14,7 +15,7 @@ import {
 export interface LegendEntry {
     term: string;
     description: string;
-    /** Badge tone classes, e.g. "border-emerald-300 bg-emerald-50 text-emerald-700". */
+    /** Badge tone classes; use a value from TONE in lib/tones. */
     tone?: string;
 }
 
@@ -30,7 +31,7 @@ export function StateLegend({
             <TooltipTrigger asChild>
                 <button
                     type="button"
-                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+                    className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground transition-colors hover:text-foreground"
                 >
                     <CircleHelp className="size-3.5" />
                     {label}
@@ -39,7 +40,7 @@ export function StateLegend({
             <TooltipContent
                 side="bottom"
                 align="start"
-                className="max-w-sm bg-popover text-popover-foreground border border-border shadow-md"
+                className="max-w-sm p-2.5"
             >
                 <dl className="space-y-1.5 py-0.5">
                     {entries.map((e) => (
@@ -47,12 +48,12 @@ export function StateLegend({
                             <dt className="shrink-0">
                                 <Badge
                                     variant="outline"
-                                    className={`text-[10px] ${e.tone ?? "border-zinc-300 text-zinc-700"}`}
+                                    className={e.tone ?? TONE.neutral}
                                 >
                                     {e.term}
                                 </Badge>
                             </dt>
-                            <dd className="text-[11px] leading-snug text-muted-foreground">
+                            <dd className="text-xs leading-snug text-muted-foreground">
                                 {e.description}
                             </dd>
                         </div>

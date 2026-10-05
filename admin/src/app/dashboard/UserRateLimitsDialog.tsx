@@ -115,24 +115,29 @@ export function UserRateLimitsDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="grid gap-3">
+                <div className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+                    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-border pb-1.5 text-xs font-medium text-muted-foreground">
+                        <span>Limit</span>
+                        <span className="text-right">Current</span>
+                        <span className="w-28 text-right">New value</span>
+                    </div>
                     {FIELDS.map((f) => {
                         const cur = current?.[f.key];
                         return (
-                            <div key={f.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
-                                <div>
-                                    <Label htmlFor={f.key} className="text-xs font-medium">
+                            <div
+                                key={f.key}
+                                className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-border/70 py-2 last:border-b-0"
+                            >
+                                <div className="min-w-0">
+                                    <Label htmlFor={f.key} className="text-[13px] font-medium text-foreground">
                                         {f.label}
                                     </Label>
-                                    <div className="text-[10px] text-muted-foreground">
+                                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
                                         {f.hint}
                                     </div>
                                 </div>
-                                <div className="text-[10px] text-muted-foreground text-right">
-                                    <div>current</div>
-                                    <div className="tabular-nums">
-                                        {cur != null ? cur : "—"}
-                                    </div>
+                                <div className="text-right text-[13px] tabular-nums text-muted-foreground">
+                                    {cur != null ? cur.toLocaleString() : "—"}
                                 </div>
                                 <Input
                                     id={f.key}
@@ -142,7 +147,7 @@ export function UserRateLimitsDialog({
                                     onChange={(e) =>
                                         setForm((s) => ({ ...s, [f.key]: e.target.value }))
                                     }
-                                    className="w-28 text-right tabular-nums"
+                                    className="h-7 w-28 text-right tabular-nums"
                                 />
                             </div>
                         );
@@ -156,7 +161,6 @@ export function UserRateLimitsDialog({
                     <Button
                         onClick={submit}
                         disabled={mutation.isPending}
-                        className="bg-[var(--admin-accent)] hover:bg-[var(--admin-accent-strong)] text-white"
                     >
                         {mutation.isPending ? "Saving…" : "Save"}
                     </Button>

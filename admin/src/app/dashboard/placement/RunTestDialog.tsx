@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { CircleAlert, X } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Callout } from "@/components/ui/kit";
 import {
     createPlacementTest,
     searchPlacementSeedCandidates,
@@ -27,6 +28,8 @@ import {
 } from "@/lib/api/client/admin/placement";
 import { describeError } from "./format";
 import { useDebounced } from "./useDebounced";
+
+const LABEL = "text-xs font-medium text-muted-foreground";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -128,12 +131,12 @@ export function RunTestDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                     <div>
-                        <Label className="text-xs">Sending mailbox</Label>
+                        <Label className={LABEL}>Sending mailbox</Label>
                         {sender ? (
-                            <div className="mt-1 flex h-8 items-center justify-between gap-2 rounded-md border border-border px-2.5 text-[12.5px]">
-                                <span className="truncate font-mono">{sender.email}</span>
+                            <div className="mt-1.5 flex h-8 items-center justify-between gap-2 rounded-md border border-border bg-muted/40 pr-1 pl-2.5 text-[13px]">
+                                <span className="truncate font-mono text-[12.5px]">{sender.email}</span>
                                 <Button
                                     size="icon-xs"
                                     variant="ghost"
@@ -152,15 +155,15 @@ export function RunTestDialog({
                                         setFailure(null);
                                     }}
                                     placeholder="Search by address, or paste a mailbox id"
-                                    className="mt-1 h-8 text-[12.5px]"
+                                    className="mt-1.5 h-8"
                                     autoComplete="off"
                                 />
                                 {debounced.length >= 2 && !isId && (
-                                    <div className="mt-1 max-h-44 overflow-y-auto rounded-md border border-border">
+                                    <div className="mt-1 max-h-44 overflow-y-auto rounded-md border border-border bg-card p-1">
                                         {candidatesQ.isLoading ? (
-                                            <div className="px-2.5 py-2 text-xs text-muted-foreground">Searching…</div>
+                                            <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching…</div>
                                         ) : senders.length === 0 ? (
-                                            <div className="px-2.5 py-2 text-xs text-muted-foreground">
+                                            <div className="px-2 py-1.5 text-xs text-muted-foreground">
                                                 No active mailbox matches. Seeds cannot send a test.
                                             </div>
                                         ) : (
@@ -169,10 +172,10 @@ export function RunTestDialog({
                                                     key={m.id}
                                                     type="button"
                                                     onClick={() => pick(m)}
-                                                    className="flex w-full items-center justify-between gap-2 border-b border-border px-2.5 py-1.5 text-left text-[12.5px] last:border-b-0 hover:bg-muted/50"
+                                                    className="flex h-8 w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[13px] outline-none hover:bg-accent focus-visible:bg-accent"
                                                 >
-                                                    <span className="truncate font-mono">{m.email}</span>
-                                                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                                                    <span className="truncate font-mono text-[12.5px]">{m.email}</span>
+                                                    <span className="shrink-0 text-xs text-muted-foreground">
                                                         {m.family_label}
                                                     </span>
                                                 </button>
@@ -185,19 +188,19 @@ export function RunTestDialog({
                     </div>
 
                     <div>
-                        <Label htmlFor="placement-subject" className="text-xs">
+                        <Label htmlFor="placement-subject" className={LABEL}>
                             Subject
                         </Label>
                         <Input
                             id="placement-subject"
                             value={subject}
                             onChange={(e) => setSubject(e.target.value)}
-                            className="mt-1 h-8 text-[12.5px]"
+                            className="mt-1.5 h-8"
                         />
                     </div>
 
                     <div>
-                        <Label htmlFor="placement-plain" className="text-xs">
+                        <Label htmlFor="placement-plain" className={LABEL}>
                             Plain body
                         </Label>
                         <Textarea
@@ -205,12 +208,12 @@ export function RunTestDialog({
                             value={bodyPlain}
                             onChange={(e) => setBodyPlain(e.target.value)}
                             rows={4}
-                            className="mt-1 text-[12.5px]"
+                            className="mt-1.5"
                         />
                     </div>
 
                     <div>
-                        <Label htmlFor="placement-html" className="text-xs">
+                        <Label htmlFor="placement-html" className={LABEL}>
                             HTML body
                         </Label>
                         <Textarea
@@ -219,41 +222,41 @@ export function RunTestDialog({
                             onChange={(e) => setBodyHtml(e.target.value)}
                             rows={4}
                             placeholder="Optional. Leave empty to send plain text only."
-                            className="mt-1 font-mono text-[12px]"
+                            className="mt-1.5 font-mono text-[12px]"
                         />
                     </div>
 
                     <div>
-                        <Label className="text-xs">Tracking</Label>
+                        <Label className={LABEL}>Tracking</Label>
                         <Select value={tracking} onValueChange={(v) => setTracking(v as PlacementTracking)}>
-                            <SelectTrigger className="mt-1 h-8 w-full text-[12.5px]">
+                            <SelectTrigger className="mt-1.5 h-8 w-full">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                                 {TRACKING_OPTIONS.map((o) => (
-                                    <SelectItem key={o.value} value={o.value} className="text-[12.5px]">
+                                    <SelectItem key={o.value} value={o.value}>
                                         {o.label}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                         {tracking === "compare" && (
-                            <p className="mt-1 text-xs text-muted-foreground">
+                            <p className="mt-1.5 text-xs text-muted-foreground">
                                 Two tests to the same seeds, so twice the sends from the mailbox.
                             </p>
                         )}
                     </div>
 
                     {failure && (
-                        <div className="rounded-md border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+                        <Callout tone="danger" icon={CircleAlert}>
                             {failure.message}
-                            {failure.code && <span className="ml-1.5 font-mono text-red-600/80">({failure.code})</span>}
-                        </div>
+                            {failure.code && <span className="ml-1.5 font-mono text-xs">({failure.code})</span>}
+                        </Callout>
                     )}
                 </div>
 
                 <DialogFooter className="items-center sm:justify-between">
-                    <span className="text-xs text-muted-foreground">{problem ?? ""}</span>
+                    <span className="text-xs text-muted-foreground sm:max-w-[55%]">{problem ?? ""}</span>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={create.isPending}>
                             Cancel

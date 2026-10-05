@@ -1,4 +1,4 @@
-// Fleet explorer — every machine running Warmbly, as a faceted browser.
+// Fleet explorer: every machine running Warmbly, as a faceted browser.
 //
 // Both roles are here: a worker sends and syncs mail, a consumer processes
 // events. They share one lifecycle (enrol, heartbeat, self-update) so they
@@ -10,8 +10,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge, StatusDot } from "@/components/ui/kit";
 import {
     Explorer,
     FilterGroup,
@@ -24,6 +24,7 @@ import {
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { emptyRange, rangeActive, type DateRange } from "@/lib/dateRange";
 import { listFleetNodes, nodeNeedsUpdate, type FleetNode } from "@/lib/api/client/admin/fleetNodes";
+import { TONE_TEXT, type Tone } from "@/lib/tones";
 
 const OFFLINE_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -51,12 +52,14 @@ function liveKey(w: FleetNode): LiveKey {
     return "offline";
 }
 
-const LIVE_LABEL: Record<LiveKey, { label: string; cls: string }> = {
-    online: { label: "online", cls: "text-emerald-600" },
-    stale: { label: "stale", cls: "text-amber-600" },
-    offline: { label: "offline", cls: "text-red-600" },
-    none: { label: "no heartbeat", cls: "text-zinc-400" },
+const LIVE_LABEL: Record<LiveKey, { label: string; tone: Tone }> = {
+    online: { label: "online", tone: "success" },
+    stale: { label: "stale", tone: "warning" },
+    offline: { label: "offline", tone: "danger" },
+    none: { label: "no heartbeat", tone: "neutral" },
 };
+
+const Empty = () => <span className="text-subtle-foreground">—</span>;
 
 const columns: Column<FleetNode>[] = [
     {
@@ -65,11 +68,15 @@ const columns: Column<FleetNode>[] = [
         sortable: true,
         sortKey: "name",
         cell: (w) => (
-            <div>
-                <Link to={`/workers/${w.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-[var(--admin-accent-strong)] hover:underline">
+            <div className="min-w-0">
+                <Link
+                    to={`/workers/${w.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-medium text-foreground hover:underline underline-offset-2"
+                >
                     {w.name || w.id.slice(0, 8)}
                 </Link>
-                <div className="font-mono text-[10px] text-muted-foreground">{w.id}</div>
+                <div className="truncate font-mono text-[11px] text-subtle-foreground">{w.id}</div>
             </div>
         ),
         csv: (w) => w.name || w.id,
@@ -79,23 +86,19 @@ const columns: Column<FleetNode>[] = [
         header: "Role",
         sortable: true,
         sortKey: "role",
-        cell: (w) => (
-            <Badge variant="outline" className="text-[10px]">
-                {w.role}
-            </Badge>
-        ),
+        cell: (w) => <StatusBadge tone={w.role === "worker" ? "accent" : "strong"}>{w.role}</StatusBadge>,
         csv: (w) => w.role,
     },
     {
         id: "address",
         header: "Address",
-        cell: (w) => <span className="font-mono text-[11px]">{w.address || "—"}</span>,
+        cell: (w) => (w.address ? <span className="font-mono text-xs text-muted-foreground">{w.address}</span> : <Empty />),
         csv: (w) => w.address,
     },
     {
         id: "region",
         header: "Region",
-        cell: (w) => <span className="font-mono text-[11px]">{w.region || "—"}</span>,
+        cell: (w) => (w.region ? <span className="font-mono text-xs text-muted-foreground">{w.region}</span> : <Empty />),
         csv: (w) => w.region,
     },
     {
@@ -103,7 +106,11 @@ const columns: Column<FleetNode>[] = [
         header: "Live",
         cell: (w) => {
             const l = LIVE_LABEL[liveKey(w)];
-            return <span className={`text-xs font-medium ${l.cls}`}>{l.label}</span>;
+            return (
+                <StatusDot tone={l.tone} pulse={l.tone === "success"} className="text-[12.5px] text-muted-foreground">
+                    {l.label}
+                </StatusDot>
+            );
         },
         csv: (w) => LIVE_LABEL[liveKey(w)].label,
     },
@@ -115,7 +122,7 @@ const columns: Column<FleetNode>[] = [
         sortKey: "mailboxes",
         cell: (w) =>
             w.mailbox_count === undefined ? (
-                <span className="text-xs text-muted-foreground">—</span>
+                <Empty />
             ) : (
                 <span className="tabular-nums">{w.mailbox_count}</span>
             ),
@@ -128,13 +135,13 @@ const columns: Column<FleetNode>[] = [
         header: "Version",
         cell: (w) =>
             nodeNeedsUpdate(w) ? (
-                <span className="font-mono text-xs">
+                <span className="font-mono text-xs whitespace-nowrap" title="Update pending">
                     {w.version || "—"}
-                    <span className="text-muted-foreground"> → </span>
-                    <span className="text-amber-600">{w.desired_version}</span>
+                    <span className="text-subtle-foreground"> → </span>
+                    <span className={TONE_TEXT.warning}>{w.desired_version}</span>
                 </span>
             ) : (
-                <span className="font-mono text-xs">{w.version || "—"}</span>
+                <span className="font-mono text-xs text-muted-foreground">{w.version || "—"}</span>
             ),
         csv: (w) => w.version || "",
     },
@@ -144,9 +151,9 @@ const columns: Column<FleetNode>[] = [
         align: "right",
         cell: (w) =>
             w.usage?.memory_mb === undefined ? (
-                <span className="text-xs text-muted-foreground">—</span>
+                <Empty />
             ) : (
-                <span className="tabular-nums text-xs">{w.usage.memory_mb} MB</span>
+                <span className="tabular-nums text-muted-foreground">{w.usage.memory_mb} MB</span>
             ),
         csv: (w) => w.usage?.memory_mb ?? "",
         defaultHidden: true,
@@ -158,13 +165,11 @@ const columns: Column<FleetNode>[] = [
             w.tags && w.tags.length ? (
                 <div className="flex flex-wrap gap-1">
                     {w.tags.map((t) => (
-                        <Badge key={t} variant="outline" className="text-[10px]">
-                            {t}
-                        </Badge>
+                        <StatusBadge key={t}>{t}</StatusBadge>
                     ))}
                 </div>
             ) : (
-                <span className="text-xs text-muted-foreground">—</span>
+                <Empty />
             ),
         csv: (w) => (w.tags || []).join(" "),
         defaultHidden: true,
@@ -174,7 +179,11 @@ const columns: Column<FleetNode>[] = [
         header: "Last seen",
         sortable: true,
         sortKey: "seen",
-        cell: (w) => <span className="text-xs text-muted-foreground">{w.last_seen_at ? new Date(w.last_seen_at).toLocaleString() : "—"}</span>,
+        cell: (w) => (
+            <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                {w.last_seen_at ? new Date(w.last_seen_at).toLocaleString() : "—"}
+            </span>
+        ),
         csv: (w) => w.last_seen_at || "",
     },
     {
@@ -182,7 +191,11 @@ const columns: Column<FleetNode>[] = [
         header: "Created",
         sortable: true,
         sortKey: "created",
-        cell: (w) => <span className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleDateString()}</span>,
+        cell: (w) => (
+            <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                {new Date(w.created_at).toLocaleDateString()}
+            </span>
+        ),
         csv: (w) => w.created_at,
         defaultHidden: true,
     },
@@ -278,11 +291,16 @@ export default function WorkersPage() {
         <div>
             <PageHeader
                 title="Fleet"
+                meta={
+                    data?.data ? (
+                        <span className="text-[12.5px] text-muted-foreground tabular-nums">{data.data.length}</span>
+                    ) : undefined
+                }
                 description="Every machine running Warmbly. They enrol themselves, report what they are running, and stay on the version you set."
             >
                 <Button size="sm" asChild>
                     <Link to="/workers/new">
-                        <Plus className="size-4" />
+                        <Plus className="size-3.5" />
                         Add worker
                     </Link>
                 </Button>

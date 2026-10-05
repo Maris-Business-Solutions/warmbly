@@ -17,6 +17,8 @@ import {
 import { ErrorState } from "@/components/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Callout, Stat, StatGrid } from "@/components/ui/kit";
+import { TONE_PANEL, TONE_TEXT } from "@/lib/tones";
 import { InstanceFindings } from "../InstanceHealthPanel";
 import { UpdateDialog } from "@/components/layout/UpdateDialog";
 import { useInstanceHealth } from "@/hooks/useInstanceHealth";
@@ -31,15 +33,15 @@ export function FindingsTab() {
 
     return (
         <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <p className="max-w-2xl text-sm text-muted-foreground">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <p className="max-w-2xl text-[12.5px] leading-relaxed text-muted-foreground">
                     Checks the backend runs against this instance: secrets, addresses, platform
                     mail, accounts, workers and storage. Only findings that need a decision are
                     listed.
                 </p>
                 <div className="flex items-center gap-2">
                     {healthQ.dataUpdatedAt > 0 && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-subtle-foreground tabular-nums">
                             Last checked {new Date(healthQ.dataUpdatedAt).toLocaleTimeString()}
                         </span>
                     )}
@@ -49,7 +51,7 @@ export function FindingsTab() {
                         onClick={() => healthQ.refetch()}
                         disabled={healthQ.isFetching}
                     >
-                        <RefreshCw className={`size-4 ${healthQ.isFetching ? "animate-spin" : ""}`} />
+                        <RefreshCw className={cn("size-3.5", healthQ.isFetching && "animate-spin")} />
                         {healthQ.isFetching ? "Checking..." : "Run checks"}
                     </Button>
                 </div>
@@ -59,7 +61,7 @@ export function FindingsTab() {
 
             {healthQ.isLoading && (
                 <div className="space-y-3">
-                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-[86px] w-full" />
                     <Skeleton className="h-20 w-full" />
                     <Skeleton className="h-20 w-full" />
                 </div>
@@ -76,21 +78,11 @@ export function FindingsTab() {
             {healthQ.data && (
                 <>
                     {checks.length === 0 ? (
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                            <div className="flex items-start gap-3">
-                                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
-                                <div>
-                                    <div className="text-sm font-semibold text-emerald-800">
-                                        No problems found
-                                    </div>
-                                    <p className="mt-0.5 text-[13px] leading-relaxed text-emerald-700">
-                                        Every setup and health check passed. This tab lists only the
-                                        checks that need attention, so it stays empty while the
-                                        instance is configured correctly.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+                        <Callout tone="success" icon={CheckCircle2} title="No problems found">
+                            Every setup and health check passed. This tab lists only the checks that
+                            need attention, so it stays empty while the instance is configured
+                            correctly.
+                        </Callout>
                     ) : (
                         <>
                             <SummaryStrip summary={summary} total={checks.length} />
@@ -116,23 +108,19 @@ function UpdateCard() {
 
     const updating = isUpdating(state);
     const available = state.update_available;
-    const tone = updating
-        ? "border-sky-200 bg-sky-50/60"
-        : available
-          ? "border-amber-200 bg-amber-50/60"
-          : "border-border bg-white";
+    const panel = updating ? TONE_PANEL.info : available ? TONE_PANEL.warning : "border-border bg-card";
 
     return (
-        <div className={`mb-5 flex flex-wrap items-center gap-3 rounded-lg border p-3 ${tone}`}>
+        <div className={cn("mb-6 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3", panel)}>
             {updating ? (
-                <Loader2 className="size-4 shrink-0 animate-spin text-sky-600" />
+                <Loader2 className={cn("size-4 shrink-0 animate-spin", TONE_TEXT.info)} />
             ) : available ? (
-                <ArrowUpCircle className="size-4 shrink-0 text-amber-600" />
+                <ArrowUpCircle className={cn("size-4 shrink-0", TONE_TEXT.warning)} />
             ) : (
-                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+                <CheckCircle2 className={cn("size-4 shrink-0", TONE_TEXT.success)} />
             )}
             <div className="min-w-0 flex-1 text-[13px]">
-                <span className="font-semibold text-foreground">
+                <span className="font-medium text-foreground">
                     {updating
                         ? "Updating this instance"
                         : available
@@ -170,58 +158,28 @@ function SummaryStrip({
     const info = summary?.info ?? 0;
 
     return (
-        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <SummaryCard
+        <StatGrid className="mb-6 grid-cols-1 sm:grid-cols-3 md:grid-cols-3">
+            <Stat
                 icon={XCircle}
                 label="Errors"
                 value={errors}
                 sub="Something is broken right now"
-                tone={errors > 0 ? "border-red-200 bg-red-50/60" : ""}
-                iconClass={errors > 0 ? "text-red-600" : "text-muted-foreground"}
+                tone={errors > 0 ? "danger" : undefined}
             />
-            <SummaryCard
+            <Stat
                 icon={AlertTriangle}
                 label="Warnings"
                 value={warnings}
                 sub="Works, but not the way you want"
-                tone={warnings > 0 ? "border-amber-200 bg-amber-50/60" : ""}
-                iconClass={warnings > 0 ? "text-amber-600" : "text-muted-foreground"}
+                tone={warnings > 0 ? "warning" : undefined}
             />
-            <SummaryCard
+            <Stat
                 icon={Info}
                 label="Worth knowing"
                 value={info}
                 sub={`${total} findings in total`}
-                tone={info > 0 ? "border-sky-200 bg-sky-50/50" : ""}
-                iconClass={info > 0 ? "text-sky-600" : "text-muted-foreground"}
+                tone={info > 0 ? "info" : undefined}
             />
-        </div>
-    );
-}
-
-function SummaryCard({
-    icon: Icon,
-    label,
-    value,
-    sub,
-    tone,
-    iconClass,
-}: {
-    icon: React.ComponentType<{ className?: string }>;
-    label: string;
-    value: number;
-    sub: string;
-    tone: string;
-    iconClass: string;
-}) {
-    return (
-        <div className={cn("rounded-lg border border-border bg-white p-3", tone)}>
-            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <Icon className={`size-3.5 ${iconClass}`} />
-                {label}
-            </div>
-            <div className="mt-1.5 text-2xl font-semibold tabular-nums">{value}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>
-        </div>
+        </StatGrid>
     );
 }

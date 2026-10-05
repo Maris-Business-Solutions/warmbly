@@ -18,14 +18,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TONE_DOT } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import { setOrganizationRiskOverride } from "@/lib/api/client/admin/organizations";
 import type { OrgRisk, OrgRiskState } from "@/lib/api/models/admin";
 
-const BANDS: { state: OrgRiskState; effect: string }[] = [
-    { state: "trusted", effect: "Nothing is restricted" },
-    { state: "watch", effect: "Nothing the workspace can feel" },
-    { state: "restricted", effect: "Quarter volume, free warmup pool" },
-    { state: "suspended", effect: "Sending stops entirely" },
+const BANDS: { state: OrgRiskState; effect: string; dot: string }[] = [
+    { state: "trusted", effect: "Nothing is restricted", dot: TONE_DOT.success },
+    { state: "watch", effect: "Nothing the workspace can feel", dot: TONE_DOT.warning },
+    { state: "restricted", effect: "Quarter volume, free warmup pool", dot: TONE_DOT.orange },
+    { state: "suspended", effect: "Sending stops entirely", dot: TONE_DOT.danger },
 ];
 
 export function OrganizationRiskDialog({
@@ -79,34 +81,55 @@ export function OrganizationRiskDialog({
                     <DialogDescription>
                         This pins the band. Detectors keep scoring the evidence, but the
                         posture stays where you put it until the override is lifted. The
-                        score right now is <strong>{risk.score}</strong>.
+                        score right now is <span className="font-medium tabular-nums text-foreground">{risk.score}</span>.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="grid gap-2">
-                    {BANDS.map((b) => (
-                        <label
-                            key={b.state}
-                            className={`flex items-center gap-3 rounded-md border p-2.5 cursor-pointer text-sm ${
-                                state === b.state
-                                    ? "border-[var(--admin-accent)] bg-muted/40"
-                                    : "border-border hover:bg-muted/20"
-                            }`}
-                        >
-                            <input
-                                type="radio"
-                                name="risk-state"
-                                value={b.state}
-                                checked={state === b.state}
-                                onChange={() => setState(b.state)}
-                            />
-                            <span className="font-medium w-24">{b.state}</span>
-                            <span className="text-xs text-muted-foreground">{b.effect}</span>
-                        </label>
-                    ))}
+                <div className="grid gap-4">
+                    <div
+                        role="radiogroup"
+                        aria-label="Posture"
+                        className="overflow-hidden rounded-lg border border-border divide-y divide-border"
+                    >
+                        {BANDS.map((b) => {
+                            const active = state === b.state;
+                            return (
+                                <label
+                                    key={b.state}
+                                    className={cn(
+                                        "flex h-10 cursor-pointer items-center gap-3 px-3 text-[13px] transition-colors has-[:focus-visible]:bg-accent/60",
+                                        active ? "bg-[var(--admin-accent-weak)]" : "hover:bg-accent/50",
+                                    )}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="risk-state"
+                                        value={b.state}
+                                        checked={active}
+                                        onChange={() => setState(b.state)}
+                                        className="sr-only"
+                                    />
+                                    <span
+                                        aria-hidden
+                                        className={cn(
+                                            "grid size-3.5 shrink-0 place-items-center rounded-full border transition-colors",
+                                            active ? "border-[var(--admin-accent)]" : "border-border-strong",
+                                        )}
+                                    >
+                                        {active && <span className="size-1.5 rounded-full bg-[var(--admin-accent)]" />}
+                                    </span>
+                                    <span className="inline-flex w-24 items-center gap-1.5 font-medium text-foreground">
+                                        <span className={cn("size-1.5 rounded-full", b.dot)} />
+                                        {b.state}
+                                    </span>
+                                    <span className="truncate text-xs text-muted-foreground">{b.effect}</span>
+                                </label>
+                            );
+                        })}
+                    </div>
 
-                    <div className="mt-2">
-                        <Label htmlFor="risk-reason" className="text-xs font-medium">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="risk-reason" className="text-xs font-medium text-muted-foreground">
                             Reason
                         </Label>
                         <Input
@@ -115,10 +138,10 @@ export function OrganizationRiskDialog({
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
                         />
-                        <div className="text-[10px] text-muted-foreground mt-1">
+                        <p className="text-xs leading-relaxed text-muted-foreground">
                             Shown to the workspace in its dashboard banner, so write it for
                             them. Internal notes belong in the audit trail, not here.
-                        </div>
+                        </p>
                     </div>
                 </div>
 
@@ -126,11 +149,7 @@ export function OrganizationRiskDialog({
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
                         Cancel
                     </Button>
-                    <Button
-                        onClick={submit}
-                        disabled={mutation.isPending}
-                        className="bg-[var(--admin-accent)] hover:bg-[var(--admin-accent-strong)] text-white"
-                    >
+                    <Button onClick={submit} disabled={mutation.isPending}>
                         {mutation.isPending ? "Saving…" : "Pin posture"}
                     </Button>
                 </DialogFooter>

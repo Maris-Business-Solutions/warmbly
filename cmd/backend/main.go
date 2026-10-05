@@ -964,6 +964,13 @@ func main() {
 			// document, so this needs nothing else configured to work.
 			opsNotifier = opsnotify.NewService(instanceSettings, emailNotificationService, config.AppBaseURL())
 			authService.WireOperatorNotifier(opsNotifier)
+			// Security alerts: admin sign-ins and admin access grants and revokes.
+			tokenService.WireSessionObserver(opsnotify.NewAdminSignIns(opsNotifier, adminRepository))
+			if aware, ok := adminService.(interface {
+				WireOperatorNotifier(admin.OperatorNotifier)
+			}); ok && adminService != nil {
+				aware.WireOperatorNotifier(opsNotifier)
+			}
 			if organizationService != nil {
 				organizationService.WireOperatorNotifier(opsNotifier)
 			}

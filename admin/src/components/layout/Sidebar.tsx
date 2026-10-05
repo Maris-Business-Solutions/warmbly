@@ -1,222 +1,260 @@
-// Left rail navigation. Mirrors the dashboard's general structure
-// (icon + label rows, grouped sections) but uses the admin-tinted
-// sidebar background and amber accent for active items so it never
-// gets confused with the dashboard's sidebar.
-//
-// NAV_GROUPS is the one nav model: the mobile drawer, the command palette
-// and the document title all read it, so a route added here is reachable
-// and titled everywhere at once.
+// Left rail navigation: the brand and search on top, collapsible sections of
+// dense icon rows, then the instance status and the signed-in account. The rail
+// itself folds down to icons (button or the `[` key) and remembers it.
+// The nav model lives in nav.ts.
 
-import { NavLink } from "react-router-dom";
-import {
-    Activity,
-    ArrowLeftRight,
-    Blocks,
-    Building2,
-    CalendarClock,
-    FileText,
-    Flame,
-    Gauge,
-    HeartPulse,
-    Inbox,
-    LayoutDashboard,
-    Mailbox,
-    Megaphone,
-    Network,
-    Radio,
-    RefreshCw,
-    Send,
-    SendHorizonal,
-    Server,
-    ShieldCheck,
-    SlidersHorizontal,
-    Sparkles,
-    TicketPercent,
-    UserCog,
-    FlaskConical,
-    Users,
-} from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { SidebarBrand, SidebarMark } from "./Brand";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { ChevronRight, PanelLeft, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Logo } from "@/components/Logo";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useMe } from "@/hooks/useMe";
 import { AdminPerm, hasAdminPerm } from "@/lib/auth/permissions";
+import { sectionActive, visibleNavGroups, type NavItem } from "./nav";
 import { findingCount, useInstanceHealth, worstSeverity } from "@/hooks/useInstanceHealth";
 import type { CheckSeverity } from "@/lib/api/client/admin/instance";
-import { AdminBadge } from "./AdminBadge";
+import { IS_MAC, openCommandPalette } from "./CommandPalette";
+import { EnvPill } from "./EnvPill";
+import { UpdatePill } from "./UpdatePill";
+import { UserMenu } from "./UserMenu";
 
-export interface NavItem {
-    to: string;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    end?: boolean;
-    // Admin permission bit the backend gates this route's data on.
-    perm?: number;
-    // Renders the live count of instance findings next to the label.
-    healthBadge?: boolean;
+const RAIL_KEY = "warmbly-admin:sidebar";
+const SPRING = { type: "spring", stiffness: 520, damping: 42, mass: 0.7 } as const;
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+function readRail(): boolean {
+    try {
+        return localStorage.getItem(RAIL_KEY) === "rail";
+    } catch {
+        return false;
+    }
 }
 
-export interface NavGroup {
-    label: string;
-    items: NavItem[];
-}
-
-export const NAV_GROUPS: NavGroup[] = [
-    {
-        label: "Overview",
-        items: [{ to: "/", label: "Overview", icon: LayoutDashboard, end: true }],
-    },
-    {
-        label: "Operations",
-        items: [
-            { to: "/workers", label: "Workers", icon: Server, end: true, perm: AdminPerm.ViewWorkers },
-            { to: "/fleet", label: "Fleet", icon: Network, perm: AdminPerm.ViewWorkers },
-            { to: "/mailboxes", label: "Mailboxes", icon: Mailbox, perm: AdminPerm.ViewUsers },
-            { to: "/sync", label: "Sync", icon: RefreshCw, perm: AdminPerm.ViewUsers },
-            { to: "/warmup", label: "Warmup", icon: Flame, end: true, perm: AdminPerm.ViewWarmupPool },
-            { to: "/warmup/appeals", label: "Warmup Appeals", icon: ShieldCheck, perm: AdminPerm.ReviewAppeals },
-            { to: "/warmup-content", label: "Warmup Content", icon: Sparkles, perm: AdminPerm.ViewWarmupPool },
-            { to: "/placement", label: "Seed panel", icon: Inbox, perm: AdminPerm.ViewWarmupPool },
-            { to: "/campaigns", label: "Campaigns", icon: Megaphone, perm: AdminPerm.ViewCampaigns },
-            { to: "/sends", label: "Sends", icon: SendHorizonal, perm: AdminPerm.ViewCampaigns },
-        ],
-    },
-    {
-        label: "Accounts",
-        items: [
-            { to: "/users", label: "Users", icon: Users, perm: AdminPerm.ViewUsers },
-            { to: "/organizations", label: "Organizations", icon: Building2, perm: AdminPerm.ViewOrganizations },
-            { to: "/limit-requests", label: "Limit requests", icon: Gauge, perm: AdminPerm.ViewOrganizations },
-            { to: "/developer-apps", label: "Developer apps", icon: Blocks, perm: AdminPerm.ViewOrganizations },
-            { to: "/discounts", label: "Promo codes", icon: TicketPercent, perm: AdminPerm.ViewOrganizations },
-            { to: "/outreach", label: "Outreach", icon: Send, perm: AdminPerm.ViewOrganizations },
-            { to: "/admins", label: "Admins", icon: UserCog, perm: AdminPerm.GrantAdminAccess },
-            { to: "/testers", label: "Testers", icon: FlaskConical, perm: AdminPerm.ViewUsers },
-        ],
-    },
-    {
-        label: "Insight",
-        items: [
-            { to: "/events", label: "Live Events", icon: Radio },
-            { to: "/audit", label: "Audit Log", icon: FileText, perm: AdminPerm.ViewAuditLogs },
-            { to: "/jobs", label: "Jobs", icon: CalendarClock, perm: AdminPerm.ViewAnalytics },
-        ],
-    },
-    {
-        label: "Instance",
-        items: [
-            {
-                to: "/health",
-                label: "Setup and health",
-                icon: HeartPulse,
-                perm: AdminPerm.ViewAnalytics,
-                healthBadge: true,
-            },
-            {
-                to: "/configuration",
-                label: "Configuration",
-                icon: SlidersHorizontal,
-                perm: AdminPerm.ManageSettings,
-            },
-            {
-                to: "/transfers",
-                label: "Transfers",
-                icon: ArrowLeftRight,
-                perm: AdminPerm.ViewOrganizations,
-            },
-        ],
-    },
-];
-
-// visibleNavGroups drops every item the signed-in admin cannot open and
-// every group that ends up empty.
-export function visibleNavGroups(mask: number | undefined): NavGroup[] {
-    return NAV_GROUPS.map((group) => ({
-        ...group,
-        items: group.items.filter(
-            (item) => item.perm === undefined || hasAdminPerm(mask, item.perm),
-        ),
-    })).filter((group) => group.items.length > 0);
+function isTyping(el: EventTarget | null): boolean {
+    if (!(el instanceof HTMLElement)) return false;
+    return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
 }
 
 export function Sidebar() {
+    const [rail, setRail] = useState(readRail);
+
+    function toggleRail() {
+        setRail((v) => {
+            try {
+                localStorage.setItem(RAIL_KEY, v ? "expanded" : "rail");
+            } catch {
+                /* ignore */
+            }
+            return !v;
+        });
+    }
+
+    useEffect(() => {
+        function onKey(e: KeyboardEvent) {
+            if (e.key !== "[" || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+            e.preventDefault();
+            toggleRail();
+        }
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+    }, []);
+
+    const iconBtn =
+        "grid size-7 shrink-0 place-items-center rounded-md text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
+
     return (
-        <aside
-            className={cn(
-                "hidden md:flex md:w-64 lg:w-72 shrink-0 flex-col",
-                "border-r border-sidebar-border bg-sidebar admin-sidebar-pattern",
-            )}
+        <motion.aside
+            initial={false}
+            animate={{ width: rail ? 56 : 244 }}
+            transition={{ duration: 0.28, ease: EASE }}
+            className="group/sidebar hidden shrink-0 flex-col overflow-hidden md:flex"
         >
-            {/* h-14 matches the Topbar so the two headers sit on one line. */}
-            <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-4 border-b border-sidebar-border">
-                <SidebarBrand />
-                <AdminBadge compact />
+            <div className={cn("flex h-[52px] shrink-0 items-center gap-1 pt-1", rail ? "justify-center px-2" : "px-3")}>
+                <Link
+                    to="/"
+                    aria-label="Overview"
+                    className={cn(
+                        "flex h-8 min-w-0 items-center rounded-md transition-colors outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring/40",
+                        rail ? "w-8 justify-center" : "px-1.5",
+                    )}
+                >
+                    {rail ? <SidebarMark /> : <SidebarBrand />}
+                </Link>
+                {!rail && (
+                    <div className="ml-auto flex items-center gap-0.5">
+                        <button
+                            type="button"
+                            onClick={toggleRail}
+                            aria-label="Collapse sidebar"
+                            title="Collapse sidebar  ["
+                            className={cn(iconBtn, "opacity-0 group-hover/sidebar:opacity-100 focus-visible:opacity-100")}
+                        >
+                            <PanelLeft className="size-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={openCommandPalette}
+                            aria-label="Search and go to"
+                            title={`Search (${IS_MAC ? "⌘" : "Ctrl+"}K)`}
+                            className={iconBtn}
+                        >
+                            <Search className="size-4" />
+                        </button>
+                    </div>
+                )}
             </div>
 
-            <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-5">
-                <NavList />
+            {rail && (
+                <div className="flex shrink-0 justify-center pb-2">
+                    <RailTip label={`Search  ${IS_MAC ? "⌘" : "Ctrl "}K`}>
+                        <button type="button" onClick={openCommandPalette} aria-label="Search and go to" className={iconBtn}>
+                            <Search className="size-4" />
+                        </button>
+                    </RailTip>
+                </div>
+            )}
+
+            <nav className={cn("flex-1 overflow-x-hidden overflow-y-auto pt-1 pb-3", rail ? "px-2" : "px-3")}>
+                <NavList rail={rail} />
             </nav>
 
-            <div className="px-4 py-3 border-t border-sidebar-border flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Activity className="size-3" />
-                <span>Admin surface · do not share</span>
+            <div className={cn("shrink-0 pb-2", rail ? "flex flex-col items-center gap-1.5 px-2" : "px-2")}>
+                {rail ? (
+                    <RailTip label="Expand sidebar  [">
+                        <button type="button" onClick={toggleRail} aria-label="Expand sidebar" className={iconBtn}>
+                            <PanelLeft className="size-4" />
+                        </button>
+                    </RailTip>
+                ) : (
+                    <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1.5">
+                        <EnvPill />
+                        <UpdatePill />
+                    </div>
+                )}
+                <div className={cn(!rail && "border-t border-sidebar-border pt-2")}>
+                    <UserMenu compact={rail} />
+                </div>
             </div>
-        </aside>
+        </motion.aside>
     );
 }
 
-export function SidebarBrand() {
+function RailTip({ label, children }: { label: string; children: React.ReactNode }) {
     return (
-        <div className="flex items-center gap-2 min-w-0">
-            <Logo className="size-6 shrink-0 text-foreground" />
-            <div className="min-w-0 leading-none">
-                <div className="text-sm font-semibold text-sidebar-foreground leading-none truncate">
-                    Warmbly
-                </div>
-                <div className="text-[11px] text-muted-foreground mt-1">
-                    Control plane
-                </div>
-            </div>
-        </div>
+        <Tooltip delayDuration={150}>
+            <TooltipTrigger asChild>{children}</TooltipTrigger>
+            <TooltipContent side="right" sideOffset={10}>
+                {label}
+            </TooltipContent>
+        </Tooltip>
     );
+}
+
+const COLLAPSED_KEY = "warmbly-admin:nav-collapsed";
+
+function readCollapsed(): Set<string> {
+    try {
+        const raw = localStorage.getItem(COLLAPSED_KEY);
+        return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+        return new Set();
+    }
 }
 
 // NavList renders the permission-filtered groups. Shared by the desktop rail
 // and the mobile drawer; onNavigate lets the drawer close itself on a tap.
-export function NavList({ onNavigate }: { onNavigate?: () => void }) {
+export function NavList({ onNavigate, rail = false }: { onNavigate?: () => void; rail?: boolean }) {
     const { data: me } = useMe();
     const mask = me?.admin_permissions;
     const canReadHealth = hasAdminPerm(mask, AdminPerm.ViewAnalytics);
     const healthQ = useInstanceHealth({ enabled: canReadHealth });
     const findings = findingCount(healthQ.data);
     const worst = worstSeverity(healthQ.data);
+    const [collapsed, setCollapsed] = useState(readCollapsed);
+    // One sliding highlight per list, so the drawer and the rail never share it.
+    const groupId = useId();
+
+    function toggle(label: string) {
+        setCollapsed((prev) => {
+            const next = new Set(prev);
+            if (next.has(label)) next.delete(label);
+            else next.add(label);
+            try {
+                localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+            } catch {
+                /* ignore */
+            }
+            return next;
+        });
+    }
 
     return (
-        <>
-            {visibleNavGroups(mask).map((group) => (
-                <div key={group.label}>
-                    {group.label !== "Overview" && (
-                        <div className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            {group.label}
+        <LayoutGroup id={groupId}>
+            <div className={rail ? "space-y-3" : "space-y-4"}>
+                {visibleNavGroups(mask).map((group) => {
+                    const titled = group.label !== "Overview";
+                    // The rail has no section headers to reopen a section with.
+                    const closed = titled && !rail && collapsed.has(group.label);
+                    return (
+                        <div key={group.label}>
+                            {titled &&
+                                (rail ? (
+                                    <div className="mx-auto mb-2 h-px w-5 bg-sidebar-border" />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => toggle(group.label)}
+                                        aria-expanded={!closed}
+                                        className="group/section mb-0.5 flex h-7 w-full items-center gap-1 rounded-md px-2 text-left text-xs font-medium whitespace-nowrap text-subtle-foreground transition-colors hover:text-sidebar-foreground"
+                                    >
+                                        {group.label}
+                                        <motion.span
+                                            initial={false}
+                                            animate={{ rotate: closed ? 0 : 90 }}
+                                            transition={{ duration: 0.2, ease: EASE }}
+                                            className={cn(
+                                                "grid place-items-center transition-opacity",
+                                                closed ? "opacity-100" : "opacity-0 group-hover/section:opacity-100",
+                                            )}
+                                        >
+                                            <ChevronRight className="size-3" />
+                                        </motion.span>
+                                    </button>
+                                ))}
+                            <AnimatePresence initial={false}>
+                                {!closed && (
+                                    <motion.ul
+                                        key="items"
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: "auto", opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.22, ease: EASE }}
+                                        className="space-y-px overflow-hidden"
+                                    >
+                                        {group.items.map((item) => (
+                                            <li key={item.label}>
+                                                <SidebarLink
+                                                    {...item}
+                                                    rail={rail}
+                                                    onNavigate={onNavigate}
+                                                    badge={
+                                                        item.healthBadge && findings > 0
+                                                            ? { count: findings, severity: worst }
+                                                            : undefined
+                                                    }
+                                                />
+                                            </li>
+                                        ))}
+                                    </motion.ul>
+                                )}
+                            </AnimatePresence>
                         </div>
-                    )}
-                    <ul className="space-y-0.5">
-                        {group.items.map((item) => (
-                            <li key={item.to}>
-                                <SidebarLink
-                                    {...item}
-                                    onNavigate={onNavigate}
-                                    badge={
-                                        item.healthBadge && findings > 0
-                                            ? { count: findings, severity: worst }
-                                            : undefined
-                                    }
-                                />
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            ))}
-        </>
+                    );
+                })}
+            </div>
+        </LayoutGroup>
     );
 }
 
@@ -226,49 +264,77 @@ interface CountBadge {
 }
 
 const BADGE_TONES: Record<CheckSeverity, string> = {
-    error: "bg-red-600 text-white",
-    warning: "bg-amber-500 text-white",
-    info: "bg-sky-600 text-white",
+    error: "bg-red-500/15 text-red-600 dark:text-red-400",
+    warning: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+    info: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+};
+
+const DOT_TONES: Record<CheckSeverity, string> = {
+    error: "bg-red-500",
+    warning: "bg-amber-500",
+    info: "bg-sky-500",
 };
 
 function SidebarLink({
-    to,
     label,
     icon: Icon,
-    end,
+    pages,
     badge,
+    rail,
     onNavigate,
-}: NavItem & { badge?: CountBadge; onNavigate?: () => void }) {
-    return (
-        <NavLink
-            to={to}
-            end={end}
+}: NavItem & { badge?: CountBadge; rail?: boolean; onNavigate?: () => void }) {
+    const { pathname } = useLocation();
+    const isActive = sectionActive({ label, icon: Icon, pages }, pathname);
+    const link = (
+        <Link
+            to={pages[0].to}
             onClick={onNavigate}
-            className={({ isActive }) =>
-                cn(
-                    "group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
-                    "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent",
-                    isActive &&
-                        // Active state uses the admin accent on the left edge and a
-                        // soft amber wash. Distinct from the dashboard's blue active
-                        // state without losing the same shape.
-                        "bg-[var(--admin-accent-soft)] text-[var(--admin-accent-strong)] font-medium relative " +
-                            "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-r before:bg-[var(--admin-accent)]",
-                )
-            }
-        >
-            <Icon className="size-4 shrink-0 opacity-80 group-hover:opacity-100" />
-            <span className="truncate">{label}</span>
-            {badge && (
-                <span
-                    className={cn(
-                        "ml-auto shrink-0 rounded-full px-1.5 text-[10px] font-semibold leading-4 tabular-nums",
-                        BADGE_TONES[badge.severity ?? "info"],
-                    )}
-                >
-                    {badge.count}
-                </span>
+            aria-label={rail ? label : undefined}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+                "group relative flex h-7 items-center gap-2 rounded-md text-[13px] whitespace-nowrap transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                rail ? "w-full justify-center px-0" : "px-2",
+                isActive
+                    ? "font-medium text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
             )}
-        </NavLink>
+        >
+            {isActive && (
+                <motion.span
+                    layoutId="nav-active"
+                    transition={SPRING}
+                    className="absolute inset-0 rounded-md bg-sidebar-accent shadow-[inset_0_0_0_1px_oklch(1_0_0/0.03)] dark:shadow-[inset_0_1px_0_oklch(1_0_0/0.05)]"
+                />
+            )}
+            <Icon
+                className={cn(
+                    "relative size-4 shrink-0 transition-colors duration-150",
+                    isActive ? "text-sidebar-accent-foreground" : "text-subtle-foreground group-hover:text-sidebar-foreground",
+                )}
+            />
+            {!rail && <span className="relative truncate">{label}</span>}
+            {badge &&
+                (rail ? (
+                    <span
+                        className={cn(
+                            "absolute top-1 right-1.5 size-1.5 rounded-full ring-2 ring-sidebar",
+                            DOT_TONES[badge.severity ?? "info"],
+                        )}
+                    />
+                ) : (
+                    <motion.span
+                        initial={{ scale: 0.6, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={SPRING}
+                        className={cn(
+                            "relative ml-auto shrink-0 rounded-[4px] px-1.5 text-[11px] font-medium leading-[18px] tabular-nums",
+                            BADGE_TONES[badge.severity ?? "info"],
+                        )}
+                    >
+                        {badge.count}
+                    </motion.span>
+                ))}
+        </Link>
     );
+    return rail ? <RailTip label={label}>{link}</RailTip> : link;
 }

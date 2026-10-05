@@ -21,7 +21,9 @@ import {
     Rows3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/kit";
 import { ErrorState } from "@/components/ErrorState";
 import { exportCsv } from "@/lib/exportCsv";
 import { cn } from "@/lib/utils";
@@ -56,6 +58,8 @@ interface Props<T> {
     error?: unknown;
     onRetry?: () => void;
     onRowClick?: (row: T) => void;
+    // Highlights one row, e.g. the item open in a side pane.
+    selectedRowId?: string | null;
     sort?: { by: string; desc: boolean };
     onSortChange?: (s: { by: string; desc: boolean }) => void;
     pager?: Pager;
@@ -93,6 +97,7 @@ export function DataTable<T>({
     error,
     onRetry,
     onRowClick,
+    selectedRowId,
     sort,
     onSortChange,
     pager,
@@ -149,7 +154,7 @@ export function DataTable<T>({
         );
     }
 
-    const rowPad = compact ? "py-1.5" : "py-2.5";
+    const rowH = compact ? "h-8" : "h-10";
     const alignCls = (a?: string) => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left");
 
     const count =
@@ -157,35 +162,33 @@ export function DataTable<T>({
             ? `${pager.total.toLocaleString()} ${noun}`
             : `${rows.length} ${rows.length === 1 ? noun.replace(/s$/, "") : noun}`;
 
-    const iconBtn = "grid size-7 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent";
+    const iconBtn = "grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent";
 
     return (
         <div>
             {/* Result count + tidy icon toolbar */}
-            <div className="mb-2.5 flex items-center justify-between gap-3">
-                <span className="text-[12.5px] text-muted-foreground">
+            <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-xs tabular-nums text-muted-foreground">
                     {loading ? "Loading…" : count}
                 </span>
-                <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">
+                <div className="flex items-center gap-0.5">
                     <div className="relative" ref={menuRef}>
                         <button type="button" className={iconBtn} title="Columns" onClick={() => setColMenu((v) => !v)}>
                             <Columns3 className="size-3.5" />
                         </button>
                         {colMenu && (
-                            <div className="absolute right-0 z-30 mt-1.5 w-48 rounded-md border border-border bg-popover p-1 shadow-md">
-                                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                    Columns
+                            <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg bg-popover p-1 shadow-popover">
+                                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                                    Display properties
                                 </div>
                                 {columns.map((c) => (
                                     <label
                                         key={c.id}
-                                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[12.5px] hover:bg-muted/60"
+                                        className="flex h-8 cursor-pointer items-center gap-2 rounded-[5px] px-2 text-[13px] hover:bg-accent"
                                     >
-                                        <input
-                                            type="checkbox"
+                                        <Checkbox
                                             checked={!hidden.has(c.id)}
-                                            onChange={() => toggleCol(c.id)}
-                                            className="size-3.5 accent-[var(--admin-accent)]"
+                                            onCheckedChange={() => toggleCol(c.id)}
                                         />
                                         {c.header}
                                     </label>
@@ -215,11 +218,11 @@ export function DataTable<T>({
             {error ? (
                 <ErrorState error={error} title={errorTitle} onRetry={onRetry} />
             ) : (
-                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="surface-lit overflow-hidden rounded-xl border border-border bg-card">
                     <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-sm">
+                        <table className="w-full border-collapse text-[13px]">
                             <thead>
-                                <tr className="border-b border-border bg-muted/40">
+                                <tr className="border-b border-border">
                                     {visible.map((c) => {
                                         const key = c.sortKey ?? c.id;
                                         const active = sort?.by === key;
@@ -227,7 +230,7 @@ export function DataTable<T>({
                                             <th
                                                 key={c.id}
                                                 className={cn(
-                                                    "whitespace-nowrap px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground",
+                                                    "h-9 whitespace-nowrap px-3 text-xs font-medium text-muted-foreground first:pl-4 last:pr-4",
                                                     alignCls(c.align),
                                                     c.sortable && "cursor-pointer select-none hover:text-foreground",
                                                     c.className,
@@ -239,9 +242,9 @@ export function DataTable<T>({
                                                     {c.sortable &&
                                                         (active ? (
                                                             sort!.desc ? (
-                                                                <ArrowDown className="size-3 text-[var(--admin-accent-strong)]" />
+                                                                <ArrowDown className="size-3 text-foreground" />
                                                             ) : (
-                                                                <ArrowUp className="size-3 text-[var(--admin-accent-strong)]" />
+                                                                <ArrowUp className="size-3 text-foreground" />
                                                             )
                                                         ) : (
                                                             <ChevronsUpDown className="size-3 opacity-30" />
@@ -255,10 +258,10 @@ export function DataTable<T>({
                             <tbody>
                                 {loading &&
                                     Array.from({ length: 8 }).map((_, i) => (
-                                        <tr key={i} className="border-b border-border/60 last:border-0">
+                                        <tr key={i} className={cn("border-b border-border/70 last:border-0", rowH)}>
                                             {visible.map((c) => (
-                                                <td key={c.id} className={cn("px-3", rowPad)}>
-                                                    <Skeleton className="h-4 w-2/3" />
+                                                <td key={c.id} className="px-3 first:pl-4 last:pr-4">
+                                                    <Skeleton className="h-3.5 w-2/3" />
                                                 </td>
                                             ))}
                                         </tr>
@@ -270,12 +273,16 @@ export function DataTable<T>({
                                             key={getRowId(row)}
                                             onClick={onRowClick ? () => onRowClick(row) : undefined}
                                             className={cn(
-                                                "border-b border-border/60 last:border-0 transition-colors",
-                                                onRowClick && "cursor-pointer hover:bg-muted/50",
+                                                "group border-b border-border/70 last:border-0 transition-colors hover:bg-accent/50",
+                                                rowH,
+                                                onRowClick && "cursor-pointer",
+                                                selectedRowId != null &&
+                                                    getRowId(row) === selectedRowId &&
+                                                    "bg-[var(--admin-accent-weak)] hover:bg-[var(--admin-accent-weak)]",
                                             )}
                                         >
                                             {visible.map((c) => (
-                                                <td key={c.id} className={cn("px-3 align-middle text-[13px]", rowPad, alignCls(c.align), c.className)}>
+                                                <td key={c.id} className={cn("px-3 align-middle first:pl-4 last:pr-4", alignCls(c.align), c.className)}>
                                                     {c.cell(row)}
                                                 </td>
                                             ))}
@@ -284,9 +291,8 @@ export function DataTable<T>({
 
                                 {!loading && rows.length === 0 && (
                                     <tr>
-                                        <td colSpan={visible.length} className="px-3 py-14 text-center">
-                                            <div className="text-sm font-medium text-foreground">{emptyTitle}</div>
-                                            <div className="mt-0.5 text-xs text-muted-foreground">{emptyHint}</div>
+                                        <td colSpan={visible.length}>
+                                            <EmptyState title={emptyTitle} hint={emptyHint} />
                                         </td>
                                     </tr>
                                 )}
@@ -297,15 +303,13 @@ export function DataTable<T>({
             )}
 
             {pager && !error && (
-                <div className="mt-3 flex items-center justify-end gap-2 text-xs text-muted-foreground">
-                    <span>Page {pager.page}</span>
-                    <Button variant="outline" size="sm" className="h-7 gap-1 px-2" disabled={!pager.canPrev || loading} onClick={pager.onPrev}>
-                        <ChevronLeft className="size-3.5" />
-                        Prev
+                <div className="mt-2.5 flex items-center justify-end gap-1 text-xs text-muted-foreground">
+                    <span className="mr-1.5 tabular-nums">Page {pager.page}</span>
+                    <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={!pager.canPrev || loading} onClick={pager.onPrev}>
+                        <ChevronLeft />
                     </Button>
-                    <Button variant="outline" size="sm" className="h-7 gap-1 px-2" disabled={!pager.canNext || loading} onClick={pager.onNext}>
-                        Next
-                        <ChevronRight className="size-3.5" />
+                    <Button variant="outline" size="icon-sm" aria-label="Next page" disabled={!pager.canNext || loading} onClick={pager.onNext}>
+                        <ChevronRight />
                     </Button>
                 </div>
             )}

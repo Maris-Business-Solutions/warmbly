@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useRef, type ComponentProps } from "react";
 import Turnstile, { type BoundTurnstileObject } from "react-turnstile";
 import { TURNSTILE_KEY } from "@/lib/env";
+import { useTheme } from "@/lib/theme";
 
 interface Props {
     visible: boolean;
@@ -32,6 +33,8 @@ interface Props {
 }
 
 export function TurnstileModal({ visible, required, onToken, onError }: Props) {
+    // Follow the admin's own theme, not the OS one, when a challenge does show.
+    const { resolved: theme } = useTheme();
     const defaultDevBypassToken = "warmbly-local-turnstile-bypass";
     const devBypassToken = import.meta.env.DEV
         ? import.meta.env.VITE_TURNSTILE_BYPASS_TOKEN?.trim() || defaultDevBypassToken
@@ -128,6 +131,7 @@ export function TurnstileModal({ visible, required, onToken, onError }: Props) {
 
     const turnstileProps = {
         sitekey: TURNSTILE_KEY,
+        theme,
         // The widget instance only arrives through a callback: `Turnstile` is
         // a plain function component, not forwardRef, and its `userRef` prop
         // is the container div. onLoad fires when the widget renders;

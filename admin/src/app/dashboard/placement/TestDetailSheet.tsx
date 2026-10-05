@@ -3,16 +3,18 @@
 // placement group.
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight } from "lucide-react";
+import type { ReactNode } from "react";
+import { ArrowLeftRight, CircleAlert } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Callout, StatusBadge } from "@/components/ui/kit";
 import { ErrorState } from "@/components/ErrorState";
+import { TONE_TEXT, type Tone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import { getPlacementTest, type PlacementCounts } from "@/lib/api/client/admin/placement";
 import { absolute, relative } from "@/app/dashboard/jobs/format";
-import { FolderBadge, StatusBadge } from "./badges";
+import { FolderBadge, TestStatusBadge } from "./badges";
 import { ORIGIN_LABEL, PANEL_LABEL, pct } from "./format";
 
 export function TestDetailSheet({
@@ -42,9 +44,9 @@ function Detail({ id, onOpenTest }: { id: string; onOpenTest: (id: string) => vo
 
     return (
         <>
-            <SheetHeader className="border-b border-border pr-10">
+            <SheetHeader className="gap-1 border-b border-border px-5 py-4 pr-12">
                 <SheetTitle className="truncate">{t?.subject || "Placement test"}</SheetTitle>
-                <SheetDescription className="text-xs">
+                <SheetDescription className="text-[12.5px]">
                     {t ? (
                         <>
                             From <span className="font-mono">{t.sender_email || "unknown sender"}</span>, started{" "}
@@ -56,53 +58,54 @@ function Detail({ id, onOpenTest }: { id: string; onOpenTest: (id: string) => vo
                 </SheetDescription>
             </SheetHeader>
 
-            <div className="flex-1 space-y-5 overflow-y-auto p-4">
+            <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">
                 {q.isLoading && (
                     <div className="space-y-3">
-                        <Skeleton className="h-20 w-full" />
-                        <Skeleton className="h-40 w-full" />
+                        <Skeleton className="h-20 w-full rounded-lg" />
+                        <Skeleton className="h-40 w-full rounded-lg" />
                     </div>
                 )}
                 {q.error && <ErrorState error={q.error} title="Failed to load the test" onRetry={() => q.refetch()} />}
 
                 {t && (
                     <>
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                            <StatusBadge status={t.status} />
-                            <Badge variant="outline" className="text-[10px]">
-                                {PANEL_LABEL[t.panel] ?? t.panel} panel
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px]">
-                                {ORIGIN_LABEL[t.origin] ?? t.origin}
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px]">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <TestStatusBadge status={t.status} />
+                            <StatusBadge>{PANEL_LABEL[t.panel] ?? t.panel} panel</StatusBadge>
+                            <StatusBadge>{ORIGIN_LABEL[t.origin] ?? t.origin}</StatusBadge>
+                            <StatusBadge>
                                 {t.open_tracking || t.link_tracking
                                     ? `tracked (${[t.open_tracking && "opens", t.link_tracking && "clicks"].filter(Boolean).join(", ")})`
                                     : "untracked"}
-                            </Badge>
+                            </StatusBadge>
                             {t.finished_at && (
-                                <span className="text-muted-foreground" title={absolute(t.finished_at)}>
+                                <span className="ml-1 text-xs text-muted-foreground" title={absolute(t.finished_at)}>
                                     finished {relative(t.finished_at)}
                                 </span>
                             )}
                         </div>
 
                         {t.error && (
-                            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">{t.error}</div>
+                            <Callout tone="danger" icon={CircleAlert}>
+                                {t.error}
+                            </Callout>
                         )}
 
                         {t.compare && (
-                            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
-                                <span className="text-muted-foreground">
-                                    Half of a tracking comparison. The other half was sent{" "}
-                                    {t.compare.open_tracking || t.compare.link_tracking ? "tracked" : "untracked"} to the same
-                                    seeds and reached the primary inbox at{" "}
-                                    <span className="font-medium text-foreground">{pct(t.compare.summary.inbox_rate)}</span>.
-                                </span>
-                                <Button size="xs" variant="outline" onClick={() => onOpenTest(t.compare!.id)}>
-                                    <ArrowLeftRight /> Open
-                                </Button>
-                            </div>
+                            <Callout
+                                tone="accent"
+                                icon={ArrowLeftRight}
+                                actions={
+                                    <Button size="xs" variant="outline" onClick={() => onOpenTest(t.compare!.id)}>
+                                        Open
+                                    </Button>
+                                }
+                            >
+                                Half of a tracking comparison. The other half was sent{" "}
+                                {t.compare.open_tracking || t.compare.link_tracking ? "tracked" : "untracked"} to the same
+                                seeds and reached the primary inbox at{" "}
+                                <span className="font-medium text-foreground">{pct(t.compare.summary.inbox_rate)}</span>.
+                            </Callout>
                         )}
 
                         <SummaryGrid counts={t.summary} />
@@ -111,30 +114,39 @@ function Detail({ id, onOpenTest }: { id: string; onOpenTest: (id: string) => vo
                             <FamiliesTable families={t.families ?? []} />
                         </Section>
 
-                        <Section title={`Content score ${t.content.score}/100`}>
+                        <Section
+                            title={
+                                <>
+                                    Content score{" "}
+                                    <span className={cn("tabular-nums", TONE_TEXT[scoreTone(t.content.score)])}>
+                                        {t.content.score}
+                                    </span>
+                                    <span className="text-muted-foreground">/100</span>
+                                </>
+                            }
+                        >
                             {(t.content.issues ?? []).length === 0 ? (
-                                <p className="text-xs text-muted-foreground">The rules pass found nothing to flag in this copy.</p>
+                                <p className="text-[13px] text-muted-foreground">
+                                    The rules pass found nothing to flag in this copy.
+                                </p>
                             ) : (
-                                <ul className="space-y-1.5">
+                                <ul className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
                                     {(t.content.issues ?? []).map((issue, i) => (
-                                        <li key={`${issue.code}-${i}`} className="rounded-md border border-border p-2 text-xs">
-                                            <div className="flex items-center gap-1.5">
-                                                <Badge
-                                                    variant="outline"
-                                                    className={cn(
-                                                        "text-[10px]",
-                                                        issue.severity === "high"
-                                                            ? "border-red-300 bg-red-50 text-red-700"
-                                                            : "border-amber-300 bg-amber-50 text-amber-700",
-                                                    )}
-                                                >
-                                                    {issue.severity}
-                                                </Badge>
-                                                <span>{issue.message}</span>
+                                        <li
+                                            key={`${issue.code}-${i}`}
+                                            className="flex items-start gap-2.5 border-b border-border/70 px-3.5 py-2.5 last:border-0"
+                                        >
+                                            <StatusBadge tone={issue.severity === "high" ? "danger" : "warning"} className="mt-px">
+                                                {issue.severity}
+                                            </StatusBadge>
+                                            <div className="min-w-0 text-[13px]">
+                                                <div className="text-foreground">{issue.message}</div>
+                                                {issue.suggestion && (
+                                                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                                                        {issue.suggestion}
+                                                    </p>
+                                                )}
                                             </div>
-                                            {issue.suggestion && (
-                                                <p className="mt-1 text-muted-foreground">{issue.suggestion}</p>
-                                            )}
                                         </li>
                                     ))}
                                 </ul>
@@ -145,7 +157,7 @@ function Detail({ id, onOpenTest }: { id: string; onOpenTest: (id: string) => vo
                             <ResultsTable results={t.results ?? []} />
                         </Section>
 
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="border-t border-border pt-3 text-xs text-muted-foreground">
                             {t.campaign_id ? "A campaign step" : "An ad-hoc template"}. Test id{" "}
                             <span className="font-mono select-text">{t.id}</span>
                         </p>
@@ -156,27 +168,32 @@ function Detail({ id, onOpenTest }: { id: string; onOpenTest: (id: string) => vo
     );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
     return (
         <section>
-            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</h3>
+            <h3 className="mb-2 text-[13px] font-semibold text-foreground">{title}</h3>
             {children}
         </section>
     );
 }
 
+// Same bands as the dashboard placement page.
+function scoreTone(score: number): Tone {
+    return score >= 80 ? "success" : score >= 50 ? "warning" : "danger";
+}
+
 function SummaryGrid({ counts }: { counts: PlacementCounts }) {
     const tabs = counts.promotions + counts.other;
-    const cells: { label: string; value: number; sub?: string; tone?: string }[] = [
+    const cells: { label: string; value: number; sub?: string; tone?: Tone }[] = [
         { label: "Delivered", value: counts.delivered, sub: `of ${counts.total}` },
-        { label: "Primary inbox", value: counts.inbox, sub: pct(counts.inbox_rate), tone: "text-emerald-700" },
-        { label: "Gmail tabs", value: tabs, sub: pct(counts.tabs_rate), tone: "text-sky-700" },
-        { label: "Spam", value: counts.spam, sub: pct(counts.spam_rate), tone: counts.spam > 0 ? "text-red-700" : undefined },
+        { label: "Primary inbox", value: counts.inbox, sub: pct(counts.inbox_rate), tone: "success" },
+        { label: "Gmail tabs", value: tabs, sub: pct(counts.tabs_rate), tone: "info" },
+        { label: "Spam", value: counts.spam, sub: pct(counts.spam_rate), tone: counts.spam > 0 ? "danger" : undefined },
         {
             label: "Missing",
             value: counts.missing,
             sub: pct(counts.missing_rate),
-            tone: counts.missing > 0 ? "text-amber-700" : undefined,
+            tone: counts.missing > 0 ? "warning" : undefined,
         },
         {
             label: "Pending",
@@ -185,52 +202,74 @@ function SummaryGrid({ counts }: { counts: PlacementCounts }) {
         },
     ];
     return (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3">
             {cells.map((c) => (
-                <div key={c.label} className="rounded-md border border-border bg-card p-2.5">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{c.label}</div>
-                    <div className={cn("mt-0.5 text-lg font-semibold tabular-nums", c.tone)}>{c.value.toLocaleString()}</div>
-                    {c.sub && <div className="text-[11px] text-muted-foreground tabular-nums">{c.sub}</div>}
+                <div key={c.label} className="bg-card px-3.5 py-3">
+                    <div className="text-xs text-muted-foreground">{c.label}</div>
+                    <div
+                        className={cn(
+                            "mt-1 text-[20px] leading-6 font-semibold tracking-[-0.02em] tabular-nums",
+                            c.tone ? TONE_TEXT[c.tone] : "text-foreground",
+                        )}
+                    >
+                        {c.value.toLocaleString()}
+                    </div>
+                    <div className="mt-0.5 h-4 truncate text-xs tabular-nums text-muted-foreground">{c.sub}</div>
                 </div>
             ))}
         </div>
     );
 }
 
+const TABLE = "overflow-hidden surface-lit rounded-xl border border-border bg-card";
+const TH = "h-9 whitespace-nowrap px-3 text-xs font-medium text-muted-foreground first:pl-4 last:pr-4";
+const TD = "px-3 first:pl-4 last:pr-4";
+const TR = "h-10 border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50";
+
 function FamiliesTable({ families }: { families: { family: string; label: string; counts: PlacementCounts }[] }) {
     if (families.length === 0) {
-        return <p className="text-xs text-muted-foreground">No copies yet.</p>;
+        return <p className="text-[13px] text-muted-foreground">No copies yet.</p>;
     }
     return (
-        <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-xs">
-                <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                        <th className="px-2.5 py-1.5 text-left font-medium">Provider</th>
-                        <th className="px-2.5 py-1.5 text-right font-medium">Delivered</th>
-                        <th className="px-2.5 py-1.5 text-right font-medium">Inbox</th>
-                        <th className="px-2.5 py-1.5 text-right font-medium">Tabs</th>
-                        <th className="px-2.5 py-1.5 text-right font-medium">Spam</th>
-                        <th className="px-2.5 py-1.5 text-right font-medium">Missing</th>
-                        <th className="px-2.5 py-1.5 text-right font-medium">Inbox rate</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {families.map((f) => (
-                        <tr key={f.family} className="border-t border-border tabular-nums">
-                            <td className="px-2.5 py-1.5">{f.label}</td>
-                            <td className="px-2.5 py-1.5 text-right">{f.counts.delivered}</td>
-                            <td className="px-2.5 py-1.5 text-right">{f.counts.inbox}</td>
-                            <td className="px-2.5 py-1.5 text-right">{f.counts.promotions + f.counts.other}</td>
-                            <td className={cn("px-2.5 py-1.5 text-right", f.counts.spam > 0 && "text-red-700")}>{f.counts.spam}</td>
-                            <td className={cn("px-2.5 py-1.5 text-right", f.counts.missing > 0 && "text-amber-700")}>
-                                {f.counts.missing}
-                            </td>
-                            <td className="px-2.5 py-1.5 text-right font-medium">{pct(f.counts.inbox_rate)}</td>
+        <div className={TABLE}>
+            <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-[13px]">
+                    <thead>
+                        <tr className="border-b border-border">
+                            <th className={cn(TH, "text-left")}>Provider</th>
+                            <th className={cn(TH, "text-right")}>Delivered</th>
+                            <th className={cn(TH, "text-right")}>Inbox</th>
+                            <th className={cn(TH, "text-right")}>Tabs</th>
+                            <th className={cn(TH, "text-right")}>Spam</th>
+                            <th className={cn(TH, "text-right")}>Missing</th>
+                            <th className={cn(TH, "text-right")}>Inbox rate</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {families.map((f) => (
+                            <tr key={f.family} className={cn(TR, "tabular-nums")}>
+                                <td className={cn(TD, "whitespace-nowrap")}>{f.label}</td>
+                                <td className={cn(TD, "text-right")}>{f.counts.delivered}</td>
+                                <td className={cn(TD, "text-right")}>{f.counts.inbox}</td>
+                                <td className={cn(TD, "text-right")}>{f.counts.promotions + f.counts.other}</td>
+                                <td className={cn(TD, "text-right", f.counts.spam > 0 ? TONE_TEXT.danger : "text-muted-foreground")}>
+                                    {f.counts.spam}
+                                </td>
+                                <td
+                                    className={cn(
+                                        TD,
+                                        "text-right",
+                                        f.counts.missing > 0 ? TONE_TEXT.warning : "text-muted-foreground",
+                                    )}
+                                >
+                                    {f.counts.missing}
+                                </td>
+                                <td className={cn(TD, "text-right font-medium")}>{pct(f.counts.inbox_rate)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
@@ -241,39 +280,41 @@ function ResultsTable({
     results: { seed: string; family_label: string; folder: string; sent_at: string | null; detected_at: string | null; error?: string }[];
 }) {
     if (results.length === 0) {
-        return <p className="text-xs text-muted-foreground">No copies were scheduled.</p>;
+        return <p className="text-[13px] text-muted-foreground">No copies were scheduled.</p>;
     }
     return (
-        <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-xs">
-                <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                        <th className="px-2.5 py-1.5 text-left font-medium">Seed</th>
-                        <th className="px-2.5 py-1.5 text-left font-medium">Provider</th>
-                        <th className="px-2.5 py-1.5 text-left font-medium">Folder</th>
-                        <th className="px-2.5 py-1.5 text-left font-medium">Sent</th>
-                        <th className="px-2.5 py-1.5 text-left font-medium">Found</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {results.map((r, i) => (
-                        <tr key={`${r.seed}-${i}`} className="border-t border-border align-top">
-                            <td className="px-2.5 py-1.5 font-mono">{r.seed}</td>
-                            <td className="px-2.5 py-1.5">{r.family_label}</td>
-                            <td className="px-2.5 py-1.5">
-                                <FolderBadge folder={r.folder} />
-                                {r.error && <div className="mt-0.5 max-w-56 text-[11px] text-red-700">{r.error}</div>}
-                            </td>
-                            <td className="px-2.5 py-1.5 whitespace-nowrap text-muted-foreground" title={absolute(r.sent_at)}>
-                                {r.sent_at ? relative(r.sent_at) : "—"}
-                            </td>
-                            <td className="px-2.5 py-1.5 whitespace-nowrap text-muted-foreground" title={absolute(r.detected_at)}>
-                                {r.detected_at ? relative(r.detected_at) : "—"}
-                            </td>
+        <div className={TABLE}>
+            <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-[13px]">
+                    <thead>
+                        <tr className="border-b border-border">
+                            <th className={cn(TH, "text-left")}>Seed</th>
+                            <th className={cn(TH, "text-left")}>Provider</th>
+                            <th className={cn(TH, "text-left")}>Folder</th>
+                            <th className={cn(TH, "text-left")}>Sent</th>
+                            <th className={cn(TH, "text-left")}>Found</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {results.map((r, i) => (
+                            <tr key={`${r.seed}-${i}`} className={TR}>
+                                <td className={cn(TD, "py-2 font-mono text-[12.5px]")}>{r.seed}</td>
+                                <td className={cn(TD, "whitespace-nowrap")}>{r.family_label}</td>
+                                <td className={cn(TD, "py-2")}>
+                                    <FolderBadge folder={r.folder} />
+                                    {r.error && <div className={cn("mt-1 max-w-56 text-xs", TONE_TEXT.danger)}>{r.error}</div>}
+                                </td>
+                                <td className={cn(TD, "whitespace-nowrap text-muted-foreground")} title={absolute(r.sent_at)}>
+                                    {r.sent_at ? relative(r.sent_at) : "—"}
+                                </td>
+                                <td className={cn(TD, "whitespace-nowrap text-muted-foreground")} title={absolute(r.detected_at)}>
+                                    {r.detected_at ? relative(r.detected_at) : "—"}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

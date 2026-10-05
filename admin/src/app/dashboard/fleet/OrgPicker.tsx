@@ -32,13 +32,13 @@ export function OrgPicker({
             renderItem={(o) => (
                 <div>
                     <div className="font-medium text-foreground">{o.name}</div>
-                    <div className="text-[11px] text-muted-foreground">{o.owner_email}</div>
+                    <div className="text-xs text-muted-foreground">{o.owner_email}</div>
                 </div>
             )}
             renderSelected={(o) => (
                 <div className="truncate">
                     <span className="font-medium">{o.name}</span>
-                    <span className="ml-1.5 text-[11px] text-muted-foreground">{o.owner_email}</span>
+                    <span className="ml-1.5 text-xs text-muted-foreground">{o.owner_email}</span>
                 </div>
             )}
         />

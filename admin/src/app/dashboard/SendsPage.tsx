@@ -37,9 +37,7 @@ export default function SendsPage() {
                 title="Sends"
                 description="Every campaign send between its dispatch and the worker's answer, the tasks that gave up, what tasks reported when they failed, and whether customer webhooks are getting through."
             />
-            <div className="mb-5">
-                <PageTabs tabs={TABS} value={tab} onChange={setTab} />
-            </div>
+            <PageTabs tabs={TABS} value={tab} onChange={setTab} />
             {tab === "in-flight" && <InFlightTab />}
             {tab === "dead-letters" && <DeadLettersTab />}
             {tab === "failures" && <FailuresTab />}

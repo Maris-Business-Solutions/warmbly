@@ -4,11 +4,10 @@
 
 import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/kit";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useCursorPager } from "@/lib/useCursorPager";
@@ -21,13 +20,15 @@ import {
 import { StatusSegments } from "@/app/dashboard/sends/StatusSegments";
 import { ExpandableText } from "@/app/dashboard/jobs/ExpandableText";
 import { absolute, relative, shortId } from "@/app/dashboard/jobs/format";
+import { TabIntro, WorkspaceLink } from "@/app/dashboard/sends/shared";
+import type { Tone } from "@/lib/tones";
 
 type StatusFilter = AdminDeadLetterStatus | "all";
 
-const STATUS_TONE: Record<string, string> = {
-    pending: "border-amber-300 bg-amber-50 text-amber-700",
-    replayed: "border-emerald-300 bg-emerald-50 text-emerald-700",
-    failed: "border-red-300 bg-red-50 text-red-700",
+const STATUS_TONE: Record<string, Tone> = {
+    pending: "warning",
+    replayed: "success",
+    failed: "danger",
 };
 
 export function DeadLettersTab() {
@@ -80,9 +81,9 @@ export function DeadLettersTab() {
             id: "type",
             header: "Task",
             cell: (r) => (
-                <div>
-                    <div className="font-mono text-xs">{r.task_type}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground">{shortId(r.task_id)}</div>
+                <div className="min-w-0">
+                    <div className="font-mono text-xs text-foreground">{r.task_type}</div>
+                    <div className="font-mono text-[11px] text-subtle-foreground">{shortId(r.task_id)}</div>
                 </div>
             ),
             csv: (r) => r.task_type,
@@ -90,21 +91,14 @@ export function DeadLettersTab() {
         {
             id: "workspace",
             header: "Workspace",
-            cell: (r) =>
-                r.organization_id ? (
-                    <Link to={`/organizations/${r.organization_id}`} className="text-xs text-[var(--admin-accent-strong)] hover:underline">
-                        {r.organization_name || r.organization_id}
-                    </Link>
-                ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                ),
+            cell: (r) => <WorkspaceLink id={r.organization_id} name={r.organization_name} />,
             csv: (r) => r.organization_name || "",
         },
         {
             id: "error",
             header: "Last error",
-            className: "max-w-md",
-            cell: (r) => <ExpandableText text={r.last_error} mono />,
+            className: "max-w-md py-2",
+            cell: (r) => <ExpandableText text={r.last_error} mono className="text-muted-foreground" />,
             csv: (r) => r.last_error,
         },
         {
@@ -112,8 +106,9 @@ export function DeadLettersTab() {
             header: "Attempts",
             align: "right",
             cell: (r) => (
-                <span className="text-xs tabular-nums">
-                    {r.attempts} / {r.max_attempts}
+                <span className="text-xs tabular-nums text-foreground">
+                    {r.attempts}
+                    <span className="text-subtle-foreground"> / {r.max_attempts}</span>
                 </span>
             ),
             csv: (r) => `${r.attempts}/${r.max_attempts}`,
@@ -122,9 +117,9 @@ export function DeadLettersTab() {
             id: "status",
             header: "Status",
             cell: (r) => (
-                <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status] ?? "border-zinc-300 text-zinc-600"}`}>
+                <StatusBadge tone={STATUS_TONE[r.status] ?? "neutral"} dot>
                     {r.status}
-                </Badge>
+                </StatusBadge>
             ),
             csv: (r) => r.status,
         },
@@ -132,7 +127,7 @@ export function DeadLettersTab() {
             id: "next_retry",
             header: "Next retry",
             cell: (r) => (
-                <span className="text-xs text-muted-foreground" title={absolute(r.next_retry_at)}>
+                <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums" title={absolute(r.next_retry_at)}>
                     {relative(r.next_retry_at, "—")}
                 </span>
             ),
@@ -142,7 +137,7 @@ export function DeadLettersTab() {
             id: "created",
             header: "Created",
             cell: (r) => (
-                <span className="text-xs text-muted-foreground" title={absolute(r.created_at)}>
+                <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums" title={absolute(r.created_at)}>
                     {relative(r.created_at)}
                 </span>
             ),
@@ -152,7 +147,9 @@ export function DeadLettersTab() {
             id: "replayed_at",
             header: "Replayed",
             defaultHidden: true,
-            cell: (r) => <span className="text-xs text-muted-foreground">{relative(r.replayed_at, "—")}</span>,
+            cell: (r) => (
+                <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">{relative(r.replayed_at, "—")}</span>
+            ),
             csv: (r) => r.replayed_at || "",
         },
         {
@@ -171,7 +168,7 @@ export function DeadLettersTab() {
                         }}
                         title="Re-dispatch this task"
                     >
-                        <RotateCcw className="size-3" /> Replay
+                        <RotateCcw /> Replay
                     </Button>
                 ) : null,
         },
@@ -179,21 +176,22 @@ export function DeadLettersTab() {
 
     return (
         <div>
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <p className="max-w-2xl text-sm text-muted-foreground">
-                    Tasks that exhausted their retries. A pending row can be replayed once the cause is fixed; replayed and failed rows are kept for the record.
-                </p>
-                <StatusSegments
-                    value={status}
-                    onChange={setStatus}
-                    options={[
-                        { value: "all", label: "All", count: counts.pending + counts.replayed + counts.failed },
-                        { value: "pending", label: "Pending", count: counts.pending },
-                        { value: "replayed", label: "Replayed", count: counts.replayed },
-                        { value: "failed", label: "Failed", count: counts.failed },
-                    ]}
-                />
-            </div>
+            <TabIntro
+                actions={
+                    <StatusSegments
+                        value={status}
+                        onChange={setStatus}
+                        options={[
+                            { value: "all", label: "All", count: counts.pending + counts.replayed + counts.failed },
+                            { value: "pending", label: "Pending", count: counts.pending },
+                            { value: "replayed", label: "Replayed", count: counts.replayed },
+                            { value: "failed", label: "Failed", count: counts.failed },
+                        ]}
+                    />
+                }
+            >
+                Tasks that exhausted their retries. A pending row can be replayed once the cause is fixed; replayed and failed rows are kept for the record.
+            </TabIntro>
 
             <DataTable
                 columns={columns}

@@ -1,4 +1,4 @@
-// The version pill in the top bar. Quiet when the instance is current, amber
+// The version pill at the foot of the sidebar. Quiet when the instance is current, amber
 // when a newer version exists, a spinner while an update runs or the backend
 // restarts. It also closes the loop after a restart: once the backend answers
 // with a new build it says "Updated to vX" and refreshes every query.
@@ -48,33 +48,33 @@ export function UpdatePill() {
 
     if (!canRead || (!state && !restarting)) return null;
 
-    let tone = "border-border bg-white text-muted-foreground hover:text-foreground";
+    let tone = "text-subtle-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground";
     let label = buildLabel(state);
     let icon: React.ReactNode = null;
     let title = "Up to date";
 
     if (restarting) {
-        tone = "border-sky-200 bg-sky-50 text-sky-700";
+        tone = "bg-sky-500/10 text-sky-700 dark:text-sky-400";
         label = "Restarting";
         icon = <Loader2 className="size-3 animate-spin" />;
         title = "The backend is restarting after an update";
     } else if (updating) {
-        tone = "border-sky-200 bg-sky-50 text-sky-700";
+        tone = "bg-sky-500/10 text-sky-700 dark:text-sky-400";
         label = "Updating";
         icon = <Loader2 className="size-3 animate-spin" />;
         title = `Update in progress: ${state?.updater.job?.step ?? ""}`;
     } else if (state?.update_available) {
-        tone = "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100";
+        tone = "bg-[var(--admin-accent-soft)] text-[var(--admin-accent-strong)] hover:bg-[color-mix(in_oklab,var(--admin-accent)_22%,transparent)]";
         label = state.latest?.tag && state.reason === "release" ? `Update to ${state.latest.tag}` : "Update available";
         icon = (
             <span className="relative flex size-3.5 items-center justify-center">
-                <span className="absolute inline-flex size-full rounded-full bg-amber-400 opacity-60 animate-ping" />
+                <span className="absolute inline-flex size-full rounded-full bg-[var(--admin-accent)] opacity-40 animate-ping" />
                 <ArrowUpCircle className="relative size-3.5" />
             </span>
         );
         title = `A newer version is available; running ${buildLabel(state)}`;
     } else if (state?.updater.status === "unreachable") {
-        tone = "border-amber-200 bg-white text-amber-700";
+        tone = "text-amber-700 hover:bg-sidebar-accent dark:text-amber-400";
         title = "The updater is not answering";
     }
 
@@ -85,7 +85,7 @@ export function UpdatePill() {
                 onClick={() => setOpen(true)}
                 title={title}
                 className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                    "inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 text-[12px] font-medium tabular-nums transition-colors",
                     tone,
                 )}
             >

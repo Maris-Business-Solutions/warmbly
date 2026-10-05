@@ -3,12 +3,17 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, ScrollText } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, StatusDot } from "@/components/ui/kit";
+import { TONE_DOT, TONE_TEXT, type Tone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import { searchAdminAuditLogs } from "@/lib/api/client/admin/audit";
 import type {
     AdminAuditLog,
@@ -31,19 +36,24 @@ const KNOWN_TARGETS = [
     "user", "email_account", "campaign", "plan",
 ];
 
-// Action -> tone. Destructive actions get red, lifecycle gets green/blue,
-// security operations get purple. Read in the audit feed at a glance.
-const ACTION_TONE: Record<string, string> = {
-    delete: "text-red-600",
-    uninstall: "text-red-600",
-    ban_user: "text-red-600",
-    block_account: "text-red-600",
-    install: "text-emerald-700",
-    create: "text-emerald-700",
-    rotate_keys: "text-purple-700",
-    system_update: "text-blue-700",
-    reboot: "text-blue-700",
+// Action -> tone. Destructive actions read red, lifecycle green/blue,
+// security operations in strong neutral. Read in the audit feed at a glance.
+const ACTION_TONE: Record<string, Tone> = {
+    delete: "danger",
+    uninstall: "danger",
+    ban_user: "danger",
+    block_account: "danger",
+    install: "success",
+    create: "success",
+    rotate_keys: "strong",
+    system_update: "info",
+    reboot: "info",
 };
+
+// Radix Select refuses an empty value, so "any" travels as a sentinel.
+const ANY = "__any";
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 export default function AuditPage() {
     const [filters, setFilters] = useState<AdminAuditLogSearch>({ limit: 50 });
@@ -81,56 +91,61 @@ export default function AuditPage() {
         return Array.from(set).sort();
     }, [data]);
 
+    const rows = data?.data ?? [];
+
     return (
         <div>
             <PageHeader
                 title="Audit log"
                 description="Every mutating admin action. Backed by /admin/audit-logs and the admin_audit_logs table."
             >
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                        type="checkbox"
-                        checked={autoRefresh}
-                        onChange={(e) => setAutoRefresh(e.target.checked)}
-                        className="size-3.5"
-                    />
+                <label className="flex h-7 cursor-pointer items-center gap-2 rounded-md px-1.5 text-[12.5px] text-muted-foreground hover:text-foreground">
+                    <Checkbox checked={autoRefresh} onCheckedChange={(v) => setAutoRefresh(v === true)} />
                     Auto-refresh
+                    {autoRefresh && <StatusDot tone="success" pulse />}
                 </label>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => refetch()}
-                    disabled={isFetching}
-                >
-                    <RefreshCw className="size-4" />
+                <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+                    <RefreshCw className={cn(isFetching && "animate-spin")} />
                     {isFetching ? "Refreshing…" : "Refresh"}
                 </Button>
             </PageHeader>
 
-            <div className="rounded-lg border border-border bg-muted/40 p-3 mb-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="mb-4 grid grid-cols-1 gap-x-3 gap-y-3 surface-lit rounded-xl border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-3">
                 <FilterField label="Action">
-                    <select
-                        value={filters.action ?? ""}
-                        onChange={(e) => applyFilter({ action: e.target.value || undefined })}
-                        className="w-full border border-border rounded px-2 py-1.5 text-sm bg-background"
+                    <Select
+                        value={filters.action ?? ANY}
+                        onValueChange={(v) => applyFilter({ action: v === ANY ? undefined : v })}
                     >
-                        <option value="">(any)</option>
-                        {allActions.map((a) => (
-                            <option key={a} value={a}>{a}</option>
-                        ))}
-                    </select>
+                        <SelectTrigger className="w-full">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ANY}>(any)</SelectItem>
+                            {allActions.map((a) => (
+                                <SelectItem key={a} value={a}>
+                                    {a}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </FilterField>
                 <FilterField label="Target type">
-                    <select
-                        value={filters.target_type ?? ""}
-                        onChange={(e) => applyFilter({ target_type: e.target.value || undefined })}
-                        className="w-full border border-border rounded px-2 py-1.5 text-sm bg-background"
+                    <Select
+                        value={filters.target_type ?? ANY}
+                        onValueChange={(v) => applyFilter({ target_type: v === ANY ? undefined : v })}
                     >
-                        <option value="">(any)</option>
-                        {allTargets.map((t) => (
-                            <option key={t} value={t}>{t}</option>
-                        ))}
-                    </select>
+                        <SelectTrigger className="w-full">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ANY}>(any)</SelectItem>
+                            {allTargets.map((t) => (
+                                <SelectItem key={t} value={t}>
+                                    {t}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </FilterField>
                 <FilterField label="Target ID">
                     <Input
@@ -164,49 +179,65 @@ export default function AuditPage() {
                 </FilterField>
             </div>
 
-            {isLoading && <Skeleton className="h-40 w-full" />}
-
-            {!isLoading && (
-                <div className="border border-border rounded-lg overflow-hidden bg-card">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                            <tr>
-                                <th className="w-8" />
-                                <th className="text-left px-3 py-2 font-medium">When</th>
-                                <th className="text-left px-3 py-2 font-medium">Admin</th>
-                                <th className="text-left px-3 py-2 font-medium">Action</th>
-                                <th className="text-left px-3 py-2 font-medium">Target</th>
-                                <th className="text-left px-3 py-2 font-medium">IP</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {(data?.data ?? []).map((row) => (
-                                <Row key={row.id} row={row} />
-                            ))}
-                            {data && !data.data?.length && (
-                                <tr>
-                                    <td colSpan={6} className="text-center text-muted-foreground py-8 text-sm">
-                                        No audit entries match these filters.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+            {isLoading && (
+                <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="flex h-10 items-center gap-4 border-b border-border/70 px-4 last:border-0">
+                            <Skeleton className="h-3 w-28" />
+                            <Skeleton className="h-3 w-32" />
+                            <Skeleton className="h-3 w-20" />
+                            <Skeleton className="h-3 w-40" />
+                        </div>
+                    ))}
                 </div>
             )}
 
-            <div className="flex items-center justify-between mt-3 text-sm">
-                <div className="text-xs text-muted-foreground">
+            {!isLoading && (
+                <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-[13px]">
+                            <thead>
+                                <tr className="h-9 border-b border-border text-left text-xs text-muted-foreground">
+                                    <th className="w-9 pl-4">
+                                        <span className="sr-only">Expand</span>
+                                    </th>
+                                    <th className="px-3 font-medium">When</th>
+                                    <th className="px-3 font-medium">Admin</th>
+                                    <th className="px-3 font-medium">Action</th>
+                                    <th className="px-3 font-medium">Target</th>
+                                    <th className="px-3 pr-4 font-medium">IP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows.map((row) => (
+                                    <Row key={row.id} row={row} />
+                                ))}
+                                {data && !data.data?.length && (
+                                    <tr>
+                                        <td colSpan={6}>
+                                            <EmptyState icon={ScrollText} title="No audit entries match these filters." />
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-muted-foreground tabular-nums">
                     {data?.data?.length ?? 0} entries
                     {cursors.length > 0 && ` · page ${cursors.length + 1}`}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                     <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setCursors((c) => c.slice(0, -1))}
                         disabled={cursors.length === 0}
                     >
+                        <ChevronLeft />
                         Prev
                     </Button>
                     <Button
@@ -219,6 +250,7 @@ export default function AuditPage() {
                         disabled={!data?.pagination?.next_cursor}
                     >
                         Next
+                        <ChevronRight />
                     </Button>
                 </div>
             </div>
@@ -228,10 +260,8 @@ export default function AuditPage() {
 
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
     return (
-        <div>
-            <Label className="text-[10px] font-semibold text-muted-foreground uppercase block mb-1">
-                {label}
-            </Label>
+        <div className="min-w-0">
+            <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</Label>
             {children}
         </div>
     );
@@ -240,56 +270,65 @@ function FilterField({ label, children }: { label: string; children: React.React
 function Row({ row }: { row: AdminAuditLog }) {
     const [open, setOpen] = useState(false);
     const hasDetails = row.details && Object.keys(row.details).length > 0;
-    const systemActor = row.admin_user_id === "00000000-0000-0000-0000-000000000000";
+    const systemActor = row.admin_user_id === NIL_UUID;
+    const tone = ACTION_TONE[row.action] ?? "neutral";
     return (
         <>
             <tr
-                className="border-t border-border hover:bg-muted/30 cursor-pointer"
+                className={cn(
+                    "h-10 cursor-pointer border-b border-border/70 transition-colors last:border-b-0 hover:bg-accent/50",
+                    open && "bg-accent/40",
+                )}
                 onClick={() => hasDetails && setOpen(!open)}
             >
-                <td className="px-2 py-2 text-center text-muted-foreground">
-                    {hasDetails ? (open ? "▾" : "▸") : ""}
+                <td className="w-9 pl-4 text-subtle-foreground">
+                    {hasDetails && (
+                        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+                    )}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                <td className="whitespace-nowrap px-3 py-2 text-muted-foreground tabular-nums">
                     {new Date(row.created_at).toLocaleString()}
                 </td>
-                <td className="px-3 py-2 text-xs">
+                <td className="px-3 py-2">
                     {systemActor ? (
-                        <span className="text-muted-foreground">system</span>
+                        <span className="text-subtle-foreground">system</span>
                     ) : row.admin_user ? (
-                        <div>
-                            <div>{row.admin_user.first_name} {row.admin_user.last_name}</div>
-                            <div className="text-[10px] text-muted-foreground font-mono">
-                                {row.admin_user.email}
+                        <div className="min-w-0">
+                            <div className="whitespace-nowrap text-foreground">
+                                {row.admin_user.first_name} {row.admin_user.last_name}
                             </div>
+                            <div className="font-mono text-[11px] text-muted-foreground">{row.admin_user.email}</div>
                         </div>
                     ) : (
-                        <span className="font-mono text-[10px] text-muted-foreground">
+                        <span className="font-mono text-[11px] text-muted-foreground">
                             {row.admin_user_id.slice(0, 8)}…
                         </span>
                     )}
                 </td>
-                <td className={`px-3 py-2 text-xs font-medium ${ACTION_TONE[row.action] ?? "text-foreground"}`}>
-                    {row.action}
+                <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[tone])} />
+                        <span className={cn("font-medium", tone === "neutral" ? "text-foreground" : TONE_TEXT[tone])}>
+                            {row.action}
+                        </span>
+                    </span>
                 </td>
-                <td className="px-3 py-2 text-xs">
-                    <div>{row.target_type}</div>
-                    {row.target_id !== "00000000-0000-0000-0000-000000000000" && (
-                        <div className="font-mono text-[10px] text-muted-foreground">
-                            {row.target_id}
-                        </div>
+                <td className="px-3 py-2">
+                    <div className="text-foreground">{row.target_type}</div>
+                    {row.target_id !== NIL_UUID && (
+                        <div className="font-mono text-[11px] text-muted-foreground">{row.target_id}</div>
                     )}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground font-mono">
+                <td className="whitespace-nowrap px-3 py-2 pr-4 font-mono text-xs text-muted-foreground">
                     {row.ip_address || "—"}
                 </td>
             </tr>
             {open && hasDetails && (
-                <tr className="bg-muted/40">
+                <tr className="border-b border-border/70 bg-muted/30 last:border-b-0">
                     <td />
-                    <td colSpan={5} className="px-3 py-3">
-                        <div className="text-[10px] text-muted-foreground mb-1 uppercase">Details</div>
-                        <pre className="bg-background border border-border rounded p-2 text-xs overflow-auto font-mono">
+                    <td colSpan={5} className="px-3 py-3 pr-4">
+                        <div className="mb-1.5 text-xs font-medium text-muted-foreground">Details</div>
+                        <pre className="max-h-80 overflow-auto rounded-md border border-border bg-card p-3 font-mono text-[11.5px] leading-relaxed text-foreground">
                             {JSON.stringify(row.details, null, 2)}
                         </pre>
                     </td>

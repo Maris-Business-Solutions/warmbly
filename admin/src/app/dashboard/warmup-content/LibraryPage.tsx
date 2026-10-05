@@ -1,4 +1,4 @@
-// /warmup-content/library — filterable, paged table of generated conversation
+// /warmup-content/library: filterable, paged table of generated conversation
 // threads, with a detail dialog + archive/unarchive/delete actions.
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,10 +10,9 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Property, PropertyList, StatusBadge } from "@/components/ui/kit";
 import { ErrorState } from "@/components/ErrorState";
 import {
     Dialog,
@@ -40,7 +39,9 @@ import {
     unarchiveWarmupConversation,
     type WarmupConversationRow,
 } from "@/lib/api/client/admin/warmupContent";
-import { CONTENT_STATUS_TONE, fmtDate } from "./shared";
+import { TONE_TEXT } from "@/lib/tones";
+import { cn } from "@/lib/utils";
+import { contentTone, fmtDate } from "./shared";
 
 export default function LibraryPage() {
     const qc = useQueryClient();
@@ -103,11 +104,11 @@ export default function LibraryPage() {
                 id: "subject",
                 header: "Thread",
                 cell: (c) => (
-                    <div className="min-w-0">
-                        <div className="truncate font-medium">
+                    <div className="min-w-0 max-w-[28rem] py-1.5">
+                        <div className="truncate font-medium text-foreground">
                             {c.subject || "(no subject)"}
                         </div>
-                        <div className="truncate text-[11px] text-muted-foreground">
+                        <div className="truncate text-xs text-muted-foreground">
                             {c.theme || c.description || "—"}
                         </div>
                     </div>
@@ -117,16 +118,14 @@ export default function LibraryPage() {
             {
                 id: "segment",
                 header: "Segment",
-                cell: (c) => <span className="text-xs">{c.segment || "—"}</span>,
+                cell: (c) => <span>{c.segment || "—"}</span>,
                 csv: (c) => c.segment,
             },
             {
                 id: "source",
                 header: "Source",
                 cell: (c) => (
-                    <span className="text-xs text-muted-foreground">
-                        {c.source || "—"}
-                    </span>
+                    <span className="text-muted-foreground">{c.source || "—"}</span>
                 ),
                 csv: (c) => c.source,
             },
@@ -147,36 +146,20 @@ export default function LibraryPage() {
             {
                 id: "lint",
                 header: "Lint",
-                cell: (c) =>
-                    c.lint_passed ? (
-                        <Badge
-                            variant="outline"
-                            className="text-[10px] border-emerald-300 bg-emerald-50 text-emerald-700"
-                        >
-                            pass
-                        </Badge>
-                    ) : (
-                        <Badge
-                            variant="outline"
-                            className="text-[10px] border-red-300 bg-red-50 text-red-700"
-                        >
-                            fail
-                        </Badge>
-                    ),
+                cell: (c) => (
+                    <StatusBadge tone={c.lint_passed ? "success" : "danger"}>
+                        {c.lint_passed ? "pass" : "fail"}
+                    </StatusBadge>
+                ),
                 csv: (c) => (c.lint_passed ? "pass" : "fail"),
             },
             {
                 id: "status",
                 header: "Status",
                 cell: (c) => (
-                    <Badge
-                        variant="outline"
-                        className={`text-[10px] ${
-                            CONTENT_STATUS_TONE[c.status] ?? "border-zinc-300 text-zinc-600"
-                        }`}
-                    >
+                    <StatusBadge tone={contentTone(c.status)} dot>
                         {c.status}
-                    </Badge>
+                    </StatusBadge>
                 ),
                 csv: (c) => c.status,
             },
@@ -184,7 +167,7 @@ export default function LibraryPage() {
                 id: "created",
                 header: "Created",
                 cell: (c) => (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="whitespace-nowrap text-muted-foreground">
                         {new Date(c.created_at).toLocaleDateString()}
                     </span>
                 ),
@@ -197,35 +180,35 @@ export default function LibraryPage() {
                 align: "right",
                 cell: (c) => (
                     <div
-                        className="flex items-center justify-end gap-1.5"
+                        className="flex items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {c.status === "archived" ? (
                             <Button
                                 size="xs"
-                                variant="outline"
+                                variant="ghost"
                                 onClick={() => unarchive.mutate(c.id)}
                                 disabled={unarchive.isPending}
                             >
-                                <ArchiveRestore className="size-3" /> Restore
+                                <ArchiveRestore /> Restore
                             </Button>
                         ) : (
                             <Button
                                 size="xs"
-                                variant="outline"
+                                variant="ghost"
                                 onClick={() => archive.mutate(c.id)}
                                 disabled={archive.isPending}
                             >
-                                <Archive className="size-3" /> Archive
+                                <Archive /> Archive
                             </Button>
                         )}
                         <Button
                             size="xs"
-                            variant="outline"
-                            className="text-red-700 hover:bg-red-50"
+                            variant="ghost"
+                            className={cn(TONE_TEXT.danger, "hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400")}
                             onClick={() => setConfirmDelete(c)}
                         >
-                            <Trash2 className="size-3" /> Delete
+                            <Trash2 /> Delete
                         </Button>
                     </div>
                 ),
@@ -237,42 +220,32 @@ export default function LibraryPage() {
     const rows = data?.data ?? [];
 
     return (
-        <div className="space-y-4">
-            <div className="flex flex-wrap items-end gap-3">
-                <div className="w-44">
-                    <Label className="mb-1 text-xs text-muted-foreground">Source</Label>
-                    <Select
-                        value={source || "any"}
-                        onValueChange={(v) => setSource(v === "any" ? "" : v)}
-                    >
-                        <SelectTrigger size="sm">
-                            <SelectValue placeholder="Any source" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="any">Any source</SelectItem>
-                            <SelectItem value="ai">AI generated</SelectItem>
-                            <SelectItem value="curated">Curated</SelectItem>
-                            <SelectItem value="imported">Imported</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="w-40">
-                    <Label className="mb-1 text-xs text-muted-foreground">Status</Label>
-                    <Select
-                        value={status || "any"}
-                        onValueChange={(v) => setStatus(v === "any" ? "" : v)}
-                    >
-                        <SelectTrigger size="sm">
-                            <SelectValue placeholder="Any status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="any">Any status</SelectItem>
-                            <SelectItem value="active">Active</SelectItem>
-                            <SelectItem value="archived">Archived</SelectItem>
-                            <SelectItem value="draft">Draft</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
+        <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+                <FilterSelect
+                    label="Source"
+                    value={source || "any"}
+                    onChange={(v) => setSource(v === "any" ? "" : v)}
+                    placeholder="Any source"
+                    options={[
+                        { value: "any", label: "Any source" },
+                        { value: "ai", label: "AI generated" },
+                        { value: "curated", label: "Curated" },
+                        { value: "imported", label: "Imported" },
+                    ]}
+                />
+                <FilterSelect
+                    label="Status"
+                    value={status || "any"}
+                    onChange={(v) => setStatus(v === "any" ? "" : v)}
+                    placeholder="Any status"
+                    options={[
+                        { value: "any", label: "Any status" },
+                        { value: "active", label: "Active" },
+                        { value: "archived", label: "Archived" },
+                        { value: "draft", label: "Draft" },
+                    ]}
+                />
             </div>
 
             <DataTable
@@ -320,7 +293,7 @@ export default function LibraryPage() {
                             <span className="font-medium">
                                 “{confirmDelete?.subject || "(no subject)"}”
                             </span>{" "}
-                            from the library. This cannot be undone — archive instead if you
+                            from the library. This cannot be undone. Archive instead if you
                             only want it out of rotation.
                         </DialogDescription>
                     </DialogHeader>
@@ -383,73 +356,83 @@ function ConversationDialog({
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                            {c.segment && (
-                                <Badge variant="outline" className="text-[10px]">
-                                    segment: {c.segment}
-                                </Badge>
-                            )}
-                            <Badge variant="outline" className="text-[10px]">
-                                source: {c.source || "—"}
-                            </Badge>
-                            <Badge
-                                variant="outline"
-                                className={`text-[10px] ${
-                                    CONTENT_STATUS_TONE[c.status] ??
-                                    "border-zinc-300 text-zinc-600"
-                                }`}
-                            >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusBadge tone={contentTone(c.status)} dot>
                                 {c.status}
-                            </Badge>
-                            <Badge
-                                variant="outline"
-                                className={`text-[10px] ${
-                                    c.lint_passed
-                                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                                        : "border-red-300 bg-red-50 text-red-700"
-                                }`}
-                            >
+                            </StatusBadge>
+                            <StatusBadge tone={c.lint_passed ? "success" : "danger"}>
                                 lint {c.lint_passed ? "pass" : "fail"}
-                            </Badge>
-                            <span className="text-muted-foreground">
+                            </StatusBadge>
+                            {c.segment && <StatusBadge>segment: {c.segment}</StatusBadge>}
+                            <StatusBadge>source: {c.source || "—"}</StatusBadge>
+                            <span className="ml-1 text-xs tabular-nums text-muted-foreground">
                                 used {c.usage_count}×
                             </span>
                         </div>
 
-                        <div className="max-h-[50vh] space-y-2 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3">
+                        <div className="max-h-[50vh] overflow-y-auto surface-lit rounded-xl border border-border bg-card">
                             {(c.messages ?? []).map((m, i) => (
                                 <div
                                     key={i}
-                                    className="rounded-md border border-border bg-card p-2.5 text-[13px] leading-relaxed whitespace-pre-wrap"
+                                    className="border-b border-border/70 px-3.5 py-3 text-[13px] leading-relaxed whitespace-pre-wrap last:border-0"
                                 >
-                                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    <div className="mb-1 text-xs font-medium text-muted-foreground">
                                         Message {i + 1}
                                     </div>
                                     {m}
                                 </div>
                             ))}
                             {(c.messages ?? []).length === 0 && (
-                                <div className="py-4 text-center text-sm text-muted-foreground">
+                                <div className="py-6 text-center text-[13px] text-muted-foreground">
                                     No messages in this thread.
                                 </div>
                             )}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                            <div>
-                                Generated by job:{" "}
-                                <span className="font-mono">
-                                    {c.generated_by_job_id ?? "—"}
-                                </span>
-                            </div>
-                            <div>Created: {fmtDate(c.created_at)}</div>
-                            <div>Updated: {fmtDate(c.updated_at)}</div>
-                        </div>
+                        <PropertyList className="border-t border-border">
+                            <Property label="Generated by job">
+                                <span className="font-mono text-xs">{c.generated_by_job_id ?? "—"}</span>
+                            </Property>
+                            <Property label="Created">{fmtDate(c.created_at)}</Property>
+                            <Property label="Updated">{fmtDate(c.updated_at)}</Property>
+                        </PropertyList>
                     </div>
                 )}
 
                 <DialogFooter showCloseButton />
             </DialogContent>
         </Dialog>
+    );
+}
+
+function FilterSelect({
+    label,
+    value,
+    onChange,
+    placeholder,
+    options,
+}: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    placeholder: string;
+    options: { value: string; label: string }[];
+}) {
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{label}</span>
+            <Select value={value} onValueChange={onChange}>
+                <SelectTrigger size="sm" className="w-40" aria-label={label}>
+                    <SelectValue placeholder={placeholder} />
+                </SelectTrigger>
+                <SelectContent>
+                    {options.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
     );
 }

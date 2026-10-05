@@ -127,54 +127,61 @@ export function OrganizationOverridesDialog({
                 <DialogHeader>
                     <DialogTitle>Limit overrides</DialogTitle>
                     <DialogDescription>
-                        Leave blank to keep the current value. <strong>0</strong> removes
+                        Leave blank to keep the current value. <span className="font-medium text-foreground">0</span> removes
                         the override (back to plan default or product hard cap). Positive
                         numbers set an explicit ceiling that overrides everything else.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="grid gap-3">
-                    {FIELDS.map((f) => {
-                        const plan = (org.limits ?? {}) as Record<string, number | null | undefined>;
-                        const effective = (org.effective_limits ?? {}) as Record<string, number | null | undefined>;
-                        return (
-                            <div key={f.key} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 text-sm">
-                                <div>
-                                    <Label htmlFor={f.key} className="text-xs font-medium">
-                                        {f.label}
-                                    </Label>
-                                    <div className="text-[10px] text-muted-foreground">
-                                        {f.hint}
+                <div className="grid gap-4">
+                    <div className="overflow-hidden rounded-lg border border-border">
+                        <div className="grid h-9 grid-cols-[1fr_4rem_4.5rem_6rem] items-center gap-3 border-b border-border px-3 text-xs font-medium text-muted-foreground">
+                            <span>Limit</span>
+                            <span className="text-right">Plan</span>
+                            <span className="text-right">Effective</span>
+                            <span className="text-right">Override</span>
+                        </div>
+                        <div className="divide-y divide-border/70">
+                            {FIELDS.map((f) => {
+                                const plan = (org.limits ?? {}) as Record<string, number | null | undefined>;
+                                const effective = (org.effective_limits ?? {}) as Record<string, number | null | undefined>;
+                                return (
+                                    <div
+                                        key={f.key}
+                                        className="grid grid-cols-[1fr_4rem_4.5rem_6rem] items-center gap-3 px-3 py-2 text-[13px]"
+                                    >
+                                        <div className="min-w-0">
+                                            <Label htmlFor={f.key} className="text-[13px] font-medium text-foreground">
+                                                {f.label}
+                                            </Label>
+                                            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                                                {f.hint}
+                                            </div>
+                                        </div>
+                                        <div className="text-right tabular-nums text-muted-foreground">
+                                            {plan[f.key] != null ? plan[f.key] : "—"}
+                                        </div>
+                                        <div className="text-right font-medium tabular-nums text-foreground">
+                                            {effective[f.key] != null ? effective[f.key] : "—"}
+                                        </div>
+                                        <Input
+                                            id={f.key}
+                                            inputMode="numeric"
+                                            placeholder="—"
+                                            value={form[f.key]}
+                                            onChange={(e) =>
+                                                setForm((s) => ({ ...s, [f.key]: e.target.value }))
+                                            }
+                                            className="h-7 w-24 text-right tabular-nums"
+                                        />
                                     </div>
-                                </div>
-                                <div className="text-[10px] text-muted-foreground text-right">
-                                    <div>plan</div>
-                                    <div className="tabular-nums">
-                                        {plan[f.key] != null ? plan[f.key] : "—"}
-                                    </div>
-                                </div>
-                                <div className="text-[10px] text-muted-foreground text-right">
-                                    <div>effective</div>
-                                    <div className="tabular-nums font-medium text-foreground">
-                                        {effective[f.key] != null ? effective[f.key] : "—"}
-                                    </div>
-                                </div>
-                                <Input
-                                    id={f.key}
-                                    inputMode="numeric"
-                                    placeholder="—"
-                                    value={form[f.key]}
-                                    onChange={(e) =>
-                                        setForm((s) => ({ ...s, [f.key]: e.target.value }))
-                                    }
-                                    className="w-24 text-right tabular-nums"
-                                />
-                            </div>
-                        );
-                    })}
+                                );
+                            })}
+                        </div>
+                    </div>
 
-                    <div className="mt-2">
-                        <Label htmlFor="notes" className="text-xs font-medium">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="notes" className="text-xs font-medium text-muted-foreground">
                             Notes
                         </Label>
                         <Input
@@ -192,11 +199,7 @@ export function OrganizationOverridesDialog({
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
                         Cancel
                     </Button>
-                    <Button
-                        onClick={submit}
-                        disabled={mutation.isPending}
-                        className="bg-[var(--admin-accent)] hover:bg-[var(--admin-accent-strong)] text-white"
-                    >
+                    <Button onClick={submit} disabled={mutation.isPending}>
                         {mutation.isPending ? "Saving…" : "Save overrides"}
                     </Button>
                 </DialogFooter>

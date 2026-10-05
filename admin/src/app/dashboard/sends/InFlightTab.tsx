@@ -7,21 +7,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { AlertTriangle, Clock, Hourglass, Play, Send, Timer } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Section, Stat, StatGrid, StatusBadge } from "@/components/ui/kit";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { listInFlightSends, type AdminInFlightSend } from "@/lib/api/client/admin/sends";
 import { runJob, STUCK_SEND_RECLAIMER_JOB } from "@/lib/api/client/admin/jobs";
-import { StatCard } from "@/app/dashboard/sends/StatCard";
+import { TONE_TEXT } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import { absolute, humanSeconds, relative, shortId } from "@/app/dashboard/jobs/format";
-
-const TASK_TONE: Record<string, string> = {
-    pending: "border-amber-300 bg-amber-50 text-amber-700",
-    processing: "border-amber-300 bg-amber-50 text-amber-700",
-    completed: "border-emerald-300 bg-emerald-50 text-emerald-700",
-    failed: "border-red-300 bg-red-50 text-red-700",
-};
+import { TabIntro, WorkspaceLink } from "@/app/dashboard/sends/shared";
+import { fmt, TASK_TONE } from "@/app/dashboard/sends/status";
 
 export function InFlightTab() {
     const qc = useQueryClient();
@@ -63,11 +59,14 @@ export function InFlightTab() {
             id: "campaign",
             header: "Campaign",
             cell: (r) => (
-                <div>
-                    <Link to={`/campaigns/${r.campaign_id}`} className="font-medium text-[var(--admin-accent-strong)] hover:underline">
+                <div className="min-w-0">
+                    <Link
+                        to={`/campaigns/${r.campaign_id}`}
+                        className="text-[13px] font-medium text-foreground decoration-border-strong underline-offset-2 hover:underline"
+                    >
                         {r.campaign_name || shortId(r.campaign_id)}
                     </Link>
-                    <div className="font-mono text-[10px] text-muted-foreground">{shortId(r.campaign_id)}</div>
+                    <div className="font-mono text-[11px] text-subtle-foreground">{shortId(r.campaign_id)}</div>
                 </div>
             ),
             csv: (r) => r.campaign_name,
@@ -75,25 +74,26 @@ export function InFlightTab() {
         {
             id: "workspace",
             header: "Workspace",
-            cell: (r) =>
-                r.organization_id ? (
-                    <Link to={`/organizations/${r.organization_id}`} className="text-xs text-[var(--admin-accent-strong)] hover:underline">
-                        {r.organization_name || r.organization_id}
-                    </Link>
-                ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                ),
+            cell: (r) => <WorkspaceLink id={r.organization_id} name={r.organization_name} />,
             csv: (r) => r.organization_name || "",
         },
-        { id: "contact", header: "Contact", cell: (r) => <span className="text-xs">{r.contact_email}</span>, csv: (r) => r.contact_email },
+        {
+            id: "contact",
+            header: "Contact",
+            cell: (r) => <span className="text-[13px] text-foreground">{r.contact_email}</span>,
+            csv: (r) => r.contact_email,
+        },
         {
             id: "mailbox",
             header: "Mailbox",
             cell: (r) => (
-                <div>
-                    <div className="text-xs">{r.mailbox_email || "—"}</div>
+                <div className="min-w-0">
+                    <div className="truncate text-[13px] text-foreground">{r.mailbox_email || "—"}</div>
                     {r.worker_id && (
-                        <Link to={`/workers/${r.worker_id}`} className="font-mono text-[10px] text-muted-foreground hover:underline">
+                        <Link
+                            to={`/workers/${r.worker_id}`}
+                            className="font-mono text-[11px] text-subtle-foreground hover:text-muted-foreground hover:underline"
+                        >
                             worker {shortId(r.worker_id)}
                         </Link>
                     )}
@@ -105,11 +105,11 @@ export function InFlightTab() {
             id: "task",
             header: "Task",
             cell: (r) => (
-                <div className="flex items-center gap-1.5">
-                    <Badge variant="outline" className={`text-[10px] ${TASK_TONE[r.task_status] ?? "border-zinc-300 text-zinc-600"}`}>
+                <div className="flex items-center gap-2">
+                    <StatusBadge tone={TASK_TONE[r.task_status] ?? "neutral"} dot>
                         {r.task_status || "unknown"}
-                    </Badge>
-                    {r.task_id && <span className="font-mono text-[10px] text-muted-foreground">{shortId(r.task_id)}</span>}
+                    </StatusBadge>
+                    {r.task_id && <span className="font-mono text-[11px] text-subtle-foreground">{shortId(r.task_id)}</span>}
                 </div>
             ),
             csv: (r) => r.task_status,
@@ -119,15 +119,14 @@ export function InFlightTab() {
             header: "Message ID",
             cell: (r) =>
                 r.has_message_id ? (
-                    <Badge
-                        variant="outline"
-                        className="text-[10px] border-emerald-300 bg-emerald-50 text-emerald-700"
+                    <StatusBadge
+                        tone="success"
                         title="The worker put the mail on the wire and only the stamp was lost; the reclaimer stamps it rather than retry"
                     >
                         on the wire
-                    </Badge>
+                    </StatusBadge>
                 ) : (
-                    <span className="text-xs text-muted-foreground">none</span>
+                    <span className="text-xs text-subtle-foreground">none</span>
                 ),
             csv: (r) => (r.has_message_id ? "yes" : "no"),
         },
@@ -138,7 +137,13 @@ export function InFlightTab() {
             cell: (r) => {
                 const late = windowSeconds > 0 && r.age_seconds >= windowSeconds;
                 return (
-                    <span className={`text-xs tabular-nums ${late ? "text-red-700" : "text-muted-foreground"}`} title={absolute(r.dispatched_at)}>
+                    <span
+                        className={cn(
+                            "whitespace-nowrap text-xs tabular-nums",
+                            late ? cn("font-medium", TONE_TEXT.danger) : "text-muted-foreground",
+                        )}
+                        title={absolute(r.dispatched_at)}
+                    >
                         {humanSeconds(r.age_seconds)} ago
                     </span>
                 );
@@ -149,58 +154,58 @@ export function InFlightTab() {
 
     return (
         <div>
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <p className="max-w-2xl text-sm text-muted-foreground">
-                    A reservation is written before SEND_EMAIL goes on the bus and resolved by exactly one worker result.
-                    {reclaimAfter !== undefined && (
-                        <> The reclaimer sweeps every 5 minutes and resolves anything older than {reclaimAfter} minutes.</>
-                    )}
-                </p>
-                <Button size="sm" variant="outline" className="shrink-0 text-xs" onClick={onRun} disabled={run.isPending}>
-                    <Play className="size-3" />
-                    {run.isPending ? "Requesting…" : "Run reclaimer now"}
-                </Button>
-            </div>
+            <TabIntro
+                actions={
+                    <Button size="sm" variant="outline" onClick={onRun} disabled={run.isPending}>
+                        <Play />
+                        {run.isPending ? "Requesting…" : "Run reclaimer now"}
+                    </Button>
+                }
+            >
+                A reservation is written before SEND_EMAIL goes on the bus and resolved by exactly one worker result.
+                {reclaimAfter !== undefined && (
+                    <> The reclaimer sweeps every 5 minutes and resolves anything older than {reclaimAfter} minutes.</>
+                )}
+            </TabIntro>
 
-            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <StatCard icon={Send} label="In flight" value={fmt(summary?.total)} loading={isLoading} />
-                <StatCard icon={Timer} label="Under 5 min" value={fmt(summary?.under_5m)} loading={isLoading} />
-                <StatCard icon={Clock} label="Under 30 min" value={fmt(summary?.under_30m)} loading={isLoading} />
-                <StatCard
+            <StatGrid className="md:grid-cols-5">
+                <Stat icon={Send} label="In flight" value={fmt(summary?.total)} loading={isLoading} />
+                <Stat icon={Timer} label="Under 5 min" value={fmt(summary?.under_5m)} loading={isLoading} />
+                <Stat icon={Clock} label="Under 30 min" value={fmt(summary?.under_30m)} loading={isLoading} />
+                <Stat
                     icon={AlertTriangle}
                     label="Past reclaim window"
                     value={fmt(summary?.past_reclaim_window)}
                     loading={isLoading}
-                    tone={summary?.past_reclaim_window ? "danger" : "neutral"}
+                    tone={summary?.past_reclaim_window ? "danger" : undefined}
                     sub={reclaimAfter !== undefined ? `older than ${reclaimAfter} min` : undefined}
                 />
-                <StatCard
+                <Stat
                     icon={Hourglass}
                     label="Oldest"
                     value={summary?.oldest_dispatched_at ? relative(summary.oldest_dispatched_at) : "—"}
                     loading={isLoading}
                     sub={summary?.oldest_dispatched_at ? absolute(summary.oldest_dispatched_at) : undefined}
+                    className="col-span-2 md:col-span-1"
                 />
-            </div>
+            </StatGrid>
 
-            <DataTable
-                columns={columns}
-                rows={rows}
-                getRowId={(r) => `${r.campaign_id}:${r.contact_id}:${r.sequence_id}`}
-                loading={isLoading}
-                error={error}
-                onRetry={() => refetch()}
-                errorTitle="Failed to load in-flight sends"
-                storageKey="admin.sends.in-flight"
-                csvName="warmbly-in-flight-sends"
-                noun="sends"
-                emptyTitle="Nothing in flight"
-                emptyHint="No reserved send is waiting on a worker result. Rows appear between a SEND_EMAIL dispatch and its EMAIL_SENT or EMAIL_FAILED answer."
-            />
+            <Section title="Reservations">
+                <DataTable
+                    columns={columns}
+                    rows={rows}
+                    getRowId={(r) => `${r.campaign_id}:${r.contact_id}:${r.sequence_id}`}
+                    loading={isLoading}
+                    error={error}
+                    onRetry={() => refetch()}
+                    errorTitle="Failed to load in-flight sends"
+                    storageKey="admin.sends.in-flight"
+                    csvName="warmbly-in-flight-sends"
+                    noun="sends"
+                    emptyTitle="Nothing in flight"
+                    emptyHint="No reserved send is waiting on a worker result. Rows appear between a SEND_EMAIL dispatch and its EMAIL_SENT or EMAIL_FAILED answer."
+                />
+            </Section>
         </div>
     );
-}
-
-function fmt(n: number | undefined): string {
-    return n === undefined ? "—" : n.toLocaleString();
 }

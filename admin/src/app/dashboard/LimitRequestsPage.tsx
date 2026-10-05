@@ -1,4 +1,4 @@
-// Limit-increase request queue — left filter rail + server-driven sortable,
+// Limit-increase request queue: left filter rail + server-driven sortable,
 // cursor-paged table (mirrors OrganizationsPage). Approving writes the
 // corresponding override on the org via the same SetLimitOverrides path the
 // manual editor uses; rejecting stamps the row with required review notes.
@@ -12,9 +12,11 @@ import {
 } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { ArrowRight, Check, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
+import { Segmented, StatusBadge } from "@/components/ui/kit";
+import { TONE_TEXT, type Tone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,11 +60,11 @@ import type {
 
 type StatusFilter = LimitRequestStatus | "all";
 
-const STATUS_TONE: Record<LimitRequestStatus, string> = {
-    pending: "border-amber-300 text-amber-700 bg-amber-50",
-    approved: "border-emerald-300 text-emerald-700 bg-emerald-50",
-    rejected: "border-red-300 text-red-700 bg-red-50",
-    cancelled: "border-zinc-300 text-zinc-600 bg-zinc-50",
+const STATUS_TONE: Record<LimitRequestStatus, Tone> = {
+    pending: "warning",
+    approved: "success",
+    rejected: "danger",
+    cancelled: "neutral",
 };
 
 const FIELD_LABEL: Record<string, string> = {
@@ -74,12 +76,13 @@ const FIELD_LABEL: Record<string, string> = {
     daily_campaign_limit: "Daily sends",
 };
 
-const STATUS_OPTIONS = [
-    { value: "any", label: "Any status" },
+// Status views for the queue's header switcher.
+const STATUS_VIEWS: { value: StatusFilter; label: string }[] = [
     { value: "pending", label: "Pending" },
     { value: "approved", label: "Approved" },
     { value: "rejected", label: "Rejected" },
     { value: "cancelled", label: "Cancelled" },
+    { value: "all", label: "All" },
 ];
 
 const FIELD_OPTIONS = [
@@ -181,16 +184,16 @@ export default function LimitRequestsPage() {
             sortable: true,
             sortKey: "org_name",
             cell: (r) => (
-                <div>
+                <div className="min-w-0 py-1.5 leading-tight">
                     <Link
                         to={`/organizations/${r.organization_id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="font-medium text-[var(--admin-accent-strong)] hover:underline"
+                        className="font-medium text-foreground hover:text-[var(--admin-accent-strong)] hover:underline"
                     >
                         {r.organization?.name ?? r.organization_id}
                     </Link>
                     {r.organization?.slug && (
-                        <div className="font-mono text-[10px] text-muted-foreground">{r.organization.slug}</div>
+                        <div className="mt-0.5 font-mono text-[11px] text-subtle-foreground">{r.organization.slug}</div>
                     )}
                 </div>
             ),
@@ -200,7 +203,7 @@ export default function LimitRequestsPage() {
             id: "requester",
             header: "Requester",
             cell: (r) => (
-                <span className="text-xs">{r.submitted_by_user?.email ?? r.submitted_by}</span>
+                <span className="text-muted-foreground">{r.submitted_by_user?.email ?? r.submitted_by}</span>
             ),
             csv: (r) => r.submitted_by_user?.email ?? r.submitted_by,
         },
@@ -209,7 +212,7 @@ export default function LimitRequestsPage() {
             header: "Field",
             sortable: true,
             sortKey: "field",
-            cell: (r) => <span className="text-xs">{FIELD_LABEL[r.field] ?? r.field}</span>,
+            cell: (r) => <span className="whitespace-nowrap text-foreground">{FIELD_LABEL[r.field] ?? r.field}</span>,
             csv: (r) => FIELD_LABEL[r.field] ?? r.field,
         },
         {
@@ -230,10 +233,10 @@ export default function LimitRequestsPage() {
             sortable: true,
             sortKey: "requested",
             cell: (r) => (
-                <span className="tabular-nums font-medium">
+                <span className="whitespace-nowrap tabular-nums font-medium text-foreground">
                     {r.requested.toLocaleString()}
-                    <span className="text-[10px] text-emerald-600 ml-1">
-                        (+{(r.requested - r.current_effective).toLocaleString()})
+                    <span className={cn("ml-1.5 text-xs font-normal", TONE_TEXT.success)}>
+                        +{(r.requested - r.current_effective).toLocaleString()}
                     </span>
                 </span>
             ),
@@ -243,7 +246,7 @@ export default function LimitRequestsPage() {
             id: "reason",
             header: "Reason",
             cell: (r) => (
-                <span className="text-xs max-w-md truncate block" title={r.reason}>
+                <span className="block max-w-md truncate text-muted-foreground" title={r.reason}>
                     {r.reason}
                 </span>
             ),
@@ -255,12 +258,12 @@ export default function LimitRequestsPage() {
             sortable: true,
             sortKey: "status",
             cell: (r) => (
-                <div>
-                    <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status]}`}>
+                <div className="py-1.5">
+                    <StatusBadge tone={STATUS_TONE[r.status]} dot>
                         {r.status}
-                    </Badge>
+                    </StatusBadge>
                     {r.review_notes && r.status !== "pending" && (
-                        <div className="text-[10px] text-muted-foreground mt-1 max-w-xs truncate" title={r.review_notes}>
+                        <div className="mt-1 max-w-xs truncate text-xs text-muted-foreground" title={r.review_notes}>
                             "{r.review_notes}"
                         </div>
                     )}
@@ -274,7 +277,7 @@ export default function LimitRequestsPage() {
             sortable: true,
             sortKey: "submitted_at",
             cell: (r) => (
-                <span className="text-xs text-muted-foreground">{new Date(r.submitted_at).toLocaleDateString()}</span>
+                <span className="whitespace-nowrap tabular-nums text-muted-foreground">{new Date(r.submitted_at).toLocaleDateString()}</span>
             ),
             csv: (r) => r.submitted_at,
         },
@@ -285,7 +288,7 @@ export default function LimitRequestsPage() {
             sortKey: "reviewed_at",
             defaultHidden: true,
             cell: (r) => (
-                <span className="text-xs text-muted-foreground">
+                <span className="whitespace-nowrap tabular-nums text-muted-foreground">
                     {r.reviewed_at ? new Date(r.reviewed_at).toLocaleDateString() : "—"}
                 </span>
             ),
@@ -298,28 +301,30 @@ export default function LimitRequestsPage() {
             cell: (r) => {
                 const canReview = r.status === "pending";
                 return (
-                    <div className="space-x-1.5 whitespace-nowrap">
+                    <div className="inline-flex items-center gap-1 whitespace-nowrap">
                         <Button
-                            size="sm"
+                            size="xs"
+                            variant="outline"
                             disabled={!canReview}
+                            title={canReview ? "Approve this request" : "Already reviewed"}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setReviewing({ req: r, mode: "approve" });
                             }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs disabled:bg-zinc-200"
                         >
-                            <CheckCircle2 className="size-3" /> Approve
+                            <Check className={cn("size-3", TONE_TEXT.success)} /> Approve
                         </Button>
                         <Button
-                            size="sm"
+                            size="xs"
+                            variant="outline"
                             disabled={!canReview}
+                            title={canReview ? "Reject this request" : "Already reviewed"}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setReviewing({ req: r, mode: "reject" });
                             }}
-                            className="bg-red-600 hover:bg-red-700 text-white text-xs disabled:bg-zinc-200"
                         >
-                            <XCircle className="size-3" /> Reject
+                            <X className={cn("size-3", TONE_TEXT.danger)} /> Reject
                         </Button>
                     </div>
                 );
@@ -331,8 +336,22 @@ export default function LimitRequestsPage() {
         <div>
             <PageHeader
                 title="Limit-increase requests"
+                meta={
+                    data?.pagination?.total != null ? (
+                        <span className="text-[13px] tabular-nums text-subtle-foreground">
+                            {data.pagination.total.toLocaleString()}
+                        </span>
+                    ) : undefined
+                }
                 description="Customer-submitted requests for more capacity than their plan or product hard cap allows. Approving rewrites the per-org override; rejecting stamps the row with notes."
-            />
+            >
+                <Segmented
+                    ariaLabel="Status"
+                    value={status}
+                    onChange={setStatus}
+                    options={STATUS_VIEWS}
+                />
+            </PageHeader>
             <Explorer
                 activeCount={activeCount}
                 onReset={resetAll}
@@ -340,14 +359,6 @@ export default function LimitRequestsPage() {
                     <>
                         <FilterGroup label="Search">
                             <SearchFilter value={query} onChange={setQuery} placeholder="Org, requester, or reason…" />
-                        </FilterGroup>
-                        <FilterGroup label="Status">
-                            <SelectFilter
-                                value={status === "all" ? "any" : status}
-                                onChange={(v) => setStatus(v === "any" ? "all" : (v as LimitRequestStatus))}
-                                options={STATUS_OPTIONS}
-                                placeholder="Any status"
-                            />
                         </FilterGroup>
                         <FilterGroup label="Field">
                             <SelectFilter
@@ -457,8 +468,8 @@ function ReviewDialog({
                     <DialogDescription>
                         {mode === "approve" ? (
                             <>
-                                Approving raises <strong>{fieldLabel}</strong> for{" "}
-                                <span className="font-mono">
+                                Approving raises <span className="font-medium text-foreground">{fieldLabel}</span> for{" "}
+                                <span className="font-medium text-foreground">
                                     {req.organization?.name ?? req.organization_id}
                                 </span>{" "}
                                 from {req.current_effective.toLocaleString()} to{" "}
@@ -474,9 +485,27 @@ function ReviewDialog({
                         )}
                     </DialogDescription>
                 </DialogHeader>
-                <div>
-                    <Label htmlFor="notes" className="text-xs font-medium">
-                        Notes {mode === "reject" ? "(required)" : "(optional)"}
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3.5 py-2.5 text-[13px]">
+                    <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-foreground">
+                            {req.organization?.name ?? req.organization_id}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{fieldLabel}</div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 tabular-nums">
+                        <span className="text-muted-foreground">{req.current_effective.toLocaleString()}</span>
+                        <ArrowRight className="size-3.5 text-subtle-foreground" />
+                        <span className="font-medium text-foreground">{req.requested.toLocaleString()}</span>
+                    </div>
+                </div>
+                {req.reason && (
+                    <p className="-mt-1 border-l-2 border-border pl-3 text-[12.5px] leading-relaxed text-muted-foreground">
+                        {req.reason}
+                    </p>
+                )}
+                <div className="space-y-1.5">
+                    <Label htmlFor="notes" className="text-xs font-medium text-muted-foreground">
+                        Notes <span className="font-normal text-subtle-foreground">{mode === "reject" ? "(required)" : "(optional)"}</span>
                     </Label>
                     <Input
                         id="notes"
@@ -503,11 +532,7 @@ function ReviewDialog({
                             mutation.mutate();
                         }}
                         disabled={mutation.isPending}
-                        className={
-                            mode === "approve"
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                : "bg-red-600 hover:bg-red-700 text-white"
-                        }
+                        variant={mode === "approve" ? "default" : "destructive"}
                     >
                         {mutation.isPending
                             ? "Working…"

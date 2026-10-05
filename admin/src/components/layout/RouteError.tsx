@@ -42,14 +42,14 @@ export function RouteError() {
     ].filter(Boolean) as string[];
 
     return (
-        <div className="mx-auto mt-12 max-w-lg rounded-lg border border-border bg-card p-6">
+        <div className="mx-auto mt-16 max-w-lg rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04)]">
             <div className="flex items-start gap-3">
                 <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--admin-danger)_12%,transparent)] text-[var(--admin-danger)]">
                     <AlertTriangle className="size-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                    <div className="text-base font-semibold text-foreground">{title}</div>
-                    <p className="mt-1 text-sm text-muted-foreground break-words">{message}</p>
+                    <div className="text-[15px] font-semibold text-foreground">{title}</div>
+                    <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground break-words">{message}</p>
                     {meta.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground select-text">
                             {meta.map((m, i) => (
@@ -61,11 +61,11 @@ export function RouteError() {
                         </div>
                     )}
                     <div className="mt-4 flex flex-wrap gap-2">
-                        <Button size="sm" onClick={() => window.location.reload()}>
+                        <Button onClick={() => window.location.reload()}>
                             <RotateCw className="size-3.5" />
                             Try again
                         </Button>
-                        <Button size="sm" variant="outline" asChild>
+                        <Button variant="outline" asChild>
                             <Link to="/">
                                 <House className="size-3.5" />
                                 Back to overview

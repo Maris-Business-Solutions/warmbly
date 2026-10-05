@@ -1,4 +1,4 @@
-// Platform-wide campaign admin — left filter rail + server-driven sortable,
+// Platform-wide campaign admin: left filter rail + server-driven sortable,
 // cursor-paged table (mirrors OrganizationsPage). Use case is finding runaway
 // sends and stopping them: filter by status/tracking/behavior/usage/timeline,
 // then force-stop with a reason that lands in the audit log.
@@ -14,9 +14,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Octagon } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StatusBadge } from "@/components/ui/kit";
 import { Label } from "@/components/ui/label";
 import {
     Dialog,
@@ -47,16 +47,18 @@ import {
 } from "@/lib/dateRange";
 import { searchCampaigns, stopCampaign } from "@/lib/api/client/admin/campaigns";
 import type { AdminCampaignDetail, AdminCampaignSearch } from "@/lib/api/models/admin";
+import { TONE_TEXT, type Tone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 
-const STATUS_TONE: Record<string, string> = {
-    active: "border-emerald-300 text-emerald-700 bg-emerald-50",
-    paused: "border-amber-300 text-amber-700 bg-amber-50",
-    completed: "border-zinc-300 text-zinc-700 bg-zinc-50",
-    draft: "border-zinc-300 text-zinc-500",
-    paused_trial_expired: "border-orange-300 text-orange-700 bg-orange-50",
-    paused_no_accounts: "border-orange-300 text-orange-700 bg-orange-50",
-    paused_guardrail: "border-rose-300 text-rose-700 bg-rose-50",
-    paused_undeliverable: "border-amber-300 text-amber-700 bg-amber-50",
+const STATUS_TONE: Record<string, Tone> = {
+    active: "success",
+    paused: "warning",
+    completed: "neutral",
+    draft: "neutral",
+    paused_trial_expired: "orange",
+    paused_no_accounts: "orange",
+    paused_guardrail: "danger",
+    paused_undeliverable: "warning",
 };
 
 const STATUS_OPTIONS = [
@@ -65,11 +67,13 @@ const STATUS_OPTIONS = [
     { value: "active", label: "Active" },
     { value: "paused", label: "Paused" },
     { value: "completed", label: "Completed" },
-    { value: "paused_trial_expired", label: "Paused — trial expired" },
-    { value: "paused_no_accounts", label: "Paused — no accounts" },
-    { value: "paused_guardrail", label: "Paused — guardrail" },
-    { value: "paused_undeliverable", label: "Paused — undeliverable leads" },
+    { value: "paused_trial_expired", label: "Paused: trial expired" },
+    { value: "paused_no_accounts", label: "Paused: no accounts" },
+    { value: "paused_guardrail", label: "Paused: guardrail" },
+    { value: "paused_undeliverable", label: "Paused: undeliverable leads" },
 ];
+
+const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]));
 
 const pct = (n: number, d: number) => (d ? ((n / d) * 100).toFixed(1) : "—");
 
@@ -186,15 +190,15 @@ export default function CampaignsPage() {
             sortable: true,
             sortKey: "name",
             cell: (c) => (
-                <div>
+                <div className="min-w-0">
                     <Link
                         to={`/campaigns/${c.id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="font-medium text-[var(--admin-accent-strong)] hover:underline"
+                        className="text-[13px] font-medium text-foreground decoration-border-strong underline-offset-2 hover:underline"
                     >
                         {c.name}
                     </Link>
-                    <div className="font-mono text-[10px] text-muted-foreground">{c.id.slice(0, 8)}</div>
+                    <div className="font-mono text-[11px] text-subtle-foreground">{c.id.slice(0, 8)}</div>
                 </div>
             ),
             csv: (c) => c.name,
@@ -205,7 +209,7 @@ export default function CampaignsPage() {
             sortable: true,
             sortKey: "owner_email",
             cell: (c) => (
-                <span className="text-xs">{c.user?.email ?? c.user_id.slice(0, 8)}</span>
+                <span className="text-[13px] text-muted-foreground">{c.user?.email ?? c.user_id.slice(0, 8)}</span>
             ),
             csv: (c) => c.user?.email ?? c.user_id,
         },
@@ -217,12 +221,12 @@ export default function CampaignsPage() {
                     <Link
                         to={`/organizations/${c.organization_id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-[var(--admin-accent-strong)] hover:underline"
+                        className="text-[13px] text-foreground decoration-border-strong underline-offset-2 hover:underline"
                     >
                         {c.organization.name}
                     </Link>
                 ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
+                    <span className="text-xs text-subtle-foreground">—</span>
                 ),
             csv: (c) => c.organization?.name ?? "",
         },
@@ -232,16 +236,44 @@ export default function CampaignsPage() {
             sortable: true,
             sortKey: "status",
             cell: (c) => (
-                <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[c.status] ?? "border-zinc-300 text-zinc-600"}`}>
-                    {c.status}
-                </Badge>
+                <StatusBadge tone={STATUS_TONE[c.status] ?? "neutral"} dot title={STATUS_LABEL[c.status]}>
+                    {c.status.replace(/_/g, " ")}
+                </StatusBadge>
             ),
             csv: (c) => c.status,
         },
-        { id: "contacts", header: "Contacts", align: "right", sortable: true, sortKey: "contact_count", cell: (c) => <span className="tabular-nums">{c.total_contacts.toLocaleString()}</span>, csv: (c) => c.total_contacts },
-        { id: "sent", header: "Sent", align: "right", sortable: true, sortKey: "sent_count", cell: (c) => <span className="tabular-nums">{c.emails_sent.toLocaleString()}</span>, csv: (c) => c.emails_sent },
-        { id: "open", header: "Open", align: "right", cell: (c) => <span className="tabular-nums text-muted-foreground">{c.emails_opened.toLocaleString()}</span>, csv: (c) => c.emails_opened },
-        { id: "reply", header: "Reply", align: "right", cell: (c) => <span className="tabular-nums text-muted-foreground">{pct(c.emails_replied, c.emails_sent)}%</span>, csv: (c) => pct(c.emails_replied, c.emails_sent) },
+        {
+            id: "contacts",
+            header: "Contacts",
+            align: "right",
+            sortable: true,
+            sortKey: "contact_count",
+            cell: (c) => <span className="tabular-nums text-foreground">{c.total_contacts.toLocaleString()}</span>,
+            csv: (c) => c.total_contacts,
+        },
+        {
+            id: "sent",
+            header: "Sent",
+            align: "right",
+            sortable: true,
+            sortKey: "sent_count",
+            cell: (c) => <span className="tabular-nums text-foreground">{c.emails_sent.toLocaleString()}</span>,
+            csv: (c) => c.emails_sent,
+        },
+        {
+            id: "open",
+            header: "Open",
+            align: "right",
+            cell: (c) => <span className="tabular-nums text-muted-foreground">{c.emails_opened.toLocaleString()}</span>,
+            csv: (c) => c.emails_opened,
+        },
+        {
+            id: "reply",
+            header: "Reply",
+            align: "right",
+            cell: (c) => <span className="tabular-nums text-muted-foreground">{pct(c.emails_replied, c.emails_sent)}%</span>,
+            csv: (c) => pct(c.emails_replied, c.emails_sent),
+        },
         {
             id: "bounce",
             header: "Bounce",
@@ -249,12 +281,26 @@ export default function CampaignsPage() {
             cell: (c) => {
                 const rate = pct(c.emails_bounced, c.emails_sent);
                 return (
-                    <span className={`tabular-nums ${Number(rate) > 5 ? "text-red-700" : "text-muted-foreground"}`}>{rate}%</span>
+                    <span className={cn("tabular-nums", Number(rate) > 5 ? cn("font-medium", TONE_TEXT.danger) : "text-muted-foreground")}>
+                        {rate}%
+                    </span>
                 );
             },
             csv: (c) => pct(c.emails_bounced, c.emails_sent),
         },
-        { id: "created", header: "Created", sortable: true, sortKey: "created_at", defaultHidden: true, cell: (c) => <span className="text-xs text-muted-foreground">{new Date(c.created_at).toLocaleDateString()}</span>, csv: (c) => c.created_at },
+        {
+            id: "created",
+            header: "Created",
+            sortable: true,
+            sortKey: "created_at",
+            defaultHidden: true,
+            cell: (c) => (
+                <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                    {new Date(c.created_at).toLocaleDateString()}
+                </span>
+            ),
+            csv: (c) => c.created_at,
+        },
         {
             id: "actions",
             header: "",
@@ -263,17 +309,16 @@ export default function CampaignsPage() {
                 const canStop = c.status === "active" || c.status === "paused";
                 return (
                     <Button
-                        size="sm"
+                        size="xs"
                         variant="outline"
                         disabled={!canStop}
                         onClick={(e) => {
                             e.stopPropagation();
                             setStopping(c);
                         }}
-                        className="text-xs"
                         title={canStop ? "Force-stop this campaign" : "Not running"}
                     >
-                        <Octagon className="size-3" /> Stop
+                        <Octagon /> Stop
                     </Button>
                 );
             },
@@ -408,14 +453,14 @@ function StopCampaignDialog({
                 <DialogHeader>
                     <DialogTitle>Force-stop campaign</DialogTitle>
                     <DialogDescription>
-                        Stopping <span className="font-mono">{campaign.name}</span>.
+                        Stopping <span className="font-medium text-foreground">{campaign.name}</span>.
                         The campaign is paused, so the owner can see why and
                         restart it once it is fixed. The reason is written to the
                         audit trail and to the campaign's own activity feed.
                     </DialogDescription>
                 </DialogHeader>
-                <div>
-                    <Label htmlFor="reason" className="text-xs font-medium">
+                <div className="grid gap-1.5">
+                    <Label htmlFor="reason" className="text-xs font-medium text-muted-foreground">
                         Reason
                     </Label>
                     <Input
@@ -439,7 +484,7 @@ function StopCampaignDialog({
                             mutation.mutate();
                         }}
                         disabled={mutation.isPending}
-                        className="bg-red-600 hover:bg-red-700 text-white"
+                        variant="destructive"
                     >
                         {mutation.isPending ? "Stopping…" : "Stop campaign"}
                     </Button>

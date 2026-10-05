@@ -10,7 +10,6 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 export interface ConfirmOptions {
     title: string;
@@ -51,12 +50,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             {children}
             <DialogPrimitive.Root open={options !== null} onOpenChange={(open) => !open && settle(false)}>
                 <DialogPrimitive.Portal>
-                    <DialogPrimitive.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[60] bg-black/50" />
+                    <DialogPrimitive.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[60] bg-black/40 backdrop-blur-[2px] dark:bg-black/60" />
                     <DialogPrimitive.Content
                         role="alertdialog"
                         data-floating=""
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[60] grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border border-border p-6 shadow-lg duration-200 outline-none sm:max-w-md"
+                        className="bg-background dark:bg-[oklch(0.19_0.004_286)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.96] data-[state=open]:slide-in-from-top-[1%] ease-[cubic-bezier(0.16,1,0.3,1)] fixed top-[50%] left-[50%] z-[60] grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border-0 p-5 shadow-popover duration-150 outline-none sm:max-w-md"
                     >
                         {options && (
                             <>
@@ -67,10 +66,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                                         </span>
                                     )}
                                     <div className="min-w-0 flex flex-col gap-1.5">
-                                        <DialogPrimitive.Title className="text-base leading-snug font-semibold text-foreground">
+                                        <DialogPrimitive.Title className="text-[15px] leading-snug font-semibold text-foreground">
                                             {options.title}
                                         </DialogPrimitive.Title>
-                                        <DialogPrimitive.Description className="text-sm text-muted-foreground">
+                                        <DialogPrimitive.Description className="text-[13px] leading-relaxed text-muted-foreground">
                                             {options.description ?? "This action cannot be undone."}
                                         </DialogPrimitive.Description>
                                     </div>
@@ -81,11 +80,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                                     </Button>
                                     <Button
                                         autoFocus
+                                        variant={options.destructive ? "destructive" : "default"}
                                         onClick={() => settle(true)}
-                                        className={cn(
-                                            options.destructive &&
-                                                "bg-[var(--admin-danger)] text-white hover:bg-[var(--admin-danger)]/90 focus-visible:ring-[var(--admin-danger)]/30",
-                                        )}
                                     >
                                         {options.confirmLabel ?? "Confirm"}
                                     </Button>

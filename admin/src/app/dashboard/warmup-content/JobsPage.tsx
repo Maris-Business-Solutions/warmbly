@@ -1,4 +1,4 @@
-// /warmup-content/jobs — paged table of generation jobs (sync + batch),
+// /warmup-content/jobs: paged table of generation jobs (sync + batch),
 // polled live so running jobs update without a manual refresh. Batch jobs
 // surface their OpenAI batch status and an inline Cancel action.
 
@@ -10,10 +10,12 @@ import {
     useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Ban } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Ban, CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Callout, Property, PropertyList, StatusBadge } from "@/components/ui/kit";
+import { TONE_TEXT } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/ErrorState";
 import {
     Dialog,
@@ -35,7 +37,7 @@ import {
     listWarmupGenerationJobs,
     type WarmupGenerationJob,
 } from "@/lib/api/client/admin/warmupContent";
-import { PoolBadge } from "./components";
+import { ModeBadge, PoolBadge } from "./components";
 import { batchTone, fmtDate, jobTone } from "./shared";
 
 export default function JobsPage() {
@@ -70,27 +72,16 @@ export default function JobsPage() {
                 id: "status",
                 header: "Status",
                 cell: (j) => (
-                    <Badge variant="outline" className={`text-[10px] ${jobTone(j.status)}`}>
+                    <StatusBadge tone={jobTone(j.status)} dot>
                         {j.status}
-                    </Badge>
+                    </StatusBadge>
                 ),
                 csv: (j) => j.status,
             },
             {
                 id: "mode",
                 header: "Mode",
-                cell: (j) => (
-                    <Badge
-                        variant="outline"
-                        className={`text-[10px] ${
-                            j.mode === "batch"
-                                ? "border-sky-300 bg-sky-50 text-sky-700"
-                                : "border-zinc-300 text-zinc-600"
-                        }`}
-                    >
-                        {j.mode ?? "sync"}
-                    </Badge>
-                ),
+                cell: (j) => <ModeBadge mode={j.mode} />,
                 csv: (j) => j.mode ?? "sync",
             },
             {
@@ -98,14 +89,9 @@ export default function JobsPage() {
                 header: "Batch",
                 cell: (j) =>
                     j.mode === "batch" && j.batch_status ? (
-                        <Badge
-                            variant="outline"
-                            className={`text-[10px] ${batchTone(j.batch_status)}`}
-                        >
-                            {j.batch_status}
-                        </Badge>
+                        <StatusBadge tone={batchTone(j.batch_status)}>{j.batch_status}</StatusBadge>
                     ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-subtle-foreground">—</span>
                     ),
                 csv: (j) => j.batch_status ?? "",
             },
@@ -118,23 +104,21 @@ export default function JobsPage() {
             {
                 id: "segment",
                 header: "Segment",
-                cell: (j) => <span className="text-xs">{j.segment || "—"}</span>,
+                cell: (j) => <span>{j.segment || "—"}</span>,
                 csv: (j) => j.segment,
             },
             {
                 id: "trigger",
                 header: "Trigger",
                 cell: (j) => (
-                    <span className="text-xs text-muted-foreground">
-                        {j.trigger || "—"}
-                    </span>
+                    <span className="text-muted-foreground">{j.trigger || "—"}</span>
                 ),
                 csv: (j) => j.trigger,
             },
             {
                 id: "model",
                 header: "Model",
-                cell: (j) => <span className="text-xs">{j.model || "—"}</span>,
+                cell: (j) => <span className="whitespace-nowrap">{j.model || "—"}</span>,
                 csv: (j) => j.model,
             },
             {
@@ -142,8 +126,9 @@ export default function JobsPage() {
                 header: "Generated / Requested",
                 align: "right",
                 cell: (j) => (
-                    <span className="tabular-nums">
-                        {j.generated_count} / {j.requested_count}
+                    <span className="whitespace-nowrap tabular-nums">
+                        {j.generated_count}
+                        <span className="text-muted-foreground"> / {j.requested_count}</span>
                     </span>
                 ),
                 csv: (j) => `${j.generated_count}/${j.requested_count}`,
@@ -154,11 +139,10 @@ export default function JobsPage() {
                 align: "right",
                 cell: (j) => (
                     <span
-                        className={`tabular-nums ${
-                            j.lint_rejected_count > 0
-                                ? "text-amber-700"
-                                : "text-muted-foreground"
-                        }`}
+                        className={cn(
+                            "tabular-nums",
+                            j.lint_rejected_count > 0 ? TONE_TEXT.warning : "text-muted-foreground",
+                        )}
                     >
                         {j.lint_rejected_count}
                     </span>
@@ -171,9 +155,10 @@ export default function JobsPage() {
                 align: "right",
                 cell: (j) => (
                     <span
-                        className={`tabular-nums ${
-                            j.failed_count > 0 ? "text-red-700" : "text-muted-foreground"
-                        }`}
+                        className={cn(
+                            "tabular-nums",
+                            j.failed_count > 0 ? TONE_TEXT.danger : "text-muted-foreground",
+                        )}
                     >
                         {j.failed_count}
                     </span>
@@ -184,9 +169,7 @@ export default function JobsPage() {
                 id: "window",
                 header: "Window",
                 cell: (j) => (
-                    <span className="text-xs text-muted-foreground">
-                        {j.completion_window || "—"}
-                    </span>
+                    <span className="text-muted-foreground">{j.completion_window || "—"}</span>
                 ),
                 csv: (j) => j.completion_window ?? "",
                 defaultHidden: true,
@@ -195,7 +178,7 @@ export default function JobsPage() {
                 id: "batch_id",
                 header: "Batch ID",
                 cell: (j) => (
-                    <span className="font-mono text-[11px] text-muted-foreground">
+                    <span className="font-mono text-xs text-muted-foreground">
                         {j.batch_id || "—"}
                     </span>
                 ),
@@ -206,7 +189,7 @@ export default function JobsPage() {
                 id: "started",
                 header: "Started",
                 cell: (j) => (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="whitespace-nowrap text-muted-foreground">
                         {fmtDate(j.started_at)}
                     </span>
                 ),
@@ -216,7 +199,7 @@ export default function JobsPage() {
                 id: "finished",
                 header: "Finished",
                 cell: (j) => (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="whitespace-nowrap text-muted-foreground">
                         {fmtDate(j.finished_at)}
                     </span>
                 ),
@@ -227,11 +210,11 @@ export default function JobsPage() {
                 header: "Error",
                 cell: (j) =>
                     j.error ? (
-                        <span className="text-xs text-red-700" title={j.error}>
+                        <span className={TONE_TEXT.danger} title={j.error}>
                             {j.error.length > 60 ? `${j.error.slice(0, 60)}…` : j.error}
                         </span>
                     ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-subtle-foreground">—</span>
                     ),
                 csv: (j) => j.error,
                 defaultHidden: true,
@@ -240,7 +223,7 @@ export default function JobsPage() {
                 id: "created",
                 header: "Created",
                 cell: (j) => (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="whitespace-nowrap text-muted-foreground">
                         {new Date(j.created_at).toLocaleString()}
                     </span>
                 ),
@@ -259,18 +242,16 @@ export default function JobsPage() {
                         >
                             <Button
                                 size="xs"
-                                variant="outline"
-                                className="text-red-700 hover:bg-red-50"
+                                variant="ghost"
+                                className={cn(TONE_TEXT.danger, "hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-400")}
                                 onClick={() => cancel.mutate(j.id)}
                                 disabled={cancel.isPending}
                             >
-                                <Ban className="size-3" /> Cancel
+                                <Ban /> Cancel
                             </Button>
                         </div>
                     ) : (
-                        <span className="block text-right text-xs text-muted-foreground">
-                            —
-                        </span>
+                        <span className="block text-right text-subtle-foreground">—</span>
                     ),
             },
         ],
@@ -281,7 +262,7 @@ export default function JobsPage() {
 
     return (
         <>
-            <div className="mb-2 flex justify-end">
+            <div className="mb-1 flex justify-end">
                 <StateLegend label="Job statuses explained" entries={GENERATION_JOB_LEGEND} />
             </div>
             <DataTable
@@ -297,7 +278,7 @@ export default function JobsPage() {
                 csvName="warmbly-warmup-content-jobs"
                 noun="jobs"
                 emptyTitle="No generation jobs"
-                emptyHint="Queue a job from the Generate tab to see it here."
+                emptyHint="Jobs appear here once the controller submits a generation run."
                 pager={{
                     canPrev: pager.canPrev,
                     canNext: !!data?.pagination.has_more,
@@ -317,27 +298,6 @@ export default function JobsPage() {
                 />
             )}
         </>
-    );
-}
-
-function JobDetailField({
-    label,
-    value,
-    mono,
-}: {
-    label: string;
-    value: React.ReactNode;
-    mono?: boolean;
-}) {
-    return (
-        <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {label}
-            </div>
-            <div className={`text-[13px] text-foreground ${mono ? "font-mono break-all" : ""}`}>
-                {value}
-            </div>
-        </div>
     );
 }
 
@@ -369,29 +329,18 @@ function JobDetailDialog({
                     <DialogTitle className="flex items-center gap-2">
                         Generation job
                         {j ? (
-                            <Badge
-                                variant="outline"
-                                className={`text-[10px] ${jobTone(j.status)}`}
-                            >
+                            <StatusBadge tone={jobTone(j.status)} dot>
                                 {j.status}
-                            </Badge>
+                            </StatusBadge>
                         ) : null}
                     </DialogTitle>
                     <DialogDescription>
-                        {j ? (
-                            <span className="font-mono text-[11px]">{j.id}</span>
-                        ) : (
-                            "Full job detail."
-                        )}
+                        {j ? <span className="font-mono text-xs">{j.id}</span> : "Full job detail."}
                     </DialogDescription>
                 </DialogHeader>
 
                 {error ? (
-                    <ErrorState
-                        error={error}
-                        title="Failed to load job"
-                        onRetry={() => refetch()}
-                    />
+                    <ErrorState error={error} title="Failed to load job" onRetry={() => refetch()} />
                 ) : isLoading || !j ? (
                     <div className="space-y-2">
                         <Skeleton className="h-5 w-1/2" />
@@ -400,94 +349,62 @@ function JobDetailDialog({
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                            <JobDetailField
-                                label="Mode"
-                                value={
-                                    <Badge
-                                        variant="outline"
-                                        className={`text-[10px] ${
-                                            isBatch
-                                                ? "border-sky-300 bg-sky-50 text-sky-700"
-                                                : "border-zinc-300 text-zinc-600"
-                                        }`}
-                                    >
-                                        {j.mode ?? "sync"}
-                                    </Badge>
-                                }
-                            />
-                            <JobDetailField label="Pool" value={<PoolBadge pool={j.pool_type} />} />
-                            <JobDetailField label="Segment" value={j.segment || "—"} />
-                            <JobDetailField label="Trigger" value={j.trigger || "—"} />
-                            <JobDetailField label="Model" value={j.model || "—"} />
-                            <JobDetailField label="Theme" value={j.theme || "—"} />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            <JobDetailField
-                                label="Requested"
-                                value={j.requested_count.toLocaleString()}
-                            />
-                            <JobDetailField
-                                label="Generated"
-                                value={j.generated_count.toLocaleString()}
-                            />
-                            <JobDetailField
+                        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
+                            <Count label="Requested" value={j.requested_count} />
+                            <Count label="Generated" value={j.generated_count} />
+                            <Count
                                 label="Lint rejected"
-                                value={j.lint_rejected_count.toLocaleString()}
+                                value={j.lint_rejected_count}
+                                className={j.lint_rejected_count > 0 ? TONE_TEXT.warning : undefined}
                             />
-                            <JobDetailField
+                            <Count
                                 label="Failed"
-                                value={j.failed_count.toLocaleString()}
+                                value={j.failed_count}
+                                className={j.failed_count > 0 ? TONE_TEXT.danger : undefined}
                             />
                         </div>
-
-                        {isBatch && (
-                            <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-3">
-                                <JobDetailField
-                                    label="Batch status"
-                                    value={
-                                        j.batch_status ? (
-                                            <Badge
-                                                variant="outline"
-                                                className={`text-[10px] ${batchTone(
-                                                    j.batch_status,
-                                                )}`}
-                                            >
-                                                {j.batch_status}
-                                            </Badge>
-                                        ) : (
-                                            "—"
-                                        )
-                                    }
-                                />
-                                <JobDetailField
-                                    label="Completion window"
-                                    value={j.completion_window || "—"}
-                                />
-                                <JobDetailField
-                                    label="Batch ID"
-                                    value={j.batch_id || "—"}
-                                    mono
-                                />
-                            </div>
-                        )}
 
                         {j.error && (
-                            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                                <div className="text-[10px] font-semibold uppercase tracking-wider text-red-700">
-                                    Error
-                                </div>
-                                <div className="mt-1 text-[13px] whitespace-pre-wrap text-red-700">
-                                    {j.error}
-                                </div>
-                            </div>
+                            <Callout tone="danger" icon={CircleAlert} title="Error">
+                                <span className="whitespace-pre-wrap">{j.error}</span>
+                            </Callout>
                         )}
 
-                        <div className="grid grid-cols-2 gap-3 text-[11px] text-muted-foreground sm:grid-cols-3">
-                            <div>Started: {fmtDate(j.started_at)}</div>
-                            <div>Finished: {fmtDate(j.finished_at)}</div>
-                            <div>Created: {fmtDate(j.created_at)}</div>
+                        <div className="grid gap-x-8 sm:grid-cols-2">
+                            <PropertyList>
+                                <Property label="Mode">
+                                    <ModeBadge mode={j.mode} />
+                                </Property>
+                                <Property label="Pool">
+                                    <PoolBadge pool={j.pool_type} />
+                                </Property>
+                                <Property label="Segment">{j.segment || "—"}</Property>
+                                <Property label="Trigger">{j.trigger || "—"}</Property>
+                                <Property label="Model">{j.model || "—"}</Property>
+                                <Property label="Theme">{j.theme || "—"}</Property>
+                            </PropertyList>
+                            <PropertyList>
+                                {isBatch && (
+                                    <>
+                                        <Property label="Batch status">
+                                            {j.batch_status ? (
+                                                <StatusBadge tone={batchTone(j.batch_status)}>
+                                                    {j.batch_status}
+                                                </StatusBadge>
+                                            ) : (
+                                                "—"
+                                            )}
+                                        </Property>
+                                        <Property label="Completion window">{j.completion_window || "—"}</Property>
+                                        <Property label="Batch ID">
+                                            <span className="font-mono text-xs break-all">{j.batch_id || "—"}</span>
+                                        </Property>
+                                    </>
+                                )}
+                                <Property label="Started">{fmtDate(j.started_at)}</Property>
+                                <Property label="Finished">{fmtDate(j.finished_at)}</Property>
+                                <Property label="Created">{fmtDate(j.created_at)}</Property>
+                            </PropertyList>
                         </div>
                     </div>
                 )}
@@ -495,5 +412,16 @@ function JobDetailDialog({
                 <DialogFooter showCloseButton />
             </DialogContent>
         </Dialog>
+    );
+}
+
+function Count({ label, value, className }: { label: string; value: number; className?: string }) {
+    return (
+        <div className="bg-card px-3.5 py-2.5">
+            <div className="text-xs text-muted-foreground">{label}</div>
+            <div className={cn("mt-0.5 text-lg font-semibold tracking-[-0.01em] tabular-nums", className)}>
+                {value.toLocaleString()}
+            </div>
+        </div>
     );
 }

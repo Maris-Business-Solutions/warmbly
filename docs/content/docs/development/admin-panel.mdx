@@ -21,7 +21,28 @@ The old paths still redirect, so a bookmark or a link in an older version of the
 
 ## Command palette
 
-`Cmd K` (`Ctrl K` on Linux and Windows) opens the command palette from any page. It jumps to any page by name and searches users, organizations, mailboxes and workers, so a support request that names an email address is one keystroke from the record.
+`Cmd K` (`Ctrl K` on Linux and Windows) opens the command palette from any page. It jumps to any page by name and searches users, organizations, mailboxes and workers, so a support request that names an email address is one keystroke from the record. The search icon at the top of the sidebar opens it too.
+
+## Navigation
+
+The sidebar lists sections. A section with more than one page shows its pages as tabs in the page header, and every page keeps its own address, so bookmarks and links from these docs still land on the right page. Press `[` (or the panel button at the top of the sidebar) to fold the sidebar down to icons and back.
+
+| Section | Pages |
+|---|---|
+| **Fleet** | Workers, Placement (the Fleet page below) |
+| **Mailboxes** | Mailboxes, Sync |
+| **Warmup** | Pool (the Warmup page below), Appeals, Content, Seed panel |
+| **Sending** | Campaigns, Sends |
+| **Organizations** | Organizations, Limit requests |
+| **Growth** | Promo codes, Outreach |
+| **Admins** | Admins, Testers |
+| **Activity** | Audit log, Live events, Jobs |
+
+Overview, Users, Developer apps, Setup and health, Configuration and Transfers are single pages.
+
+## Theme
+
+The panel is dark by default. The account menu at the bottom of the sidebar (your name and email) has a **Theme** submenu to switch to light or to follow the system setting. The choice is kept per browser.
 
 ## Overview
 
@@ -36,8 +57,8 @@ The landing page. Instance-wide counters and their trends, acquisition by channe
 | **Mailboxes** | Every connected mailbox across every workspace, with its state and the worker it sits on |
 | **Sync** | The platform copy of each mailbox's backfill progress and fair-use throttle, with clear-throttle and restart-backfill. The budgets it enforces are the four `sync.*` values under [Configuration > Settings](/development/configuration/#settings-stored-in-the-database); the worker-side engine is the sync governor described under [anti-abuse layers](/development/architecture/#anti-abuse-layers) |
 | **Warmup** | The pools, the blocked list, and the block and unblock history |
-| **Warmup Appeals** | Appeals from blocked mailboxes, to approve or reject |
-| **Warmup Content** | The generated and reviewed warmup conversation bank, its library and generation jobs |
+| **Warmup appeals** | Appeals from blocked mailboxes, to approve or reject |
+| **Warmup content** | The generated and reviewed warmup conversation bank, its library and generation jobs |
 | **Seed panel** | The instance's placement seed inboxes by provider, adding and removing them, every workspace's recent [placement tests](/guides/placement-tests/) with their results, and an operator test that counts against no allowance |
 | **Campaigns** | Every campaign on the instance with its state and owner |
 | **Sends** | In-flight reservations no worker has answered, and the reclaimer that resolves them after 30 minutes; dead letters with replay; task failures; customer webhook delivery health, with reclaim |
@@ -88,12 +109,12 @@ Three tabs.
 
 Reading the tabs needs `view_organizations`; every action needs `manage_organizations`.
 
-## Insight
+## Activity
 
 | Page | What it answers |
 |---|---|
-| **Live Events** | The event bus as it happens |
-| **Audit Log** | Who did what, from where, across the instance |
+| **Live events** | The event bus as it happens |
+| **Audit log** | Who did what, from where, across the instance |
 | **Jobs** | Every background loop on the instance with its last run, next run and last error, and a **Run now** that the owning process picks up within about 15 seconds. The backend's and the consumer's loops are in the same list. The next run is stored, so a restart or deploy resumes the schedule instead of starting a fresh interval, a job that came due while the process was down runs shortly after boot, and when several processes host the same job each slot runs once |
 
 ## Instance
@@ -108,15 +129,15 @@ Reading the tabs needs `view_organizations`; every action needs `manage_organiza
 
 | Page | Bit |
 |---|---|
-| Overview, Live Events | none beyond signing in as an admin |
+| Overview, Live events | none beyond signing in as an admin |
 | Workers, Fleet | `view_workers` |
 | Mailboxes, Sync, Users | `view_users` |
-| Warmup, Warmup Content, Seed panel | `view_warmup_pool` (changing seeds or running a test needs `manage_warmup_bans`) |
-| Warmup Appeals | `review_appeals` |
+| Warmup, Warmup content, Seed panel | `view_warmup_pool` (changing seeds or running a test needs `manage_warmup_bans`) |
+| Warmup appeals | `review_appeals` |
 | Campaigns, Sends | `view_campaigns` |
 | Organizations, Limit requests, Developer apps, Promo codes, Outreach, Transfers | `view_organizations` |
 | Admins | `grant_admin_access` |
-| Audit Log | `view_audit_logs` |
+| Audit log | `view_audit_logs` |
 | Jobs, Setup and health | `view_analytics` |
 | Configuration | `manage_settings` |
 

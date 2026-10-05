@@ -10,15 +10,16 @@ import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Play, Plus, Search, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, Panel, Section, StatusBadge } from "@/components/ui/kit";
 import { ErrorState } from "@/components/ErrorState";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 import { AdminPerm } from "@/lib/auth/permissions";
+import { TONE, TONE_TEXT, type Tone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import {
     listPlacementSeeds,
@@ -29,7 +30,7 @@ import {
     type PlacementTestView,
 } from "@/lib/api/client/admin/placement";
 import { absolute, relative } from "@/app/dashboard/jobs/format";
-import { StatusBadge } from "@/app/dashboard/placement/badges";
+import { TestStatusBadge } from "@/app/dashboard/placement/badges";
 import { describeError, ORIGIN_LABEL, PANEL_LABEL, pct } from "@/app/dashboard/placement/format";
 import { RunTestDialog } from "@/app/dashboard/placement/RunTestDialog";
 import { TestDetailSheet } from "@/app/dashboard/placement/TestDetailSheet";
@@ -38,11 +39,32 @@ import { useDebounced } from "@/app/dashboard/placement/useDebounced";
 // A provider family with fewer seeds than this gives a verdict one mailbox can swing.
 const MIN_SEEDS_PER_FAMILY = 3;
 
-const SEED_STATUS_TONE: Record<string, string> = {
-    active: "border-emerald-300 bg-emerald-50 text-emerald-700",
-    inactive: "border-amber-300 bg-amber-50 text-amber-700",
-    revoked: "border-red-300 bg-red-50 text-red-700",
+const SEED_STATUS_TONE: Record<string, Tone> = {
+    active: "success",
+    inactive: "warning",
+    revoked: "danger",
 };
+
+function SeedStatusBadge({ status }: { status: string }) {
+    return (
+        <StatusBadge tone={SEED_STATUS_TONE[status] ?? "neutral"} dot>
+            {status}
+        </StatusBadge>
+    );
+}
+
+function IdLink({ to, id, canView }: { to: string; id: string; canView: boolean }) {
+    if (!canView) return <span className="font-mono text-xs text-muted-foreground">{id.slice(0, 8)}</span>;
+    return (
+        <Link
+            to={to}
+            onClick={(e) => e.stopPropagation()}
+            className="font-mono text-xs text-[var(--admin-accent-strong)] hover:underline"
+        >
+            {id.slice(0, 8)}
+        </Link>
+    );
+}
 
 export default function PlacementPage() {
     const [params, setParams] = useSearchParams();
@@ -69,7 +91,7 @@ export default function PlacementPage() {
             >
                 {canManage && (
                     <Button size="sm" onClick={() => setRunOpen(true)}>
-                        <Play className="size-4" /> Run a test
+                        <Play /> Run a test
                     </Button>
                 )}
             </PageHeader>
@@ -93,15 +115,6 @@ export default function PlacementPage() {
                     }}
                 />
             )}
-        </div>
-    );
-}
-
-function SectionTitle({ title, hint }: { title: string; hint?: string }) {
-    return (
-        <div className="mb-2">
-            <h2 className="text-sm font-semibold">{title}</h2>
-            {hint && <p className="mt-0.5 max-w-3xl text-xs text-muted-foreground">{hint}</p>}
         </div>
     );
 }
@@ -152,9 +165,9 @@ function SeedsSection({ canManage }: { canManage: boolean }) {
             id: "mailbox",
             header: "Mailbox",
             cell: (s) => (
-                <div className="min-w-0">
-                    <div className="font-mono text-xs">{s.email}</div>
-                    {s.name && <div className="text-[11px] text-muted-foreground">{s.name}</div>}
+                <div className="min-w-0 py-1.5">
+                    <div className="truncate font-mono text-[12.5px] text-foreground">{s.email}</div>
+                    {s.name && <div className="truncate text-xs text-muted-foreground">{s.name}</div>}
                 </div>
             ),
             csv: (s) => s.email,
@@ -162,20 +175,13 @@ function SeedsSection({ canManage }: { canManage: boolean }) {
         {
             id: "family",
             header: "Provider",
-            cell: (s) => <span className="text-xs">{s.family_label}</span>,
+            cell: (s) => <span className="whitespace-nowrap">{s.family_label}</span>,
             csv: (s) => s.family_label,
         },
         {
             id: "status",
             header: "Status",
-            cell: (s) => (
-                <Badge
-                    variant="outline"
-                    className={cn("text-[10px]", SEED_STATUS_TONE[s.status] ?? "border-zinc-300 text-zinc-600")}
-                >
-                    {s.status}
-                </Badge>
-            ),
+            cell: (s) => <SeedStatusBadge status={s.status} />,
             csv: (s) => s.status,
         },
         {
@@ -183,24 +189,11 @@ function SeedsSection({ canManage }: { canManage: boolean }) {
             header: "Worker",
             cell: (s) =>
                 s.worker_id ? (
-                    canViewWorkers ? (
-                        <Link
-                            to={`/workers/${s.worker_id}`}
-                            className="font-mono text-[11px] text-[var(--admin-accent-strong)] hover:underline"
-                        >
-                            {s.worker_id.slice(0, 8)}
-                        </Link>
-                    ) : (
-                        <span className="font-mono text-[11px]">{s.worker_id.slice(0, 8)}</span>
-                    )
+                    <IdLink to={`/workers/${s.worker_id}`} id={s.worker_id} canView={canViewWorkers} />
                 ) : (
-                    <Badge
-                        variant="outline"
-                        className="border-amber-300 bg-amber-50 text-[10px] text-amber-700"
-                        title="Nothing syncs this mailbox, so copies sent to it read as missing"
-                    >
+                    <StatusBadge tone="warning" title="Nothing syncs this mailbox, so copies sent to it read as missing">
                         unassigned
-                    </Badge>
+                    </StatusBadge>
                 ),
             csv: (s) => s.worker_id ?? "",
         },
@@ -209,18 +202,13 @@ function SeedsSection({ canManage }: { canManage: boolean }) {
             header: "Organization",
             cell: (s) =>
                 s.organization_id ? (
-                    canViewOrgs ? (
-                        <Link
-                            to={`/organizations/${s.organization_id}`}
-                            className="font-mono text-[11px] text-[var(--admin-accent-strong)] hover:underline"
-                        >
-                            {s.organization_id.slice(0, 8)}
-                        </Link>
-                    ) : (
-                        <span className="font-mono text-[11px]">{s.organization_id.slice(0, 8)}</span>
-                    )
+                    <IdLink
+                        to={`/organizations/${s.organization_id}`}
+                        id={s.organization_id}
+                        canView={canViewOrgs}
+                    />
                 ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
+                    <span className="text-subtle-foreground">—</span>
                 ),
             csv: (s) => s.organization_id ?? "",
         },
@@ -233,7 +221,8 @@ function SeedsSection({ canManage }: { canManage: boolean }) {
             cell: (s) => (
                 <Button
                     size="xs"
-                    variant="outline"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-foreground"
                     disabled={remove.isPending && remove.variables?.id === s.id}
                     onClick={(e) => {
                         e.stopPropagation();
@@ -247,46 +236,58 @@ function SeedsSection({ canManage }: { canManage: boolean }) {
     }
 
     return (
-        <section>
-            <SectionTitle
-                title="Seeds"
-                hint="Copies are spread round-robin across provider families, so every family on the panel is covered by each test. Seeds on the sender's own domain are always skipped."
-            />
-
-            <div className="mb-3 rounded-lg border border-border bg-card p-3">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Mix by provider
-                </div>
+        <Section
+            className="mt-0"
+            title="Seeds"
+            description="Copies are spread round-robin across provider families, so every family on the panel is covered by each test. Seeds on the sender's own domain are always skipped."
+        >
+            <Panel
+                title="Mix by provider"
+                actions={
+                    seeds.length > 0 ? (
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                            {seeds.length.toLocaleString()} {seeds.length === 1 ? "seed" : "seeds"}
+                        </span>
+                    ) : undefined
+                }
+                className="mb-4"
+                bodyClassName="space-y-3"
+            >
                 {seedsQ.isLoading ? (
                     <Skeleton className="h-6 w-2/3" />
                 ) : mix.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">The panel is empty, so no workspace can test on it yet.</p>
+                    <p className="text-[13px] text-muted-foreground">
+                        The panel is empty, so no workspace can test on it yet.
+                    </p>
                 ) : (
                     <div className="flex flex-wrap gap-1.5">
-                        {mix.map(([label, n]) => (
-                            <span
-                                key={label}
-                                className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
-                                    n < MIN_SEEDS_PER_FAMILY
-                                        ? "border-amber-300 bg-amber-50 text-amber-800"
-                                        : "border-border bg-muted/30",
-                                )}
-                                title={n < MIN_SEEDS_PER_FAMILY ? `Fewer than ${MIN_SEEDS_PER_FAMILY} seeds` : undefined}
-                            >
-                                {label}
-                                <span className="font-semibold tabular-nums">{n}</span>
-                            </span>
-                        ))}
+                        {mix.map(([label, n]) => {
+                            const thin = n < MIN_SEEDS_PER_FAMILY;
+                            return (
+                                <span
+                                    key={label}
+                                    className={cn(
+                                        "inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs",
+                                        thin ? TONE.warning : "border-border bg-muted/40 text-foreground",
+                                    )}
+                                    title={thin ? `Fewer than ${MIN_SEEDS_PER_FAMILY} seeds` : undefined}
+                                >
+                                    {label}
+                                    <span className={cn("font-semibold tabular-nums", !thin && "text-muted-foreground")}>
+                                        {n}
+                                    </span>
+                                </span>
+                            );
+                        })}
                     </div>
                 )}
-                <p className="mt-2 max-w-3xl text-xs text-muted-foreground">
+                <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
                     A healthy panel is weighted toward Microsoft 365 and Google Workspace, where most B2B recipients
                     are, with a few Gmail, Outlook.com and Yahoo seeds, and at least {MIN_SEEDS_PER_FAMILY} per
                     provider. Seeds must be mailboxes nobody reads or engages with: opening, filing or replying to a
                     copy teaches the provider to trust the sender and skews every later result.
                 </p>
-            </div>
+            </Panel>
 
             <DataTable
                 columns={columns}
@@ -306,7 +307,7 @@ function SeedsSection({ canManage }: { canManage: boolean }) {
                         : "An admin with the manage warmup bans permission can add them."
                 }
             />
-        </section>
+        </Section>
     );
 }
 
@@ -346,76 +347,67 @@ function AddSeedsSection() {
     }
 
     return (
-        <section className="mt-6">
-            <SectionTitle
-                title="Add seeds"
-                hint="Any connected mailbox can join the panel. Adding one turns its warmup off and keeps it out of campaign sending, so pick mailboxes that exist only to receive tests."
-            />
-            <div className="relative mb-2 max-w-md">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Section
+            title="Add seeds"
+            description="Any connected mailbox can join the panel. Adding one turns its warmup off and keeps it out of campaign sending, so pick mailboxes that exist only to receive tests."
+        >
+            <div className="relative mb-3 max-w-md">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground" />
                 <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search connected mailboxes by address…"
-                    className="h-8 pl-8 text-[12.5px]"
+                    className="h-8 pl-8"
                     autoComplete="off"
                 />
             </div>
 
             {debounced.length < 2 ? null : candidatesQ.isLoading ? (
-                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full rounded-lg" />
             ) : candidatesQ.error ? (
                 <ErrorState error={candidatesQ.error} title="Search failed" onRetry={() => candidatesQ.refetch()} />
             ) : rows.length === 0 ? (
-                <div className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-                    No connected mailbox matches.
+                <div className="surface-lit rounded-xl border border-border bg-card">
+                    <EmptyState icon={Search} title="No connected mailbox matches." className="py-10" />
                 </div>
             ) : (
-                <div className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-muted/40 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                <tr>
-                                    <th className="px-3 py-2 text-left">Mailbox</th>
-                                    <th className="px-3 py-2 text-left">Provider</th>
-                                    <th className="px-3 py-2 text-left">Status</th>
-                                    <th className="px-3 py-2 text-right" />
+                        <table className="w-full border-collapse text-[13px]">
+                            <thead>
+                                <tr className="border-b border-border">
+                                    <th className={TH}>Mailbox</th>
+                                    <th className={TH}>Provider</th>
+                                    <th className={TH}>Status</th>
+                                    <th className={cn(TH, "text-right")}>
+                                        <span className="sr-only">Actions</span>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {rows.map((m) => {
                                     const onPanel = m.seed_scope === "instance";
                                     return (
-                                        <tr key={m.id} className="border-t border-border">
-                                            <td className="px-3 py-2">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-mono text-xs">{m.email}</span>
+                                        <tr
+                                            key={m.id}
+                                            className="h-10 border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50"
+                                        >
+                                            <td className={TD}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-[12.5px]">{m.email}</span>
                                                     {m.seed_scope === "workspace" && (
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="border-sky-300 bg-sky-50 text-[10px] text-sky-700"
-                                                        >
-                                                            workspace seed
-                                                        </Badge>
+                                                        <StatusBadge tone="info">workspace seed</StatusBadge>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-2 text-xs">{m.family_label}</td>
-                                            <td className="px-3 py-2">
-                                                <Badge
-                                                    variant="outline"
-                                                    className={cn(
-                                                        "text-[10px]",
-                                                        SEED_STATUS_TONE[m.status] ?? "border-zinc-300 text-zinc-600",
-                                                    )}
-                                                >
-                                                    {m.status}
-                                                </Badge>
+                                            <td className={cn(TD, "whitespace-nowrap")}>{m.family_label}</td>
+                                            <td className={TD}>
+                                                <SeedStatusBadge status={m.status} />
                                             </td>
-                                            <td className="px-3 py-2 text-right">
+                                            <td className={cn(TD, "text-right")}>
                                                 <Button
                                                     size="xs"
-                                                    variant="outline"
+                                                    variant={onPanel ? "ghost" : "outline"}
                                                     disabled={onPanel || (add.isPending && add.variables?.id === m.id)}
                                                     onClick={() => void onAdd(m)}
                                                 >
@@ -430,9 +422,12 @@ function AddSeedsSection() {
                     </div>
                 </div>
             )}
-        </section>
+        </Section>
     );
 }
+
+const TH = "h-9 whitespace-nowrap px-3 text-left text-xs font-medium text-muted-foreground first:pl-4 last:pr-4";
+const TD = "px-3 first:pl-4 last:pr-4";
 
 function TestsSection({ onOpen }: { onOpen: (id: string) => void }) {
     const testsQ = useInfiniteQuery({
@@ -450,7 +445,7 @@ function TestsSection({ onOpen }: { onOpen: (id: string) => void }) {
             id: "created",
             header: "Created",
             cell: (t) => (
-                <span className="whitespace-nowrap text-xs text-muted-foreground" title={absolute(t.created_at)}>
+                <span className="whitespace-nowrap text-muted-foreground" title={absolute(t.created_at)}>
                     {relative(t.created_at)}
                 </span>
             ),
@@ -459,38 +454,38 @@ function TestsSection({ onOpen }: { onOpen: (id: string) => void }) {
         {
             id: "sender",
             header: "Sender",
-            cell: (t) => <span className="font-mono text-xs">{t.sender_email || "—"}</span>,
+            cell: (t) => <span className="font-mono text-[12.5px]">{t.sender_email || "—"}</span>,
             csv: (t) => t.sender_email,
         },
         {
             id: "subject",
             header: "Subject",
-            cell: (t) => <span className="block max-w-72 truncate text-xs">{t.subject || "—"}</span>,
+            cell: (t) => <span className="block max-w-72 truncate">{t.subject || "—"}</span>,
             csv: (t) => t.subject,
         },
         {
             id: "panel",
             header: "Panel",
-            cell: (t) => <span className="text-xs">{PANEL_LABEL[t.panel] ?? t.panel}</span>,
+            cell: (t) => <span className="whitespace-nowrap text-muted-foreground">{PANEL_LABEL[t.panel] ?? t.panel}</span>,
             csv: (t) => t.panel,
         },
         {
             id: "origin",
             header: "Origin",
-            cell: (t) => <span className="text-xs">{ORIGIN_LABEL[t.origin] ?? t.origin}</span>,
+            cell: (t) => <span className="whitespace-nowrap text-muted-foreground">{ORIGIN_LABEL[t.origin] ?? t.origin}</span>,
             csv: (t) => t.origin,
         },
         {
             id: "status",
             header: "Status",
-            cell: (t) => <StatusBadge status={t.status} />,
+            cell: (t) => <TestStatusBadge status={t.status} />,
             csv: (t) => t.status,
         },
         {
             id: "inbox",
             header: "Inbox",
             align: "right",
-            cell: (t) => <span className="text-xs font-medium tabular-nums">{pct(t.summary?.inbox_rate)}</span>,
+            cell: (t) => <span className="font-medium tabular-nums">{pct(t.summary?.inbox_rate)}</span>,
             csv: (t) => pct(t.summary?.inbox_rate),
         },
         {
@@ -498,7 +493,7 @@ function TestsSection({ onOpen }: { onOpen: (id: string) => void }) {
             header: "Spam",
             align: "right",
             cell: (t) => (
-                <span className={cn("text-xs tabular-nums", (t.summary?.spam ?? 0) > 0 && "text-red-700")}>
+                <span className={cn("tabular-nums", (t.summary?.spam ?? 0) > 0 ? TONE_TEXT.danger : "text-muted-foreground")}>
                     {pct(t.summary?.spam_rate)}
                 </span>
             ),
@@ -509,7 +504,7 @@ function TestsSection({ onOpen }: { onOpen: (id: string) => void }) {
             header: "Delivered",
             align: "right",
             cell: (t) => (
-                <span className="text-xs tabular-nums">
+                <span className="whitespace-nowrap tabular-nums">
                     {t.summary?.delivered ?? 0}
                     <span className="text-muted-foreground"> / {t.summary?.total ?? 0}</span>
                 </span>
@@ -519,13 +514,12 @@ function TestsSection({ onOpen }: { onOpen: (id: string) => void }) {
     ];
 
     return (
-        <section className="mt-6">
-            <SectionTitle
-                title="Recent tests"
-                hint={`Every placement test on this instance, from every workspace, newest first.${
-                    total !== undefined ? ` ${total.toLocaleString()} in total.` : ""
-                }`}
-            />
+        <Section
+            title="Recent tests"
+            description={`Every placement test on this instance, from every workspace, newest first.${
+                total !== undefined ? ` ${total.toLocaleString()} in total.` : ""
+            }`}
+        >
             <DataTable
                 columns={columns}
                 rows={rows}
@@ -553,6 +547,6 @@ function TestsSection({ onOpen }: { onOpen: (id: string) => void }) {
                     </Button>
                 </div>
             )}
-        </section>
+        </Section>
     );
 }

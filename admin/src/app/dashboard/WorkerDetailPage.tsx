@@ -7,17 +7,26 @@
 // it at a version, and forget it.
 
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Pin, PinOff, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Inbox, Pin, PinOff, RefreshCw, ServerOff, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+    Callout,
+    EmptyState,
+    Panel,
+    Property,
+    PropertyList,
+    Section,
+    Stat,
+    StatGrid,
+    StatusBadge,
+} from "@/components/ui/kit";
 import {
     Dialog,
     DialogContent,
@@ -43,22 +52,14 @@ import {
     type FleetNode,
 } from "@/lib/api/client/admin/fleetNodes";
 import type { AdminWorkerEmail } from "@/lib/api/models/admin";
+import { TONE_PANEL, TONE_TEXT } from "@/lib/tones";
+import { cn } from "@/lib/utils";
+import { NodeStatePill } from "./fleet/tones";
 
-const STATE_TONE: Record<string, string> = {
-    live: "border-emerald-300 bg-emerald-50 text-emerald-700",
-    unreachable: "border-amber-300 bg-amber-50 text-amber-700",
-    stopped: "border-zinc-300 text-zinc-600",
-};
+const CRUMBS = [{ label: "Workers", to: "/workers" }];
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-        <div className="space-y-0.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {label}
-            </div>
-            <div className="text-[13px]">{children}</div>
-        </div>
-    );
+function Mono({ children }: { children: React.ReactNode }) {
+    return <span className="font-mono text-xs">{children}</span>;
 }
 
 function uptime(seconds?: number): string {
@@ -119,18 +120,33 @@ export default function WorkerDetailPage() {
     });
 
     if (nodeQ.isLoading) {
-        return <Skeleton className="h-64 w-full" />;
+        return (
+            <div>
+                <PageHeader breadcrumbs={CRUMBS} title={<Skeleton className="h-4 w-32" />} />
+                <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+                    <div className="space-y-4">
+                        <Skeleton className="h-24 w-full" />
+                        <Skeleton className="h-48 w-full" />
+                    </div>
+                    <Skeleton className="h-72 w-full" />
+                </div>
+            </div>
+        );
     }
     if (!node) {
         return (
-            <div className="space-y-3">
-                <PageHeader title="Node not found" description="It may have been removed." />
-                <Button asChild size="sm" variant="outline">
-                    <Link to="/workers">
-                        <ArrowLeft className="size-4" />
-                        Fleet
-                    </Link>
-                </Button>
+            <div>
+                <PageHeader breadcrumbs={CRUMBS} title="Node not found" />
+                <EmptyState
+                    icon={ServerOff}
+                    title="Node not found"
+                    hint="It may have been removed."
+                    action={
+                        <Button size="sm" variant="outline" onClick={() => nav("/workers")}>
+                            Back to workers
+                        </Button>
+                    }
+                />
             </div>
         );
     }
@@ -140,217 +156,249 @@ export default function WorkerDetailPage() {
     const mailboxTotal = Math.max(node.mailbox_count ?? 0, mailboxes.length);
 
     return (
-        <div className="space-y-4">
-            <PageHeader title={node.name || node.id.slice(0, 8)} description={`${node.role} node`}>
-                <div className="flex gap-2">
-                    <Button asChild size="sm" variant="outline">
-                        <Link to="/workers">
-                            <ArrowLeft className="size-4" />
-                            Fleet
-                        </Link>
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => nodeQ.refetch()}>
-                        <RefreshCw className="size-4" />
-                        Refresh
-                    </Button>
-                </div>
+        <div>
+            <PageHeader
+                breadcrumbs={CRUMBS}
+                title={node.name || node.id.slice(0, 8)}
+                meta={
+                    <>
+                        <NodeStatePill state={state} />
+                        <StatusBadge tone={node.role === "worker" ? "accent" : "strong"}>{node.role}</StatusBadge>
+                    </>
+                }
+            >
+                <Button size="sm" variant="ghost" onClick={() => nodeQ.refetch()}>
+                    <RefreshCw className={cn("size-3.5", nodeQ.isFetching && "animate-spin")} />
+                    Refresh
+                </Button>
             </PageHeader>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Machine</CardTitle>
-                    <CardDescription>
-                        Reported by the node on its last heartbeat.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                    <Fact label="State">
-                        <Badge variant="outline" className={`text-[10px] ${STATE_TONE[state]}`}>
-                            {state}
-                        </Badge>
-                    </Fact>
-                    <Fact label="Version">
-                        {nodeNeedsUpdate(node) ? (
-                            <span className="font-mono text-xs">
-                                {node.version || "—"}
-                                <span className="text-muted-foreground"> → </span>
-                                <span className="text-amber-600">{node.desired_version}</span>
-                            </span>
-                        ) : (
-                            <span className="font-mono text-xs">{node.version || "—"}</span>
-                        )}
-                    </Fact>
-                    <Fact label="Address">
-                        <span className="font-mono text-xs">{node.address || "—"}</span>
-                    </Fact>
-                    <Fact label="Region">
-                        <span className="font-mono text-xs">{node.region || "—"}</span>
-                    </Fact>
-                    {node.role === "worker" && (
-                        <Fact label="Mailbox target">
-                            {(node.capacity_target || 100).toLocaleString()}
-                        </Fact>
-                    )}
-                    <Fact label="Memory">
-                        {node.usage?.memory_mb !== undefined ? `${node.usage.memory_mb} MB` : "—"}
-                    </Fact>
-                    <Fact label="Goroutines">{node.usage?.goroutines ?? "—"}</Fact>
-                    <Fact label="Uptime">{uptime(node.usage?.uptime_seconds)}</Fact>
-                    <Fact label="Last seen">
-                        {node.last_seen_at ? new Date(node.last_seen_at).toLocaleString() : "never"}
-                    </Fact>
-                    <Fact label="Enrolled">{new Date(node.enrolled_at).toLocaleString()}</Fact>
-                    <Fact label="Node id">
-                        <span className="font-mono text-[11px]">{node.id}</span>
-                    </Fact>
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+                <div className="min-w-0">
                     {node.last_error && (
-                        <div className="col-span-2 md:col-span-4">
-                            <Fact label="Last error">
-                                <span className="text-red-600">{node.last_error}</span>
-                            </Fact>
-                        </div>
+                        <Callout tone="danger" icon={AlertTriangle} title="Last error" className="mb-8">
+                            <span className="break-words font-mono text-xs">{node.last_error}</span>
+                        </Callout>
                     )}
-                </CardContent>
-            </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Version</CardTitle>
-                    <CardDescription>
-                        The node pulls whatever the fleet is set to. Pin it to hold this one
-                        machine back, or to canary a release on it before the rest follow.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-wrap items-end gap-2">
-                    <div className="space-y-1.5">
-                        <Input
-                            value={pinDraft}
-                            onChange={(e) => setPinDraft(e.target.value)}
-                            placeholder={node.pinned_version || "v1.4.2"}
-                            className="w-48"
-                        />
-                    </div>
-                    <Button
-                        size="sm"
-                        disabled={!pinDraft.trim() || patch.isPending}
-                        onClick={() => {
-                            patch.mutate({ pinned_version: pinDraft.trim() });
-                            setPinDraft("");
-                        }}
-                    >
-                        <Pin className="size-4" />
-                        Pin
-                    </Button>
-                    {node.pinned_version && (
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={patch.isPending}
-                            onClick={() => patch.mutate({ pinned_version: "" })}
+                    {node.role === "worker" && (
+                        <Section
+                            title="Sending"
+                            description="Placement assigns these mailboxes; you never have to. Moving one by hand is temporary: the rotation loop re-places it if it disagrees."
                         >
-                            <PinOff className="size-4" />
-                            Clear pin ({node.pinned_version})
-                        </Button>
+                            {(statsQ.isLoading || statsQ.data) && (
+                                <StatGrid className="mb-4">
+                                    <Stat label="Sent today" value={statsQ.data?.emails_sent_today.toLocaleString()} loading={statsQ.isLoading} />
+                                    <Stat label="Sent this week" value={statsQ.data?.emails_sent_this_week.toLocaleString()} loading={statsQ.isLoading} />
+                                    <Stat label="Sent total" value={statsQ.data?.total_emails_sent.toLocaleString()} loading={statsQ.isLoading} />
+                                    {/* Already a percentage in SQL; multiplying again gives 10000%. */}
+                                    <Stat
+                                        label="Success rate"
+                                        value={statsQ.data ? `${Math.round(statsQ.data.success_rate)}%` : undefined}
+                                        loading={statsQ.isLoading}
+                                    />
+                                </StatGrid>
+                            )}
+
+                            <Panel
+                                title={
+                                    <span className="flex items-center gap-2">
+                                        Mailboxes
+                                        {mailboxTotal > 0 && (
+                                            <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                                                {mailboxes.length} of {mailboxTotal}
+                                            </span>
+                                        )}
+                                    </span>
+                                }
+                                actions={
+                                    selected.size > 0 ? (
+                                        <Button size="xs" onClick={() => setReassignOpen(true)}>
+                                            <ArrowRightLeft className="size-3" />
+                                            Move {selected.size} elsewhere
+                                        </Button>
+                                    ) : undefined
+                                }
+                                bodyClassName="p-0"
+                            >
+                                {emailsQ.isLoading ? (
+                                    <div className="space-y-2 p-4">
+                                        <Skeleton className="h-5 w-full" />
+                                        <Skeleton className="h-5 w-4/5" />
+                                        <Skeleton className="h-5 w-3/5" />
+                                    </div>
+                                ) : mailboxes.length === 0 ? (
+                                    <EmptyState icon={Inbox} title="No mailboxes on this worker yet." className="py-10" />
+                                ) : (
+                                    <div>
+                                        <div className="flex h-9 items-center gap-3 border-b border-border px-4 text-xs font-medium text-muted-foreground">
+                                            <span className="size-4 shrink-0" aria-hidden />
+                                            Mailbox
+                                            <span className="ml-auto">Provider</span>
+                                        </div>
+                                        {mailboxes.map((m: AdminWorkerEmail) => (
+                                            <label
+                                                key={m.id}
+                                                className={cn(
+                                                    "flex h-10 cursor-pointer items-center gap-3 border-b border-border/70 px-4 text-[13px] transition-colors last:border-b-0 hover:bg-accent/50",
+                                                    selected.has(m.id) && "bg-[var(--admin-accent-weak)]",
+                                                )}
+                                            >
+                                                <Checkbox
+                                                    checked={selected.has(m.id)}
+                                                    onCheckedChange={(v) => {
+                                                        const next = new Set(selected);
+                                                        if (v) next.add(m.id);
+                                                        else next.delete(m.id);
+                                                        setSelected(next);
+                                                    }}
+                                                />
+                                                <span className="min-w-0 truncate font-mono text-[12.5px]">{m.email}</span>
+                                                <StatusBadge className="ml-auto">{m.provider}</StatusBadge>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {emailsQ.hasNextPage && (
+                                    <div className="border-t border-border px-4 py-2">
+                                        <Button
+                                            size="xs"
+                                            variant="ghost"
+                                            disabled={emailsQ.isFetchingNextPage}
+                                            onClick={() => emailsQ.fetchNextPage()}
+                                        >
+                                            {emailsQ.isFetchingNextPage ? "Loading…" : "Load more mailboxes"}
+                                        </Button>
+                                    </div>
+                                )}
+                            </Panel>
+                        </Section>
                     )}
-                </CardContent>
-            </Card>
 
-            {node.role === "worker" && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">
-                            Mailboxes {mailboxTotal > 0 && `(${mailboxes.length} of ${mailboxTotal})`}
-                        </CardTitle>
-                        <CardDescription>
-                            Placement assigns these; you never have to. Moving one by hand is
-                            temporary — the rotation loop re-places it if it disagrees.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {statsQ.data && (
-                            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                                <Fact label="Sent today">{statsQ.data.emails_sent_today}</Fact>
-                                <Fact label="Sent this week">{statsQ.data.emails_sent_this_week}</Fact>
-                                <Fact label="Sent total">{statsQ.data.total_emails_sent}</Fact>
-                                {/* Already a percentage in SQL; multiplying again gives 10000%. */}
-                                <Fact label="Success rate">
-                                    {`${Math.round(statsQ.data.success_rate)}%`}
-                                </Fact>
-                            </div>
-                        )}
-
-                        {emailsQ.isLoading ? (
-                            <Skeleton className="h-24 w-full" />
-                        ) : mailboxes.length === 0 ? (
-                            <p className="text-[13px] text-muted-foreground">
-                                No mailboxes on this worker yet.
-                            </p>
-                        ) : (
-                            <div className="rounded-md border">
-                                {mailboxes.map((m: AdminWorkerEmail) => (
-                                    <label
-                                        key={m.id}
-                                        className="flex items-center gap-2 border-b px-3 py-2 text-[12.5px] last:border-b-0"
-                                    >
-                                        <Checkbox
-                                            checked={selected.has(m.id)}
-                                            onCheckedChange={(v) => {
-                                                const next = new Set(selected);
-                                                if (v) next.add(m.id);
-                                                else next.delete(m.id);
-                                                setSelected(next);
-                                            }}
-                                        />
-                                        <span className="font-mono">{m.email}</span>
-                                        <Badge variant="outline" className="ml-auto text-[10px]">
-                                            {m.provider}
-                                        </Badge>
-                                    </label>
-                                ))}
-                            </div>
-                        )}
-
-                        {emailsQ.hasNextPage && (
+                    <Section
+                        title="Version"
+                        description="The node pulls whatever the fleet is set to. Pin it to hold this one machine back, or to canary a release on it before the rest follow."
+                    >
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Input
+                                value={pinDraft}
+                                onChange={(e) => setPinDraft(e.target.value)}
+                                placeholder={node.pinned_version || "v1.4.2"}
+                                className="w-48 font-mono text-[12.5px]"
+                                aria-label="Version to pin"
+                            />
                             <Button
                                 size="sm"
-                                variant="outline"
-                                disabled={emailsQ.isFetchingNextPage}
-                                onClick={() => emailsQ.fetchNextPage()}
+                                disabled={!pinDraft.trim() || patch.isPending}
+                                onClick={() => {
+                                    patch.mutate({ pinned_version: pinDraft.trim() });
+                                    setPinDraft("");
+                                }}
                             >
-                                {emailsQ.isFetchingNextPage ? "Loading…" : "Load more mailboxes"}
+                                <Pin className="size-3.5" />
+                                Pin
                             </Button>
-                        )}
+                            {node.pinned_version && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={patch.isPending}
+                                    onClick={() => patch.mutate({ pinned_version: "" })}
+                                >
+                                    <PinOff className="size-3.5" />
+                                    Clear pin ({node.pinned_version})
+                                </Button>
+                            )}
+                        </div>
+                    </Section>
 
-                        {selected.size > 0 && (
-                            <Button size="sm" onClick={() => setReassignOpen(true)}>
-                                Move {selected.size} elsewhere
+                    <Section title="Danger zone">
+                        <div
+                            className={cn(
+                                "flex flex-col gap-3 rounded-lg border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between",
+                                TONE_PANEL.danger,
+                            )}
+                        >
+                            <div className="min-w-0">
+                                <div className="text-[13px] font-medium text-foreground">Remove from fleet</div>
+                                <p className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-muted-foreground">
+                                    Forgets the node. Any mailboxes it carries are re-placed within a few
+                                    minutes. It does not stop the process: a machine that is still running
+                                    re-joins on its next heartbeat, so stop the service there too.
+                                </p>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                className="shrink-0 self-start sm:self-center"
+                                disabled={remove.isPending}
+                                onClick={() => remove.mutate()}
+                            >
+                                <Trash2 className="size-3.5" />
+                                {remove.isPending ? "Removing…" : "Remove from fleet"}
                             </Button>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+                        </div>
+                    </Section>
+                </div>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Remove</CardTitle>
-                    <CardDescription>
-                        Forgets the node. Any mailboxes it carries are re-placed within a few
-                        minutes. It does not stop the process: a machine that is still running
-                        re-joins on its next heartbeat, so stop the service there too.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={remove.isPending}
-                        onClick={() => remove.mutate()}
-                    >
-                        <Trash2 className="size-4" />
-                        {remove.isPending ? "Removing…" : "Remove from fleet"}
-                    </Button>
-                </CardContent>
-            </Card>
+                <aside className="order-first min-w-0 lg:order-none lg:border-l lg:border-border lg:pl-6">
+                    <div className="lg:sticky lg:top-16">
+                        <h2 className="text-[13px] font-semibold text-foreground">Properties</h2>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Reported by the node on its last heartbeat.</p>
+                        <PropertyList className="mt-2">
+                            <Property label="State">
+                                <NodeStatePill state={state} />
+                            </Property>
+                            <Property label="Version">
+                                {nodeNeedsUpdate(node) ? (
+                                    <Mono>
+                                        {node.version || "—"}
+                                        <span className="text-subtle-foreground"> → </span>
+                                        <span className={TONE_TEXT.warning}>{node.desired_version}</span>
+                                    </Mono>
+                                ) : (
+                                    <Mono>{node.version || "—"}</Mono>
+                                )}
+                            </Property>
+                            {node.pinned_version && (
+                                <Property label="Pinned">
+                                    <Mono>{node.pinned_version}</Mono>
+                                </Property>
+                            )}
+                            <Property label="Address">
+                                <Mono>{node.address || "—"}</Mono>
+                            </Property>
+                            <Property label="Region">
+                                <Mono>{node.region || "—"}</Mono>
+                            </Property>
+                            {node.role === "worker" && (
+                                <Property label="Mailbox target">
+                                    <span className="tabular-nums">{(node.capacity_target || 100).toLocaleString()}</span>
+                                </Property>
+                            )}
+                            <Property label="Memory">
+                                <span className="tabular-nums">
+                                    {node.usage?.memory_mb !== undefined ? `${node.usage.memory_mb} MB` : "—"}
+                                </span>
+                            </Property>
+                            <Property label="Goroutines">
+                                <span className="tabular-nums">{node.usage?.goroutines ?? "—"}</span>
+                            </Property>
+                            <Property label="Uptime">
+                                <span className="tabular-nums">{uptime(node.usage?.uptime_seconds)}</span>
+                            </Property>
+                            <Property label="Last seen">
+                                {node.last_seen_at ? new Date(node.last_seen_at).toLocaleString() : "never"}
+                            </Property>
+                            <Property label="Enrolled">{new Date(node.enrolled_at).toLocaleString()}</Property>
+                            <Property label="Node id">
+                                <span className="break-all font-mono text-[11.5px] text-muted-foreground">{node.id}</span>
+                            </Property>
+                        </PropertyList>
+                    </div>
+                </aside>
+            </div>
 
             <ReassignDialog
                 open={reassignOpen}
@@ -419,7 +467,7 @@ function ReassignDialog({
                 </DialogHeader>
 
                 <Select value={target || undefined} onValueChange={setTarget}>
-                    <SelectTrigger className="h-8 w-full text-[12.5px]">
+                    <SelectTrigger className="h-8 w-full text-[13px]">
                         <SelectValue
                             placeholder={workersQ.isLoading ? "Loading…" : "Pick a worker"}
                         />
@@ -442,10 +490,10 @@ function ReassignDialog({
                 </Select>
 
                 {chosen && nodeState(chosen) !== "live" && (
-                    <p className="text-[11px] text-amber-700">
+                    <Callout tone="warning" icon={AlertTriangle}>
                         That node is {nodeState(chosen)}; placement would not choose it, and the
                         rotation loop will move these mailboxes off it again.
-                    </p>
+                    </Callout>
                 )}
 
                 <DialogFooter>

@@ -246,17 +246,26 @@ const websiteJsonLd = {
       </script>
     )}
     <!--
-      Carry the landing page and any UTM parameters through to the dashboard's
-      signup form, in the query string and nowhere else. The dashboard reads
-      them at signup and the backend records them once on the new organization,
-      so channel attribution survives the daily salt rotation without anything
-      being stored in this browser.
+      Carry where a visitor came from through to the dashboard, in the query
+      string and nowhere else: the first page they landed on (wb_lp), the
+      external site that sent them (wb_ref, a bare host) and any UTM tags. The
+      dashboard reads them at signup, including a Google or SSO signup started
+      from its login page, and the backend records them once on the new
+      organization. Nothing is stored in this browser.
 
-      Done here rather than in each CTA because there are forty of these links
-      across the site and a new one should not have to remember.
+      First touch wins: once a page carries these, links to other pages on
+      this site carry them on, so a visitor who lands on a post from a
+      campaign and signs up from the pricing page is still attributed to it.
+      A direct visit carries nothing between pages, so its URLs stay clean.
+
+      Done here rather than in each CTA because there are dozens of these
+      links across the site and a new one should not have to remember.
     -->
     <script is:inline>
       (function () {
+        var DASHBOARD_HOST = 'app.warmbly.com';
+        var UTM = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+
         // This script sits in <head>, so the anchors it rewrites do not exist
         // yet. Wait for the parsed document before touching any of them.
         if (document.readyState === 'loading') {
@@ -269,27 +278,41 @@ const websiteJsonLd = {
           var params = new URLSearchParams(location.search);
           var carried = new URLSearchParams();
 
-          ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'].forEach(function (name) {
+          UTM.forEach(function (name) {
             var value = params.get(name);
             if (value) carried.set(name, value.slice(0, 255));
           });
-          carried.set('wb_lp', location.pathname.slice(0, 255));
 
-          if (document.referrer) {
+          // A wb_ value already on this URL came from an earlier page and wins.
+          var landing = params.get('wb_lp');
+          carried.set('wb_lp', (landing && landing.charAt(0) === '/' ? landing : location.pathname).slice(0, 255));
+
+          var ref = params.get('wb_ref');
+          if (!ref && document.referrer) {
             try {
               var host = new URL(document.referrer).hostname;
-              if (host && host !== location.hostname) carried.set('wb_ref', host);
+              if (host && host !== location.hostname) ref = host;
             } catch (e) { /* an unparseable referrer is simply not recorded */ }
           }
+          if (ref) carried.set('wb_ref', ref.slice(0, 255));
 
-          document.querySelectorAll('a[href*="/register"]').forEach(function (link) {
+          // Only real attribution is worth carrying between our own pages.
+          var attributed = carried.has('wb_ref') || UTM.some(function (n) { return carried.has(n); });
+
+          document.querySelectorAll('a[href]').forEach(function (link) {
+            var url;
             try {
-              var url = new URL(link.href);
-              carried.forEach(function (value, name) {
-                if (!url.searchParams.has(name)) url.searchParams.set(name, value);
-              });
-              link.href = url.toString();
-            } catch (e) { /* leave a link we cannot parse exactly as it was */ }
+              url = new URL(link.href, location.href);
+            } catch (e) {
+              return; // leave a link we cannot parse exactly as it was
+            }
+            var toDashboard = url.hostname === DASHBOARD_HOST;
+            var toPage = url.origin === location.origin && !/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== location.pathname;
+            if (!toDashboard && !(attributed && toPage)) return;
+            carried.forEach(function (value, name) {
+              if (!url.searchParams.has(name)) url.searchParams.set(name, value);
+            });
+            link.href = url.toString();
           });
         }
       })();

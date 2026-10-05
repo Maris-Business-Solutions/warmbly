@@ -1,4 +1,4 @@
-// Ban / unban dialog. Same component handles both actions — the
+// Ban / unban dialog. Same component handles both actions; the
 // caller passes `mode` based on current ban status. Reason is required
 // so the audit trail always carries it.
 
@@ -14,11 +14,12 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { banUser, unbanUser } from "@/lib/api/client/admin/users";
 
-// Mirror of internal/models/admin.go BanScope constants — keep in sync
+// Mirror of internal/models/admin.go BanScope constants; keep in sync
 // with the Go enum and the 000045_ban_scope migration.
 const BAN_SCOPE_LOGIN = 1;
 const BAN_SCOPE_ORG_CREATE = 2;
@@ -81,8 +82,8 @@ export function UserBanDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div>
-                    <Label htmlFor="reason" className="text-xs font-medium">
+                <div className="space-y-1.5">
+                    <Label htmlFor="reason" className="text-xs font-medium text-muted-foreground">
                         Reason
                     </Label>
                     <Input
@@ -100,12 +101,12 @@ export function UserBanDialog({
 
                 {mode === "ban" && (
                     <div>
-                        <Label className="text-xs font-medium">Scope</Label>
-                        <p className="text-[10px] text-muted-foreground mb-2">
+                        <div className="text-xs font-medium text-muted-foreground">Scope</div>
+                        <p className="mt-0.5 mb-2 text-xs text-subtle-foreground">
                             Which actions stop working while this ban is active.
                             At least one is required.
                         </p>
-                        <div className="space-y-1.5">
+                        <div className="divide-y divide-border/70 overflow-hidden surface-lit rounded-xl border border-border bg-card">
                             <ScopeOption
                                 label="Block login"
                                 hint="user cannot authenticate"
@@ -150,11 +151,7 @@ export function UserBanDialog({
                             mutation.mutate();
                         }}
                         disabled={mutation.isPending}
-                        className={
-                            mode === "ban"
-                                ? "bg-red-600 hover:bg-red-700 text-white"
-                                : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                        }
+                        variant={mode === "ban" ? "destructive" : "default"}
                     >
                         {mutation.isPending
                             ? "Working…"
@@ -180,16 +177,15 @@ function ScopeOption({
     onChange: (v: boolean) => void;
 }) {
     return (
-        <label className="flex items-start gap-2 cursor-pointer">
-            <input
-                type="checkbox"
+        <label className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-accent/50">
+            <Checkbox
                 checked={checked}
-                onChange={(e) => onChange(e.target.checked)}
-                className="mt-0.5 accent-red-600"
+                onCheckedChange={(v) => onChange(v === true)}
+                className="mt-0.5"
             />
-            <span className="text-xs">
-                <span className="font-medium">{label}</span>
-                <span className="block text-[10px] text-muted-foreground">{hint}</span>
+            <span className="min-w-0 text-[13px]">
+                <span className="font-medium text-foreground">{label}</span>
+                <span className="block text-xs text-muted-foreground">{hint}</span>
             </span>
         </label>
     );

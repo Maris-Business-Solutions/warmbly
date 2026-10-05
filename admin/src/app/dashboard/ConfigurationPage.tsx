@@ -98,23 +98,26 @@ export default function ConfigurationPage() {
                 description="What this instance is set to: the settings and notification channels you can edit here, the environment the backend booted with, and the limits that result."
             />
 
-            <PageTabs
-                tabs={[
-                    { id: "settings", label: "Settings", icon: Settings2 },
-                    { id: "notifications", label: "Notifications", icon: Bell },
-                    { id: "environment", label: "Environment", icon: Terminal },
-                    { id: "limits", label: "Limits", icon: Gauge },
-                ]}
-                value={tab}
-                onChange={(id) => void setTab(id)}
-            />
+            <div className="w-full max-w-4xl">
+                <PageTabs
+                    tabs={[
+                        { id: "settings", label: "Settings", icon: Settings2 },
+                        { id: "notifications", label: "Notifications", icon: Bell },
+                        { id: "environment", label: "Environment", icon: Terminal },
+                        { id: "limits", label: "Limits", icon: Gauge },
+                    ]}
+                    value={tab}
+                    onChange={(id) => void setTab(id)}
+                    className="mb-8"
+                />
 
-            {tab === "settings" && (
-                <SettingsTab onDirtyChange={onDirtyChange} onSwitchTab={(t) => void setTab(t)} />
-            )}
-            {tab === "notifications" && <NotificationsTab onDirtyChange={onDirtyChange} />}
-            {tab === "environment" && <EnvironmentTab onSwitchTab={writeTab} />}
-            {tab === "limits" && <LimitsTab onSwitchTab={writeTab} />}
+                {tab === "settings" && (
+                    <SettingsTab onDirtyChange={onDirtyChange} onSwitchTab={(t) => void setTab(t)} />
+                )}
+                {tab === "notifications" && <NotificationsTab onDirtyChange={onDirtyChange} />}
+                {tab === "environment" && <EnvironmentTab onSwitchTab={writeTab} />}
+                {tab === "limits" && <LimitsTab onSwitchTab={writeTab} />}
+            </div>
         </div>
     );
 }

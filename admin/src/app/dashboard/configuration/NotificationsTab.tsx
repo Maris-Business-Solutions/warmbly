@@ -26,19 +26,12 @@ import {
 } from "lucide-react";
 import { ErrorState } from "@/components/ErrorState";
 import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { EmptyState, Segmented, StatusBadge } from "@/components/ui/kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { TONE_TEXT } from "@/lib/tones";
 import {
     getInstanceSettings,
     getNotificationEvents,
@@ -49,6 +42,7 @@ import {
     type NotifyChannelType,
     type NotifyEventDef,
 } from "@/lib/api/client/admin/instance";
+import { SettingsRow } from "./SettingsLayout";
 
 const SETTINGS_KEY = ["admin", "instance", "settings"];
 const EVENTS_KEY = ["admin", "instance", "notification-events"];
@@ -215,19 +209,19 @@ export function NotificationsTab({ onDirtyChange }: NotificationsTabProps) {
     const incomplete = list.filter((c) => !c.target.trim());
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="max-w-2xl text-sm text-muted-foreground">
+        <div>
+            <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
+                <p className="max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
                     Where this instance tells you something happened. Add a Discord or Slack
                     webhook, a signed endpoint, or an address.
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setChannels([...(channels ?? []), newChannel()])}
                     >
-                        <Plus className="h-4 w-4" />
+                        <Plus />
                         Add channel
                     </Button>
                     <Button
@@ -240,205 +234,208 @@ export function NotificationsTab({ onDirtyChange }: NotificationsTabProps) {
                         }
                         onClick={() => save.mutate(list)}
                     >
-                        <Save className="h-4 w-4" />
+                        <Save />
                         {save.isPending ? "Saving…" : "Save"}
                     </Button>
                 </div>
             </div>
 
             {settings.isLoading ? (
-                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-64 w-full rounded-lg" />
             ) : list.length === 0 ? (
-                <Card>
-                    <CardContent className="py-10 text-center">
-                        <Bell className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                        <p className="text-sm font-medium">No channels yet</p>
-                        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                            Nothing is being sent anywhere. Add a channel and pick the events it
-                            should receive; leave every event unchecked to receive all of them.
-                        </p>
-                        <Button
-                            className="mt-4"
-                            size="sm"
-                            onClick={() => setChannels([newChannel()])}
-                        >
-                            <Plus className="h-4 w-4" />
-                            Add a channel
-                        </Button>
-                    </CardContent>
-                </Card>
+                <div className="rounded-lg border border-dashed border-border">
+                    <EmptyState
+                        icon={Bell}
+                        title="No channels yet"
+                        hint="Nothing is being sent anywhere. Add a channel and pick the events it should receive; leave every event unchecked to receive all of them."
+                        action={
+                            <Button size="sm" onClick={() => setChannels([newChannel()])}>
+                                <Plus />
+                                Add a channel
+                            </Button>
+                        }
+                    />
+                </div>
             ) : (
-                <div className="space-y-4">
+                <div className="space-y-6">
                     {list.map((ch) => {
                         const def = typeDef(ch.type);
                         const Icon = def.icon;
                         const saved = !ch.id.startsWith("new-");
                         return (
-                            <Card key={ch.id}>
-                                <CardHeader className="pb-3">
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div className="flex items-start gap-3">
-                                            <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-muted">
-                                                <Icon className="h-4 w-4" />
-                                            </span>
-                                            <div>
-                                                <CardTitle className="text-base">
-                                                    {ch.name || def.label}
-                                                </CardTitle>
-                                                <CardDescription>
-                                                    {ch.events.length === 0
-                                                        ? "Receives every event"
-                                                        : `Receives ${ch.events.length} event${ch.events.length === 1 ? "" : "s"}`}
-                                                    {!saved && " · unsaved"}
-                                                </CardDescription>
+                            <section
+                                key={ch.id}
+                                className="overflow-hidden surface-lit rounded-xl border border-border bg-card"
+                            >
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <span className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-muted/50 text-muted-foreground">
+                                            <Icon className="size-4" />
+                                        </span>
+                                        <div className="min-w-0">
+                                            <div className="truncate text-[13px] font-medium text-foreground">
+                                                {ch.name || def.label}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                {ch.events.length === 0
+                                                    ? "Receives every event"
+                                                    : `Receives ${ch.events.length} event${ch.events.length === 1 ? "" : "s"}`}
+                                                {!saved && (
+                                                    <>
+                                                        <span className="text-subtle-foreground">·</span>
+                                                        <span className={TONE_TEXT.warning}>unsaved</span>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            {!ch.enabled && <Badge variant="outline">Off</Badge>}
-                                            <Switch
-                                                checked={ch.enabled}
-                                                onCheckedChange={(v) => update(ch.id, { enabled: v })}
-                                            />
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                disabled={testing === ch.id || !ch.target}
-                                                onClick={() => sendTest(ch)}
-                                            >
-                                                <Send className="h-4 w-4" />
-                                                {testing === ch.id ? "Sending…" : "Test"}
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => remove(ch.id)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
                                     </div>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid gap-4 md:grid-cols-3">
-                                        <div className="space-y-1.5">
-                                            <Label>Type</Label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {TYPES.map((t) => (
-                                                    <Button
-                                                        key={t.value}
-                                                        type="button"
-                                                        variant={ch.type === t.value ? "default" : "outline"}
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            update(ch.id, { type: t.value, target: "" })
-                                                        }
-                                                    >
-                                                        {t.label}
-                                                    </Button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor={`name-${ch.id}`}>Name</Label>
-                                            <Input
-                                                id={`name-${ch.id}`}
-                                                value={ch.name}
-                                                placeholder={def.label}
-                                                onChange={(e) => update(ch.id, { name: e.target.value })}
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor={`target-${ch.id}`}>
-                                                {ch.type === "email" ? "Address" : "Webhook URL"}
-                                            </Label>
-                                            <Input
-                                                id={`target-${ch.id}`}
-                                                value={ch.target}
-                                                placeholder={def.placeholder}
-                                                onChange={(e) => update(ch.id, { target: e.target.value })}
-                                            />
-                                            {ch.target.trim() ? (
-                                                <p className="text-xs text-muted-foreground">{def.help}</p>
-                                            ) : (
-                                                <p className="text-xs text-destructive">
-                                                    {ch.type === "email"
-                                                        ? "Enter an address before saving."
-                                                        : "Enter the webhook URL for this transport before saving."}
-                                                </p>
-                                            )}
-                                        </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {!ch.enabled && <StatusBadge>Off</StatusBadge>}
+                                        <Switch
+                                            checked={ch.enabled}
+                                            onCheckedChange={(v) => update(ch.id, { enabled: v })}
+                                            className="mx-1.5"
+                                        />
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={testing === ch.id || !ch.target}
+                                            onClick={() => sendTest(ch)}
+                                        >
+                                            <Send />
+                                            {testing === ch.id ? "Sending…" : "Test"}
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            aria-label="Remove channel"
+                                            onClick={() => remove(ch.id)}
+                                        >
+                                            <Trash2 />
+                                        </Button>
                                     </div>
+                                </div>
+
+                                <div className="divide-y divide-border">
+                                    <SettingsRow label="Type">
+                                        <Segmented
+                                            ariaLabel="Channel type"
+                                            value={ch.type}
+                                            onChange={(t) => update(ch.id, { type: t, target: "" })}
+                                            options={TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                                        />
+                                    </SettingsRow>
+                                    <SettingsRow label="Name" htmlFor={`name-${ch.id}`}>
+                                        <Input
+                                            id={`name-${ch.id}`}
+                                            value={ch.name}
+                                            placeholder={def.label}
+                                            onChange={(e) => update(ch.id, { name: e.target.value })}
+                                            className="sm:w-80"
+                                        />
+                                    </SettingsRow>
+                                    <SettingsRow
+                                        label={ch.type === "email" ? "Address" : "Webhook URL"}
+                                        htmlFor={`target-${ch.id}`}
+                                        description={ch.target.trim() ? def.help : undefined}
+                                        error={
+                                            ch.target.trim()
+                                                ? undefined
+                                                : ch.type === "email"
+                                                  ? "Enter an address before saving."
+                                                  : "Enter the webhook URL for this transport before saving."
+                                        }
+                                    >
+                                        <Input
+                                            id={`target-${ch.id}`}
+                                            value={ch.target}
+                                            placeholder={def.placeholder}
+                                            onChange={(e) => update(ch.id, { target: e.target.value })}
+                                            className="sm:w-80"
+                                        />
+                                    </SettingsRow>
 
                                     {ch.type === "webhook" && (
-                                        <div className="space-y-1.5 md:max-w-sm">
-                                            <Label htmlFor={`secret-${ch.id}`}>Signing secret</Label>
+                                        <SettingsRow
+                                            label="Signing secret"
+                                            htmlFor={`secret-${ch.id}`}
+                                            description={
+                                                <>
+                                                    Signs the body as{" "}
+                                                    <code className="rounded bg-muted px-1 py-px font-mono text-[11.5px] text-foreground">
+                                                        X-Warmbly-Signature: t=&lt;unix&gt;,v1=&lt;hex&gt;
+                                                    </code>
+                                                    , the same scheme customer webhooks use.
+                                                </>
+                                            }
+                                        >
                                             <Input
                                                 id={`secret-${ch.id}`}
                                                 value={ch.secret ?? ""}
                                                 placeholder="Optional"
                                                 data-ph-mask=""
                                                 onChange={(e) => update(ch.id, { secret: e.target.value })}
+                                                className="sm:w-80"
                                             />
-                                            <p className="text-xs text-muted-foreground">
-                                                Signs the body as{" "}
-                                                <code>X-Warmbly-Signature: t=&lt;unix&gt;,v1=&lt;hex&gt;</code>, the
-                                                same scheme customer webhooks use.
-                                            </p>
-                                        </div>
+                                        </SettingsRow>
                                     )}
 
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <Label>Events</Label>
-                                            <button
+                                    <div className="px-4 py-3.5">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="text-[13px] font-medium text-foreground">Events</div>
+                                            <Button
                                                 type="button"
-                                                className="text-xs text-muted-foreground hover:text-foreground"
+                                                variant="ghost"
+                                                size="xs"
                                                 onClick={() => update(ch.id, { events: [] })}
                                             >
                                                 Receive everything
-                                            </button>
+                                            </Button>
                                         </div>
                                         {catalog.isLoading ? (
-                                            <Skeleton className="h-24 w-full" />
+                                            <Skeleton className="mt-3 h-24 w-full" />
                                         ) : (
-                                            <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="mt-3 grid gap-x-6 gap-y-4 md:grid-cols-2">
                                                 {groups.map(({ group, events }) => (
-                                                    <div key={group} className="space-y-2">
-                                                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                                    <div key={group}>
+                                                        <p className="mb-1 text-xs font-medium text-muted-foreground">
                                                             {group}
                                                         </p>
-                                                        {events.map((e) => (
-                                                            <label
-                                                                key={e.key}
-                                                                className="flex cursor-pointer items-start gap-2"
-                                                            >
-                                                                <Checkbox
-                                                                    checked={ch.events.includes(e.key)}
-                                                                    onCheckedChange={(v) =>
-                                                                        toggleEvent(ch.id, e.key, v === true)
-                                                                    }
-                                                                />
-                                                                <span className="text-sm leading-tight">
-                                                                    {e.label}
-                                                                    <span className="block text-xs text-muted-foreground">
-                                                                        {e.description}
+                                                        <div className="-mx-2">
+                                                            {events.map((e) => (
+                                                                <label
+                                                                    key={e.key}
+                                                                    className="flex cursor-pointer items-start gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/50"
+                                                                >
+                                                                    <Checkbox
+                                                                        checked={ch.events.includes(e.key)}
+                                                                        onCheckedChange={(v) =>
+                                                                            toggleEvent(ch.id, e.key, v === true)
+                                                                        }
+                                                                        className="mt-0.5"
+                                                                    />
+                                                                    <span className="text-[13px] leading-snug text-foreground">
+                                                                        {e.label}
+                                                                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                                                                            {e.description}
+                                                                        </span>
                                                                     </span>
-                                                                </span>
-                                                            </label>
-                                                        ))}
+                                                                </label>
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
                                         {ch.events.length === 0 && (
-                                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                                <Check className="h-3 w-3" />
+                                            <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                <Check className={`size-3 ${TONE_TEXT.success}`} />
                                                 Nothing selected, so this channel receives every event.
                                             </p>
                                         )}
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </section>
                         );
                     })}
                 </div>

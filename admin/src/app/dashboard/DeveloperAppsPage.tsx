@@ -8,14 +8,14 @@ import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { MoreHorizontal } from "lucide-react";
+import { AppWindow, Ban, LayoutGrid, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
+import { PageTabs } from "@/components/layout/PageTabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatusBadge } from "@/components/ui/kit";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Explorer, FilterGroup, SearchFilter, SelectFilter } from "@/components/data/Explorer";
@@ -35,9 +35,16 @@ import {
     unsuspendOAuthApp,
 } from "@/lib/api/client/admin/oauthApps";
 import type { AdminOAuthApp } from "@/lib/api/models/admin";
-import AppListingsPage from "./AppListingsPage";
+import { TONE_TEXT } from "@/lib/tones";
+import AppListingsPage, { AppAvatar } from "./AppListingsPage";
 
 type Tab = "apps" | "directory" | "blocked";
+
+const TABS = [
+    { id: "apps", label: "Apps", icon: AppWindow },
+    { id: "directory", label: "Directory", icon: LayoutGrid },
+    { id: "blocked", label: "Blocked", icon: Ban },
+];
 
 export default function DeveloperAppsPage() {
     const [params, setParams] = useSearchParams();
@@ -48,22 +55,14 @@ export default function DeveloperAppsPage() {
                 title="Developer apps"
                 description="OAuth apps registered on this instance, their directory listings, and who may build them."
             />
-            <Tabs value={tab} onValueChange={(v) => setParams(v === "apps" ? {} : { tab: v }, { replace: true })}>
-                <TabsList variant="line">
-                    <TabsTrigger value="apps">Apps</TabsTrigger>
-                    <TabsTrigger value="directory">Directory</TabsTrigger>
-                    <TabsTrigger value="blocked">Blocked</TabsTrigger>
-                </TabsList>
-                <TabsContent value="apps" className="mt-5">
-                    <AppsTab />
-                </TabsContent>
-                <TabsContent value="directory" className="mt-5">
-                    <AppListingsPage embedded />
-                </TabsContent>
-                <TabsContent value="blocked" className="mt-5">
-                    <BlockedTab />
-                </TabsContent>
-            </Tabs>
+            <PageTabs
+                tabs={TABS}
+                value={tab}
+                onChange={(v) => setParams(v === "apps" ? {} : { tab: v }, { replace: true })}
+            />
+            {tab === "apps" && <AppsTab />}
+            {tab === "directory" && <AppListingsPage embedded />}
+            {tab === "blocked" && <BlockedTab />}
         </div>
     );
 }
@@ -125,17 +124,11 @@ function AppsTab() {
             id: "app",
             header: "App",
             cell: (r) => (
-                <div className="flex items-center gap-2 min-w-0">
-                    {r.logo_url ? (
-                        <img src={r.logo_url} alt="" className="size-7 rounded border object-cover shrink-0" />
-                    ) : (
-                        <div className="size-7 rounded border bg-muted flex items-center justify-center text-xs font-semibold shrink-0">
-                            {(r.name[0] ?? "?").toUpperCase()}
-                        </div>
-                    )}
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <AppAvatar name={r.name} logoUrl={r.logo_url} />
                     <div className="min-w-0">
-                        <div className="font-medium truncate">{r.name}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground truncate">{r.client_id}</div>
+                        <div className="truncate text-[13px] font-medium text-foreground">{r.name}</div>
+                        <div className="truncate font-mono text-[11px] text-subtle-foreground">{r.client_id}</div>
                     </div>
                 </div>
             ),
@@ -149,11 +142,11 @@ function AppsTab() {
                     <Link
                         to={`/organizations/${r.organization_id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="text-xs font-medium text-[var(--admin-accent-strong)] hover:underline"
+                        className="block truncate text-[13px] text-foreground hover:text-[var(--admin-accent-strong)] hover:underline"
                     >
                         {r.organization_name || r.organization_id}
                     </Link>
-                    <div className="text-[10px] text-muted-foreground truncate">{r.created_by_email}</div>
+                    <div className="truncate text-xs text-muted-foreground">{r.created_by_email}</div>
                 </div>
             ),
             csv: (r) => r.organization_name,
@@ -164,9 +157,9 @@ function AppsTab() {
             cell: (r) => {
                 const writes = r.permissions.filter((p) => p.category !== "read").length;
                 return (
-                    <span className="text-xs" title={r.permissions.map((p) => p.name.toLowerCase()).join(", ")}>
+                    <span className="text-[13px] tabular-nums" title={r.permissions.map((p) => p.name.toLowerCase()).join(", ")}>
                         {r.permissions.length}
-                        {writes > 0 && <span className="text-amber-700"> ({writes} write)</span>}
+                        {writes > 0 && <span className={`text-xs ${TONE_TEXT.warning}`}> ({writes} write)</span>}
                     </span>
                 );
             },
@@ -176,7 +169,7 @@ function AppsTab() {
             id: "installs",
             header: "Installs",
             align: "right",
-            cell: (r) => <span className="tabular-nums text-xs">{r.installs.toLocaleString()}</span>,
+            cell: (r) => <span className="text-[13px] tabular-nums">{r.installs.toLocaleString()}</span>,
             csv: (r) => r.installs,
         },
         {
@@ -184,9 +177,9 @@ function AppsTab() {
             header: "Directory",
             cell: (r) =>
                 r.listing_status ? (
-                    <span className="text-xs">{r.listing_status === "published" ? "Link only" : r.listing_status === "featured" ? "Featured" : "Hidden"}</span>
+                    <span className="text-[13px]">{r.listing_status === "published" ? "Link only" : r.listing_status === "featured" ? "Featured" : "Hidden"}</span>
                 ) : (
-                    <span className="text-xs text-muted-foreground">Not published</span>
+                    <span className="text-xs text-subtle-foreground">Not published</span>
                 ),
             csv: (r) => r.listing_status ?? "",
         },
@@ -194,21 +187,27 @@ function AppsTab() {
             id: "status",
             header: "Status",
             cell: (r) => (
-                <div className="space-y-1">
+                <div className="space-y-1 py-1">
                     {r.suspended_at ? (
-                        <Badge variant="outline" className="text-[10px] border-red-300 text-red-700 bg-red-50">suspended</Badge>
+                        <StatusBadge tone="danger" dot>
+                            Suspended
+                        </StatusBadge>
                     ) : r.status === "disabled" ? (
-                        <Badge variant="outline" className="text-[10px]">disabled by owner</Badge>
+                        <StatusBadge tone="neutral" dot>
+                            Disabled by owner
+                        </StatusBadge>
                     ) : (
-                        <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700 bg-emerald-50">active</Badge>
+                        <StatusBadge tone="success" dot>
+                            Active
+                        </StatusBadge>
                     )}
                     {r.suspended_reason && (
-                        <div className="text-[10px] text-muted-foreground max-w-xs truncate" title={r.suspended_reason}>
+                        <div className="max-w-xs truncate text-xs text-muted-foreground" title={r.suspended_reason}>
                             "{r.suspended_reason}"
                         </div>
                     )}
                     {(r.org_blocked || r.creator_blocked) && (
-                        <div className="text-[10px] text-amber-700">{r.org_blocked ? "workspace blocked" : "creator blocked"}</div>
+                        <div className={`text-xs ${TONE_TEXT.warning}`}>{r.org_blocked ? "Workspace blocked" : "Creator blocked"}</div>
                     )}
                 </div>
             ),
@@ -217,7 +216,11 @@ function AppsTab() {
         {
             id: "created",
             header: "Created",
-            cell: (r) => <span className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</span>,
+            cell: (r) => (
+                <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                    {new Date(r.created_at).toLocaleDateString()}
+                </span>
+            ),
             csv: (r) => r.created_at,
         },
         {
@@ -227,7 +230,7 @@ function AppsTab() {
             cell: (r) => (
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" disabled={!canManage} onClick={(e) => e.stopPropagation()} aria-label="Actions">
+                        <Button size="icon-sm" variant="ghost" disabled={!canManage} onClick={(e) => e.stopPropagation()} aria-label="Actions">
                             <MoreHorizontal className="size-4" />
                         </Button>
                     </DropdownMenuTrigger>
@@ -239,7 +242,7 @@ function AppsTab() {
                                 Unsuspend
                             </DropdownMenuItem>
                         ) : (
-                            <DropdownMenuItem onSelect={() => setAction({ kind: "suspend", app: r })} className="text-red-600">
+                            <DropdownMenuItem variant="destructive" onSelect={() => setAction({ kind: "suspend", app: r })}>
                                 Suspend…
                             </DropdownMenuItem>
                         )}
@@ -384,8 +387,8 @@ function ActionDialog({ action, onDone, onOpenChange }: { action: Action; onDone
                     <DialogDescription>{copy.body}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
-                    <div>
-                        <Label htmlFor="moderation-reason" className="text-xs font-medium">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="moderation-reason" className="text-xs font-medium text-muted-foreground">
                             Reason (required, shown to the developer)
                         </Label>
                         <Textarea
@@ -398,7 +401,7 @@ function ActionDialog({ action, onDone, onOpenChange }: { action: Action; onDone
                         />
                     </div>
                     {action.kind !== "suspend" && (
-                        <label className="flex items-center gap-2 text-xs">
+                        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-foreground">
                             <Checkbox checked={suspendApps} onCheckedChange={(v) => setSuspendApps(v === true)} />
                             Also suspend the apps they already have
                         </label>
@@ -417,7 +420,7 @@ function ActionDialog({ action, onDone, onOpenChange }: { action: Action; onDone
                             mutation.mutate();
                         }}
                         disabled={mutation.isPending}
-                        className="bg-red-600 hover:bg-red-700 text-white"
+                        variant="destructive"
                     >
                         {mutation.isPending ? "Working…" : copy.cta}
                     </Button>
@@ -452,14 +455,20 @@ function BlockedTab() {
             header: "Blocked",
             cell: (r) =>
                 r.organization_id ? (
-                    <Link to={`/organizations/${r.organization_id}`} className="text-xs font-medium text-[var(--admin-accent-strong)] hover:underline">
+                    <Link
+                        to={`/organizations/${r.organization_id}`}
+                        className="inline-flex items-center gap-2 text-[13px] text-foreground hover:text-[var(--admin-accent-strong)] hover:underline"
+                    >
                         {r.organization_name || r.organization_id}
-                        <span className="ml-1.5 text-[10px] text-muted-foreground">workspace</span>
+                        <StatusBadge tone="neutral">Workspace</StatusBadge>
                     </Link>
                 ) : (
-                    <Link to={`/users/${r.user_id}`} className="text-xs font-medium text-[var(--admin-accent-strong)] hover:underline">
+                    <Link
+                        to={`/users/${r.user_id}`}
+                        className="inline-flex items-center gap-2 text-[13px] text-foreground hover:text-[var(--admin-accent-strong)] hover:underline"
+                    >
                         {r.user_email || r.user_id}
-                        <span className="ml-1.5 text-[10px] text-muted-foreground">person</span>
+                        <StatusBadge tone="info">Person</StatusBadge>
                     </Link>
                 ),
             csv: (r) => r.organization_name || r.user_email || "",
@@ -468,7 +477,7 @@ function BlockedTab() {
             id: "reason",
             header: "Reason",
             cell: (r) => (
-                <span className="text-xs max-w-md truncate block" title={r.reason}>
+                <span className="block max-w-md truncate text-[13px] text-muted-foreground" title={r.reason}>
                     {r.reason}
                 </span>
             ),
@@ -483,7 +492,11 @@ function BlockedTab() {
         {
             id: "when",
             header: "Since",
-            cell: (r) => <span className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</span>,
+            cell: (r) => (
+                <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                    {new Date(r.created_at).toLocaleDateString()}
+                </span>
+            ),
             csv: (r) => r.created_at,
         },
         {
@@ -491,7 +504,7 @@ function BlockedTab() {
             header: "",
             align: "right",
             cell: (r) => (
-                <Button size="sm" variant="outline" className="text-xs" disabled={!canManage || unblock.isPending} onClick={() => unblock.mutate(r.id)}>
+                <Button size="xs" variant="outline" disabled={!canManage || unblock.isPending} onClick={() => unblock.mutate(r.id)}>
                     Unblock
                 </Button>
             ),

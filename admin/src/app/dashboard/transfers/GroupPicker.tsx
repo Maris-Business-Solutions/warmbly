@@ -3,7 +3,7 @@
 // depend on explains itself instead of silently dropping them.
 
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/kit";
 import {
     dependentsOf,
     expandGroups,
@@ -40,7 +40,7 @@ export function GroupPicker({
     }
 
     return (
-        <div className="grid gap-1 sm:grid-cols-2">
+        <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2">
             {groups.map((g) => {
                 const on = g.required || selected.has(g.key);
                 const deps = dependentsOf(g.key, selected);
@@ -48,9 +48,9 @@ export function GroupPicker({
                     <label
                         key={g.key}
                         className={cn(
-                            "flex items-start gap-2 rounded-md border px-2.5 py-2 text-[12.5px]",
-                            on ? "border-border bg-card" : "border-border/60 bg-muted/20",
-                            g.required || disabled ? "cursor-default" : "cursor-pointer hover:bg-muted/40",
+                            "flex items-start gap-2.5 px-3 py-2.5 text-[12.5px] transition-colors",
+                            on ? "bg-card" : "bg-[color-mix(in_oklab,var(--card)_94%,var(--muted-foreground))]",
+                            g.required || disabled ? "cursor-default" : "cursor-pointer hover:bg-accent",
                         )}
                     >
                         <Checkbox
@@ -60,18 +60,25 @@ export function GroupPicker({
                             className="mt-0.5"
                         />
                         <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-1.5">
-                                <span className="font-medium leading-tight">{g.label}</span>
-                                {g.required && <Badge variant="outline" className="text-[9px]">required</Badge>}
+                            <span className="flex flex-wrap items-center gap-1.5">
+                                <span
+                                    className={cn(
+                                        "text-[13px] font-medium leading-tight",
+                                        on ? "text-foreground" : "text-muted-foreground",
+                                    )}
+                                >
+                                    {g.label}
+                                </span>
+                                {g.required && <StatusBadge className="h-4 px-1.5 text-[10.5px]">required</StatusBadge>}
                                 {g.heavy && (
-                                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[9px] text-amber-700">
+                                    <StatusBadge tone="warning" className="h-4 px-1.5 text-[10.5px]">
                                         heavy
-                                    </Badge>
+                                    </StatusBadge>
                                 )}
                             </span>
-                            <span className="block text-[11px] leading-tight text-muted-foreground">{g.description}</span>
+                            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{g.description}</span>
                             {on && deps.length > 0 && !g.required && (
-                                <span className="block text-[10px] leading-tight text-muted-foreground">
+                                <span className="mt-0.5 block text-[11px] leading-snug text-subtle-foreground">
                                     Needed by {deps.map((d) => d.label).join(", ")}.
                                 </span>
                             )}
@@ -79,6 +86,7 @@ export function GroupPicker({
                     </label>
                 );
             })}
+            {groups.length % 2 === 1 && <div aria-hidden className="hidden bg-card sm:block" />}
         </div>
     );
 }

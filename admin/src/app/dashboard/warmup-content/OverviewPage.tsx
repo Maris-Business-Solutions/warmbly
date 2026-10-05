@@ -1,9 +1,9 @@
-// /warmup-content/overview — the automation status panel for the warmup
-// content library: pipeline readiness (configured → enabled → scheduled),
+// /warmup-content/overview: the automation status panel for the warmup
+// content library: pipeline readiness (configured, enabled, scheduled),
 // library stock vs the scheduler's targets, today's generation budget,
 // headline counts, and the content-source vs spam-placement A/B comparison.
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
     Archive,
@@ -14,13 +14,25 @@ import {
     Play,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    EmptyState,
+    Panel,
+    Property,
+    PropertyList,
+    Section,
+    Stat,
+    StatGrid,
+    StatusBadge,
+} from "@/components/ui/kit";
 import { ErrorState } from "@/components/ErrorState";
+import { TONE_DOT, TONE_TEXT, type Tone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import {
     getWarmupContentAb,
     getWarmupContentOverview,
     type WarmupContentOverview,
 } from "@/lib/api/client/admin/warmupContent";
-import { StatCard } from "./components";
+import { Td, Th } from "./components";
 import { fmtDate } from "./shared";
 
 interface PipelineStep {
@@ -69,9 +81,17 @@ function pipelineSteps(d: WarmupContentOverview): PipelineStep[] {
 }
 
 function StepIcon({ ok, blocked }: { ok: boolean; blocked: boolean }) {
-    if (ok) return <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />;
-    if (blocked) return <CircleDashed className="size-4 shrink-0 text-muted-foreground" />;
-    return <CircleAlert className="size-4 shrink-0 text-amber-600" />;
+    if (ok) return <CheckCircle2 className={cn("size-4 shrink-0", TONE_TEXT.success)} />;
+    if (blocked) return <CircleDashed className="size-4 shrink-0 text-subtle-foreground" />;
+    return <CircleAlert className={cn("size-4 shrink-0", TONE_TEXT.warning)} />;
+}
+
+function Meter({ value, tone, className }: { value: number; tone: Tone; className?: string }) {
+    return (
+        <span className={cn("inline-block h-1.5 overflow-hidden rounded-full bg-muted", className)}>
+            <span className={cn("block h-full rounded-full", TONE_DOT[tone])} style={{ width: `${value}%` }} />
+        </span>
+    );
 }
 
 function AutomationPanel({ data }: { data: WarmupContentOverview }) {
@@ -84,162 +104,152 @@ function AutomationPanel({ data }: { data: WarmupContentOverview }) {
         : 0;
 
     return (
-        <section className="rounded-lg border border-border bg-card p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                    <h2 className="text-sm font-semibold">Automatic extension</h2>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {allOk
-                            ? data.refresh_enabled
-                                ? "The library extends itself: every run generates new threads, humanizes and lints them, and recycles the most-used ones so fresh content keeps flowing indefinitely."
-                                : "The library tops itself up to the target. Continuous refresh is off, so generation pauses once the target is reached."
-                            : "Not fully automatic yet — fix the first amber step below and the library will keep itself stocked without manual runs."}
-                    </p>
-                </div>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+        <Panel
+            title="Automatic extension"
+            actions={
+                <StatusBadge tone="success" dot>
                     Autopilot
-                </span>
-            </div>
+                </StatusBadge>
+            }
+            bodyClassName="p-0"
+        >
+            <p className="px-4 pt-3 text-[12.5px] leading-relaxed text-muted-foreground">
+                {allOk
+                    ? data.refresh_enabled
+                        ? "The library extends itself: every run generates new threads, humanizes and lints them, and recycles the most-used ones so fresh content keeps flowing indefinitely."
+                        : "The library tops itself up to the target. Continuous refresh is off, so generation pauses once the target is reached."
+                    : "Not fully automatic yet. Fix the first amber step below and the library will keep itself stocked without manual runs."}
+            </p>
 
-            <ol className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {steps.map((s, i) => (
-                    <li
-                        key={s.label}
-                        className={`flex items-start gap-2 rounded-md border px-3 py-2 ${
-                            s.ok
-                                ? "border-border"
-                                : i === firstGap
-                                  ? "border-amber-300 bg-amber-50/50"
-                                  : "border-border opacity-70"
-                        }`}
-                    >
-                        <StepIcon ok={s.ok} blocked={!s.ok && i !== firstGap} />
-                        <div className="min-w-0">
-                            <div className="text-xs font-medium">
-                                {i + 1}. {s.label}
+            <ol className="mx-4 mt-3 grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
+                {steps.map((s, i) => {
+                    const isGap = !s.ok && i === firstGap;
+                    return (
+                        <li
+                            key={s.label}
+                            className="relative flex items-start gap-2.5 bg-card px-3 py-2.5"
+                        >
+                            {isGap && <span aria-hidden className="pointer-events-none absolute inset-0 bg-amber-500/[0.08]" />}
+                            <StepIcon ok={s.ok} blocked={!s.ok && !isGap} />
+                            <div className={cn("relative min-w-0", !s.ok && !isGap && "opacity-70")}>
+                                <div className="text-[13px] font-medium text-foreground">
+                                    <span className="mr-1 tabular-nums text-subtle-foreground">{i + 1}</span>
+                                    {s.label}
+                                </div>
+                                <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{s.detail}</div>
                             </div>
-                            <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                {s.detail}
-                            </div>
-                        </div>
-                    </li>
-                ))}
+                        </li>
+                    );
+                })}
             </ol>
 
-            <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] text-muted-foreground">
-                <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">Today's budget:</span>
+            <PropertyList className="mt-2 px-4">
+                <Property label="Today's budget">
                     {capped ? (
-                        <>
+                        <span className="inline-flex flex-wrap items-center gap-2.5">
                             <span className="tabular-nums">
-                                {data.generated_today.toLocaleString()} /{" "}
-                                {data.daily_generation_cap.toLocaleString()} threads
+                                {data.generated_today.toLocaleString()} / {data.daily_generation_cap.toLocaleString()}{" "}
+                                threads
                             </span>
-                            <span className="inline-block h-1.5 w-24 overflow-hidden rounded-full bg-muted">
-                                <span
-                                    className={`block h-full rounded-full ${
-                                        budgetUsed >= 100 ? "bg-amber-500" : "bg-emerald-500"
-                                    }`}
-                                    style={{ width: `${budgetUsed}%` }}
-                                />
-                            </span>
-                        </>
+                            <Meter value={budgetUsed} tone={budgetUsed >= 100 ? "warning" : "success"} className="w-24" />
+                        </span>
                     ) : (
-                        <span>
+                        <span className="text-muted-foreground">
                             uncapped ({data.generated_today.toLocaleString()} generated today)
                         </span>
                     )}
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">Continuous refresh:</span>
+                </Property>
+                <Property label="Continuous refresh">
                     {data.refresh_enabled ? (
                         <span>
-                            on — recycles the {data.refresh_per_run} most-used threads each run
+                            On, recycles the <span className="tabular-nums">{data.refresh_per_run}</span> most-used threads
+                            each run
                         </span>
                     ) : (
-                        <span>static fallback active</span>
+                        <span className="text-muted-foreground">Static fallback active</span>
                     )}
-                </div>
-                <div>
-                    Generated threads are humanized, lint-gated, and any send that fails the
-                    gate falls back to the static library. Threads with a meaningful sample and
-                    unsafe spam placement are archived automatically.
-                </div>
-            </div>
-        </section>
+                </Property>
+            </PropertyList>
+
+            <p className="border-t border-border px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                Generated threads are humanized, lint-gated, and any send that fails the gate falls back to the static
+                library. Threads with a meaningful sample and unsafe spam placement are archived automatically.
+            </p>
+        </Panel>
     );
 }
 
 function StockTable({ data }: { data: WarmupContentOverview }) {
     if (data.stock.length === 0) return null;
     return (
-        <section>
-            <h2 className="mb-2 text-sm font-semibold">Stock vs target</h2>
-            <div className="overflow-hidden rounded-lg border border-border bg-card">
-                <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                        <tr>
-                            <th className="px-3 py-2 text-left font-medium">Segment</th>
-                            <th className="px-3 py-2 text-right font-medium">Daily demand</th>
-                            <th className="px-3 py-2 text-right font-medium">Active</th>
-                            <th className="px-3 py-2 text-right font-medium">Target</th>
-                            <th className="px-3 py-2 text-left font-medium">Fill</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.stock.map((s) => {
-                            const pct =
-                                s.target > 0
-                                    ? Math.min(100, Math.round((s.active / s.target) * 100))
-                                    : 100;
-                            const deficit = Math.max(0, s.target - s.active);
-                            return (
-                                <tr key={s.segment || "generic"} className="border-t border-border">
-                                    <td className="px-3 py-2 text-xs">
-                                        {s.segment || "generic"}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                                        {s.average_daily_sends.toLocaleString()}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                        {s.active.toLocaleString()}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                                        {s.target.toLocaleString()}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="inline-block h-1.5 w-28 overflow-hidden rounded-full bg-muted">
-                                                <span
-                                                    className={`block h-full rounded-full ${
-                                                        pct >= 100
-                                                            ? "bg-emerald-500"
-                                                            : pct >= 50
-                                                              ? "bg-sky-500"
-                                                              : "bg-amber-500"
-                                                    }`}
-                                                    style={{ width: `${pct}%` }}
-                                                />
-                                            </span>
-                                            <span className="text-[11px] tabular-nums text-muted-foreground">
-                                                {deficit > 0
-                                                    ? `${deficit.toLocaleString()} short`
-                                                    : "at target"}
-                                            </span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+        <Section
+            title="Stock vs target"
+            description="The target is calculated from the last seven days of total warmup sends. The controller keeps at least 200 shared threads, expands the bank automatically, and submits at most 250 new threads in one batch."
+        >
+            <TableShell>
+                <thead>
+                    <tr className="border-b border-border">
+                        <Th>Segment</Th>
+                        <Th right>Daily demand</Th>
+                        <Th right>Active</Th>
+                        <Th right>Target</Th>
+                        <Th>Fill</Th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.stock.map((s) => {
+                        const pct = s.target > 0 ? Math.min(100, Math.round((s.active / s.target) * 100)) : 100;
+                        const deficit = Math.max(0, s.target - s.active);
+                        return (
+                            <tr key={s.segment || "generic"} className={ROW}>
+                                <Td>{s.segment || "generic"}</Td>
+                                <Td right className="text-muted-foreground">
+                                    {s.average_daily_sends.toLocaleString()}
+                                </Td>
+                                <Td right>{s.active.toLocaleString()}</Td>
+                                <Td right className="text-muted-foreground">
+                                    {s.target.toLocaleString()}
+                                </Td>
+                                <Td>
+                                    <div className="flex items-center gap-2.5">
+                                        <Meter
+                                            value={pct}
+                                            tone={pct >= 100 ? "success" : pct >= 50 ? "info" : "warning"}
+                                            className="w-28"
+                                        />
+                                        <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                                            {deficit > 0 ? `${deficit.toLocaleString()} short` : "at target"}
+                                        </span>
+                                    </div>
+                                </Td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </TableShell>
+        </Section>
+    );
+}
+
+const ROW = "h-10 border-b border-border/70 last:border-0 transition-colors hover:bg-accent/50";
+
+function TableShell({ children }: { children: ReactNode }) {
+    return (
+        <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
+            <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-[13px]">{children}</table>
             </div>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-                The target is calculated from the last seven days of total warmup sends. The
-                controller keeps at least 200 shared threads, expands the bank automatically,
-                and submits at most 250 new threads in one batch.
-            </p>
-        </section>
+        </div>
+    );
+}
+
+function EmptyRow({ cols, title, hint }: { cols: number; title: string; hint?: string }) {
+    return (
+        <tr>
+            <td colSpan={cols}>
+                <EmptyState title={title} hint={hint} className="py-10" />
+            </td>
+        </tr>
     );
 }
 
@@ -256,7 +266,7 @@ export default function OverviewPage() {
         staleTime: 60_000,
     });
 
-    // Content is one shared library now — pools only isolate mailbox
+    // Content is one shared library now; pools only isolate mailbox
     // reputation, not content. Aggregate the per-pool breakdown by
     // segment+source so the table reflects the actual library shape rather
     // than misleading per-pool rows (e.g. "free has no content").
@@ -285,192 +295,133 @@ export default function OverviewPage() {
 
     if (isLoading) {
         return (
-            <div className="space-y-3">
-                <Skeleton className="h-40" />
-                <div className="grid gap-3 md:grid-cols-3">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-24" />
-                    ))}
-                </div>
+            <div className="space-y-8">
+                <Skeleton className="h-56 rounded-lg" />
+                <Skeleton className="h-24 rounded-lg" />
+                <Skeleton className="h-40 rounded-lg" />
             </div>
         );
     }
     if (error) {
-        return (
-            <ErrorState
-                error={error}
-                title="Failed to load overview"
-                onRetry={() => refetch()}
-            />
-        );
+        return <ErrorState error={error} title="Failed to load overview" onRetry={() => refetch()} />;
     }
     if (!data) return null;
 
-    return (
-        <div className="space-y-6">
-            <AutomationPanel data={data} />
+    const abRows = ab.data?.data ?? [];
 
-            <div className="grid gap-3 md:grid-cols-3">
-                <StatCard
-                    icon={<Inbox className="size-4" />}
-                    title="Active threads"
-                    value={(data.total_active ?? 0).toLocaleString()}
-                    hint="available to warmup sends"
-                />
-                <StatCard
-                    icon={<Archive className="size-4" />}
-                    title="Archived"
-                    value={(data.total_archived ?? 0).toLocaleString()}
-                    hint="retired from rotation"
-                />
-                <StatCard
-                    icon={<Play className="size-4" />}
-                    title="Last generated"
-                    value={
-                        data.last_generated_at
-                            ? new Date(data.last_generated_at).toLocaleDateString()
-                            : "Never"
-                    }
-                    hint={
-                        data.last_generated_at
-                            ? fmtDate(data.last_generated_at)
-                            : "no jobs yet"
-                    }
-                />
-            </div>
+    return (
+        <div>
+            <Section>
+                <AutomationPanel data={data} />
+            </Section>
+
+            <Section>
+                <StatGrid className="grid-cols-1 sm:grid-cols-3 md:grid-cols-3">
+                    <Stat
+                        icon={Inbox}
+                        label="Active threads"
+                        value={(data.total_active ?? 0).toLocaleString()}
+                        sub="available to warmup sends"
+                    />
+                    <Stat
+                        icon={Archive}
+                        label="Archived"
+                        value={(data.total_archived ?? 0).toLocaleString()}
+                        sub="retired from rotation"
+                    />
+                    <Stat
+                        icon={Play}
+                        label="Last generated"
+                        value={data.last_generated_at ? new Date(data.last_generated_at).toLocaleDateString() : "Never"}
+                        sub={data.last_generated_at ? fmtDate(data.last_generated_at) : "no jobs yet"}
+                    />
+                </StatGrid>
+            </Section>
 
             <StockTable data={data} />
 
-            <section>
-                <h2 className="mb-2 text-sm font-semibold">Library by segment & source</h2>
-                <div className="overflow-hidden rounded-lg border border-border bg-card">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                            <tr>
-                                <th className="px-3 py-2 text-left font-medium">Segment</th>
-                                <th className="px-3 py-2 text-left font-medium">Source</th>
-                                <th className="px-3 py-2 text-right font-medium">Active</th>
-                                <th className="px-3 py-2 text-right font-medium">Archived</th>
+            <Section title="Library by segment & source">
+                <TableShell>
+                    <thead>
+                        <tr className="border-b border-border">
+                            <Th>Segment</Th>
+                            <Th>Source</Th>
+                            <Th right>Active</Th>
+                            <Th right>Archived</Th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {bySegmentSource.map((p, i) => (
+                            <tr key={`${p.segment}-${p.source}-${i}`} className={ROW}>
+                                <Td>{p.segment || "—"}</Td>
+                                <Td className="text-muted-foreground">{p.source || "—"}</Td>
+                                <Td right className={TONE_TEXT.success}>
+                                    {p.active.toLocaleString()}
+                                </Td>
+                                <Td right className="text-muted-foreground">
+                                    {p.archived.toLocaleString()}
+                                </Td>
+                            </tr>
+                        ))}
+                        {bySegmentSource.length === 0 && (
+                            <EmptyRow
+                                cols={4}
+                                title="No generated content yet"
+                                hint="The controller will submit a batch automatically; static content is active meanwhile."
+                            />
+                        )}
+                    </tbody>
+                </TableShell>
+            </Section>
+
+            <Section
+                title={
+                    <span className="inline-flex items-baseline gap-2">
+                        Content source vs spam placement
+                        {ab.data ? (
+                            <span className="text-xs font-normal text-muted-foreground">
+                                last {ab.data.window_days} days
+                            </span>
+                        ) : null}
+                    </span>
+                }
+                description="Compares how often generated and static warmup mail lands in spam. The library remains reviewable so unsafe generated content can be archived."
+            >
+                {ab.error ? (
+                    <ErrorState error={ab.error} title="Failed to load A/B comparison" onRetry={() => ab.refetch()} />
+                ) : ab.isLoading ? (
+                    <Skeleton className="h-24 rounded-lg" />
+                ) : (
+                    <TableShell>
+                        <thead>
+                            <tr className="border-b border-border">
+                                <Th>Source</Th>
+                                <Th right>Sent</Th>
+                                <Th right>Spam placements</Th>
+                                <Th right>Placement rate</Th>
                             </tr>
                         </thead>
                         <tbody>
-                            {bySegmentSource.map((p, i) => (
-                                <tr
-                                    key={`${p.segment}-${p.source}-${i}`}
-                                    className="border-t border-border"
-                                >
-                                    <td className="px-3 py-2 text-xs">{p.segment || "—"}</td>
-                                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                                        {p.source || "—"}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums text-emerald-600">
-                                        {p.active.toLocaleString()}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                                        {p.archived.toLocaleString()}
-                                    </td>
-                                </tr>
-                            ))}
-                            {bySegmentSource.length === 0 && (
-                                <tr>
-                                    <td
-                                        colSpan={4}
-                                        className="py-6 text-center text-sm text-muted-foreground"
-                                    >
-                                        No generated content yet. The controller will submit a
-                                        batch automatically; static content is active meanwhile.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section>
-                <h2 className="mb-2 text-sm font-semibold">
-                    Content source vs spam placement
-                    {ab.data ? (
-                        <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            last {ab.data.window_days} days
-                        </span>
-                    ) : null}
-                </h2>
-                <p className="mb-2 text-[11px] text-muted-foreground">
-                    Compares how often generated and static warmup mail lands in spam. The
-                    library remains reviewable so unsafe generated content can be archived.
-                </p>
-                {ab.error ? (
-                    <ErrorState
-                        error={ab.error}
-                        title="Failed to load A/B comparison"
-                        onRetry={() => ab.refetch()}
-                    />
-                ) : ab.isLoading ? (
-                    <Skeleton className="h-24" />
-                ) : (
-                    <div className="overflow-hidden rounded-lg border border-border bg-card">
-                        <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                                <tr>
-                                    <th className="px-3 py-2 text-left font-medium">Source</th>
-                                    <th className="px-3 py-2 text-right font-medium">Sent</th>
-                                    <th className="px-3 py-2 text-right font-medium">
-                                        Spam placements
-                                    </th>
-                                    <th className="px-3 py-2 text-right font-medium">
-                                        Placement rate
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(ab.data?.data ?? []).map((r) => {
-                                    // Backend already returns a percent (it
-                                    // multiplies by 100), so use it directly.
-                                    const pct = r.spam_placement_rate ?? 0;
-                                    const tone =
-                                        pct >= 20
-                                            ? "text-red-700"
-                                            : pct >= 10
-                                              ? "text-amber-700"
-                                              : "text-emerald-600";
-                                    return (
-                                        <tr
-                                            key={r.content_source}
-                                            className="border-t border-border"
-                                        >
-                                            <td className="px-3 py-2 text-xs">
-                                                {r.content_source}
-                                            </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">
-                                                {r.sent.toLocaleString()}
-                                            </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">
-                                                {r.spam_placements.toLocaleString()}
-                                            </td>
-                                            <td
-                                                className={`px-3 py-2 text-right tabular-nums ${tone}`}
-                                            >
-                                                {pct.toFixed(2)}%
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {(ab.data?.data ?? []).length === 0 && (
-                                    <tr>
-                                        <td
-                                            colSpan={4}
-                                            className="py-6 text-center text-sm text-muted-foreground"
-                                        >
-                                            Not enough delivery data yet.
-                                        </td>
+                            {abRows.map((r) => {
+                                // Backend already returns a percent (it multiplies by 100).
+                                const pct = r.spam_placement_rate ?? 0;
+                                const tone: Tone = pct >= 20 ? "danger" : pct >= 10 ? "warning" : "success";
+                                return (
+                                    <tr key={r.content_source} className={ROW}>
+                                        <Td>{r.content_source}</Td>
+                                        <Td right>{r.sent.toLocaleString()}</Td>
+                                        <Td right>{r.spam_placements.toLocaleString()}</Td>
+                                        <Td right className={cn("font-medium", TONE_TEXT[tone])}>
+                                            {pct.toFixed(2)}%
+                                        </Td>
                                     </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                );
+                            })}
+                            {abRows.length === 0 && <EmptyRow cols={4} title="Not enough delivery data yet." />}
+                        </tbody>
+                    </TableShell>
                 )}
-            </section>
+            </Section>
         </div>
     );
 }
