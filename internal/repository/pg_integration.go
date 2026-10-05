@@ -72,6 +72,7 @@ type IntegrationRepository interface {
 
 	// OAuth handshake state
 	CreateOAuthState(ctx context.Context, st *models.IntegrationOAuthState) error
+	OAuthReturnOrigin(ctx context.Context, state string) (string, error)
 	TakeOAuthState(ctx context.Context, state string) (*models.IntegrationOAuthState, error)
 
 	// Event subscriptions
@@ -477,6 +478,14 @@ func (r *integrationRepository) CreateOAuthState(ctx context.Context, st *models
 		st.ID, st.OrganizationID, st.UserID, string(st.Provider), st.State, st.CodeVerifier,
 		st.Label, normalizeScopes(st.RequestedScopes), st.ExpiresAt, st.CreatedAt, oauthParams(st.Params))
 	return err
+}
+
+func (r *integrationRepository) OAuthReturnOrigin(ctx context.Context, state string) (string, error) {
+	var origin string
+	err := r.db.QueryRow(ctx, `
+		SELECT COALESCE(params->>'return_origin', '') FROM integration_oauth_states
+		WHERE state = $1 AND used_at IS NULL AND expires_at > NOW()`, state).Scan(&origin)
+	return origin, err
 }
 
 // TakeOAuthState atomically consumes a state: it returns the row only if it is

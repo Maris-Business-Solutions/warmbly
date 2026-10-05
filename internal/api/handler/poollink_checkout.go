@@ -100,7 +100,7 @@ func (h *Handler) PoolLinkCheckout(c *gin.Context) {
 
 	// Built here, not accepted from the caller: a checkout return URL is a
 	// redirect the customer follows after paying.
-	base := config.AppBaseURL()
+	base := config.DashboardBaseURL(c.Request.Context())
 	session, xerr := h.StripeService.CreateCheckoutSession(c.Request.Context(), uid, *orgID, priceID,
 		base+"/app/settings/billing?pool=done", base+"/app/settings/billing?pool=1", "")
 	if xerr != nil {

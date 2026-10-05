@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/domainproof"
@@ -37,8 +38,23 @@ type ConsentState struct {
 	Domain string    `json:"domain,omitempty"`
 	Admin  string    `json:"admin,omitempty"`
 	// Verifier is the sign-in's PKCE verifier and Nonce the ID token must echo; neither leaves the server.
-	Verifier string `json:"verifier,omitempty"`
-	Nonce    string `json:"nonce,omitempty"`
+	Verifier     string `json:"verifier,omitempty"`
+	Nonce        string `json:"nonce,omitempty"`
+	ReturnOrigin string `json:"return_origin,omitempty"`
+}
+
+func (s *Service) OAuthReturnOrigin(ctx context.Context, state string) string {
+	if s.states == nil || (!strings.HasPrefix(state, googleStatePrefix) && !strings.HasPrefix(state, microsoftStatePrefix)) {
+		return ""
+	}
+	st, ok := s.states.Peek(ctx, "mailbox_grant_state:"+state)
+	if !ok {
+		return ""
+	}
+	if st.ReturnOrigin == "" {
+		return config.PrimaryDashboardOrigin()
+	}
+	return config.DashboardOrigin(st.ReturnOrigin)
 }
 
 // TXTLookup reads a domain's TXT records, for the DNS proof.
@@ -172,6 +188,7 @@ func (s *Service) StartGoogle(ctx context.Context, orgID, userID uuid.UUID, doma
 		return nil, errx.InternalError()
 	}
 	st.Domain, st.Admin = domain, admin
+	st.ReturnOrigin = config.DashboardOriginFromContext(ctx)
 	if err := s.states.Put(ctx, "mailbox_grant_state:"+state, st, stateTTL); err != nil {
 		return nil, errx.InternalError()
 	}
@@ -313,6 +330,7 @@ func (s *Service) StartMicrosoft(ctx context.Context, orgID, userID uuid.UUID) (
 	if err != nil {
 		return "", "", errx.InternalError()
 	}
+	st.ReturnOrigin = config.DashboardOriginFromContext(ctx)
 	if err := s.states.Put(ctx, "mailbox_grant_state:"+state, st, stateTTL); err != nil {
 		return "", "", errx.InternalError()
 	}

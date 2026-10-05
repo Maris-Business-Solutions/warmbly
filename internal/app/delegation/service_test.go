@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/domainproof"
@@ -318,6 +319,43 @@ func serviceAccountKey(t *testing.T, tokenURL string) []byte {
 		"private_key": string(pemKey), "private_key_id": "kid", "token_uri": tokenURL,
 	})
 	return raw
+}
+
+func TestGrantOriginBoundToUnconsumedState(t *testing.T) {
+	t.Setenv("APP_URL", "https://app.warmbly.com")
+	t.Setenv("APP_ORIGIN", "")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://tac-security-assessment.warmbly.com")
+	s, p, _, _, _ := newTestService(t)
+	ctx := config.WithDashboardOrigin(context.Background(), "https://tac-security-assessment.warmbly.com")
+	org, user := uuid.New(), uuid.New()
+	g, xerr := s.StartGoogle(ctx, org, user, "acme.io", "admin@acme.io")
+	if xerr != nil {
+		t.Fatal(xerr)
+	}
+	_, ms, xerr := s.StartMicrosoft(ctx, org, user)
+	if xerr != nil {
+		t.Fatal(xerr)
+	}
+	for _, state := range []string{g.State, ms} {
+		if got := s.OAuthReturnOrigin(context.Background(), state); got != "https://tac-security-assessment.warmbly.com" {
+			t.Fatalf("origin = %q", got)
+		}
+		st, ok := p.states.Peek(ctx, "mailbox_grant_state:"+state)
+		if !ok || st.Verifier == "" || st.Nonce == "" || st.OrgID != org || st.UserID != user {
+			t.Fatal("routing must preserve identity and PKCE state")
+		}
+	}
+	if s.MicrosoftSigninURL(context.Background(), ms) == "" || s.OAuthReturnOrigin(ctx, ms) != "https://tac-security-assessment.warmbly.com" {
+		t.Fatal("second Microsoft sign-in must retain origin")
+	}
+	p.states.Take(ctx, "mailbox_grant_state:"+ms)
+	if s.OAuthReturnOrigin(ctx, ms) != "" || s.OAuthReturnOrigin(ctx, "gac_unknown") != "" {
+		t.Fatal("unknown/consumed state must not route")
+	}
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://app.warmbly.com")
+	if s.OAuthReturnOrigin(ctx, g.State) != "" {
+		t.Fatal("removed origin must not route")
+	}
 }
 
 var testTXT = &fakeTXT{records: map[string][]string{}}

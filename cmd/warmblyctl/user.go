@@ -317,7 +317,7 @@ func issueResetLink(ctx context.Context, c *conn, u *models.User, ttl time.Durat
 		return fmt.Errorf("storing the reset session: %w", serr)
 	}
 
-	fmt.Printf("Issued a password reset session for %s. It is single use and expires at %s. No password has changed yet.\n\n  %s\n\n", u.Email, expiresAt.UTC().Format(time.RFC3339), config.GetPasswordResetURL(tok))
+	fmt.Printf("Issued a password reset session for %s. It is single use and expires at %s. No password has changed yet.\n\n  %s\n\n", u.Email, expiresAt.UTC().Format(time.RFC3339), config.GetPasswordResetURL(tok, ""))
 	fmt.Println("Open that link in a browser to choose the new password. Opening it revokes every existing session for the account.")
 	fmt.Println("If the host is wrong, set APP_URL to the URL the dashboard is served from and run this again.")
 	return nil

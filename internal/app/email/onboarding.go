@@ -43,7 +43,10 @@ func newState(web bool) (string, error) {
 
 // OAuthStart issues a fresh state nonce and returns the provider-specific authorization URL.
 // The caller is expected to redirect the user to the URL and post back to OAuthFinish on return.
-func (s *emailService) OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string, web bool) (*models.EmailOnboardingStartResponse, *errx.Error) {
+func (s *emailService) OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string, web bool, returnOrigin string) (*models.EmailOnboardingStartResponse, *errx.Error) {
+	if returnOrigin != "" && (!web || config.DashboardOrigin(returnOrigin) == "") {
+		return nil, errx.ErrEmailOnboardReturnOrigin
+	}
 	// A new mailbox only; OAuthReauth renews an existing one and is not gated.
 	if provider == models.InboxProviderGoogle && !config.GoogleOAuthConnect() {
 		return nil, errx.ErrEmailOnboardGoogleOAuthDisabled
@@ -76,6 +79,7 @@ func (s *emailService) OAuthStart(ctx context.Context, userID string, orgID *uui
 		Provider:       string(provider),
 		Nonce:          state,
 		CodeVerifier:   verifier,
+		ReturnOrigin:   returnOrigin,
 	}); xerr != nil {
 		return nil, xerr
 	}

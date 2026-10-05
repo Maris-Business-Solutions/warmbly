@@ -96,7 +96,7 @@ func (s *authService) startPasswordReset(ctx context.Context, data *ResetPasswor
 		return err
 	}
 
-	url := config.GetPasswordResetURL(token)
+	url := config.GetPasswordResetURL(token, config.DashboardOriginFromContext(ctx))
 
 	text, err := templates.GenerateResetPasswordHTML(u.FirstName, url, PasswordResetTTL)
 	if err != nil {

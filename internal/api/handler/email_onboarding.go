@@ -51,7 +51,11 @@ func (h *Handler) StartEmailOAuth(c *gin.Context) {
 		return
 	}
 
-	resp, xerr := h.EmailService.OAuthStart(c.Request.Context(), userID, orgID, models.InboxProvider(req.Provider), req.LoginHint, req.Return == "web")
+	returnOrigin := ""
+	if req.Return == "web" {
+		returnOrigin = c.GetHeader("Origin")
+	}
+	resp, xerr := h.EmailService.OAuthStart(c.Request.Context(), userID, orgID, models.InboxProvider(req.Provider), req.LoginHint, req.Return == "web", returnOrigin)
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return
@@ -134,7 +138,7 @@ func (h *Handler) ReauthEmailOAuth(c *gin.Context) {
 		return
 	}
 
-	resp, xerr := h.EmailService.OAuthReauth(c.Request.Context(), userID, orgID, id)
+	resp, xerr := h.EmailService.OAuthReauth(c.Request.Context(), userID, orgID, id, c.GetHeader("Origin"))
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return

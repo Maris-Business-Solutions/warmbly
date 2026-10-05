@@ -190,8 +190,8 @@ export default function SigninMigrationDialog({
                                     ) : (
                                         <div className="p-4 space-y-3">
                                             <p className="text-[12px] text-slate-600 leading-relaxed">
-                                                Google sign-in for single mailboxes is being retired. Nothing stops working today. Moving keeps
-                                                each mailbox, with its history, campaigns and warmup.
+                                                Switching from Google sign-in is optional. Moving keeps each mailbox, with its history,
+                                                campaigns and warmup.
                                             </p>
                                             {groups.map((g) => (
                                                 <GroupCard

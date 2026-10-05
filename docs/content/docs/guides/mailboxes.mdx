@@ -13,7 +13,7 @@ Open **Accounts** and choose **Add account**. Google and Microsoft each have one
 |----------|--------|-------|
 | Google | **Whole Workspace domain**: an administrator's grant (`gmail`, sign-in method `delegated`) | Recommended for Google Workspace. A super admin authorizes Warmbly once, and every mailbox on the domain connects with no password and no sign-in each. Runs on the Gmail API. See [connect a whole Google Workspace domain](/guides/mailbox-import/#connect-a-whole-google-workspace-domain) |
 | Google | **App password** over IMAP + SMTP (`smtp_imap`, sign-in method `app_password`) | Works for personal Gmail and for Workspace. The dialog walks you through it in three steps, see [Gmail and Google Workspace](#gmail-and-google-workspace) below |
-| Google | **Sign in with Google**: OAuth for one mailbox (`gmail`, sign-in method `oauth`) | Being retired, see [moving off per-mailbox Google sign-in](#moving-off-per-mailbox-google-sign-in). Offered only where the instance still allows it for new mailboxes |
+| Google | **Sign in with Google**: OAuth for one mailbox (`gmail`, sign-in method `oauth`) | Offered where the dashboard deployment enables it and the backend supports it. No app password needed |
 | Microsoft | **Whole organization**: an administrator's grant (`outlook`, sign-in method `delegated`) | Recommended for Microsoft 365. A Global Administrator approves Warmbly once, and every licensed mailbox connects with no sign-in each. Runs on Microsoft Graph. See [connect a whole Microsoft 365 organization](/guides/mailbox-import/#connect-a-whole-microsoft-365-organization) |
 | Microsoft | **Sign in one mailbox**: OAuth (`outlook`, sign-in method `oauth`) | No password stored. Runs on Microsoft Graph. The way to connect Outlook.com and a single Microsoft 365 mailbox |
 | Any other server | IMAP + SMTP (`smtp_imap`) | Custom domains, self-hosted, or providers without OAuth. Any IMAP server that accepts a password works, including Yahoo, Fastmail, Zoho, Seznam.cz, cPanel and self-hosted Dovecot. Exchange Online (Microsoft 365 and Outlook.com) no longer accepts passwords over IMAP, so connect those with Microsoft |
@@ -22,8 +22,8 @@ On a self-hosted instance the two whole-domain methods are shown switched off un
 
 Once you press **Connect**, the connect finishes on the server even if you refresh or close the page: the credentials are checked, and the mailbox is either saved, placed on a worker and added to your list, or not saved at all. It appears in the list on its own when it is done. Pressing **Connect** again meanwhile cannot add the address twice.
 
-<Callout title="Per-mailbox Google sign-in is being retired">
-  A mailbox you already connected with **Sign in with Google** is not affected yet: it keeps sending and syncing, and if Google invalidates its token the **Re-authorize** button in its drawer still works. There is no cutoff date. The dashboard marks these mailboxes and offers to move each one, without losing anything, onto its domain's grant (Google Workspace) or an app password (personal Gmail). See [moving off per-mailbox Google sign-in](#moving-off-per-mailbox-google-sign-in).
+<Callout title="Existing Google sign-in mailboxes stay connected">
+  A mailbox connected with **Sign in with Google** keeps sending and syncing even when a deployment hides that option for new mailboxes. If Google invalidates its token, the **Re-authorize** button in its drawer still works. You can optionally switch to a domain grant (Google Workspace) or an app password without losing history. See [moving off per-mailbox Google sign-in](#moving-off-per-mailbox-google-sign-in).
 </Callout>
 
 **OAuth** sends you to your provider's consent screen and returns a token instead of a password. Both OAuth providers use the provider's native API, never IMAP or SMTP, so consent asks to send mail and to read and organize your mailbox. Google additionally asks to read your mail settings, which is what lets Warmbly offer the addresses Google has verified you to send as and import the signature you already wrote there. It needs no app passwords or server settings. Note that Google revokes Gmail tokens when the account's password changes, so a password change there means [re-authorizing the mailbox](#reconnecting-an-account) once.
@@ -86,6 +86,8 @@ Warmbly signs in with whichever method your server offers, preferring CRAM-MD5, 
 
 ### Gmail and Google Workspace
 
+Where your deployment enables it, choose **Add account > Google > Sign in with Google** to connect one mailbox through Google's consent screen. This option is deployment-dependent; an administrator can enable it with the [dashboard configuration flag](/development/configuration/#google-sign-in-per-dashboard-deployment). If it is hidden, use an app password or a Workspace whole-domain grant instead. Existing Google sign-in mailboxes keep working and can re-authorize even when new Google sign-in connects are disabled.
+
 Choose **Add account**, then **Google**, then **App password**. The dialog walks through three steps, and the only things you type are the address and the app password; the server settings are Gmail's own and are filled in for you.
 
 1. **Turn on 2-Step Verification** on the Google account, under [Google Account, Security](https://myaccount.google.com/security). Google only offers app passwords once it is on, and only alongside a second-step method other than a security key (a phone prompt, an authenticator app or a text message). Already on? Continue.
@@ -109,7 +111,7 @@ On Google Workspace the administrator decides. They can switch IMAP off for the 
 
 ### Moving off per-mailbox Google sign-in
 
-Per-mailbox **Sign in with Google** is being retired. This is a notice, not a deadline: a mailbox on it keeps sending, syncing and warming, and re-authorizing it still works. The two methods that replace it need no per-mailbox Google token at all. The whole-domain grant is authorized once by a Workspace administrator and survives password changes, and an app password works for any Google account.
+Switching from per-mailbox **Sign in with Google** is optional. A mailbox on it keeps sending, syncing and warming, and re-authorizing it still works. The alternatives need no per-mailbox Google token: a whole-domain grant is authorized once by a Workspace administrator and survives password changes, and an app password works for Google accounts where app passwords are available.
 
 The **Accounts** page shows a banner while any mailbox is still on per-mailbox Google sign-in, each such mailbox carries a chip in the list, and its drawer shows a notice with the move for it. Mailboxes whose sign-in is held by [Warmbly Cloud](/guides/warmbly-cloud/) are not included; the cloud keeps their sign-in.
 
@@ -118,7 +120,7 @@ The **Accounts** page shows a banner while any mailbox is still on per-mailbox G
 1. Choose **Add account > Google > Whole Workspace domain** and set up the grant for the domain, as in [connect a whole Google Workspace domain](/guides/mailbox-import/#connect-a-whole-google-workspace-domain). Skip this when the domain already has an active grant.
 2. In the grant's user list, the mailboxes still on their own sign-in are marked as ones to move. Pick them, or connect everyone, which includes them.
 
-Connecting the address converts the existing mailbox in place: it is the same mailbox, with the same history, campaigns, warmup progress and settings, and the stored Google token is deleted. Converting does not add a mailbox, so it never counts against the [mailbox allowance](#mailbox-allowance). The same works for a mailbox on per-mailbox Microsoft sign-in under a Microsoft 365 organization grant, although Microsoft sign-in is not being retired and that move is optional.
+Connecting the address converts the existing mailbox in place: it is the same mailbox, with the same history, campaigns, warmup progress and settings, and the stored Google token is deleted. Converting does not add a mailbox, so it never counts against the [mailbox allowance](#mailbox-allowance). The same optional switch works for a mailbox on per-mailbox Microsoft sign-in under a Microsoft 365 organization grant.
 
 **A personal Gmail mailbox moves to an app password.** This works for a Workspace mailbox too, when a grant is not an option.
 
@@ -169,7 +171,7 @@ There is no daily cap on how many mailboxes you connect: a Business workspace ca
 
 ## Connecting many mailboxes at once
 
-Choose **Import mailboxes** in the connect dialog to connect up to 5,000 mailboxes from a CSV, TSV or XLSX file, a vendor export, or a pasted list of `address:password` pairs. Only an address and a password are needed: the columns are recognised and each domain's servers are found from DNS. Microsoft 365 and Outlook.com rows wait for a Microsoft sign-in each, and Google rows need an app password. The import runs on the server, verifies every credential before saving it, and groups whatever fails by cause with the fix.
+Choose **Import mailboxes** in the connect dialog to connect up to 5,000 mailboxes from a CSV, TSV or XLSX file, a vendor export, or a pasted list of `address:password` pairs. Only an address and a password are needed: the columns are recognised and each domain's servers are found from DNS. Microsoft 365 and Outlook.com rows wait for a Microsoft sign-in each. Google rows use an app password, an admin grant, or Google sign-in where enabled. The import runs on the server, verifies every credential before saving it, and groups whatever fails by cause with the fix.
 
 The same dialog imports straight from an [inbox vendor](/guides/mailbox-import/#import-from-an-inbox-vendor) with an API key, and connects a whole [Google Workspace domain](/guides/mailbox-import/#connect-a-whole-google-workspace-domain) (**Google > Whole Workspace domain**) or [Microsoft 365 organization](/guides/mailbox-import/#connect-a-whole-microsoft-365-organization) (**Microsoft > Whole organization**) through one administrator's grant.
 

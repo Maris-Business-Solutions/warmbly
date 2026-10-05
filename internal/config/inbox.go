@@ -16,12 +16,17 @@ type Oauth2Inbox struct {
 }
 
 // GoogleOAuthConnect reports whether a NEW Gmail mailbox may be connected with
-// Google sign-in. Off by default: the connect dialog walks people through an
-// app password over IMAP and SMTP instead, which needs no verified Google app.
-// Mailboxes already connected with Google sign-in are untouched either way and
-// can still be re-authorized. BOX_GOOGLE_OAUTH_CONNECT=true turns it on.
+// Google sign-in. Configured clients default on; an explicit flag overrides it.
+// Existing mailboxes can still be re-authorized regardless of this gate.
 func GoogleOAuthConnect() bool {
-	b, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("BOX_GOOGLE_OAUTH_CONNECT")))
+	if strings.TrimSpace(os.Getenv("BOX_GOOGLE_CLIENT_ID")) == "" || strings.TrimSpace(os.Getenv("BOX_GOOGLE_CLIENT_SECRET")) == "" {
+		return false
+	}
+	value := strings.TrimSpace(os.Getenv("BOX_GOOGLE_OAUTH_CONNECT"))
+	if value == "" {
+		return true
+	}
+	b, err := strconv.ParseBool(value)
 	return err == nil && b
 }
 

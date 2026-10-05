@@ -88,8 +88,8 @@ func (h *Handler) CreateCheckoutSession(c *gin.Context) {
 
 	// Pinned to this instance's dashboard: Stripe will redirect the customer
 	// to whatever is set here.
-	successURL := billingReturnURL(req.SuccessURL, "/app/settings/billing?checkout=done")
-	cancelURL := billingReturnURL(req.CancelURL, "/app/settings/billing")
+	successURL := billingReturnURL(c.Request.Context(), req.SuccessURL, "/app/settings/billing?checkout=done")
+	cancelURL := billingReturnURL(c.Request.Context(), req.CancelURL, "/app/settings/billing")
 
 	session, errX := h.StripeService.CreateCheckoutSession(c.Request.Context(), uid, *orgID, req.PriceID, successURL, cancelURL, req.DiscountCode)
 	if errX != nil {
@@ -131,7 +131,7 @@ func (h *Handler) CreateBillingPortalSession(c *gin.Context) {
 	}
 
 	portalURL, errX := h.StripeService.CreatePortalSession(c.Request.Context(), sub.StripeCustomerID,
-		billingReturnURL(req.ReturnURL, "/app/settings/billing"))
+		billingReturnURL(c.Request.Context(), req.ReturnURL, "/app/settings/billing"))
 	if errX != nil {
 		errx.JSON(c, errX)
 		return

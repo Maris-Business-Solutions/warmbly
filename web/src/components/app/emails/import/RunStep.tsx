@@ -38,7 +38,6 @@ import {
     type ImportRowStatus,
     type MailboxImport,
 } from "@/lib/api/models/app/emails/MailboxImport";
-import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
 import useMailboxOAuth from "@/hooks/useMailboxOAuth";
 import useMicrosoftAdminConsent from "@/hooks/useMicrosoftAdminConsent";
 import { useGrantConfig } from "@/lib/api/hooks/app/emails/useMailboxGrants";
@@ -103,7 +102,6 @@ export default function RunStep({
     const job = useMailboxImport(importId);
     const retry = useRetryMailboxImport(importId);
     const cancel = useCancelMailboxImport(importId);
-    const gmailOAuth = useAuthConfig().config.gmail_oauth_connect === true;
     const [signingLine, setSigningLine] = React.useState<number | null>(null);
     const [downloading, setDownloading] = React.useState(false);
 
@@ -175,7 +173,7 @@ export default function RunStep({
     const signInProvider = (row: ImportRow) => {
         const provider = mailHostOAuthProvider(row.mail_host);
         if (!provider) return null;
-        if (provider === "gmail" && !gmailOAuth && !oauth.viaCloud) return null;
+        if (provider === "gmail" && !oauth.gmailAvailable) return null;
         return provider;
     };
 

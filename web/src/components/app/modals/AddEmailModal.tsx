@@ -8,7 +8,7 @@
 // Flow:
 //   provider picker ─► Google ─► whole Workspace domain ─► /emails/grants (GrantImportWizard)
 //                    │         ├► app password walkthrough ─► /emails/onboarding/smtp-imap
-//                    │         └► Sign in with Google ────────┐ (retiring; only when gmail_oauth_connect is on)
+//                    │         └► Sign in with Google ────────┐ (when frontend and backend allow it)
 //                    ├► Microsoft ─► whole organization ─► /emails/grants (GrantImportWizard)
 //                    │            └► sign in one mailbox ──────┴► /emails/onboarding/oauth/finish
 //                    ├► smtp/imap form ──────────► /emails/onboarding/smtp-imap
@@ -17,9 +17,8 @@
 //
 // Google and Microsoft each open a method chooser. The admin grant is the
 // recommended method wherever the instance has it set up, and is left out
-// where it is not. Per-mailbox Google sign-in is being retired: it is offered
-// only when the deployment allows it (gmail_oauth_connect on /auth/config),
-// marked as retiring, and mailboxes already on it are asked to move.
+// where it is not. Per-mailbox Google sign-in requires the frontend's opt-in
+// and either a confirmed backend capability or a Warmbly Cloud connection.
 //
 // Every path can run into the workspace's mailbox allowance; that answer
 // (code mailbox_allowance_reached) opens MailboxAllowanceDialog instead of a
@@ -158,10 +157,6 @@ export default function AddEmailModal() {
     const allowance = useMailboxAllowance(user.addEmail);
     const [allowanceOpen, setAllowanceOpen] = React.useState(false);
     const [allowanceReached, setAllowanceReached] = React.useState(false);
-    // Whether a new Gmail mailbox may use Google sign-in here. Anything but an
-    // explicit yes (an older backend, the unreachable fallback) takes the
-    // app-password walkthrough, which works on every deployment.
-    const gmailOAuth = useAuthConfig().config.gmail_oauth_connect === true;
     const openAllowance = React.useCallback((reached = false) => {
         setAllowanceReached(reached);
         setAllowanceOpen(true);
@@ -181,6 +176,7 @@ export default function AddEmailModal() {
     });
     const oauthBusy = oauth.busy;
     const viaCloud = oauth.viaCloud;
+    const gmailOAuth = oauth.gmailAvailable;
     const resetOAuth = oauth.reset;
 
     // Reset when the modal closes.
@@ -678,8 +674,6 @@ interface Method {
     title: string;
     sub: string;
     pill?: { label: string; tone: "sky" | "amber" };
-    /** Offered, but steered away from. */
-    retiring?: string;
 }
 
 // The ways to connect a Google or Microsoft mailbox. The admin grant leads
@@ -722,8 +716,6 @@ function MethodChooser({
                 icon: <ProviderLogo id="google" size="md" framed={false} />,
                 title: "Sign in with Google",
                 sub: viaCloud ? "One mailbox at a time, through Warmbly Cloud." : "One mailbox at a time, through Google's consent screen.",
-                pill: { label: "Being retired", tone: "amber" },
-                retiring: "Still works for now. It will be discontinued, so prefer the whole domain or an app password.",
             });
         }
     } else {
@@ -753,7 +745,7 @@ function MethodChooser({
                 <div className="min-w-0">
                     <p className="text-[13px] font-medium text-slate-900">How should Warmbly connect?</p>
                     <p className="text-[11.5px] text-slate-500">
-                        {provider === "google" ? "Personal @gmail.com? Use an app password." : "Personal @outlook.com or @hotmail.com? Sign in one mailbox."}
+                        {provider === "google" ? (gmailOAuth ? "Connect one mailbox with Google sign-in or an app password." : "Personal @gmail.com? Use an app password.") : "Personal @outlook.com or @hotmail.com? Sign in one mailbox."}
                     </p>
                 </div>
             </div>
@@ -770,24 +762,16 @@ function MethodChooser({
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.04 + i * 0.05, duration: 0.18, ease: "easeOut" }}
-                    className={cn(
-                        "w-full rounded-md border px-3 py-3 flex items-start gap-3 text-left group transition-colors",
-                        m.retiring
-                            ? "border-dashed border-slate-200 bg-slate-50/40 hover:bg-slate-50"
-                            : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
-                    )}
+                    className="w-full rounded-md border px-3 py-3 flex items-start gap-3 text-left group transition-colors border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                 >
                     <div
-                        className={cn(
-                            "size-8 rounded-md border border-slate-200 bg-white flex items-center justify-center shrink-0",
-                            m.retiring && "opacity-70",
-                        )}
+                        className="size-8 rounded-md border border-slate-200 bg-white flex items-center justify-center shrink-0"
                     >
                         {m.icon}
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                            <span className={cn("text-[13px] font-medium", m.retiring ? "text-slate-600" : "text-slate-900")}>{m.title}</span>
+                            <span className="text-[13px] font-medium text-slate-900">{m.title}</span>
                             {m.pill && (
                                 <span
                                     className={cn(
@@ -800,7 +784,6 @@ function MethodChooser({
                             )}
                         </div>
                         <p className="text-[11.5px] text-slate-500 leading-relaxed">{m.sub}</p>
-                        {m.retiring && <p className="text-[11.5px] text-amber-700 leading-relaxed mt-0.5">{m.retiring}</p>}
                     </div>
                     <ChevronRightIcon className="w-4 h-4 text-slate-300 shrink-0 self-center group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
                 </motion.button>
@@ -896,19 +879,6 @@ function OAuthPanel({
     const Icon = provider === "gmail" ? Google : Outlook;
     return (
         <div className="px-5 py-6 space-y-5">
-            {provider === "gmail" && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                        <span className="h-[18px] px-1.5 rounded-full border border-amber-200 bg-white text-amber-700 text-[10px] font-medium inline-flex items-center">
-                            Being retired
-                        </span>
-                        <span className="text-[12px] font-medium text-amber-900">Google sign-in for single mailboxes</span>
-                    </div>
-                    <p className="mt-1 text-[11.5px] text-amber-800 leading-relaxed">
-                        Still works for now. It will be discontinued, so prefer the whole domain or an app password.
-                    </p>
-                </div>
-            )}
             <div className="flex items-center gap-3">
                 <div className="size-11 rounded-md border border-slate-200 bg-white flex items-center justify-center shrink-0">
                     <Icon className="w-6 h-6" />

@@ -14,11 +14,11 @@ import (
 // instance with no Google client configured still gets the policy answer
 // rather than the setup one.
 func TestOAuthStart_GmailRefusedUnlessEnabled(t *testing.T) {
-	t.Setenv("BOX_GOOGLE_OAUTH_CONNECT", "")
+	t.Setenv("BOX_GOOGLE_OAUTH_CONNECT", "false")
 	org := uuid.New()
 	svc := &emailService{}
 
-	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "", false)
+	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "", false, "")
 	if xerr != errx.ErrEmailOnboardGoogleOAuthDisabled {
 		t.Fatalf("expected ErrEmailOnboardGoogleOAuthDisabled, got %v", xerr)
 	}
@@ -28,13 +28,15 @@ func TestOAuthStart_GmailRefusedUnlessEnabled(t *testing.T) {
 // configured that is the not-configured error, proving the gate stepped aside.
 func TestOAuthStart_GmailAllowedWhenEnabled(t *testing.T) {
 	t.Setenv("BOX_GOOGLE_OAUTH_CONNECT", "true")
+	t.Setenv("BOX_GOOGLE_CLIENT_ID", "test-client")
+	t.Setenv("BOX_GOOGLE_CLIENT_SECRET", "test-secret")
 	if !config.GoogleOAuthConnect() {
 		t.Fatal("BOX_GOOGLE_OAUTH_CONNECT=true must enable Google sign-in for new mailboxes")
 	}
 	org := uuid.New()
 	svc := &emailService{}
 
-	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "", false)
+	_, xerr := svc.OAuthStart(context.Background(), uuid.NewString(), &org, models.InboxProviderGoogle, "", false, "")
 	if xerr != errx.ErrEmailOnboardGoogleNotConfigured {
 		t.Fatalf("expected the gate to step aside (ErrEmailOnboardGoogleNotConfigured), got %v", xerr)
 	}
@@ -46,7 +48,7 @@ func TestOAuthReauth_GmailNotGated(t *testing.T) {
 	t.Setenv("BOX_GOOGLE_OAUTH_CONNECT", "")
 	svc, repo, _, _ := reauthFixture("gmail", "owner@example.com")
 
-	_, xerr := svc.OAuthReauth(context.Background(), repo.account.UserID, repo.account.OrganizationID, repo.account.ID)
+	_, xerr := svc.OAuthReauth(context.Background(), repo.account.UserID, repo.account.OrganizationID, repo.account.ID, "")
 	if xerr == errx.ErrEmailOnboardGoogleOAuthDisabled {
 		t.Fatal("reauth of an existing Gmail mailbox must not be refused by the new-mailbox gate")
 	}
