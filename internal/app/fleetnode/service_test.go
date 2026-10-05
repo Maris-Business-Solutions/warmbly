@@ -208,3 +208,31 @@ func TestListAndGetAttachTheVariant(t *testing.T) {
 		t.Errorf("Get: got %q, want v0.4.5-kafka", node.DesiredVersion)
 	}
 }
+
+// An update-only beat must write nothing: stubNodes panics on any write.
+func TestUpdateOnlyTellsTheVersionAndRecordsNothing(t *testing.T) {
+	id := uuid.New()
+	s := &Service{
+		nodes:    stubNodes{node: &models.FleetNode{ID: id, Role: models.NodeRoleWorker}},
+		settings: stubSettings{release: "v1.2.3"},
+		variant:  "-kafka",
+	}
+	ctx := context.Background()
+	reply, err := s.UpdateOnly(ctx, models.NodeHeartbeat{NodeID: id, Role: models.NodeRoleWorker, Booted: true})
+	if err != nil || reply.DesiredVersion != "v1.2.3-kafka" || reply.LivenessSeconds == 0 {
+		t.Fatalf("enrolled node: reply=%+v err=%v", reply, err)
+	}
+	if reply, _ := s.UpdateOnly(ctx, models.NodeHeartbeat{NodeID: id, Role: models.NodeRoleWorker, Stopping: true}); reply.DesiredVersion != "" {
+		t.Errorf("a farewell beat is told nothing, got %q", reply.DesiredVersion)
+	}
+	if reply, _ := s.UpdateOnly(ctx, models.NodeHeartbeat{NodeID: id, Role: models.NodeRoleConsumer}); reply.DesiredVersion != "" {
+		t.Errorf("a beat claiming another role is told nothing, got %q", reply.DesiredVersion)
+	}
+	unknown := &Service{nodes: stubNodes{}, settings: stubSettings{release: "v1.2.3"}}
+	if reply, _ := unknown.UpdateOnly(ctx, models.NodeHeartbeat{NodeID: uuid.New(), Role: models.NodeRoleWorker}); reply.DesiredVersion != "" {
+		t.Errorf("an unenrolled node is told nothing, got %q", reply.DesiredVersion)
+	}
+	if _, err := s.UpdateOnly(ctx, models.NodeHeartbeat{Role: models.NodeRoleWorker}); err == nil {
+		t.Error("a beat without a node id is refused")
+	}
+}

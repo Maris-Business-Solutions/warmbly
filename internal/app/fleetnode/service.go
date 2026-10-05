@@ -189,6 +189,27 @@ func (s *Service) Heartbeat(ctx context.Context, beat models.NodeHeartbeat) (*mo
 	return reply, nil
 }
 
+// UpdateOnly answers a beat from a node still on INTERNAL_API_TOKEN with its
+// version and records nothing: the node is not marked live and nothing it
+// reports is stored. Only an enrolled node is told a version.
+func (s *Service) UpdateOnly(ctx context.Context, beat models.NodeHeartbeat) (*models.NodeHeartbeatReply, error) {
+	if !beat.Role.Valid() {
+		return nil, ErrBadRole
+	}
+	if beat.NodeID == uuid.Nil {
+		return nil, errors.New("node_id required")
+	}
+	reply := &models.NodeHeartbeatReply{LivenessSeconds: int(models.NodeLivenessWindow.Seconds())}
+	if beat.Stopping {
+		return reply, nil
+	}
+	if node, err := s.nodes.Get(ctx, beat.NodeID); err != nil || node == nil || node.Role != beat.Role {
+		return reply, nil
+	}
+	reply.DesiredVersion = s.desiredVersion(ctx, beat.NodeID)
+	return reply, nil
+}
+
 // desiredVersion resolves what this node should run: its own pin if it has
 // one, otherwise the fleet-wide resolved release.
 //
