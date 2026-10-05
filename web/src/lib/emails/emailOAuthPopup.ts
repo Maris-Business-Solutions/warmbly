@@ -5,6 +5,7 @@
 // with them so the caller can finish the handshake.
 
 import { API_URL, APP_URL } from "@/lib/information";
+import { POPUP_CLOSED, closePopup, navigatePopup, notifyPopupBlocked, reservePopup, waitForPopupMessage } from "@/lib/popup";
 
 export interface EmailOAuthPopupResult {
     code: string;
@@ -18,6 +19,8 @@ interface EmailOAuthCallbackMessage {
     state: string;
     error: string;
 }
+
+const WINDOW_NAME = "warmbly_email_oauth";
 
 // originOf normalises a configured base URL to a bare origin. APP_URL and
 // API_URL may carry a trailing slash or a path; event.origin never does.
@@ -39,61 +42,37 @@ function allowedCallbackOrigins(): string[] {
     );
 }
 
-export function openEmailOAuthPopup(authUrl: string, expectedState: string): Promise<EmailOAuthPopupResult> {
-    return new Promise((resolve, reject) => {
-        const width = 520;
-        const height = 640;
-        const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-        const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-        const popup = window.open(
-            authUrl,
-            "warmbly_email_oauth",
-            `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes`,
-        );
-        if (!popup) {
-            reject(new Error("Popup blocked. Allow popups for this site and try again."));
-            return;
+/**
+ * Runs a whole mailbox authorization: call it straight from the click. The
+ * window opens before start() is awaited (Safari blocks one opened after),
+ * then follows the URL start() returns; resolves with the callback's code.
+ */
+export async function authorizeEmailInPopup(
+    start: () => Promise<{ url: string; state: string }>,
+): Promise<EmailOAuthPopupResult> {
+    const reserved = reservePopup(WINDOW_NAME);
+    let begun: { url: string; state: string };
+    try {
+        begun = await start();
+    } catch (err) {
+        closePopup(reserved);
+        throw err;
+    }
+    const expectedState = begun.state;
+    const opened = navigatePopup(reserved, begun.url, WINDOW_NAME);
+    if (opened.status === "closed") throw new Error(POPUP_CLOSED);
+    if (opened.status === "blocked") notifyPopupBlocked();
+
+    return waitForPopupMessage(opened.status === "open" ? opened.window : null, (event) => {
+        if (event.origin && !allowedCallbackOrigins().includes(event.origin)) return undefined;
+        const data = event.data as EmailOAuthCallbackMessage | undefined;
+        if (!data || data.type !== "email_oauth_callback") return undefined;
+        // An admin grant state never belongs to a mailbox re-authorization.
+        if (data.state !== expectedState || data.state.startsWith("mac_") || data.state.startsWith("gac_")) return undefined;
+        if (data.error) {
+            throw new Error(data.error === "access_denied" ? "Authorization was cancelled." : `Provider error: ${data.error}`);
         }
-        popup.focus();
-
-        let settled = false;
-        const cleanup = () => {
-            window.removeEventListener("message", onMessage);
-            window.clearInterval(closedTimer);
-        };
-
-        const onMessage = (event: MessageEvent) => {
-            if (event.origin && !allowedCallbackOrigins().includes(event.origin)) return;
-            const data = event.data as EmailOAuthCallbackMessage | undefined;
-            if (!data || data.type !== "email_oauth_callback") return;
-            // An admin grant state never belongs to a mailbox re-authorization.
-            if (data.state !== expectedState || data.state.startsWith("mac_") || data.state.startsWith("gac_")) return;
-            settled = true;
-            cleanup();
-            try {
-                popup.close();
-            } catch {
-                /* ignore */
-            }
-            if (data.error) {
-                reject(new Error(data.error === "access_denied" ? "Authorization was cancelled." : `Provider error: ${data.error}`));
-                return;
-            }
-            if (data.code) {
-                resolve({ code: data.code, state: data.state });
-                return;
-            }
-            reject(new Error("Authorization was cancelled."));
-        };
-
-        window.addEventListener("message", onMessage);
-
-        // Detect a manually-closed popup so the caller's promise doesn't hang.
-        const closedTimer = window.setInterval(() => {
-            if (popup.closed && !settled) {
-                cleanup();
-                reject(new Error("Authorization window was closed before finishing."));
-            }
-        }, 600);
+        if (data.code) return { code: data.code, state: data.state };
+        throw new Error("Authorization was cancelled.");
     });
 }

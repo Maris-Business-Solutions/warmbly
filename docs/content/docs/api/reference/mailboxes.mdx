@@ -731,6 +731,8 @@ Begins an OAuth round trip for a Gmail or Outlook mailbox and returns the provid
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `provider` | string | yes | `gmail` or `outlook`. `gmail` is refused with `403` `mailbox_gmail_oauth_disabled` unless `GET /auth/config` reports `gmail_oauth_connect: true`; new Gmail mailboxes go through [Connect SMTP/IMAP](#connect-smtpimap) with an app password instead. Re-authorizing an existing Gmail mailbox is not gated. |
+| `login_hint` | string | no | The address to pre-select on the provider's sign-in screen. |
+| `return` | string | no | `web` when a browser dashboard starts the round trip. A sign-in window that has no opener then returns to the dashboard's `/oauth-return` page instead of the `warmbly://` scheme. Omit it from a native app. |
 
 ```json
 {
@@ -749,7 +751,7 @@ Response:
 
 For `outlook` the response also carries `admin_consent_url`: Microsoft's admin consent page for the same delegated permissions, tenant-wide. Pass it to the organization's administrator when Microsoft answers the sign-in with **Need admin approval**; once they approve, every mailbox in the organization can sign in. It returns to the API's callback page, which shows the outcome and hands nothing back to an opener.
 
-After the user approves, the provider redirects to the API's callback page, which hands `code` and `state` back to the client: a web opener receives them via `postMessage`, and when there is no opener (a native in-app browser session) the page redirects to `warmbly://email-oauth?provider=...&code=...&state=...&error=...` instead. Either way, the client then calls Finish OAuth.
+After the user approves, the provider redirects to the API's callback page, which hands `code` and `state` back to the client: a web opener receives them via `postMessage`. When there is no opener, a round trip started with `return: "web"` goes to the dashboard's `/oauth-return` page, which passes them to the waiting dashboard tab (this happens when a browser blocked the sign-in window and the user allowed it afterwards). Any other round trip without an opener (a native in-app browser session) redirects to `warmbly://email-oauth?provider=...&code=...&state=...&error=...`. Either way, the client then calls Finish OAuth.
 
 ### Finish OAuth
 

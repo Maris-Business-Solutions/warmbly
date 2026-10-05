@@ -13,6 +13,7 @@ import { grantErrorText } from "@/hooks/useAdminGrantPopup";
 import type { DomainGrant, GrantConfig } from "@/lib/api/models/app/emails/MailboxSources";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import { cn } from "@/lib/utils";
+import { closePopup } from "@/lib/popup";
 import { Banner, CopyValue, SectionLabel } from "../parts";
 import type { GoogleDraft } from "./googleDraft";
 
@@ -166,7 +167,11 @@ export function GoogleVerifyStep({
     onBackToAuthorize,
 }: {
     draft: GoogleDraft;
-    signin: { busy: boolean; open: (begin: () => Promise<{ url?: string; state?: string }>) => Promise<void> };
+    signin: {
+        busy: boolean;
+        open: (begin: () => Promise<{ url?: string; state?: string }>, reserved?: Window | null) => Promise<void>;
+        reserve: () => Window | null;
+    };
     onGranted: (g: DomainGrant) => void;
     onBackToAuthorize: () => void;
 }) {
@@ -201,11 +206,21 @@ export function GoogleVerifyStep({
 
     async function signIn() {
         if (signin.busy || startProof.isPending) return;
+        if (problem) {
+            setTried(true);
+            return;
+        }
+        // Opened inside the click, before the proof request: Safari blocks a window opened after it.
+        const win = dnsOnly ? null : signin.reserve();
         setAsking("signin");
         const p = await ensureProof();
         setAsking(null);
-        if (!p) return;
+        if (!p) {
+            closePopup(win);
+            return;
+        }
         if (p.method !== "signin" || !p.url) {
+            closePopup(win);
             setDnsOpen(true);
             return;
         }
@@ -217,7 +232,7 @@ export function GoogleVerifyStep({
             const out = await startProof.mutateAsync({ domain: d, admin_email: a });
             setProof({ ...out, domain: d, admin: a });
             return out;
-        });
+        }, win);
     }
 
     async function showDns() {

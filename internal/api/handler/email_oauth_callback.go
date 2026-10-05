@@ -19,9 +19,10 @@ import (
 // The opener (the SPA) is expected to POST the code/state to
 // /emails/onboarding/oauth/finish with the user's bearer token.
 //
-// Without an opener (the native app's ASWebAuthenticationSession, which has
-// no popup parent) it instead redirects to the app's warmbly:// scheme; the
-// session intercepts that navigation and the app calls oauth/finish itself.
+// Without an opener, a flow the dashboard started goes to the dashboard's
+// /oauth-return page, which hands it to the waiting tab; any other (the native
+// app's ASWebAuthenticationSession) redirects to the app's warmbly:// scheme,
+// which the session intercepts before the app calls oauth/finish itself.
 //
 // We keep this on the API rather than the SPA so that the provider's
 // registered redirect_uri stays under our control and survives front-end
@@ -49,21 +50,28 @@ var callbackPage = template.Must(template.New("oauth-cb").Parse(`<!doctype html>
     error: {{.Error}}
   };
   var origin = {{.AppOrigin}};
+  var relay = {{.Relay}};
+  var web = {{.Web}};
   var hasOpener = false;
   try { hasOpener = !!window.opener; } catch (e) { /* ignore */ }
-  if (hasOpener && !origin) {
+  if ((hasOpener || web) && (!origin || !relay)) {
     document.getElementById("status").textContent = {{.NoOriginNotice}};
     return;
   }
   if (hasOpener) {
     try { window.opener.postMessage(payload, origin); } catch (e) { /* ignore */ }
-  } else {
-    var q = "provider=" + encodeURIComponent(payload.provider || "") +
-      "&code=" + encodeURIComponent(payload.code || "") +
-      "&state=" + encodeURIComponent(payload.state || "") +
-      "&error=" + encodeURIComponent(payload.error || "");
-    try { window.location.replace("warmbly://email-oauth?" + q); } catch (e) { /* ignore */ }
+    setTimeout(function(){ try { window.close(); } catch(e){} }, 400);
+    return;
   }
+  var q = "provider=" + encodeURIComponent(payload.provider || "") +
+    "&code=" + encodeURIComponent(payload.code || "") +
+    "&state=" + encodeURIComponent(payload.state || "") +
+    "&error=" + encodeURIComponent(payload.error || "");
+  if (web) {
+    try { window.location.replace(relay + "#source=mailbox&" + q); } catch (e) { /* ignore */ }
+    return;
+  }
+  try { window.location.replace("warmbly://email-oauth?" + q); } catch (e) { /* ignore */ }
   setTimeout(function(){ try { window.close(); } catch(e){} }, 400);
 })();
 </script>
@@ -76,6 +84,8 @@ type callbackData struct {
 	Error          string
 	Status         string
 	AppOrigin      string
+	Relay          string
+	Web            bool
 	NoOriginNotice string
 }
 
@@ -93,6 +103,20 @@ func callbackTargetOrigin() string {
 		return ""
 	}
 	return u.Scheme + "://" + u.Host
+}
+
+// callbackRelayURL is the dashboard page a sign-in window without an opener hands its result to.
+func callbackRelayURL() string {
+	u, err := url.Parse(config.AppBaseURL())
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return strings.TrimRight(u.String(), "/") + "/oauth-return"
+}
+
+// isDashboardState reports whether only the dashboard can have started the flow behind state.
+func isDashboardState(state string) bool {
+	return email.IsWebState(state) || strings.HasPrefix(state, delegation.GoogleStatePrefix) || strings.HasPrefix(state, delegation.MicrosoftStatePrefix)
 }
 
 func (h *Handler) EmailOAuthCallbackGmail(c *gin.Context) {
@@ -142,6 +166,8 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 		Error:          providerErr,
 		Status:         "Connecting your mailbox… this window will close.",
 		AppOrigin:      callbackTargetOrigin(),
+		Relay:          callbackRelayURL(),
+		Web:            isDashboardState(state),
 		NoOriginNotice: callbackNoOriginNotice,
 	}
 	if strings.HasPrefix(state, delegation.GoogleStatePrefix) {
@@ -161,6 +187,7 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 	// opener is the whole job, and the message is addressed to one origin.
 	c.Header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	c.Header("Cross-Origin-Opener-Policy", "unsafe-none")
+	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
 	_ = callbackPage.Execute(c.Writer, data)

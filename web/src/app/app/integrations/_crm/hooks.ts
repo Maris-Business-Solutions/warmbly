@@ -10,7 +10,7 @@ import {
     useStartIntegrationOAuth,
 } from "@/lib/api/hooks/app/integrations/useIntegrationOAuth";
 import type { IntegrationConnection } from "@/lib/api/models/app/integrations/Integration";
-import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
+import { authorizeInPopup } from "@/lib/integrations/oauthPopup";
 import usePipelines from "@/lib/api/hooks/app/crm/pipelines/usePipelines";
 import type Pipeline from "@/lib/api/models/app/crm/Pipeline";
 
@@ -30,8 +30,7 @@ export function useCrmOAuth() {
     const connect = React.useCallback(async (): Promise<IntegrationConnection | null> => {
         setBusy(true);
         try {
-            const { url } = await start.mutateAsync({ provider: crm.id });
-            const { code, state } = await openOAuthPopup(url);
+            const { code, state } = await authorizeInPopup(async () => (await start.mutateAsync({ provider: crm.id })).url);
             const conn = await finish.mutateAsync({ code, state });
             toast.success(`${crm.name} connected`);
             return conn;
@@ -47,8 +46,7 @@ export function useCrmOAuth() {
         async (connectionId: string): Promise<boolean> => {
             setBusy(true);
             try {
-                const { url } = await reauth.mutateAsync(connectionId);
-                const { code, state } = await openOAuthPopup(url);
+                const { code, state } = await authorizeInPopup(async () => (await reauth.mutateAsync(connectionId)).url);
                 await finish.mutateAsync({ code, state });
                 await queryClient.invalidateQueries({ queryKey: ["crm"] });
                 toast.success(`${crm.name} reconnected`);

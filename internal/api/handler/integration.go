@@ -282,7 +282,8 @@ func (h *Handler) ReauthIntegration(c *gin.Context) {
 
 // IntegrationOAuthCallback is the public bouncer page the provider redirects to.
 // It postMessages the code+state back to the SPA opener, which then calls
-// FinishIntegrationOAuth. Mirrors the mailbox onboarding callback.
+// FinishIntegrationOAuth; without an opener it hands them to the dashboard's
+// /oauth-return page instead. Mirrors the mailbox onboarding callback.
 func (h *Handler) IntegrationOAuthCallback(c *gin.Context) {
 	payload := map[string]string{
 		"source": "warmbly-integration-oauth",
@@ -297,8 +298,12 @@ func (h *Handler) IntegrationOAuthCallback(c *gin.Context) {
 	// must not be able to read the code out of it. Falling back to "*" when the
 	// origin is unconfigured would reinstate exactly that, so an unconfigured
 	// origin delivers nothing instead.
-	origin := callbackTargetOrigin()
+	origin, relay := callbackTargetOrigin(), callbackRelayURL()
+	if relay == "" {
+		origin = ""
+	}
 	originBlob, _ := json.Marshal(origin)
+	relayBlob, _ := json.Marshal(relay)
 	notice := "Finishing connection… you can close this window."
 	if origin == "" {
 		notice = callbackNoOriginNotice
@@ -312,8 +317,18 @@ func (h *Handler) IntegrationOAuthCallback(c *gin.Context) {
 (function(){
   var msg = ` + string(blob) + `;
   var origin = ` + string(originBlob) + `;
+  var relay = ` + string(relayBlob) + `;
   if (!origin) { return; }
-  try { if (window.opener) { window.opener.postMessage(msg, origin); } } catch (e) {}
+  var hasOpener = false;
+  try { hasOpener = !!window.opener; } catch (e) {}
+  if (!hasOpener) {
+    var q = "source=integration&code=" + encodeURIComponent(msg.code || "") +
+      "&state=" + encodeURIComponent(msg.state || "") +
+      "&error=" + encodeURIComponent(msg.error || "");
+    try { window.location.replace(relay + "#" + q); } catch (e) {}
+    return;
+  }
+  try { window.opener.postMessage(msg, origin); } catch (e) {}
   setTimeout(function(){ window.close(); }, 300);
 })();
 </script>
@@ -325,6 +340,7 @@ func (h *Handler) IntegrationOAuthCallback(c *gin.Context) {
 	// opener is the whole job, and the message is addressed to one origin.
 	c.Header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	c.Header("Cross-Origin-Opener-Policy", "unsafe-none")
+	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.String(http.StatusOK, html)
 }

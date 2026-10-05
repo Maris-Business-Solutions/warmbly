@@ -6,6 +6,7 @@ import React from "react";
 import { Link } from "@tanstack/react-router";
 import { CheckIcon, XIcon } from "lucide-react";
 import { Logo } from "@/components/svg";
+import { relayOAuthReturn } from "@/lib/oauthReturn";
 
 export interface CloudOAuthDoneMessage {
     type: "cloud_oauth_callback";
@@ -34,6 +35,8 @@ export default function CloudOAuthDonePage() {
         } catch {
             /* no opener */
         }
+        // A window allowed from a blocked-popup prompt has no opener; reach the waiting tab instead.
+        if (!ok && session) ok = relayOAuthReturn(payload);
         setDelivered(ok);
         if (ok) window.setTimeout(() => window.close(), 400);
     }, [session, status, error, message]);

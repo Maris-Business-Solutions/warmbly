@@ -47,7 +47,7 @@ import {
     useFinishIntegrationOAuth,
     useStartIntegrationOAuth,
 } from "@/lib/api/hooks/app/integrations/useIntegrationOAuth";
-import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
+import { authorizeInPopup } from "@/lib/integrations/oauthPopup";
 import CampaignPicker from "@/components/app/campaigns/CampaignPicker";
 import { SegmentMultiPicker } from "@/components/app/segments/SegmentPickers";
 import useGoogleConnection from "@/lib/api/hooks/app/leadsync/useGoogleConnection";
@@ -143,11 +143,9 @@ export default function SheetSyncWizard({ open, onClose, lockedCampaign, lockedS
     async function runConnect() {
         setBusy(true);
         try {
-            const { url } = await startOAuth.mutateAsync({
-                provider: "google_sheets",
-                label: "Google Sheets",
-            });
-            const { code, state } = await openOAuthPopup(url);
+            const { code, state } = await authorizeInPopup(
+                async () => (await startOAuth.mutateAsync({ provider: "google_sheets", label: "Google Sheets" })).url,
+            );
             await finishOAuth.mutateAsync({ code, state });
             await connection.refetch();
             await queryClient.invalidateQueries({ queryKey: ["lead-sync", "google", "connection"] });

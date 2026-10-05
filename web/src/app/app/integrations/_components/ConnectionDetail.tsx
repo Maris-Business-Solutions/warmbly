@@ -33,7 +33,7 @@ import {
     useFinishIntegrationOAuth,
     useReauthIntegration,
 } from "@/lib/api/hooks/app/integrations/useIntegrationOAuth";
-import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
+import { authorizeInPopup } from "@/lib/integrations/oauthPopup";
 import {
     type CapabilityObject,
     type IntegrationCatalogEntry,
@@ -116,8 +116,7 @@ export default function ConnectionDetail({
     async function handleReauth() {
         setBusy(true);
         try {
-            const { url } = await reauth.mutateAsync(conn.id);
-            const { code, state } = await openOAuthPopup(url);
+            const { code, state } = await authorizeInPopup(async () => (await reauth.mutateAsync(conn.id)).url);
             await finishOAuth.mutateAsync({ code, state });
             toast.success("Reconnected");
             detail.refetch();

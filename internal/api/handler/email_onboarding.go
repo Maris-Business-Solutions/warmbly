@@ -19,6 +19,8 @@ type OnboardingOAuthStartRequest struct {
 	Provider string `json:"provider"`
 	// LoginHint preselects the mailbox in the provider's picker (an import's sign-in rows).
 	LoginHint string `json:"login_hint"`
+	// Return is "web" when the dashboard starts the flow: a sign-in window without an opener then returns to it.
+	Return string `json:"return"`
 }
 
 // OnboardingOAuthFinishRequest carries the authorization code + state back from the provider.
@@ -49,7 +51,7 @@ func (h *Handler) StartEmailOAuth(c *gin.Context) {
 		return
 	}
 
-	resp, xerr := h.EmailService.OAuthStart(c.Request.Context(), userID, orgID, models.InboxProvider(req.Provider), req.LoginHint)
+	resp, xerr := h.EmailService.OAuthStart(c.Request.Context(), userID, orgID, models.InboxProvider(req.Provider), req.LoginHint, req.Return == "web")
 	if xerr != nil {
 		errx.Handle(c, xerr)
 		return

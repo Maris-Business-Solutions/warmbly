@@ -41,7 +41,7 @@ import {
     useUpdateSalesforceSettings,
 } from "@/lib/api/hooks/app/integrations/useSalesforce";
 import type { SalesforceSettings } from "@/lib/api/models/app/integrations/Salesforce";
-import { openOAuthPopup } from "@/lib/integrations/oauthPopup";
+import { authorizeInPopup } from "@/lib/integrations/oauthPopup";
 import { cn } from "@/lib/utils";
 
 import ProviderGlyph from "../../_components/ProviderGlyph";
@@ -182,8 +182,7 @@ export default function SalesforcePage() {
     async function handleReconnect() {
         setReconnecting(true);
         try {
-            const { url } = await reauth.mutateAsync(id);
-            const { code, state } = await openOAuthPopup(url);
+            const { code, state } = await authorizeInPopup(async () => (await reauth.mutateAsync(id)).url);
             await finishOAuth.mutateAsync({ code, state });
             toast.success("Reconnected to Salesforce");
             void overview.refetch();
