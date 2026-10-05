@@ -24,14 +24,10 @@ type Conversation struct {
 	Messages    []string
 }
 
-// TemplateVariables contains variables for template rendering
-type TemplateVariables struct {
-	FirstName string
-	LastName  string
-	Email     string
-	Company   string
-	Phone     string
-	Custom    map[string]string
+// TemplateContext holds typed per-send values, separate from contact fields.
+type TemplateContext struct {
+	Sender          TemplateSender
+	UnsubscribeLink string
 }
 
 // templateAction matches a single {{ ... }} action (no nested braces).
@@ -52,12 +48,9 @@ var spacedFieldRefAt = regexp.MustCompile(`^\.[A-Za-z0-9_]+(?:[ \-]+[A-Za-z0-9_]
 // cached instance is reused across the whole send loop.
 var tmplCache tmplfuncs.Cache
 
-// buildTemplateData flattens the contact into the single map[string]string root
-// the template engine executes against. Standard fields use their established
-// dot-names so {{.FirstName}} keeps working; custom fields are merged in, with
-// standard fields winning a name collision.
-func buildTemplateData(contact models.Contact) map[string]string {
-	data := make(map[string]string, len(contact.CustomFields)+5)
+// Standard fields and the typed Sender namespace take precedence over custom fields.
+func buildTemplateData(contact models.Contact, context TemplateContext) map[string]any {
+	data := make(map[string]any, len(contact.CustomFields)+7)
 	for k, v := range contact.CustomFields {
 		data[k] = v
 	}
@@ -66,6 +59,8 @@ func buildTemplateData(contact models.Contact) map[string]string {
 	data["Email"] = contact.Email
 	data["Company"] = contact.Company
 	data["Phone"] = contact.Phone
+	data["Sender"] = context.Sender
+	data[UnsubscribeLinkVar] = context.UnsubscribeLink
 	return data
 }
 
@@ -107,7 +102,9 @@ func rewriteSpacedInAction(action string) string {
 			b.WriteByte(c)
 			i++
 		case c == '.':
-			if m := spacedFieldRefAt.FindString(action[i:]); m != "" {
+			// A nested struct selector must not consume the following function argument.
+			fieldStart := i == 0 || strings.ContainsRune("{( \t\r\n", rune(action[i-1]))
+			if m := spacedFieldRefAt.FindString(action[i:]); fieldStart && m != "" {
 				b.WriteString(`(index . "` + m[1:] + `")`)
 				i += len(m)
 				continue
@@ -123,8 +120,8 @@ func rewriteSpacedInAction(action string) string {
 }
 
 // compiledTemplate returns a parsed, cached template for tmpl, or nil if the
-// body is known-bad (caller falls back to naiveRenderTemplate). missingkey=zero
-// makes absent map keys render as "" and test false in {{if .X}}. text/template
+// body is known-bad (caller falls back to standalone actions). missingkey=zero
+// makes absent map keys test false in {{if .X}}. text/template
 // (not html/template) performs no escaping, so the author's HTML body is emitted
 // verbatim.
 func compiledTemplate(tmpl string) *template.Template {
@@ -157,57 +154,47 @@ func TemplateError(tmpl string) error {
 // RenderTemplate renders a sequence template against a contact, supporting Go
 // text/template conditionals ({{if}}/{{else}}/{{eq}}), standard variables, and
 // custom fields. It NEVER hard-fails: any parse or execution error falls back to
-// the naive replacement path so a send always produces a body. Spintax is
+// standalone actions so a send always produces a body. Spintax is
 // intentionally left untouched here (single-brace {a|b} survives the template
 // pass) and expanded later in the pipeline where applicable.
 func RenderTemplate(tmpl string, contact models.Contact) string {
-	return RenderTemplateWith(tmpl, contact, nil)
+	return RenderTemplateWith(tmpl, contact, TemplateContext{})
 }
 
-// RenderTemplateWith is RenderTemplate with per-send values that are not
-// contact fields (today: the recipient's unsubscribe link). They win a name
-// collision with a custom field, like the standard fields do.
-func RenderTemplateWith(tmpl string, contact models.Contact, extra map[string]string) string {
+// RenderTemplateWith uses Go's native struct access for the sending mailbox.
+func RenderTemplateWith(tmpl string, contact models.Contact, context TemplateContext) string {
 	if tmpl == "" {
 		return tmpl
 	}
 
-	data := buildTemplateData(contact)
-	for k, v := range extra {
-		data[k] = v
-	}
+	data := buildTemplateData(contact, context)
 	prepared := rewriteSpacedFieldRefs(tmpl)
 
 	t := compiledTemplate(prepared)
 	if t == nil {
-		return naiveRenderTemplate(tmpl, contact, extra) // known-bad -> legacy path
+		return fallbackRenderTemplate(tmpl, data)
 	}
 
 	out, err := tmplfuncs.Execute(t, data)
 	if err != nil {
-		return naiveRenderTemplate(tmpl, contact, extra)
+		return fallbackRenderTemplate(tmpl, data)
 	}
-	return out
+	return strings.ReplaceAll(out, "<no value>", "")
 }
 
-// naiveRenderTemplate is the legacy renderer: a literal {{.Key}} -> value
-// substitution for the standard fields and every custom field. It is the
-// graceful fallback when text/template parsing or execution fails, so a body
-// always renders even for malformed conditional syntax.
-func naiveRenderTemplate(tmpl string, contact models.Contact, extra map[string]string) string {
-	result := tmpl
-	for k, v := range extra {
-		result = strings.ReplaceAll(result, fmt.Sprintf("{{.%s}}", k), v)
-	}
-	result = strings.ReplaceAll(result, "{{.FirstName}}", contact.FirstName)
-	result = strings.ReplaceAll(result, "{{.LastName}}", contact.LastName)
-	result = strings.ReplaceAll(result, "{{.Email}}", contact.Email)
-	result = strings.ReplaceAll(result, "{{.Company}}", contact.Company)
-	result = strings.ReplaceAll(result, "{{.Phone}}", contact.Phone)
-	for k, v := range contact.CustomFields {
-		result = strings.ReplaceAll(result, fmt.Sprintf("{{.%s}}", k), v)
-	}
-	return result
+// Recover standalone actions with the same engine, leaving broken control syntax literal.
+func fallbackRenderTemplate(tmpl string, data map[string]any) string {
+	return templateAction.ReplaceAllStringFunc(tmpl, func(action string) string {
+		t := compiledTemplate(rewriteSpacedFieldRefs(action))
+		if t == nil {
+			return action
+		}
+		out, err := tmplfuncs.Execute(t, data)
+		if err != nil {
+			return action
+		}
+		return strings.ReplaceAll(out, "<no value>", "")
+	})
 }
 
 // TemplatePreview is the result of rendering a campaign template against one
@@ -238,17 +225,15 @@ var unresolvedToken = regexp.MustCompile(`\{\{[^{}]*\}\}`)
 // send path does (template render + spintax), and reports parse errors plus any
 // tokens that did not resolve.
 func PreviewTemplates(subject, bodyHTML, bodyPlain string, contact models.Contact) TemplatePreview {
-	return previewTemplatesWith(subject, bodyHTML, bodyPlain, contact, PreviewUnsubscribeLink)
+	return previewTemplatesWith(subject, bodyHTML, bodyPlain, contact, TemplateContext{UnsubscribeLink: PreviewUnsubscribeLink})
 }
 
-// previewTemplatesWith is PreviewTemplates with the unsubscribe link the
-// {{unsubscribe_link}} variable resolves to.
-func previewTemplatesWith(subject, bodyHTML, bodyPlain string, contact models.Contact, unsubscribeURL string) TemplatePreview {
-	extra := map[string]string{UnsubscribeLinkVar: unsubscribeURL}
+// previewTemplatesWith renders with the same sender context as a real send.
+func previewTemplatesWith(subject, bodyHTML, bodyPlain string, contact models.Contact, context TemplateContext) TemplatePreview {
 	p := TemplatePreview{
-		Subject:   expandSpintax(RenderTemplateWith(subject, contact, extra)),
-		BodyHTML:  expandSpintax(RenderTemplateWith(bodyHTML, contact, extra)),
-		BodyPlain: expandSpintax(RenderTemplateWith(bodyPlain, contact, extra)),
+		Subject:   expandSpintax(RenderTemplateWith(subject, contact, context)),
+		BodyHTML:  expandSpintax(RenderTemplateWith(bodyHTML, contact, context)),
+		BodyPlain: expandSpintax(RenderTemplateWith(bodyPlain, contact, context)),
 	}
 	for _, f := range []struct{ name, raw string }{{"subject", subject}, {"body", bodyHTML}, {"plain text", bodyPlain}} {
 		if err := TemplateError(f.raw); err != nil {

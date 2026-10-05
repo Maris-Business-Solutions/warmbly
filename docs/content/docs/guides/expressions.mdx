@@ -10,6 +10,8 @@ Write one email and have it come out personalized for every contact, using merge
 | You want to | Write |
 | --- | --- |
 | Insert a first name | `{{.FirstName}}` |
+| Insert the sending mailbox's name | `{{.Sender.Name}}` |
+| Insert the actual From address | `{{.Sender.Email}}` |
 | Back up an empty field | `{{.FirstName \| default "there"}}` |
 | Branch on a condition | `{{if eq .Company "Acme"}}...{{else}}...{{end}}` |
 | Randomize wording (campaigns only) | `{a\|b\|c}` |
@@ -30,6 +32,47 @@ Hi {{.FirstName}}, I noticed {{.Company}} is hiring and wanted to reach out.
 </Callout>
 
 **Custom fields** work the same way with a dot: `{{.industry}}`, `{{.account_owner}}`. Names containing spaces or dashes also work as written (`{{if .job title}}...{{end}}`) and resolve everywhere, including inside conditions and helpers, because Warmbly rewrites them to an `index` lookup for you.
+
+### Sender fields (emails)
+
+`Sender` is a structured mailbox object. Use Go template field access, such as `{{.Sender.Name}}`, in the subject, HTML body or plain-text body:
+
+```
+Hi {{.FirstName}}, I'm {{.Sender.Name}} from our team.
+You can reach me at {{.Sender.Email}}.
+```
+
+Values come from the **mailbox actually sending that message**, including campaign sender rotation and A/B variants. Campaign test emails, placement tests and server previews use their selected mailbox. The campaign preview's **From** line uses the same identity. A local sample preview uses example data, not a live mailbox.
+
+`{{.Sender.Email}}` is the recipient-visible From address, including a configured send-as alias. `{{.Sender.MailboxEmail}}` is the underlying connected mailbox address. `{{.Sender.ReplyTo}}` is the explicit Reply-To header; it is empty when replies simply go to the sender.
+
+Every field is case-sensitive. Prefix each name below with `.Sender.`, for example `{{.Sender.Provider}}`:
+
+| Details | Fields |
+| --- | --- |
+| Identity | `Name`, `Email`, `MailboxEmail`, `SendAsEmail`, `ReplyTo`, `AvatarURL` |
+| Signature | `SignaturePlain`, `SignatureHTML`, `SignatureSync`, `SignatureCode` |
+| Connection | `Provider`, `Status`, `MailHost`, `AuthMethod`, `Vendor` |
+| Sending settings | `Timezone`, `CampaignLimit`, `MinWaitTime`, `SaveToSent`, `RelayFolderMoves`, `Tags` |
+| Tracking | `TrackingDomain`, `TrackingDomainVerified`, `TrackingDomainVerifiedAt`, `TrackDirectMail` |
+| Domain authentication | `AuthState`, `AuthSPF`, `AuthDKIM`, `AuthDMARC`, `AuthDMARCPolicy`, `AuthReason`, `AuthCheckedAt`, `AuthFailingSince` |
+| Warmup | `Warmup`, `WarmupPausedAt`, `WarmupBase`, `WarmupMax`, `WarmupIncrease`, `WarmupReplyRate`, `WarmupTag`, `WarmupPoolType`, `WarmupStartTime`, `WarmupEndTime`, `WarmupDays`, `WarmupPlacement`, `WarmupFolder`, `WarmupRetentionDays` |
+| Lifecycle | `LastSyncedAt`, `CreatedAt`, `UpdatedAt` |
+
+Limits, gaps, volumes, reply rate, days and retention are numbers. `MinWaitTime` is in seconds, `WarmupDays` is the configured sending-days bitmask, and `WarmupRetentionDays` is in days (zero uses the instance default). Flags such as `SignatureSync`, `SaveToSent` and `AuthSPF` are booleans, so use `{{if .Sender.SignatureSync}}...{{end}}`. `AuthDKIM` false means unverified, not that a DKIM record is missing. `Timezone` falls back to the workspace timezone; an empty timezone means UTC. Warmup/tracking settings are the stored mailbox settings, not inferred campaign overrides.
+
+Timestamps, including `Warmup` (when warmup was enabled), render as UTC RFC 3339 strings such as `2026-10-05T15:00:00Z`, or empty when unset. `Tags` is a list and supports native iteration:
+
+```
+{{range .Sender.Tags}}{{.}} {{end}}
+{{.Sender.Name | default "our team"}}
+```
+
+Without a selected mailbox, sender strings are empty, flags are false, numbers are zero and tags are empty. These fields are available in campaign and placement email rendering, not automation trigger data, deal names or inbox reply-template rendering. Unknown sender fields remain unresolved so previews can flag them. `Sender` is reserved and cannot be replaced by a contact custom field.
+
+<Callout title="Safe mailbox details only">
+Credentials, OAuth tokens, passwords, internal IDs, worker routing and sync cursors are never exposed. The object has no mailbox methods. If you insert `SignatureHTML` or `SignaturePlain` yourself, disable automatic signatures for that mailbox to avoid a duplicate sign-off.
+</Callout>
 
 ### Trigger variables (automations)
 

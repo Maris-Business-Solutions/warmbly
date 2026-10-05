@@ -109,16 +109,16 @@ function evalCond(expr: string, ctx: PreviewCtx): boolean {
     const notM = expr.match(/^not\s+([\s\S]+)$/);
     if (notM) return !evalCond(notM[1].replace(/^\(|\)$/g, ""), ctx);
     // Fields may contain spaces/dashes (custom fields), so widen the class.
-    let m = expr.match(/^eq\s+\.([A-Za-z0-9_ -]+?)\s+"([^"]*)"$/);
+    let m = expr.match(/^eq\s+\.([A-Za-z0-9_ .-]+?)\s+"([^"]*)"$/);
     if (m) return (ctx[m[1]] ?? "") === m[2];
-    m = expr.match(/^ne\s+\.([A-Za-z0-9_ -]+?)\s+"([^"]*)"$/);
+    m = expr.match(/^ne\s+\.([A-Za-z0-9_ .-]+?)\s+"([^"]*)"$/);
     if (m) return (ctx[m[1]] ?? "") !== m[2];
     const logical = expr.match(/^(and|or)\s+(.*)$/s);
     if (logical) {
         const vals = splitGroups(logical[2]).map((p) => evalCond(p.replace(/^\(|\)$/g, ""), ctx));
         return logical[1] === "and" ? vals.every(Boolean) : vals.some(Boolean);
     }
-    m = expr.match(/^\.([A-Za-z0-9_ -]+)$/);
+    m = expr.match(/^\.([A-Za-z0-9_ .-]+)$/);
     if (m) return truthy(ctx[m[1]]);
     return false;
 }
@@ -169,7 +169,10 @@ function renderConditionals(s: string, ctx: PreviewCtx): string {
 
 export function renderPreview(s: string, ctx: PreviewCtx = SAMPLE): string {
     let out = renderConditionals(s, ctx);
-    out = out.replace(/\{\{\s*\.([A-Za-z0-9_]+)\s*\}\}/g, (_, k: string) => ctx[k] ?? "");
+    out = out.replace(
+        /\{\{\s*\.([A-Za-z0-9_ .-]+?)\s*(?:\|\s*default\s+"([^"]*)")?\s*\}\}/g,
+        (_, k: string, fallback?: string) => ctx[k] || fallback || "",
+    );
     out = out.replace(/\{([^{}|]+(?:\|[^{}]+)+)\}/g, (_, g: string) => g.split("|")[0]);
     return out;
 }

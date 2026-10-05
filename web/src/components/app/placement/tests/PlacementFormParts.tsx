@@ -16,9 +16,9 @@ import {
 import { SelectMenu } from "@/components/ui/select-menu";
 import { OptionSelect, Segmented } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import RichTextEditor from "@/components/app/campaigns/sequences/RichTextEditor";
-import { VARIABLES, htmlToPlain } from "@/components/app/campaigns/sequences/emailPreview";
+import { htmlToPlain } from "@/components/app/campaigns/sequences/emailPreview";
 import { contactLabel } from "@/components/app/campaigns/sequences/previewContext";
-import { LINK_VARIABLES } from "@/lib/templateVars";
+import { EMAIL_VARIABLES, LINK_VARIABLES } from "@/lib/templateVars";
 import useDebouncedValue from "@/hooks/useDebouncedValue";
 import useCampaigns from "@/lib/api/hooks/app/campaigns/useCampaigns";
 import useSearchContacts from "@/lib/api/hooks/app/contacts/useSearchContacts";
@@ -124,7 +124,7 @@ export function CopySourceFields({
                             onChange={(html) => patch({ bodyHtml: html, bodyPlain: value.bodyCode ? "" : htmlToPlain(html) })}
                             code={value.bodyCode}
                             onCodeChange={(c) => patch({ bodyCode: c })}
-                            variables={VARIABLES}
+                            variables={EMAIL_VARIABLES}
                             links={LINK_VARIABLES}
                             placeholder="Hi {{.FirstName}}, …"
                         />

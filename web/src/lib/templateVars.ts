@@ -1,10 +1,4 @@
-// Single source of truth for the standard contact merge fields available in
-// every Go-template surface (campaign copy, templates, deal names, automation
-// values). The backend renderer (internal/tasks/template.go buildTemplateData)
-// exposes exactly these five standard fields plus arbitrary custom fields; keep
-// this list in sync with that function. Historically this list was duplicated
-// across emailPreview.ts, RichTextEditor TOKEN_META, templates/page and
-// CampaignFlow — those consume this module instead.
+// Contact fields are shared across template surfaces; Sender is email-only.
 
 export interface TemplateVar {
     token: string; // literal token inserted into content, e.g. "{{.Company}}"
@@ -21,6 +15,60 @@ export const STANDARD_VARS: TemplateVar[] = [
     { token: "{{.Company}}", key: "Company", label: "Company", desc: "Where the contact works", sample: "Acme" },
     { token: "{{.Phone}}", key: "Phone", label: "Phone", desc: "The contact's phone number", sample: "+1 555-0100" },
 ];
+
+// Keep in sync with the explicit allowlist in internal/tasks/template_sender.go.
+export const SENDER_VARS: TemplateVar[] = [
+    ["Name", "Sender name", "The sending mailbox's configured display name", "Jamie Morgan"],
+    ["Email", "Sender email", "The actual From address, including the chosen send-as alias", "jamie@example.com"],
+    ["MailboxEmail", "Mailbox email", "The connected mailbox's own address, before any send-as alias", "jamie@example.com"],
+    ["SendAsEmail", "Send-as alias", "The chosen alias, empty when none is selected"],
+    ["ReplyTo", "Reply-to", "The explicit Reply-To header, empty when replies go to the sender"],
+    ["SignaturePlain", "Plain signature", "The mailbox's plain-text signature"],
+    ["SignatureHTML", "HTML signature", "The mailbox's HTML signature. Disable automatic signatures if placing it yourself"],
+    ["SignatureSync", "Signature enabled", "Whether this mailbox automatically appends its signature (boolean)"],
+    ["SignatureCode", "Signature HTML mode", "Whether the signature is edited as raw HTML (boolean)"],
+    ["Provider", "Provider", "Connection provider: gmail, outlook or smtp_imap"],
+    ["Status", "Mailbox status", "The mailbox's current connection status"],
+    ["MailHost", "Mail host", "The detected hosting provider, such as google_workspace or microsoft365"],
+    ["AuthMethod", "Authentication method", "The connection method, not credentials: password, app_password, oauth or delegated"],
+    ["Vendor", "Mailbox vendor", "The inbox vendor the mailbox was imported from, when known"],
+    ["AvatarURL", "Profile image URL", "The mailbox's profile image URL"],
+    ["Tags", "Mailbox tags", "The mailbox's tag list. Iterate with {{range .Sender.Tags}}{{.}} {{end}}"],
+    ["Timezone", "Timezone", "The mailbox timezone, falling back to the workspace timezone"],
+    ["CampaignLimit", "Daily campaign cap", "The mailbox's daily cold-email cap (number)"],
+    ["MinWaitTime", "Minimum send gap", "The mailbox's minimum gap between sends, in seconds (number)"],
+    ["SaveToSent", "Save to Sent", "Whether SMTP/IMAP sends are saved to Sent (boolean)"],
+    ["RelayFolderMoves", "Relay folder moves", "Whether inbox folder actions are relayed to the provider (boolean)"],
+    ["TrackingDomain", "Tracking domain", "The mailbox's configured tracking domain"],
+    ["TrackingDomainVerified", "Tracking verified", "Whether the tracking domain is verified (boolean)"],
+    ["TrackingDomainVerifiedAt", "Tracking verified at", "When the tracking domain was verified, in UTC RFC 3339 format"],
+    ["TrackDirectMail", "Direct-mail tracking", "Whether tracking is enabled for hand-written mail (boolean)"],
+    ["AuthState", "Domain auth status", "Sending-domain authentication status: unknown, passing or failing"],
+    ["AuthSPF", "SPF signal", "Whether the SPF check passed (boolean)"],
+    ["AuthDKIM", "DKIM signal", "Whether a DKIM record was found. False means unverified, not missing"],
+    ["AuthDMARC", "DMARC signal", "Whether a DMARC record was found (boolean)"],
+    ["AuthDMARCPolicy", "DMARC policy", "The detected DMARC policy"],
+    ["AuthReason", "Domain auth reason", "The sending-domain authentication diagnostic"],
+    ["AuthCheckedAt", "Domain checked at", "When domain authentication was checked, in UTC RFC 3339 format"],
+    ["AuthFailingSince", "Domain failing since", "When domain authentication began failing, in UTC RFC 3339 format"],
+    ["Warmup", "Warmup enabled at", "The warmup start timestamp, in UTC RFC 3339 format"],
+    ["WarmupPausedAt", "Warmup paused at", "The warmup pause timestamp, in UTC RFC 3339 format"],
+    ["WarmupBase", "Warmup base", "The starting warmup volume (number)"],
+    ["WarmupMax", "Warmup maximum", "The maximum warmup volume (number)"],
+    ["WarmupIncrease", "Warmup increase", "The daily warmup volume increase (number)"],
+    ["WarmupReplyRate", "Warmup reply rate", "The configured warmup reply rate (number)"],
+    ["WarmupTag", "Warmup tag", "The configured warmup tag"],
+    ["WarmupPoolType", "Warmup pool", "The configured warmup pool type"],
+    ["WarmupStartTime", "Warmup start time", "The warmup sending window start"],
+    ["WarmupEndTime", "Warmup end time", "The warmup sending window end"],
+    ["WarmupDays", "Warmup days", "The warmup sending-days bitmask (number)"],
+    ["WarmupPlacement", "Warmup filing", "Where warmup messages are filed"],
+    ["WarmupFolder", "Warmup folder", "The configured warmup folder"],
+    ["WarmupRetentionDays", "Warmup retention", "The configured retention in days; zero uses the instance default"],
+    ["LastSyncedAt", "Last synced at", "When the mailbox last synced, in UTC RFC 3339 format"],
+    ["CreatedAt", "Mailbox created at", "When the mailbox was added, in UTC RFC 3339 format"],
+    ["UpdatedAt", "Mailbox updated at", "When mailbox settings last changed, in UTC RFC 3339 format"],
+].map(([field, label, desc, sample = ""]) => ({ token: `{{.Sender.${field}}}`, key: `Sender.${field}`, label, desc, sample }));
 
 // The recipient's opt-out link. Named because the editor treats it specially:
 // applied to a text selection it becomes that text's href, so the copy can say
@@ -42,22 +90,23 @@ export const LINK_VARS: TemplateVar[] = [
 
 // The token list many surfaces already consume as `string[]`.
 export const VARIABLES: string[] = STANDARD_VARS.map((v) => v.token);
+export const EMAIL_VARIABLES: string[] = [...VARIABLES, ...SENDER_VARS.map((v) => v.token)];
 export const LINK_VARIABLES: string[] = LINK_VARS.map((v) => v.token);
 
 // Friendly metadata keyed by token, for pickers that render label + description.
 export const TOKEN_META: Record<string, { label: string; desc: string }> = Object.fromEntries(
-    [...STANDARD_VARS, ...LINK_VARS].map((v) => [v.token, { label: v.label, desc: v.desc }]),
+    [...STANDARD_VARS, ...SENDER_VARS, ...LINK_VARS].map((v) => [v.token, { label: v.label, desc: v.desc }]),
 );
 
 // Client-side preview sample context: standard fields plus a couple of common
 // custom-field examples so a {{.role}} in a preview resolves to something.
 export const SAMPLE: Record<string, string> = {
-    ...Object.fromEntries([...STANDARD_VARS, ...LINK_VARS].map((v) => [v.key, v.sample])),
+    ...Object.fromEntries([...STANDARD_VARS, ...SENDER_VARS, ...LINK_VARS].map((v) => [v.key, v.sample])),
     role: "Engineer",
     city: "Berlin",
 };
 
-const STANDARD_KEYS = new Set(STANDARD_VARS.map((v) => v.key.toLowerCase()));
+const STANDARD_KEYS = new Set(["sender", ...STANDARD_VARS.map((v) => v.key.toLowerCase())]);
 
 // isStandardKey reports whether a (case-insensitive) key collides with a
 // standard field. The backend lets a standard field win a name collision
@@ -92,7 +141,7 @@ export function buildToken(key: string, fallback?: string | null): string {
 // editing. Returns null when the string is not a plain field-access token (e.g.
 // a conditional or a token with helpers we do not model as a chip).
 export function parseToken(token: string): { key: string; fallback: string | null } | null {
-    const m = token.match(/^\{\{\s*\.([A-Za-z0-9_ -]+?)\s*(?:\|\s*default\s+"([^"]*)")?\s*\}\}$/);
+    const m = token.match(/^\{\{\s*\.([A-Za-z0-9_ -]+(?:\.[A-Za-z0-9_]+)*?)\s*(?:\|\s*default\s+"([^"]*)")?\s*\}\}$/);
     if (!m) return null;
     return { key: m[1].trim(), fallback: m[2] ?? null };
 }
@@ -125,7 +174,7 @@ export function parseFormLinkToken(token: string): string | null {
 // FIELD_TOKEN_RE matches a bare merge-field token (optionally with a default
 // fallback) but NOT control tokens like {{if .X}} / {{end}} / {{eq ...}}, so
 // legacy plain content can be upgraded to chips without disturbing conditionals.
-export const FIELD_TOKEN_RE = /\{\{\s*\.[A-Za-z0-9_ -]+?(?:\s*\|\s*default\s+"[^"]*")?\s*\}\}/g;
+export const FIELD_TOKEN_RE = /\{\{\s*\.[A-Za-z0-9_ -]+(?:\.[A-Za-z0-9_]+)*?(?:\s*\|\s*default\s+"[^"]*")?\s*\}\}/g;
 
 // upgradeVariableTokens wraps bare merge-field and form-link tokens in the
 // editor HTML with their chip spans (span[data-var] / span[data-form-link]) so

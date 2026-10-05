@@ -85,7 +85,7 @@ export const VariableNode = TiptapNode.create({
     addInputRules() {
         return [
             nodeInputRule({
-                find: /\{\{\s*\.([A-Za-z0-9_ -]+?)\s*\}\}$/,
+                find: /\{\{\s*\.([A-Za-z0-9_ -]+(?:\.[A-Za-z0-9_]+)*?)\s*\}\}$/,
                 type: this.type,
                 getAttributes: (match) => ({ token: buildToken(match[1]) }),
             }),

@@ -1,11 +1,36 @@
 package tasks
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/models"
 )
+
+func TestPreviewEmailUsesSelectedSender(t *testing.T) {
+	service := &tasksService{}
+	for _, account := range []*models.Email{
+		{Name: "Tareque M.", Email: "tareque@example.com", SendAsEmail: "hello@example.com"},
+		{Name: "John S.", Email: "john@example.com"},
+	} {
+		preview := service.PreviewEmail(context.Background(), uuid.Nil, EmailPreviewInput{
+			Subject: "From {{.Sender.Name}}", BodyHTML: "<p>{{.FirstName}}: {{.Sender.Email}}</p>",
+			BodyPlain: "{{.Sender.Provider}}|{{.Sender.Email}}", Contact: models.Contact{FirstName: "Alex"}, Account: account,
+		})
+		if preview.From == nil || preview.From.Email != account.SendFrom() || preview.Subject != "From "+account.Name || preview.BodyHTML != "<p>Alex: "+account.SendFrom()+"</p>" || preview.BodyPlain != "|"+account.SendFrom() {
+			t.Fatalf("preview does not match selected sender: %+v", preview)
+		}
+		if len(preview.Errors) != 0 || len(preview.Unresolved) != 0 {
+			t.Fatalf("sender variables left errors: %+v", preview)
+		}
+	}
+	preview := service.PreviewEmail(context.Background(), uuid.Nil, EmailPreviewInput{Subject: "{{.Sender.Email}}"})
+	if preview.Subject != "" || preview.From != nil {
+		t.Fatalf("preview without a mailbox invented a sender: %+v", preview)
+	}
+}
 
 // finishBody is what the preview and the test send share with the campaign
 // send: the parts land in send order (body, signature, opt-out) and a
@@ -45,7 +70,7 @@ func TestFinishBodyMatchesSendOrder(t *testing.T) {
 }
 
 func TestPreviewTemplatesWithUsesTheGivenLink(t *testing.T) {
-	p := previewTemplatesWith("s", "<a href=\"{{.UnsubscribeLink}}\">x</a>", "", models.Contact{}, "https://api.example.com/unsubscribe/tok")
+	p := previewTemplatesWith("s", "<a href=\"{{.UnsubscribeLink}}\">x</a>", "", models.Contact{}, TemplateContext{UnsubscribeLink: "https://api.example.com/unsubscribe/tok"})
 	if !strings.Contains(p.BodyHTML, "https://api.example.com/unsubscribe/tok") {
 		t.Fatalf("link variable did not resolve to the given link: %q", p.BodyHTML)
 	}

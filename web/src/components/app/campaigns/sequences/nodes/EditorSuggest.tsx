@@ -12,10 +12,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { BracesIcon, GitBranchIcon, FunctionSquareIcon, ClipboardListIcon, LinkIcon } from "lucide-react";
 import useCustomFieldKeys from "@/lib/api/hooks/app/contacts/useCustomFieldKeys";
 import { useForms } from "@/lib/api/hooks/app/forms";
-import { STANDARD_VARS, LINK_VARS, buildToken, buildFormLinkToken, cleanFieldName, isStandardKey } from "@/lib/templateVars";
+import { STANDARD_VARS, SENDER_VARS, VARIABLES, LINK_VARS, buildToken, cleanFieldName, isStandardKey } from "@/lib/templateVars";
 import { useAnchoredFloating, caretReference } from "@/hooks/useAnchoredFloating";
 
-type Group = "Fields" | "Links" | "Forms" | "Logic" | "Functions";
+type Group = "Fields" | "Sender" | "Links" | "Forms" | "Logic" | "Functions";
 
 // How picking an item mutates the doc, after the typed `{{…` trigger is removed.
 type Insert =
@@ -35,6 +35,7 @@ interface Item {
 
 const GROUP_ICON: Record<Group, typeof BracesIcon> = {
     Fields: BracesIcon,
+    Sender: BracesIcon,
     Links: LinkIcon,
     Forms: ClipboardListIcon,
     Logic: GitBranchIcon,
@@ -98,7 +99,7 @@ const HELPERS: Item[] = [
 // links are the per-send link tokens this editor may offer (the recipient's
 // unsubscribe link); only campaign email bodies resolve them at send time, so
 // an AI prompt editor passes none.
-export default function EditorSuggest({ editor, links = [] }: { editor: Editor; links?: string[] }) {
+export default function EditorSuggest({ editor, variables = VARIABLES, links = [] }: { editor: Editor; variables?: string[]; links?: string[] }) {
     const { data: customKeys = [] } = useCustomFieldKeys();
     const { data: forms = [] } = useForms();
     const [trigger, setTrigger] = React.useState<{ from: number; query: string } | null>(null);
@@ -125,6 +126,14 @@ export default function EditorSuggest({ editor, links = [] }: { editor: Editor; 
                     insert: { type: "chip" as const, token: buildToken(k) },
                 })),
         ];
+        const senderFields: Item[] = SENDER_VARS.filter((v) => variables.includes(v.token)).map((v) => ({
+            id: `s:${v.key}`,
+            group: "Sender",
+            label: v.label,
+            hint: v.token,
+            search: `${v.key} ${v.label}`.toLowerCase(),
+            insert: { type: "chip", token: v.token },
+        }));
         // Published forms only: an unpublished form's link resolves to nothing
         // at send time, so it is never offered. No forms, no group.
         const formLinks: Item[] = forms
@@ -145,8 +154,8 @@ export default function EditorSuggest({ editor, links = [] }: { editor: Editor; 
             search: `${v.key} ${v.label} unsubscribe opt out`.toLowerCase(),
             insert: { type: "chip" as const, token: v.token },
         }));
-        return [...fields, ...linkItems, ...formLinks, ...HELPERS];
-    }, [customKeys, forms, links]);
+        return [...fields, ...senderFields, ...linkItems, ...formLinks, ...HELPERS];
+    }, [customKeys, forms, links, variables]);
 
     const items = React.useMemo<Item[]>(() => {
         if (!trigger) return [];
@@ -172,7 +181,7 @@ export default function EditorSuggest({ editor, links = [] }: { editor: Editor; 
             }
             const $from = sel.$from;
             const before = $from.parent.textBetween(0, $from.parentOffset, "￼", "￼");
-            const m = before.match(/\{\{\s*\.?([A-Za-z0-9_ ]*)$/);
+            const m = before.match(/\{\{\s*\.?([A-Za-z0-9_ .]*)$/);
             if (!m) {
                 setTrigger(null);
                 return;
