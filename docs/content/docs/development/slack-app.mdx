@@ -80,6 +80,8 @@ Every URL is on the backend's public URL, `API_PUBLIC_URL` (or `BACKEND_PUBLIC_U
 | **Interactivity & Shortcuts** request URL | `https://<backend>/api/v1/integrations/slack/interactivity` |
 | **OAuth & Permissions** redirect URL | `https://<backend>/integrations/oauth/callback`, or `INTEGRATIONS_OAUTH_REDIRECT_URL` when set |
 
+The same redirect URL serves Sign in with Slack, which members use to link a Slack account whose email is not their Warmbly email. It needs no extra scope or setting.
+
 Each request Slack sends is checked against the signing secret: the signature must match and its timestamp must be within five minutes, and the body is capped at 1 MiB. A request that fails is answered `401` and nothing in it is parsed. Each one is answered within Slack's three-second limit, and the work it starts runs afterwards.
 
 If the backend's public URL changes, update these URLs in the Slack app (or create the app again from the manifest with the new host and replace the credentials), and update `API_PUBLIC_URL`.

@@ -48,10 +48,20 @@ export async function getSlackLinkPreview(code: string): Promise<SlackLinkPrevie
     });
 }
 
-export async function confirmSlackLink(code: string): Promise<SlackUserLink> {
+// slack_code and state are a Sign in with Slack result, for a link whose emails differ.
+export async function confirmSlackLink(input: { code: string; slack_code?: string; state?: string }): Promise<SlackUserLink> {
     return await Request<SlackUserLink>({
         method: "POST",
         url: "/integrations/slack/link",
+        data: input,
+        authorization: true,
+    });
+}
+
+export async function startSlackLinkVerify(code: string): Promise<{ url: string }> {
+    return await Request<{ url: string }>({
+        method: "POST",
+        url: "/integrations/slack/link/verify",
         data: { code },
         authorization: true,
     });

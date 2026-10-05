@@ -205,10 +205,15 @@ func Run(
 		// has in a folder, so the worker can report the ones that moved.
 		node.GET("/sync/provider-folder-messages", h.InternalSyncProviderFolderMessages)
 
-		// Worker runtime config and the role-agnostic node heartbeat.
+		// Worker runtime config.
 		node.GET("/worker/config", h.InternalWorkerConfig)
-		node.POST("/fleet/heartbeat", h.FleetHeartbeat)
 	}
+
+	// The role-agnostic node heartbeat. A node still sending INTERNAL_API_TOKEN
+	// is told its version and nothing else, so it can always update itself.
+	heartbeat := r.Group("/api/v1/internal")
+	heartbeat.Use(m.NodeHeartbeatAuthMiddleware())
+	heartbeat.POST("/fleet/heartbeat", h.FleetHeartbeat)
 
 	// The edge group is what the tracking and forms services call, on
 	// INTERNAL_API_TOKEN.
@@ -674,6 +679,7 @@ func Run(
 				slackPanel.PUT("/settings", m.RequireOrganization(), slackWrite, h.UpdateSlackSettings)
 				slackPanel.GET("/link/:code", h.PreviewSlackLink)
 				slackPanel.POST("/link", h.ConfirmSlackLink)
+				slackPanel.POST("/link/verify", h.StartSlackLinkVerify)
 				slackPanel.PATCH("/link", m.RequireOrganization(), h.UpdateMySlackLink)
 				slackPanel.DELETE("/link", m.RequireOrganization(), h.DeleteMySlackLink)
 				slackPanel.DELETE("/links/:id", m.RequireOrganization(), slackWrite, h.RemoveSlackLink)

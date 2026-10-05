@@ -510,12 +510,12 @@ Turning on two-factor authentication (`POST /auth/2fa/enroll/start` and `/confir
 
 #### `slack_link_email_mismatch`
 
-A `403` whose `code` is `slack_link_email_mismatch` comes from `POST /integrations/slack/link`. Confirming a [Slack link](/guides/slack/#link-your-slack-account) needs the email on the Slack account's profile to be the signed-in user's Warmbly email, compared without regard to case. Warmbly reads the Slack email when the link is confirmed, and a Slack connection that does not share member emails (one made before Warmbly asked for `users:read.email`) never matches. The code stays usable, so the same button works once the emails match. `GET /integrations/slack/link/:code` reports the same check ahead of time as `email_matches`.
+A `403` whose `code` is `slack_link_email_mismatch` comes from `POST /integrations/slack/link` sent without a Sign in with Slack result. Confirming a [Slack link](/guides/slack/#link-your-slack-account) that way needs the email on the Slack account's profile to be the signed-in user's Warmbly email, compared without regard to case. The code stays usable: confirm it again with `slack_code` and `state` from `POST /integrations/slack/link/verify`. `GET /integrations/slack/link/:code` reports the check ahead of time as `email_matches`, and whether Sign in with Slack is available as `verify_available`.
 
 ```json
 {
   "error": "Forbidden",
-  "message": "Your Slack account's email address must be the one you sign in to Warmbly with. Sign in with that address, or ask a Warmbly admin to reconnect Slack if Slack is not sharing your email.",
+  "message": "This Slack account's email is not the one you sign in to Warmbly with. Continue with Slack to confirm the account is yours.",
   "code": "slack_link_email_mismatch",
   "request_id": "4bbbd1b2-8f86-47dd-8a7f-9476501ad20e"
 }
@@ -559,6 +559,9 @@ Returned when the requested resource doesn't exist.
 | `lead_cc_contact_not_found` | [Set a lead's CC](/api/reference/campaigns/#set-a-leads-cc) named a contact that is not in the workspace |
 | `slack_not_connected` | A [Slack](/guides/slack/) route was called for a workspace that has not connected Slack, or whose connection was removed. Connect it under **Integrations > Slack** |
 | `slack_link_invalid` | The Slack link code is unknown, expired or already used. Mention or message the bot in Slack for a new link button |
+| `slack_verify_failed` | `POST /integrations/slack/link` with a Sign in with Slack result that is unknown, expired, already used, started by someone else or for another code. Start again from `POST /integrations/slack/link/verify` |
+| `slack_verify_wrong_account` | `POST /integrations/slack/link` after Sign in with Slack signed in a different Slack account than the one the link code names |
+| `slack_verify_unavailable` | `POST /integrations/slack/link/verify` on an instance whose Slack app has no client credentials |
 | `slack_not_linked` | `PATCH /integrations/slack/link` from a member who has not linked a Slack account in this workspace |
 
 ### 409 Conflict
@@ -723,7 +726,7 @@ A `503` whose `code` is `slack_not_configured` is not transient and retrying wil
 - Create the instance's Slack app and set `SLACK_OAUTH_CLIENT_ID`, `SLACK_OAUTH_CLIENT_SECRET` and `SLACK_SIGNING_SECRET` on the backend and the consumer, then restart. See [Slack app](/development/slack-app/)
 - In a client, read `app_configured` and `interactive_configured` from `GET /integrations/slack/status` and hide the Slack affordances rather than retrying
 
-Those request URLs answer `401` `unauthorized` to a request whose Slack signature does not verify. Linking a Slack account to a workspace you are not a member of is `403` `forbidden`, and linking one whose email is not yours is `403` [`slack_link_email_mismatch`](#slack_link_email_mismatch).
+Those request URLs answer `401` `unauthorized` to a request whose Slack signature does not verify. Linking a Slack account to a workspace you are not a member of is `403` `forbidden`, and linking one whose email is not yours without signing in to it with Slack is `403` [`slack_link_email_mismatch`](#slack_link_email_mismatch).
 
 #### `mailbox_allowance_reached`
 

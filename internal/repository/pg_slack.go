@@ -43,14 +43,15 @@ type SlackRepository interface {
 	// PreviewLinkCode returns an unexpired code without consuming it.
 	PreviewLinkCode(ctx context.Context, codeHash []byte) (*models.SlackLinkCode, error)
 	// ConsumeLinkCode redeems a code for userID in one transaction: the code is
-	// deleted and the link written only when userID is an accepted member
-	// whose email is slackEmail, the code's Slack account's email.
-	ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID, slackEmail string) (*models.SlackUserLink, error)
+	// deleted and the link written only when userID is an accepted member and
+	// either verified (Sign in with Slack proved the Slack account) or the
+	// member's email is slackEmail, the code's Slack account's email.
+	ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID, slackEmail string, verified bool) (*models.SlackUserLink, error)
 	PurgeExpiredLinkCodes(ctx context.Context) (int64, error)
-	// LinkInstaller links the member who connected Slack to the Slack account
-	// that approved the install, when neither is linked yet, the member is an
-	// accepted member of the org, and slackEmail is the member's email (the
-	// rule ConsumeLinkCode applies). Nil when nothing was written.
+	// LinkInstaller links a Warmbly member to a Slack account (the installer,
+	// or a member matched by email) when neither is linked yet, the member is
+	// an accepted member of the org, and slackEmail is the member's email.
+	// Nil when nothing was written.
 	LinkInstaller(ctx context.Context, orgID, connectionID uuid.UUID, teamID, slackUserID, slackEmail string, userID uuid.UUID) (*models.SlackUserLink, error)
 
 	GetAgentThread(ctx context.Context, connectionID uuid.UUID, channelID, threadTS string) (*models.SlackAgentThread, error)
@@ -208,7 +209,7 @@ func (r *slackRepository) PreviewLinkCode(ctx context.Context, codeHash []byte) 
 	return &c, nil
 }
 
-func (r *slackRepository) ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID, slackEmail string) (*models.SlackUserLink, error) {
+func (r *slackRepository) ConsumeLinkCode(ctx context.Context, codeHash []byte, userID uuid.UUID, slackEmail string, verified bool) (*models.SlackUserLink, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -240,13 +241,15 @@ func (r *slackRepository) ConsumeLinkCode(ctx context.Context, codeHash []byte, 
 		// Rolled back: the code stays redeemable by a real member.
 		return nil, ErrSlackLinkNotMember
 	}
-	var userEmail string
-	if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&userEmail); err != nil && !isNoRows(err) {
-		return nil, err
-	}
-	if !models.SlackLinkEmailMatches(slackEmail, userEmail) {
-		// Rolled back, like a non-member.
-		return nil, ErrSlackLinkEmailMismatch
+	if !verified {
+		var userEmail string
+		if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&userEmail); err != nil && !isNoRows(err) {
+			return nil, err
+		}
+		if !models.SlackLinkEmailMatches(slackEmail, userEmail) {
+			// Rolled back, like a non-member.
+			return nil, ErrSlackLinkEmailMismatch
+		}
 	}
 
 	// One Slack member per workspace and one link per member per connection.

@@ -166,12 +166,20 @@ func (h *Handler) ConfirmSlackLink(c *gin.Context) {
 	}
 	var req struct {
 		Code string `json:"code" binding:"required"`
+		// SlackCode and State are a Sign in with Slack result, from
+		// POST /integrations/slack/link/verify.
+		SlackCode string `json:"slack_code"`
+		State     string `json:"state"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errx.JSON(c, errx.InvalidBody(err))
 		return
 	}
-	link, xerr := h.SlackService.ConfirmLink(c.Request.Context(), userID, req.Code)
+	var proof *slackapp.LinkProof
+	if req.SlackCode != "" {
+		proof = &slackapp.LinkProof{Code: req.SlackCode, State: req.State}
+	}
+	link, xerr := h.SlackService.ConfirmLink(c.Request.Context(), userID, req.Code, proof)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
@@ -182,6 +190,27 @@ func (h *Handler) ConfirmSlackLink(c *gin.Context) {
 			&link.ConnectionID, c.ClientIP(), c.Request.UserAgent(), nil, map[string]string{"slack_link": "linked"})
 	}
 	c.JSON(http.StatusCreated, link)
+}
+
+// StartSlackLinkVerify — POST /v1/integrations/slack/link/verify
+func (h *Handler) StartSlackLinkVerify(c *gin.Context) {
+	_, userID, ok := h.slackCaller(c, false)
+	if !ok {
+		return
+	}
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errx.JSON(c, errx.InvalidBody(err))
+		return
+	}
+	u, xerr := h.SlackService.StartLinkVerify(c.Request.Context(), userID, req.Code)
+	if xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": u})
 }
 
 // UpdateMySlackLink — PATCH /v1/integrations/slack/link

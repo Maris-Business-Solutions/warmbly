@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"strings"
 
-	apple "github.com/meszmate/apple-go"
+	"github.com/warmbly/warmbly/internal/pkg/appleauth"
 	"github.com/warmbly/warmbly/internal/pkg/idtoken"
 	"golang.org/x/oauth2"
 	googleendpoint "golang.org/x/oauth2/google"
@@ -100,15 +100,21 @@ func (g *Google) Exchange(ctx context.Context, code, verifier, expectedNonce str
 // only sends the email claim when the email scope is requested, and any scope
 // forces response_mode=form_post, so its callback arrives as a cross-site POST.
 type Apple struct {
-	client      apple.AppleAuth
+	client      AppleCodeExchanger
 	servicesID  string
 	redirectURL string
 	verifier    *idtoken.Verifier
 }
 
+// AppleCodeExchanger trades an authorization code at Apple's token endpoint;
+// *appleauth.Client is the production implementation.
+type AppleCodeExchanger interface {
+	ExchangeCode(ctx context.Context, code, redirectURI string) (*appleauth.TokenResponse, error)
+}
+
 // NewApple builds the flow from the same credentials the native path uses. The
 // client id is the Services ID (the web identifier), not the app's bundle ID.
-func NewApple(client apple.AppleAuth, servicesID, redirectURL string) (*Apple, error) {
+func NewApple(client AppleCodeExchanger, servicesID, redirectURL string) (*Apple, error) {
 	if client == nil {
 		return nil, errors.New("socialauth: apple client is not configured")
 	}
@@ -139,14 +145,14 @@ func (a *Apple) RedirectURL() string  { return a.redirectURL }
 // the web flow, so the verifier is ignored; one-time state and the nonce inside
 // the ID token are what bind the response to this attempt.
 func (a *Apple) AuthCodeURL(state, nonce, _ string) string {
-	return apple.AuthorizeURL(apple.AuthorizeURLConfig{
+	return appleauth.AuthorizeURL(appleauth.AuthorizeURLConfig{
 		ClientID:     a.servicesID,
 		RedirectURI:  a.redirectURL,
 		State:        state,
 		Nonce:        nonce,
 		Scope:        []string{"name", "email"},
-		ResponseType: apple.ResponseTypeCode,
-		ResponseMode: apple.ResponseModeFormPost,
+		ResponseType: "code",
+		ResponseMode: "form_post",
 	})
 }
 
@@ -155,9 +161,9 @@ func (a *Apple) AuthCodeURL(state, nonce, _ string) string {
 // Apple's keys, because the audience check is what rejects one issued for a
 // different client.
 func (a *Apple) Exchange(ctx context.Context, code, _, expectedNonce string) (*idtoken.Claims, error) {
-	resp, err := a.client.ValidateCodeWithRedirectURI(code, a.redirectURL)
+	resp, err := a.client.ExchangeCode(ctx, code, a.redirectURL)
 	if err != nil {
-		if errors.Is(err, apple.ErrorResponseInvalidGrant) {
+		if errors.Is(err, appleauth.ErrInvalidGrant) {
 			return nil, fmt.Errorf("socialauth: apple rejected the authorization code: %w", err)
 		}
 		return nil, fmt.Errorf("socialauth: apple code exchange: %w", err)

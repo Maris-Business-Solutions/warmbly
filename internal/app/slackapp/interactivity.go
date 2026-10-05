@@ -160,7 +160,7 @@ func (s *Service) requireLinked(ctx context.Context, p *interaction) *actor {
 	if a == nil {
 		return nil
 	}
-	if a.link == nil {
+	if a.link == nil && !s.autoLink(ctx, a) {
 		channel := p.channelID()
 		dm := strings.HasPrefix(channel, "D")
 		if channel == "" {
