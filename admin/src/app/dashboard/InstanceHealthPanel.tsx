@@ -1,18 +1,20 @@
-// The findings from GET /admin/instance/health, rendered two ways: the full
-// severity-grouped list on the Setup and health page, and a short problems
-// strip at the top of Overview. Only non-ok checks come back, so anything
-// rendered here is something an operator has to decide about.
+// Overview shows only problems; Setup and health also shows informational context.
 
 import { Link } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { AlertTriangle, ArrowRight, ExternalLink, Info, XCircle, type LucideIcon } from "lucide-react";
 import { StatusBadge } from "@/components/ui/kit";
+import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { docsUrl } from "@/lib/docs";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
-import { useInstanceHealth } from "@/hooks/useInstanceHealth";
+import { INSTANCE_HEALTH_KEY, useInstanceHealth } from "@/hooks/useInstanceHealth";
 import { AdminPerm } from "@/lib/auth/permissions";
 import { TONE_PANEL, TONE_TEXT, type Tone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import type { CheckSeverity, InstanceCheck } from "@/lib/api/client/admin/instance";
+import { deleteExpiredInvitations } from "@/lib/api/client/admin/instance";
 
 const SEVERITY_ORDER: CheckSeverity[] = ["error", "warning", "info"];
 
@@ -63,6 +65,8 @@ export function InstanceFindings({ checks }: { checks: InstanceCheck[] }) {
 
 function FindingRow({ check }: { check: InstanceCheck }) {
     const tone = toneFor(check.severity);
+    const canGrantAdmin = useAdminPerm(AdminPerm.GrantAdminAccess);
+    const canManageOrganizations = useAdminPerm(AdminPerm.ManageOrganizations);
     return (
         <li className="flex items-start gap-3 px-4 py-3">
             <tone.icon className={cn("mt-0.5 size-4 shrink-0", TONE_TEXT[tone.tone])} />
@@ -78,6 +82,15 @@ function FindingRow({ check }: { check: InstanceCheck }) {
                 </div>
                 <p className="mt-1 break-words text-[13px] leading-relaxed text-muted-foreground">{check.message}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-3">
+                    {check.id === "single_platform_admin" && canGrantAdmin && (
+                        <Link to="/admins" className="inline-flex items-center gap-1 text-xs font-medium text-[var(--admin-accent-strong)] hover:underline">
+                            Manage admins
+                            <ArrowRight className="size-3" />
+                        </Link>
+                    )}
+                    {check.id === "expired_invitations" && canManageOrganizations && (
+                        <ExpiredInvitationsCleanup />
+                    )}
                     {check.docs && (
                         <a
                             href={docsUrl(check.docs)}
@@ -93,6 +106,35 @@ function FindingRow({ check }: { check: InstanceCheck }) {
                 </div>
             </div>
         </li>
+    );
+}
+
+function ExpiredInvitationsCleanup() {
+    const confirm = useConfirm();
+    const qc = useQueryClient();
+    const cleanup = useMutation({
+        mutationFn: deleteExpiredInvitations,
+        onSuccess: async () => {
+            toast.success("Expired invitations removed");
+            await qc.invalidateQueries({ queryKey: INSTANCE_HEALTH_KEY });
+        },
+        onError: (e: Error) => toast.error(e.message || "Could not remove expired invitations"),
+    });
+
+    async function onCleanup() {
+        const ok = await confirm({
+            title: "Remove expired invitations?",
+            description: "This permanently removes expired invitation records across all workspaces. Active invitations, accounts and workspace members are unchanged.",
+            confirmLabel: "Remove expired invitations",
+            destructive: true,
+        });
+        if (ok) cleanup.mutate();
+    }
+
+    return (
+        <Button size="sm" variant="outline" onClick={onCleanup} disabled={cleanup.isPending}>
+            {cleanup.isPending ? "Removing..." : "Remove expired invitations"}
+        </Button>
     );
 }
 

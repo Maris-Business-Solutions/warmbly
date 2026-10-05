@@ -71,6 +71,14 @@ export function getInstanceHealth(): Promise<InstanceHealthResult> {
     });
 }
 
+export function deleteExpiredInvitations(): Promise<{ cleaned: boolean }> {
+    return Request({
+        method: "DELETE",
+        url: "/admin/instance/invitations/expired",
+        authorization: true,
+    });
+}
+
 export interface InstanceLimitEntry {
     name: string;
     value: string;

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/warmbly/warmbly/internal/config"
+	"github.com/warmbly/warmbly/internal/models"
 )
 
 const (
@@ -33,11 +36,29 @@ func accessChecks() []check {
 }
 
 func checkRegistrationMode(ctx context.Context, d Deps, in Input) *Finding {
-	return result(CategoryAccess, SeverityInfo, "Registration mode",
-		fmt.Sprintf("Registration is %s. `invite_only` means nobody can create an account from the sign-up form; "+
-			"people join through an invitation from Settings > Members in the dashboard. "+
-			"`true` means signups are fully closed and invitations do not work either.", policy(d).Registration),
-		docsRegistration)
+	p := policy(d)
+	var title, message string
+	switch p.Registration {
+	case config.RegistrationOpen:
+		title = "Public registration is open"
+		message = "DISABLE_REGISTRATION=false: anyone can create an account from the sign-up form. " +
+			"Workspace invitations are also enabled. This is a normal registration mode, not a health problem."
+	case config.RegistrationInviteOnly:
+		title = "Registration is invitation-only"
+		message = "DISABLE_REGISTRATION=invite_only: public signup is closed, but workspace invitations are enabled " +
+			"from Settings > Members in the dashboard. Signup from an invitation also requires access.allow_invited_signup " +
+			"in Instance > Configuration > Settings."
+	case config.RegistrationClosed:
+		title = "Registration is closed"
+		message = "DISABLE_REGISTRATION=true: the sign-up form and workspace invitations are disabled. " +
+			"An operator can still create accounts with warmblyctl user create."
+	default:
+		return nil
+	}
+	if p.SSOAutoProvision {
+		message += " SSO_AUTO_PROVISION=true allows a verified single sign-on identity to create an account independently of this mode."
+	}
+	return result(CategoryAccess, SeverityInfo, title, message, docsRegistration)
 }
 
 func checkNoSignInMethod(ctx context.Context, d Deps, in Input) *Finding {
@@ -179,13 +200,14 @@ func checkSinglePlatformAdmin(ctx context.Context, d Deps, in Input) *Finding {
 	var count int
 	var email string
 	err := d.DB.QueryRow(ctx,
-		`SELECT count(*), COALESCE(min(email), '') FROM users WHERE admin_permissions > 0`).Scan(&count, &email)
+		`SELECT count(*), COALESCE(min(email), '') FROM users WHERE (admin_permissions & $1) = $1`,
+		int64(models.AdminPermGrantAdminAccess)).Scan(&count, &email)
 	if err != nil || count != 1 {
 		return nil
 	}
-	return result(CategoryAccess, SeverityInfo, "Only one platform admin",
-		fmt.Sprintf("This instance has one platform admin (%s). If you lose access to that account there is no way "+
-			"to grant admin from inside the product. Add a second admin from Instance > Admins.", email),
+	return result(CategoryAccess, SeverityInfo, "Only one admin can grant access",
+		fmt.Sprintf("Only one platform admin (%s) can grant admin access. The instance works normally, but if you lose access "+
+			"to that account you will need warmblyctl to recover. Add a trusted second admin with Grant admin access from Accounts > Admins.", email),
 		docsAdmins)
 }
 
@@ -232,8 +254,8 @@ func checkExpiredInvitations(ctx context.Context, d Deps, in Input) *Finding {
 		return nil
 	}
 	return result(CategoryAccess, SeverityInfo, "Expired invitations",
-		fmt.Sprintf("%d invitations have expired and are no longer visible in the dashboard, "+
-			"but still hold their email address. Re-inviting the same address now replaces the expired row.", count),
+		fmt.Sprintf("%d expired invitations are stored but can no longer be accepted. They do not block new invitations: "+
+			"re-inviting the same address replaces the expired row. You can remove these expired records; active invitations and workspace members are unaffected.", count),
 		docsInvitations)
 }
 

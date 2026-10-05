@@ -21,7 +21,7 @@ import { Callout, Stat, StatGrid } from "@/components/ui/kit";
 import { TONE_PANEL, TONE_TEXT } from "@/lib/tones";
 import { InstanceFindings } from "../InstanceHealthPanel";
 import { UpdateDialog } from "@/components/layout/UpdateDialog";
-import { useInstanceHealth } from "@/hooks/useInstanceHealth";
+import { findingCount, useInstanceHealth } from "@/hooks/useInstanceHealth";
 import { buildLabel, isUpdating, useUpdateState } from "@/hooks/useUpdateState";
 import type { InstanceHealthSummary } from "@/lib/api/client/admin/instance";
 
@@ -29,6 +29,7 @@ export function FindingsTab() {
     const healthQ = useInstanceHealth();
 
     const checks = healthQ.data?.checks ?? [];
+    const problemCount = findingCount(healthQ.data);
     const summary = healthQ.data?.summary;
 
     return (
@@ -36,8 +37,8 @@ export function FindingsTab() {
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <p className="max-w-2xl text-[12.5px] leading-relaxed text-muted-foreground">
                     Checks the backend runs against this instance: secrets, addresses, platform
-                    mail, accounts, workers and storage. Only findings that need a decision are
-                    listed.
+                    mail, accounts, workers and storage. Errors and warnings need attention;
+                    informational notes are context, not health problems.
                 </p>
                 <div className="flex items-center gap-2">
                     {healthQ.dataUpdatedAt > 0 && (
@@ -77,17 +78,18 @@ export function FindingsTab() {
 
             {healthQ.data && (
                 <>
-                    {checks.length === 0 ? (
+                    {problemCount === 0 && (
                         <Callout tone="success" icon={CheckCircle2} title="No problems found">
-                            Every setup and health check passed. This tab lists only the checks that
-                            need attention, so it stays empty while the instance is configured
-                            correctly.
+                            No errors or warnings were reported.
+                            {checks.length > 0 &&
+                                " The informational notes below do not mean this instance is unhealthy."}
                         </Callout>
-                    ) : (
-                        <>
-                            <SummaryStrip summary={summary} total={checks.length} />
+                    )}
+                    {checks.length > 0 && (
+                        <div className={problemCount === 0 ? "mt-6" : undefined}>
+                            <SummaryStrip summary={summary} />
                             <InstanceFindings checks={checks} />
-                        </>
+                        </div>
                     )}
                 </>
             )}
@@ -146,13 +148,7 @@ function UpdateCard() {
     );
 }
 
-function SummaryStrip({
-    summary,
-    total,
-}: {
-    summary: InstanceHealthSummary | undefined;
-    total: number;
-}) {
+function SummaryStrip({ summary }: { summary: InstanceHealthSummary | undefined }) {
     const errors = summary?.error ?? 0;
     const warnings = summary?.warning ?? 0;
     const info = summary?.info ?? 0;
@@ -177,7 +173,7 @@ function SummaryStrip({
                 icon={Info}
                 label="Worth knowing"
                 value={info}
-                sub={`${total} findings in total`}
+                sub="Informational notes, not problems"
                 tone={info > 0 ? "info" : undefined}
             />
         </StatGrid>
