@@ -1,6 +1,7 @@
 export default interface Organization {
     id: string
     name: string
+    category?: "standard" | "test"
     avatar?: string
     // Public URL of the workspace avatar, null/undefined when none is set.
     avatar_url?: string | null

@@ -38,3 +38,9 @@ func TestOrgRowStripsTheOperatorVerdict(t *testing.T) {
 		t.Errorf("manifest carries %d columns, want only the ordinary one", len(out))
 	}
 }
+
+func TestArchiveCannotSetTestWorkspaceCategory(t *testing.T) {
+	if !orgMergeExcluded["category"] {
+		t.Fatal("workspace imports must not overwrite the instance's test classification")
+	}
+}

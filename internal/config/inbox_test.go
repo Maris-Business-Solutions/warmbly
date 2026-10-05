@@ -2,6 +2,20 @@ package config
 
 import "testing"
 
+func TestGoogleMailboxOAuthUsesBoxCredentials(t *testing.T) {
+	t.Setenv("BOX_GOOGLE_CLIENT_ID", "mailbox-client")
+	t.Setenv("BOX_GOOGLE_CLIENT_SECRET", "mailbox-secret")
+	t.Setenv("GOOGLE_CLIENT_ID", "sso-client")
+	t.Setenv("GOOGLE_CLIENT_SECRET", "sso-secret")
+	conf := GoogleOauth2Inbox("https://api.example.test")
+	if conf.ClientID != "mailbox-client" || conf.ClientSecret != "mailbox-secret" {
+		t.Fatal("mailbox OAuth must use BOX credentials, not dashboard SSO credentials")
+	}
+	if conf.RedirectURL != "https://api.example.test/addresses/google/callback" {
+		t.Fatalf("unexpected mailbox callback: %s", conf.RedirectURL)
+	}
+}
+
 func TestGoogleOAuthConnect(t *testing.T) {
 	for _, tt := range []struct {
 		name, flag, id, secret string

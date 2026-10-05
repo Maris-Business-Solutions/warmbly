@@ -677,6 +677,7 @@ var orgMergeExcluded = func() map[string]bool {
 	out := map[string]bool{
 		"id":                     true,
 		"owner_user_id":          true,
+		"category":               true,
 		"slug":                   true,
 		"created_at":             true,
 		"deletion_scheduled_at":  true,

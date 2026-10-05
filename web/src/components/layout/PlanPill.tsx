@@ -11,6 +11,7 @@ import useCloudPool from "@/hooks/useCloudPool";
 import { usePermission } from "@/hooks/usePermission";
 import { PLAN_ACCENT_CLASSES, getPlan } from "@/lib/plans";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/stores";
 
 export function PlanPill() {
     const access = useFeatureAccess();
@@ -18,6 +19,18 @@ export function PlanPill() {
     // The Warmbly Cloud page is manage-settings gated; everyone else lands
     // on their profile rather than on a "no access" screen.
     const cloudTo = usePermission("MANAGE_SETTINGS") ? "/app/settings/warmbly-cloud" : "/app/settings/profile";
+    const isTest = useAppStore((s) => s.currentOrganization?.category === "test");
+    if (isTest) {
+        return (
+            <Badge
+                to="/app/settings/profile"
+                className="bg-sky-50 text-sky-700 border-sky-100"
+                dot="bg-sky-500"
+                label="Test"
+                title="Dedicated tester workspace"
+            />
+        );
+    }
     if (access.loading) {
         return (
             <div className="h-6 w-16 rounded border border-slate-200 bg-slate-100 animate-pulse" />
