@@ -78,6 +78,8 @@ func (s *usageSampler) sample(usage *models.NodeUsage) {
 }
 
 func (s *usageSampler) cpu() cpuReading {
+	procStat := s.read("/proc/stat")
+	hostCPUs := math.Max(float64(runtime.NumCPU()), float64(strings.Count(procStat, "\ncpu")))
 	root := s.cgroupPath("")
 	stat := keyedNumbers(s.read(filepath.Join(root, "cpu.stat")))
 	used, ok := stat["usage_usec"]
@@ -108,12 +110,12 @@ func (s *usageSampler) cpu() cpuReading {
 	}
 	if cpus := cpuSetSize(cpuset); cpus > 0 {
 		cores = math.Min(cores, float64(cpus))
-		bounded = bounded || cpus < runtime.NumCPU()
+		bounded = bounded || float64(cpus) < hostCPUs
 	}
 	if ok && cores > 0 && bounded {
 		return cpuReading{scope: "container", used: used, cores: cores, at: time.Now()}
 	}
-	fields := strings.Fields(strings.SplitN(s.read("/proc/stat"), "\n", 2)[0])
+	fields := strings.Fields(strings.SplitN(procStat, "\n", 2)[0])
 	if len(fields) < 5 || fields[0] != "cpu" {
 		return cpuReading{}
 	}

@@ -144,12 +144,15 @@ func (a *Agent) beat(ctx context.Context, booted, stopping bool) *models.NodeHea
 		Role:           a.cfg.Role,
 		Name:           a.cfg.Name,
 		Region:         a.cfg.Region,
-		Address:        a.publicAddress(ctx),
+		Address:        a.address,
 		CapacityTarget: a.cfg.CapacityTarget,
 		Version:        a.cfg.Version,
 		Usage:          a.sampleUsage(),
 		Booted:         booted,
 		Stopping:       stopping,
+	}
+	if !stopping {
+		beat.Address = a.publicAddress(ctx)
 	}
 	if p := a.lastErr.Swap(nil); p != nil {
 		beat.LastError = *p

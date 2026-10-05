@@ -78,10 +78,7 @@ func scanFleetNode(row pgx.Row) (*models.FleetNode, error) {
 	return &n, nil
 }
 
-// UpsertOnHeartbeat is deliberately tolerant about what a beat omits. A node
-// that cannot detect its own address or version still registers; a field it
-// leaves blank keeps whatever was already stored rather than being wiped,
-// because a beat is a partial report, not a full replacement.
+// Identity hints tolerate omissions; address and resources reflect the latest report.
 func (r *fleetNodeRepository) UpsertOnHeartbeat(ctx context.Context, beat models.NodeHeartbeat) error {
 	name := beat.Name
 	if name == "" {

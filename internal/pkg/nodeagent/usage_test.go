@@ -124,3 +124,19 @@ func TestContainerCPUQuotaEqualToAvailableCPUs(t *testing.T) {
 		t.Fatalf("a finite CPU quota should retain container scope: %+v", usage)
 	}
 }
+
+func TestContainerCPUSetRecognizesHostCPUsOutsideProcessAffinity(t *testing.T) {
+	procStat := "cpu 100 0 100 800 0 0 0 0\n"
+	for i := 0; i <= runtime.NumCPU(); i++ {
+		procStat += "cpu" + strconv.Itoa(i) + " 1 0 1 8 0 0 0 0\n"
+	}
+	files := map[string]string{
+		"/proc/stat":                           procStat,
+		"/sys/fs/cgroup/cpu.stat":              "usage_usec 1250000\n",
+		"/sys/fs/cgroup/cpu.max":               "max 100000",
+		"/sys/fs/cgroup/cpuset.cpus.effective": "0-" + strconv.Itoa(runtime.NumCPU()-1),
+	}
+	if got := samplerWithFiles(files).cpu(); got.scope != "container" || got.cores != float64(runtime.NumCPU()) {
+		t.Fatalf("a cpuset smaller than the host must use container scope: %+v", got)
+	}
+}
