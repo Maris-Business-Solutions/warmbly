@@ -12,7 +12,8 @@ import { sourceMutationKey } from "@/lib/api/hooks/app/emails/mailboxSourceBusy"
 import type { DomainGrant } from "@/lib/api/models/app/emails/MailboxSources";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
-import { allowedCallbackOrigins, isAdminConsentState, openCentered } from "@/hooks/useMailboxOAuth";
+import { allowedCallbackOrigins, isAdminConsentState } from "@/hooks/useMailboxOAuth";
+import { closePopup, navigatePopup, notifyPopupBlocked, reservePopup } from "@/lib/popup";
 
 interface CallbackMessage {
     type: "email_oauth_callback";
@@ -110,42 +111,63 @@ export default function useAdminGrantPopup({
         return () => window.removeEventListener("message", onMessage);
     }, [store, provider, finishAsync]);
 
-    // A popup closed without answering leaves nothing to wait for.
+    // Closing the window stops the spinner. The pending state stays, so a
+    // callback that lands just after the window closes still finishes.
     React.useEffect(() => {
         if (!busy) return;
+        let grace: number | undefined;
         const t = window.setInterval(() => {
             const p = popupRef.current;
-            if (!p || !p.closed || !pending.current) return;
-            // The callback posts just before it closes; give the message a moment to land.
-            window.setTimeout(() => {
-                if (pending.current && popupRef.current?.closed) {
-                    pending.current = null;
+            if (!p || !p.closed || grace !== undefined) return;
+            grace = window.setTimeout(() => {
+                if (popupRef.current === p) {
                     popupRef.current = null;
                     setBusy(false);
                 }
-            }, 800);
-        }, 700);
-        return () => window.clearInterval(t);
+            }, 1000);
+        }, 500);
+        return () => {
+            window.clearInterval(t);
+            window.clearTimeout(grace);
+        };
     }, [busy]);
 
-    /** Asks the server for a fresh sign-in URL and state, then opens it. */
+    /** Opens the sign-in window now, inside the click, for a caller that has to await before open(). */
+    const reserve = React.useCallback(() => reservePopup(windowName), [windowName]);
+
+    /**
+     * Asks the server for a fresh sign-in URL and state, then opens it. Call it
+     * straight from the click, or pass the window reserve() opened there:
+     * Safari blocks a window opened after an await.
+     */
     const open = React.useCallback(
-        async (begin: () => Promise<{ url?: string; state?: string }>) => {
-            if (busy) return;
+        async (begin: () => Promise<{ url?: string; state?: string }>, reserved?: Window | null) => {
+            if (busy) {
+                closePopup(reserved);
+                return;
+            }
+            const win = reserved === undefined ? reservePopup(windowName) : reserved;
             setBusy(true);
+            pending.current = null;
             try {
                 const { url, state } = await begin();
                 if (!url || !state) throw new Error("no sign-in");
                 pending.current = state;
-                const popup = openCentered(url, windowName);
-                if (!popup) {
-                    pending.current = null;
-                    setBusy(false);
-                    toast.error(`Could not open the ${provider} window. Allow popups for this site and try again.`);
+                const opened = navigatePopup(win, url, windowName);
+                if (opened.status === "open") {
+                    popupRef.current = opened.window;
                     return;
                 }
-                popupRef.current = popup;
+                popupRef.current = null;
+                setBusy(false);
+                if (opened.status === "closed") {
+                    pending.current = null;
+                    return;
+                }
+                // Still listening: a window allowed from the address bar finishes the grant.
+                notifyPopupBlocked();
             } catch (e) {
+                closePopup(win);
                 pending.current = null;
                 setBusy(false);
                 const msg = e instanceof Error ? `Could not start the ${provider} sign-in. Try again.` : grantErrorText(e as AppError, provider);
@@ -162,5 +184,5 @@ export default function useAdminGrantPopup({
         setBusy(false);
     }, []);
 
-    return { busy, open, reset };
+    return { busy, open, reserve, reset };
 }

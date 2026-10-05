@@ -19,6 +19,7 @@ import { finishCloudOAuth, startCloudOAuth } from "@/lib/api/client/app/cloudlin
 import type { CloudOAuthDoneMessage } from "@/app/cloud-oauth/done/page";
 import { capture } from "@/lib/productAnalytics";
 import useCloudPool from "@/hooks/useCloudPool";
+import { closePopup, navigatePopup, notifyPopupBlocked, reservePopup } from "@/lib/popup";
 
 export type MailboxOAuthProvider = "gmail" | "outlook";
 
@@ -70,20 +71,6 @@ export function allowedCallbackOrigins(): string[] {
     );
 }
 
-export function openCentered(url: string, name: string): Window | null {
-    const w = 520;
-    const h = 640;
-    const sx = window.screenLeft ?? window.screenX;
-    const sy = window.screenTop ?? window.screenY;
-    const sw = window.innerWidth ?? document.documentElement.clientWidth ?? screen.width;
-    const sh = window.innerHeight ?? document.documentElement.clientHeight ?? screen.height;
-    const left = sx + (sw - w) / 2;
-    const top = sy + (sh - h) / 2;
-    const popup = window.open(url, name, `width=${w},height=${h},left=${left},top=${top}`);
-    popup?.focus();
-    return popup;
-}
-
 export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     const qc = useQueryClient();
     const pool = useCloudPool();
@@ -95,6 +82,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     const pendingState = React.useRef<{ provider: MailboxOAuthProvider; state: string } | null>(null);
     // A consent running on Warmbly Cloud's app; redeemed by session, not code.
     const pendingCloud = React.useRef<{ provider: MailboxOAuthProvider; session: string } | null>(null);
+    const popupRef = React.useRef<Window | null>(null);
 
     // The listeners read the latest callbacks without re-subscribing on every render.
     const optionsRef = React.useRef(options);
@@ -115,6 +103,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
             const expected = pendingCloud.current;
             if (!expected || expected.session !== data.session) return;
             pendingCloud.current = null;
+            popupRef.current = null;
             if (data.status !== "ok") {
                 setBusy(null);
                 if (data.error !== "access_denied") {
@@ -156,6 +145,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
             const expected = pendingState.current;
             if (!expected || expected.state !== data.state) return;
             pendingState.current = null;
+            popupRef.current = null;
 
             if (data.error || !data.code) {
                 setBusy(null);
@@ -186,22 +176,63 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
         return () => window.removeEventListener("message", onMessage);
     }, [qc, onConnectError]);
 
+    // Closing the window stops the spinner. The pending state stays, so a
+    // callback that lands just after the window closes still finishes.
+    React.useEffect(() => {
+        if (!busy) return;
+        let grace: number | undefined;
+        const t = window.setInterval(() => {
+            const p = popupRef.current;
+            if (!p || !p.closed || grace !== undefined) return;
+            grace = window.setTimeout(() => {
+                if (popupRef.current === p) {
+                    popupRef.current = null;
+                    setBusy(null);
+                }
+            }, 1000);
+        }, 500);
+        return () => {
+            window.clearInterval(t);
+            window.clearTimeout(grace);
+        };
+    }, [busy]);
+
+    // Points the window opened in the click at the provider. A blocked window
+    // leaves the pending state listening: one the person allows from the
+    // address bar still finishes, and the button is free to try again.
+    const launch = React.useCallback((reserved: Window | null, url: string, name: string) => {
+        const opened = navigatePopup(reserved, url, name);
+        if (opened.status === "open") {
+            popupRef.current = opened.window;
+            return;
+        }
+        popupRef.current = null;
+        setBusy(null);
+        if (opened.status === "closed") {
+            pendingState.current = null;
+            pendingCloud.current = null;
+            return;
+        }
+        notifyPopupBlocked();
+    }, []);
+
+    // Call it straight from the click: Safari blocks a window opened after an await.
     const start = React.useCallback(
         async (provider: MailboxOAuthProvider, opts: { loginHint?: string } = {}) => {
             if (busy) return;
+            const name = `connect-${provider}`;
+            const reserved = reservePopup(name);
             setBusy(provider);
+            pendingState.current = null;
+            pendingCloud.current = null;
             if (viaCloud) {
                 // The cloud's start takes no hint; its consent screen asks for the account.
                 try {
                     const { url, session } = await startCloudOAuth(provider);
                     pendingCloud.current = { provider, session };
-                    const popup = openCentered(url, `connect-${provider}`);
-                    if (!popup) {
-                        pendingCloud.current = null;
-                        setBusy(null);
-                        toast.error("Could not open the authorization window. Please allow popups and try again.");
-                    }
+                    launch(reserved, url, name);
                 } catch (err) {
+                    closePopup(reserved);
                     pendingCloud.current = null;
                     setBusy(null);
                     if (isAllowanceError(err)) {
@@ -216,13 +247,9 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
                 const { url, state, admin_consent_url } = await onboardOAuthStart(provider, opts.loginHint);
                 if (provider === "outlook") setAdminConsentUrl(admin_consent_url ?? null);
                 pendingState.current = { provider, state };
-                const popup = openCentered(url, `connect-${provider}`);
-                if (!popup) {
-                    pendingState.current = null;
-                    setBusy(null);
-                    toast.error("Could not open the authorization window. Please allow popups and try again.");
-                }
+                launch(reserved, url, name);
             } catch (err) {
+                closePopup(reserved);
                 pendingState.current = null;
                 setBusy(null);
                 const e = err as AppError;
@@ -242,7 +269,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
                 toast.error(buildError(e));
             }
         },
-        [busy, viaCloud],
+        [busy, viaCloud, launch],
     );
 
     // Forget any popup still out, e.g. when the dialog that opened it closes.
@@ -251,6 +278,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
         setAdminConsentUrl(null);
         pendingState.current = null;
         pendingCloud.current = null;
+        popupRef.current = null;
     }, []);
 
     return { busy, start, reset, viaCloud, selfHosted: pool.selfHosted, adminConsentUrl };

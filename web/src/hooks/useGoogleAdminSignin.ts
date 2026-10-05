@@ -21,5 +21,5 @@ export default function useGoogleAdminSignin(onGranted?: (grant: DomainGrant) =>
         [open],
     );
     // Opens a sign-in the caller already started, so one start serves both proofs.
-    return { busy: popup.busy, start, open, reset: popup.reset };
+    return { busy: popup.busy, start, open, reserve: popup.reserve, reset: popup.reset };
 }

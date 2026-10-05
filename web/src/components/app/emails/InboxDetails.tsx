@@ -73,7 +73,7 @@ import buildError from "@/lib/helper/buildError";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import reauthEmailOAuth from "@/lib/api/client/app/emails/reauthEmailOAuth";
 import onboardOAuthFinish from "@/lib/api/client/app/emails/onboardOAuthFinish";
-import { openEmailOAuthPopup } from "@/lib/emails/emailOAuthPopup";
+import { authorizeEmailInPopup } from "@/lib/emails/emailOAuthPopup";
 import { mailboxConnectionLabel, mailHostLogo } from "@/lib/mailHost";
 import { useGrants } from "@/lib/api/hooks/app/emails/useMailboxGrants";
 import { domainOf, grantFor, grantName, vendorLabel, type GrantProvider } from "@/lib/api/models/app/emails/MailboxSources";
@@ -577,8 +577,7 @@ function ReconnectAction({ mailbox }: { mailbox: Inbox }) {
         if (busy) return;
         setBusy(true);
         try {
-            const { url, state } = await reauthEmailOAuth(mailbox.id);
-            const { code } = await openEmailOAuthPopup(url, state);
+            const { code, state } = await authorizeEmailInPopup(() => reauthEmailOAuth(mailbox.id));
             await onboardOAuthFinish(code, state);
             toast.success("Mailbox re-authorized. It's back online.");
             qc.invalidateQueries({ queryKey: ["emails", "list"] });
