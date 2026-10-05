@@ -33,7 +33,7 @@ Client.interceptors.response.use(
 
 function isWebPage(response: AxiosResponse): boolean {
     const expectsJSON = !response.config.responseType || response.config.responseType === "json";
-    return expectsJSON && String(response.headers["content-type"] ?? "").includes("text/html");
+    return expectsJSON && String(response.headers["content-type"] ?? "").toLowerCase().includes("text/html");
 }
 
 // noteFailure leaves the failed call on the trail the next exception carries.
