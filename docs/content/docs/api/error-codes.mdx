@@ -431,9 +431,11 @@ Returned when authenticated but lacking necessary permissions.
 - Verify IP restrictions if configured
 - Request additional permissions if needed
 
-#### `mailbox_gmail_oauth_disabled`
+#### `mailbox_oauth_return_origin`
 
 A `400` with `code: "mailbox_oauth_return_origin"` instead means a Google mailbox connect or reauthorization came from a dashboard origin the backend does not allow. Add its exact HTTP(S) origin to `CORS_ALLOW_ORIGINS`, as in [shared-backend dashboard configuration](/development/configuration/#google-sign-in-per-dashboard-deployment). A wildcard is not an OAuth return allowlist.
+
+#### `mailbox_gmail_oauth_disabled`
 
 A `403` whose `code` is `mailbox_gmail_oauth_disabled` comes from `POST /emails/onboarding/oauth/start` with `provider: "gmail"`. The backend has no complete Google mailbox client credentials, or explicitly disables new Google OAuth connects through `BOX_GOOGLE_OAUTH_CONNECT`; `GET /auth/config` announces it as `gmail_oauth_connect: false`. Nothing about the caller's permissions is wrong. Re-authorizing an existing Gmail mailbox (`POST /emails/onboarding/oauth/reauth/:id`) is never refused this way.
 

@@ -33,6 +33,25 @@ func TestOAuthStartRejectsUntrustedReturnOrigin(t *testing.T) {
 	}
 }
 
+func TestOAuthReauthRejectsUntrustedGoogleReturnOrigin(t *testing.T) {
+	t.Setenv("APP_URL", "https://app.example.com")
+	t.Setenv("APP_ORIGIN", "")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://assessment.example.com")
+	svc, repo, _, _ := reauthFixture("gmail", "owner@example.com")
+	_, xerr := svc.OAuthReauth(context.Background(), repo.account.UserID, repo.account.OrganizationID, repo.account.ID, "https://evil.example.com")
+	if xerr != errx.ErrEmailOnboardReturnOrigin {
+		t.Fatalf("untrusted Google reauthorization origin should be refused, got %v", xerr)
+	}
+}
+
+func TestOAuthReauthIgnoresMicrosoftReturnOrigin(t *testing.T) {
+	svc, repo, _, _ := reauthFixture("outlook", "owner@example.com")
+	_, xerr := svc.OAuthReauth(context.Background(), repo.account.UserID, repo.account.OrganizationID, repo.account.ID, "https://evil.example.com")
+	if xerr != errx.ErrEmailOnboardOutlookNotConfigured {
+		t.Fatalf("Microsoft must keep its existing routing and reach the credential check, got %v", xerr)
+	}
+}
+
 func TestGoogleOAuthOriginStaysBoundToSingleUseState(t *testing.T) {
 	redisURL := os.Getenv("WARMBLY_TEST_REDIS")
 	if redisURL == "" {
