@@ -158,6 +158,16 @@ func (m *OAuthManager) Configured(p models.IntegrationProvider) bool {
 // RedirectURL is the shared OAuth callback every provider redirects to.
 func (m *OAuthManager) RedirectURL() string { return m.redirectURL }
 
+// ClientCredentials returns the provider's client id and secret, empty when
+// the provider is not configured.
+func (m *OAuthManager) ClientCredentials(p models.IntegrationProvider) (string, string) {
+	op, ok := m.providers[p]
+	if !ok || op.config == nil {
+		return "", ""
+	}
+	return op.config.ClientID, op.config.ClientSecret
+}
+
 // Scopes returns the requested scopes for a provider (empty if none/unknown).
 func (m *OAuthManager) Scopes(p models.IntegrationProvider) []string {
 	if op, ok := m.providers[p]; ok {

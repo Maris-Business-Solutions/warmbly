@@ -150,7 +150,7 @@ func (s *Service) submitReply(ctx context.Context, p *interaction) any {
 		return viewErrors("body", "Replying from Slack is not available on this Warmbly instance.")
 	}
 	a := s.resolveActor(ctx, p.teamID(), p.User.ID)
-	if a == nil || a.link == nil {
+	if a == nil || (a.link == nil && !s.autoLink(ctx, a)) {
 		return viewErrors("body", "Link your Warmbly account first: mention @Warmbly or message it, and follow the link it sends you.")
 	}
 	if !a.member.Permissions.HasPermission(models.PermAccessUnibox) {

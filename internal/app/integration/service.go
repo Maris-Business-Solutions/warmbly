@@ -185,6 +185,9 @@ type Service interface {
 	MarkSlackTeamRevoked(ctx context.Context, teamID string, status models.IntegrationStatus, detail string) ([]uuid.UUID, error)
 	SlackOAuthConfigured() bool
 	SlackOAuthRedirectURL() string
+	// SlackOAuthClient is the Slack app's client id and secret, for Sign in
+	// with Slack.
+	SlackOAuthClient() (clientID, clientSecret string)
 
 	// VerificationProviderFor and ReportVerificationProviderError implement
 	// emailverify.ProviderSource: the org's paid verification backend, if any.
