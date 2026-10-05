@@ -203,6 +203,56 @@ Set these as build environment variables on the host:
 
 Whichever origin you serve them from has to be in the backend's `CORS_ALLOW_ORIGINS`, or the dashboard loads and every API call fails preflight.
 
+### Deploy static frontends only on releases
+
+For Cloudflare Pages, keep your existing projects and custom domains. The repository's `Release` workflow can deploy any configured list of the dashboard, admin panel, marketing site, and docs after it successfully publishes a stable GitHub Release. Ordinary merges and prerelease tags do not run these deployment jobs. The workflow is opt-in, so forks and self-hosts do not need Cloudflare credentials.
+
+Each project gets its own build job, which checks out the exact release commit, reads that project's production branch and public production variables from the Cloudflare API, builds the selected app, and uploads its static output with Wrangler. The upload uses the project's production branch rather than the release tag as its branch name, so it updates production instead of creating a preview. Cloudflare remains the source of truth for frontend configuration; you do not need duplicate API URLs, Turnstile keys, or analytics settings in GitHub.
+
+| App | Build | Output | GitHub deployment environment |
+|---|---|---|---|
+| `web` | `pnpm build:pages` | `web/dist` | `dashboard-production` |
+| `admin` | `pnpm build:pages` | `admin/dist` | `admin-production` |
+| `site` | `pnpm build` | `site/dist` | `site-production` |
+| `docs` | `pnpm build` | `docs/out` | `docs-production` |
+
+<Callout type="warn" title="Configure GitHub before disabling automatic deployments">
+Each job reads public settings from its own **Pages > Settings > Environment variables > Production**. The dashboard requires `WARMBLY_API_URL`, `WARMBLY_APP_URL`, and `WARMBLY_TURNSTILE_KEY`; the admin panel requires `WARMBLY_API_URL`, `WARMBLY_DASHBOARD_URL`, and `WARMBLY_TURNSTILE_KEY`. Their remaining runtime keys, including analytics settings, are read from each app's entrypoint. The marketing site imports `PUBLIC_*` variables, and docs imports `NEXT_PUBLIC_*` variables. These values are shipped to browsers and must be plaintext Pages variables, not encrypted secrets. Missing required settings or encrypted public values fail before building. Unrelated variables and secrets are not imported.
+</Callout>
+
+1. In GitHub, open **Settings > Secrets and variables > Actions**. Under **Secrets**, add `CLOUDFLARE_API_TOKEN`. Create a Cloudflare custom API token with **Pages Read and Pages Write** (also called **Account > Cloudflare Pages > Edit**), restricted to the account containing your projects. No DNS or Workers permissions are needed.
+2. Under **Variables**, add:
+
+   | Variable | Value |
+   |---|---|
+   | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account ID containing the existing projects |
+   | `CLOUDFLARE_PAGES_PROJECTS` | A JSON array of app/project mappings, shown below |
+
+   ```json
+   [
+     { "app": "web", "project": "your-dashboard-project" },
+     { "app": "admin", "project": "your-admin-project" },
+     { "app": "site", "project": "your-marketing-project" },
+     { "app": "docs", "project": "your-docs-project" }
+   ]
+   ```
+
+   Use actual Pages project names, not custom domains. Add only the projects you want deployed. Multiple entries can build the same app for different projects, each using its own production settings. A project must appear only once. GitHub permits up to 256 matrix entries. The list must be a repository-level variable because the target list is resolved before deployment environments are loaded.
+
+   Existing single-dashboard setups can keep the repository variable `CLOUDFLARE_PAGES_PROJECT_NAME` instead. When `CLOUDFLARE_PAGES_PROJECTS` is set, it takes precedence.
+
+3. Optionally configure the GitHub deployment environments in the table above under **Settings > Environments**, with approvals if needed. Allow release tags such as `v*` if restricting deployment branches and tags. Account variables and the token can be environment-scoped instead; otherwise repository-level values are shared. Optional source-map uploads use `SENTRY_ORG`, the app-specific `SENTRY_PROJECT_WEB` or `SENTRY_PROJECT_ADMIN`, `POSTHOG_CLI_PROJECT_ID`, and `POSTHOG_CLI_HOST`, with the secrets `SENTRY_AUTH_TOKEN` and `POSTHOG_CLI_API_KEY`. Environment-scoped values allow different upload projects for each app. The Sentry release identity is the release tag. See [source maps](/development/configuration/#source-maps).
+
+4. For every listed Cloudflare project, go to **Workers & Pages > your project > Settings > Builds & deployments > Configure Production deployments**, uncheck **Enable automatic production branch deployments**, and save. Keep preview branch deployments enabled if you want PR previews, with their existing Pages build configuration. Do not switch or recreate projects as Direct Upload projects: Git-integrated projects also accept Wrangler uploads.
+5. In GitHub's **Settings > Secrets and variables > Actions > Variables**, set the **repository-level** variable `CLOUDFLARE_PAGES_DEPLOY_ENABLED` to `true`. This toggle must be repository-level because GitHub evaluates the job condition before loading environment-level variables.
+6. Publish the next stable release using the normal version-tag flow. In **Actions > Release**, confirm each **Deploy ... to Pages** job succeeds and every production deployment in Pages shows the release commit.
+
+The deployment is part of the existing release workflow, not a separate `release: published` workflow. Releases created with `GITHUB_TOKEN`, as this workflow does, do not trigger another release-event workflow.
+
+A Pages deploy hook would reuse Cloudflare's build configuration too, but it builds the latest commit on its configured branch. These jobs deliberately build the tagged release commit instead, so changes merged while a release is building cannot slip into production. Retries use the same release commit with the current Pages production configuration. Builds use the repository's scripts and output paths in the table, not arbitrary build commands stored in Cloudflare.
+
+Projects deploy independently, not atomically: one failed build or upload leaves that project's previous deployment live and does not cancel the other projects. After fixing the configuration, use **Re-run failed jobs** on that release run to retry the same release commit without creating another tag or rebuilding successful jobs. Do not retry an older release after a newer one has deployed unless you intend a rollback. To pause release uploads, set `CLOUDFLARE_PAGES_DEPLOY_ENABLED` to `false`; this leaves current deployments live and does not re-enable Cloudflare's automatic deployments. This workflow deploys only the listed static frontends; it does not deploy backend services.
+
 ## Anything the control plane cannot know
 
 `warmbly join` writes `/etc/warmbly/node.env` from the control plane's answer and rewrites it on every join. Next to it, `/etc/warmbly/node.local.env` is created once and never written again, and the container reads it second, so a name repeated there wins.
