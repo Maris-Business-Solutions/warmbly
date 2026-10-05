@@ -1,10 +1,8 @@
 import { ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// The persistent "ADMIN" badge. Rendered in the sidebar header so an
-// admin who switches tabs from the dashboard immediately sees an
-// elevated-privilege marker. The colour ties back to --admin-accent
-// so every admin-only surface uses the same visual language.
+// The "Admin" marker on the sign-in and gate screens, so an admin who
+// switches tabs from the dashboard sees an elevated-privilege surface.
 
 interface AdminBadgeProps {
     className?: string;
@@ -15,10 +13,9 @@ export function AdminBadge({ className, compact = false }: AdminBadgeProps) {
     return (
         <span
             className={cn(
-                "inline-flex items-center gap-1.5 rounded-md font-semibold uppercase tracking-wider",
-                "bg-[var(--admin-accent)] text-[var(--admin-accent-foreground)]",
-                "shadow-[0_1px_0_rgba(0,0,0,0.08)]",
-                compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-xs",
+                "inline-flex items-center gap-1 rounded-md border font-medium",
+                "border-[color-mix(in_oklab,var(--admin-accent)_30%,transparent)] bg-[var(--admin-accent-weak)] text-[var(--admin-accent-strong)]",
+                compact ? "px-1.5 py-px text-[11px]" : "px-2 py-0.5 text-xs",
                 className,
             )}
         >

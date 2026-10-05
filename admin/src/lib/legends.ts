@@ -3,31 +3,32 @@
 // the same way. Tones mirror the badge tone maps used by the tables.
 
 import type { LegendEntry } from "@/components/StateLegend";
+import { TONE } from "@/lib/tones";
 
 export const WORKER_HEALTH_LEGEND: LegendEntry[] = [
     {
         term: "healthy",
-        tone: "border-emerald-300 bg-emerald-50 text-emerald-700",
+        tone: TONE.success,
         description: "Accepting new mailbox assignments normally.",
     },
     {
         term: "watch",
-        tone: "border-amber-300 bg-amber-50 text-amber-700",
+        tone: TONE.warning,
         description: "Deliverability signals trending down. Placement is deprioritized.",
     },
     {
         term: "throttled",
-        tone: "border-orange-300 bg-orange-50 text-orange-700",
+        tone: TONE.orange,
         description: "Receives fewer new assignments while its mailboxes recover.",
     },
     {
         term: "quarantined",
-        tone: "border-red-300 bg-red-50 text-red-700",
+        tone: TONE.danger,
         description: "No new assignments. Existing mailboxes should be migrated off.",
     },
     {
         term: "blocked",
-        tone: "border-red-300 bg-red-50 text-red-700",
+        tone: TONE.danger,
         description: "Excluded from placement entirely until an admin clears it.",
     },
 ];
@@ -36,29 +37,29 @@ export const WORKER_HEALTH_LEGEND: LegendEntry[] = [
 export const MAILBOX_HEALTH_LEGEND: LegendEntry[] = [
     {
         term: "healthy",
-        tone: "border-emerald-300 bg-emerald-50 text-emerald-700",
+        tone: TONE.success,
         description: "Normal sending and warmup. Only healthy mailboxes are picked for pools.",
     },
     {
         term: "watch",
-        tone: "border-amber-300 bg-amber-50 text-amber-700",
+        tone: TONE.warning,
         description:
             "Early warning signals (spam placement or complaints trending up). Volume lowered, monitoring increased.",
     },
     {
         term: "throttled",
-        tone: "border-orange-300 bg-orange-50 text-orange-700",
+        tone: TONE.orange,
         description: "Sending slowed after repeated warnings while signals recover.",
     },
     {
         term: "quarantined",
-        tone: "border-red-300 bg-red-50 text-red-700",
+        tone: TONE.danger,
         description:
             "Removed from the shared warmup pool for a cooldown after crossing the quarantine band.",
     },
     {
         term: "blocked",
-        tone: "border-red-300 bg-red-50 text-red-700",
+        tone: TONE.danger,
         description:
             "Barred from warmup until the cooldown expires and re-entry checks pass. Requires review.",
     },
@@ -68,28 +69,28 @@ export const MAILBOX_HEALTH_LEGEND: LegendEntry[] = [
 export const GENERATION_JOB_LEGEND: LegendEntry[] = [
     {
         term: "pending",
-        tone: "border-amber-300 bg-amber-50 text-amber-700",
+        tone: TONE.warning,
         description: "Queued and waiting to start.",
     },
     {
         term: "running",
-        tone: "border-amber-300 bg-amber-50 text-amber-700",
+        tone: TONE.info,
         description: "Generating threads right now. Counts update as it goes.",
     },
     {
         term: "completed",
-        tone: "border-emerald-300 bg-emerald-50 text-emerald-700",
+        tone: TONE.success,
         description:
             "Finished. Check generated vs lint-rejected counts; rejected threads never enter the library.",
     },
     {
         term: "failed",
-        tone: "border-red-300 bg-red-50 text-red-700",
+        tone: TONE.danger,
         description: "Produced no usable threads. The error column has the reason.",
     },
     {
         term: "cancelled",
-        tone: "border-zinc-300 bg-zinc-50 text-zinc-600",
+        tone: TONE.neutral,
         description: "Stopped by an admin before it finished.",
     },
 ];

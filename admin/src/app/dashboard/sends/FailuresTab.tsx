@@ -2,28 +2,22 @@
 // mailbox and workspace it belongs to. Polls at 60s; there is no event.
 
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/kit";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { listTaskFailures, type AdminTaskFailureRow } from "@/lib/api/client/admin/sends";
 import { ExpandableText } from "@/app/dashboard/jobs/ExpandableText";
 import { absolute, relative, shortId } from "@/app/dashboard/jobs/format";
-
-const TASK_TONE: Record<string, string> = {
-    pending: "border-amber-300 bg-amber-50 text-amber-700",
-    processing: "border-amber-300 bg-amber-50 text-amber-700",
-    completed: "border-emerald-300 bg-emerald-50 text-emerald-700",
-    failed: "border-red-300 bg-red-50 text-red-700",
-};
+import { TabIntro, WorkspaceLink } from "@/app/dashboard/sends/shared";
+import { TASK_TONE } from "@/app/dashboard/sends/status";
 
 const columns: Column<AdminTaskFailureRow>[] = [
     {
         id: "title",
         header: "Failure",
-        className: "max-w-md",
+        className: "max-w-md py-2",
         cell: (r) => (
-            <div>
-                <div className="text-xs font-medium">{r.title || "Task failed"}</div>
+            <div className="min-w-0">
+                <div className="text-[13px] font-medium text-foreground">{r.title || "Task failed"}</div>
                 <ExpandableText text={r.message} className="text-muted-foreground" />
             </div>
         ),
@@ -33,11 +27,11 @@ const columns: Column<AdminTaskFailureRow>[] = [
         id: "task",
         header: "Task",
         cell: (r) => (
-            <div className="flex items-center gap-1.5">
-                <span className="font-mono text-xs">{r.task_type}</span>
-                <Badge variant="outline" className={`text-[10px] ${TASK_TONE[r.task_status] ?? "border-zinc-300 text-zinc-600"}`}>
+            <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-foreground">{r.task_type}</span>
+                <StatusBadge tone={TASK_TONE[r.task_status] ?? "neutral"} dot>
                     {r.task_status}
-                </Badge>
+                </StatusBadge>
             </div>
         ),
         csv: (r) => `${r.task_type} (${r.task_status})`,
@@ -46,9 +40,9 @@ const columns: Column<AdminTaskFailureRow>[] = [
         id: "mailbox",
         header: "Mailbox",
         cell: (r) => (
-            <div>
-                <div className="text-xs">{r.mailbox_email || "—"}</div>
-                <div className="font-mono text-[10px] text-muted-foreground">{shortId(r.email_account_id)}</div>
+            <div className="min-w-0">
+                <div className="truncate text-[13px] text-foreground">{r.mailbox_email || "—"}</div>
+                <div className="font-mono text-[11px] text-subtle-foreground">{shortId(r.email_account_id)}</div>
             </div>
         ),
         csv: (r) => r.mailbox_email,
@@ -56,14 +50,7 @@ const columns: Column<AdminTaskFailureRow>[] = [
     {
         id: "workspace",
         header: "Workspace",
-        cell: (r) =>
-            r.organization_id ? (
-                <Link to={`/organizations/${r.organization_id}`} className="text-xs text-[var(--admin-accent-strong)] hover:underline">
-                    {r.organization_name || r.organization_id}
-                </Link>
-            ) : (
-                <span className="text-xs text-muted-foreground">—</span>
-            ),
+        cell: (r) => <WorkspaceLink id={r.organization_id} name={r.organization_name} />,
         csv: (r) => r.organization_name || "",
     },
     {
@@ -71,7 +58,7 @@ const columns: Column<AdminTaskFailureRow>[] = [
         header: "Occurred",
         align: "right",
         cell: (r) => (
-            <span className="text-xs text-muted-foreground" title={absolute(r.occurred_at)}>
+            <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums" title={absolute(r.occurred_at)}>
                 {relative(r.occurred_at)}
             </span>
         ),
@@ -89,9 +76,9 @@ export function FailuresTab() {
 
     return (
         <div>
-            <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
+            <TabIntro>
                 The most recent failures tasks recorded about themselves: auth errors, provider refusals, send exceptions. Newest first.
-            </p>
+            </TabIntro>
             <DataTable
                 columns={columns}
                 rows={rows}

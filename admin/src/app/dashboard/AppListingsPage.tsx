@@ -9,8 +9,8 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { EyeOff, ExternalLink, RotateCcw, Star, StarOff } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Property, PropertyList, StatusBadge } from "@/components/ui/kit";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -28,6 +28,7 @@ import { AdminPerm } from "@/lib/auth/permissions";
 import { useCursorPager } from "@/lib/useCursorPager";
 import { listAppListings, setAppListingStatus } from "@/lib/api/client/admin/appListings";
 import type { AdminAppListing, AppListingStatus } from "@/lib/api/models/admin";
+import { TONE_TEXT, type Tone } from "@/lib/tones";
 
 const STATUS_LABEL: Record<AppListingStatus, string> = {
     published: "Link only",
@@ -35,10 +36,10 @@ const STATUS_LABEL: Record<AppListingStatus, string> = {
     hidden: "Hidden",
 };
 
-const STATUS_TONE: Record<AppListingStatus, string> = {
-    published: "border-zinc-300 text-zinc-600 bg-zinc-50",
-    featured: "border-sky-300 text-sky-700 bg-sky-50",
-    hidden: "border-red-300 text-red-700 bg-red-50",
+const STATUS_TONE: Record<AppListingStatus, Tone> = {
+    published: "neutral",
+    featured: "accent",
+    hidden: "danger",
 };
 
 const STATUS_OPTIONS = [
@@ -47,6 +48,17 @@ const STATUS_OPTIONS = [
     { value: "featured", label: "Featured" },
     { value: "hidden", label: "Hidden" },
 ];
+
+// Logo or initial tile, shared with the Apps tab.
+export function AppAvatar({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+    return logoUrl ? (
+        <img src={logoUrl} alt="" className="size-7 shrink-0 rounded-md border border-border bg-muted object-cover" />
+    ) : (
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-xs font-semibold text-muted-foreground">
+            {(name[0] ?? "?").toUpperCase()}
+        </div>
+    );
+}
 
 function hostOf(url: string): string {
     try {
@@ -88,17 +100,11 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
             id: "app",
             header: "App",
             cell: (r) => (
-                <div className="flex items-center gap-2 min-w-0">
-                    {r.logo_url ? (
-                        <img src={r.logo_url} alt="" className="size-7 rounded border object-cover shrink-0" />
-                    ) : (
-                        <div className="size-7 rounded border bg-muted flex items-center justify-center text-xs font-semibold shrink-0">
-                            {(r.name[0] ?? "?").toUpperCase()}
-                        </div>
-                    )}
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <AppAvatar name={r.name} logoUrl={r.logo_url} />
                     <div className="min-w-0">
-                        <div className="font-medium truncate">{r.name}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground truncate">{r.slug}</div>
+                        <div className="truncate text-[13px] font-medium text-foreground">{r.name}</div>
+                        <div className="truncate font-mono text-[11px] text-subtle-foreground">{r.slug}</div>
                     </div>
                 </div>
             ),
@@ -111,7 +117,7 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
                 <Link
                     to={`/organizations/${r.organization_id}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="text-xs font-medium text-[var(--admin-accent-strong)] hover:underline"
+                    className="text-[13px] text-foreground hover:text-[var(--admin-accent-strong)] hover:underline"
                 >
                     {r.organization_name || r.organization_id}
                 </Link>
@@ -123,10 +129,10 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
             header: "Listing",
             cell: (r) => (
                 <div className="max-w-sm">
-                    <div className="text-xs truncate" title={r.tagline}>
+                    <div className="truncate text-[13px] text-foreground" title={r.tagline}>
                         {r.tagline}
                     </div>
-                    <div className="text-[10px] text-muted-foreground capitalize">{r.category}</div>
+                    <div className="text-xs text-muted-foreground capitalize">{r.category}</div>
                 </div>
             ),
             csv: (r) => r.tagline,
@@ -141,10 +147,10 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
                     title={r.install_url}
-                    className="text-xs font-mono inline-flex items-center gap-1 hover:underline"
+                    className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground hover:underline"
                 >
                     {hostOf(r.install_url)}
-                    <ExternalLink className="size-3" />
+                    <ExternalLink className="size-3 text-subtle-foreground" />
                 </a>
             ),
             csv: (r) => r.install_url,
@@ -155,9 +161,9 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
             cell: (r) => {
                 const writes = r.permissions.filter((p) => p.category !== "read").length;
                 return (
-                    <span className="text-xs" title={r.permissions.map((p) => p.name.toLowerCase()).join(", ")}>
+                    <span className="text-[13px] tabular-nums" title={r.permissions.map((p) => p.name.toLowerCase()).join(", ")}>
                         {r.permissions.length}
-                        {writes > 0 && <span className="text-amber-700"> ({writes} write)</span>}
+                        {writes > 0 && <span className={`text-xs ${TONE_TEXT.warning}`}> ({writes} write)</span>}
                     </span>
                 );
             },
@@ -167,23 +173,23 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
             id: "installs",
             header: "Installs",
             align: "right",
-            cell: (r) => <span className="tabular-nums text-xs">{r.installs.toLocaleString()}</span>,
+            cell: (r) => <span className="text-[13px] tabular-nums">{r.installs.toLocaleString()}</span>,
             csv: (r) => r.installs,
         },
         {
             id: "status",
             header: "Status",
             cell: (r) => (
-                <div>
-                    <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status]}`}>
+                <div className="space-y-1 py-1">
+                    <StatusBadge tone={STATUS_TONE[r.status]} dot>
                         {STATUS_LABEL[r.status]}
-                    </Badge>
+                    </StatusBadge>
                     {r.status === "published" && r.listed && (
-                        <div className="text-[10px] text-muted-foreground mt-1">listed by installs</div>
+                        <div className="text-xs text-muted-foreground">Listed by installs</div>
                     )}
-                    {r.app_status !== "active" && <div className="text-[10px] text-muted-foreground mt-1">app {r.app_status}</div>}
+                    {r.app_status !== "active" && <div className={`text-xs ${TONE_TEXT.warning}`}>App {r.app_status}</div>}
                     {r.status === "hidden" && r.status_note && (
-                        <div className="text-[10px] text-muted-foreground mt-1 max-w-xs truncate" title={r.status_note}>
+                        <div className="max-w-xs truncate text-xs text-muted-foreground" title={r.status_note}>
                             "{r.status_note}"
                         </div>
                     )}
@@ -196,13 +202,13 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
             header: "",
             align: "right",
             cell: (r) => (
-                <div className="space-x-1.5 whitespace-nowrap">
+                <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                     {r.status === "featured" ? (
                         <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "published" })}>
                             <StarOff className="size-3" /> Unfeature
                         </ActionButton>
                     ) : r.status === "published" ? (
-                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "featured" })} tone="sky">
+                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "featured" })} tone="primary">
                             <Star className="size-3" /> Feature
                         </ActionButton>
                     ) : null}
@@ -211,7 +217,7 @@ export default function AppListingsPage({ embedded = false }: { embedded?: boole
                             <RotateCcw className="size-3" /> Restore
                         </ActionButton>
                     ) : (
-                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "hidden" })} tone="red">
+                        <ActionButton disabled={!canManage} onClick={() => setActing({ item: r, to: "hidden" })} tone="danger">
                             <EyeOff className="size-3" /> Hide
                         </ActionButton>
                     )}
@@ -289,24 +295,18 @@ function ActionButton({
     children: React.ReactNode;
     onClick: () => void;
     disabled: boolean;
-    tone?: "sky" | "red";
+    tone?: "primary" | "danger";
 }) {
     return (
         <Button
-            size="sm"
-            variant={tone ? "default" : "outline"}
+            size="xs"
+            variant={tone === "primary" ? "default" : "outline"}
             disabled={disabled}
             onClick={(e) => {
                 e.stopPropagation();
                 onClick();
             }}
-            className={
-                tone === "sky"
-                    ? "bg-sky-600 hover:bg-sky-700 text-white text-xs"
-                    : tone === "red"
-                      ? "bg-red-600 hover:bg-red-700 text-white text-xs"
-                      : "text-xs"
-            }
+            className={tone === "danger" ? TONE_TEXT.danger : undefined}
         >
             {children}
         </Button>
@@ -363,28 +363,36 @@ function StatusDialog({
                     <DialogDescription>{copy.body}</DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-3 text-xs">
-                    <p className="text-sm">{item.tagline}</p>
-                    {item.description && (
-                        <p className="whitespace-pre-line text-muted-foreground max-h-40 overflow-y-auto">{item.description}</p>
-                    )}
-                    <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1">
-                        <dt className="text-muted-foreground">Publisher</dt>
-                        <dd>{item.organization_name || item.organization_id}</dd>
-                        <dt className="text-muted-foreground">Install</dt>
-                        <dd className="font-mono break-all">{item.install_url}</dd>
-                        <dt className="text-muted-foreground">Website</dt>
-                        <dd className="font-mono break-all">{item.website_url || "none"}</dd>
-                        <dt className="text-muted-foreground">Permissions</dt>
-                        <dd>{item.permissions.map((p) => p.name.toLowerCase()).join(", ") || "none"}</dd>
-                        <dt className="text-muted-foreground">Installs</dt>
-                        <dd>{item.installs.toLocaleString()}</dd>
-                    </dl>
+                <div className="space-y-3">
+                    <div className="flex items-start gap-2.5">
+                        <AppAvatar name={item.name} logoUrl={item.logo_url} />
+                        <div className="min-w-0">
+                            <p className="text-[13px] font-medium text-foreground">{item.tagline}</p>
+                            {item.description && (
+                                <p className="mt-1 max-h-40 overflow-y-auto text-[12.5px] leading-relaxed whitespace-pre-line text-muted-foreground">
+                                    {item.description}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    <PropertyList className="surface-lit rounded-xl border border-border bg-card px-3">
+                        <Property label="Publisher">{item.organization_name || item.organization_id}</Property>
+                        <Property label="Install">
+                            <span className="font-mono text-xs break-all">{item.install_url}</span>
+                        </Property>
+                        <Property label="Website">
+                            <span className="font-mono text-xs break-all">{item.website_url || "none"}</span>
+                        </Property>
+                        <Property label="Permissions">{item.permissions.map((p) => p.name.toLowerCase()).join(", ") || "none"}</Property>
+                        <Property label="Installs">
+                            <span className="tabular-nums">{item.installs.toLocaleString()}</span>
+                        </Property>
+                    </PropertyList>
                 </div>
 
                 {to === "hidden" && (
-                    <div>
-                        <Label htmlFor="listing-note" className="text-xs font-medium">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="listing-note" className="text-xs font-medium text-muted-foreground">
                             Note to the developer (required)
                         </Label>
                         <Textarea
@@ -411,7 +419,7 @@ function StatusDialog({
                             mutation.mutate();
                         }}
                         disabled={mutation.isPending}
-                        className={to === "hidden" ? "bg-red-600 hover:bg-red-700 text-white" : "bg-sky-600 hover:bg-sky-700 text-white"}
+                        variant={to === "hidden" ? "destructive" : "default"}
                     >
                         {mutation.isPending ? "Working…" : copy.cta}
                     </Button>

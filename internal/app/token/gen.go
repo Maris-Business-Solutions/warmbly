@@ -72,17 +72,17 @@ func (s *tokenService) VerifyToken(tokenStr string) (*TokenClaims, *errx.Error) 
 }
 
 func (s *tokenService) GenerateSession(ctx context.Context, userID uuid.UUID, email, ipaddr, userAgent, authProvider string) (*models.Token, *errx.Error) {
-	return s.generateSession(ctx, userID, email, ipaddr, userAgent, authProvider, nil, false)
+	return s.generateSession(ctx, userID, email, ipaddr, userAgent, authProvider, nil, false, true)
 }
 
 // GenerateMFASession marks the session as having presented a second factor.
 // Only the TOTP and passkey paths may call it.
 func (s *tokenService) GenerateMFASession(ctx context.Context, userID uuid.UUID, email, ipaddr, userAgent, authProvider string) (*models.Token, *errx.Error) {
-	return s.generateSession(ctx, userID, email, ipaddr, userAgent, authProvider, nil, true)
+	return s.generateSession(ctx, userID, email, ipaddr, userAgent, authProvider, nil, true, true)
 }
 
 func (s *tokenService) GenerateSessionWithOrg(ctx context.Context, userID uuid.UUID, email, ipaddr, userAgent, authProvider string, orgID *uuid.UUID) (*models.Token, *errx.Error) {
-	return s.generateSession(ctx, userID, email, ipaddr, userAgent, authProvider, orgID, false)
+	return s.generateSession(ctx, userID, email, ipaddr, userAgent, authProvider, orgID, false, true)
 }
 
 // ReissueSession ends every one of the user's sessions, the caller's included,
@@ -104,14 +104,15 @@ func (s *tokenService) ReissueSession(ctx context.Context, userID uuid.UUID, cur
 	err := s.revokeOthers(ctx, userID, uuid.Nil)
 	var tok *models.Token
 	if err == nil {
-		tok, err = s.generateSession(ctx, userID, "", ipaddr, userAgent, provider, orgID, mfaVerified)
+		tok, err = s.generateSession(ctx, userID, "", ipaddr, userAgent, provider, orgID, mfaVerified, false)
 	}
 	// After the new session exists, so the caller's socket reconnects with it.
 	s.notifyRevoked(ctx, userID)
 	return tok, err
 }
 
-func (s *tokenService) generateSession(ctx context.Context, userID uuid.UUID, email, ipaddr, userAgent, authProvider string, orgID *uuid.UUID, mfaVerified bool) (*models.Token, *errx.Error) {
+// signIn is false when re-minting for a device that is already signed in.
+func (s *tokenService) generateSession(ctx context.Context, userID uuid.UUID, email, ipaddr, userAgent, authProvider string, orgID *uuid.UUID, mfaVerified, signIn bool) (*models.Token, *errx.Error) {
 	// A session always starts inside a workspace. Without one the caller would
 	// reach org-scoped writes with no tenant, and the rows they create are the
 	// ones that later skip suppression and the entitlement gate (issue #168).
@@ -141,7 +142,7 @@ func (s *tokenService) generateSession(ctx context.Context, userID uuid.UUID, em
 	// have an active session from this OS+browser? Only meaningful when they
 	// have a prior session to compare against, so a first/fresh login is quiet.
 	newDevice := false
-	if s.signInAlert != nil {
+	if s.signInAlert != nil || s.sessionObserver != nil {
 		if prior, perr := s.tokenRepository.ListSessionsByUser(ctx, userID); perr == nil && len(prior) > 0 {
 			seen := false
 			for _, p := range prior {
@@ -231,6 +232,21 @@ func (s *tokenService) generateSession(ctx context.Context, userID uuid.UUID, em
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 			defer cancel()
 			alerter.NewSignIn(ctx, uid, browser, osName, city, country)
+		}()
+	}
+
+	if signIn && s.sessionObserver != nil {
+		observer := s.sessionObserver
+		start := SessionStart{
+			UserID: userID, IP: ipaddr,
+			Browser: session.BrowserName, OS: session.OSName,
+			City: session.LocationCity, Country: session.LocationCountry,
+			AuthProvider: authProvider, MFAVerified: mfaVerified, NewDevice: newDevice,
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			observer.SessionStarted(ctx, start)
 		}()
 	}
 

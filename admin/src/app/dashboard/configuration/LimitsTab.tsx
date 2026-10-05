@@ -3,10 +3,12 @@
 // Read only, because every number here is owned by one of those layers.
 
 import { useQuery } from "@tanstack/react-query";
-import { SlidersHorizontal } from "lucide-react";
+import { Gauge, SlidersHorizontal } from "lucide-react";
 import { ErrorState } from "@/components/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/kit";
+import { SettingsGroup, SettingsRow } from "./SettingsLayout";
 import {
     getInstanceLimits,
     type InstanceLimitGroup,
@@ -27,22 +29,26 @@ export function LimitsTab({ onSwitchTab }: LimitsTabProps) {
 
     return (
         <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <p className="max-w-2xl text-sm text-muted-foreground">
+            <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
+                <p className="max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
                     The caps and defaults this instance enforces, resolved from configuration and
                     the product defaults. Read only: change the matching variable or the
                     organization&apos;s override instead.
                 </p>
                 <Button size="sm" variant="outline" onClick={() => onSwitchTab?.("environment")}>
-                    <SlidersHorizontal className="size-4" />
+                    <SlidersHorizontal />
                     Environment
                 </Button>
             </div>
 
             {limitsQ.isLoading && (
-                <div className="space-y-3">
-                    <Skeleton className="h-40 w-full" />
-                    <Skeleton className="h-40 w-full" />
+                <div className="space-y-10">
+                    {[0, 1].map((i) => (
+                        <div key={i}>
+                            <Skeleton className="mb-3 h-4 w-32" />
+                            <Skeleton className="h-40 w-full rounded-lg" />
+                        </div>
+                    ))}
                 </div>
             )}
 
@@ -55,57 +61,38 @@ export function LimitsTab({ onSwitchTab }: LimitsTabProps) {
             )}
 
             {limitsQ.data && groups.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                    The backend returned no limits.
+                <div className="rounded-lg border border-dashed border-border">
+                    <EmptyState icon={Gauge} title="The backend returned no limits." />
                 </div>
             )}
 
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                {groups.map((group) => (
-                    <LimitGroupCard key={group.title} group={group} />
-                ))}
-            </div>
+            {groups.map((group) => (
+                <LimitGroup key={group.title} group={group} />
+            ))}
         </div>
     );
 }
 
-function LimitGroupCard({ group }: { group: InstanceLimitGroup }) {
+function LimitGroup({ group }: { group: InstanceLimitGroup }) {
     const entries = group.entries ?? [];
     return (
-        <section className="overflow-hidden rounded-lg border border-border bg-white">
-            <div className="border-b border-border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {group.title}
-            </div>
-            <div className="divide-y divide-border">
-                {entries.length === 0 && (
-                    <div className="px-4 py-3 text-xs text-muted-foreground">
-                        No limits in this group.
+        <SettingsGroup
+            title={group.title}
+            actions={
+                <span className="text-xs text-muted-foreground tabular-nums">{entries.length}</span>
+            }
+        >
+            {entries.length === 0 && (
+                <div className="px-4 py-3 text-[12.5px] text-muted-foreground">No limits in this group.</div>
+            )}
+            {entries.map((entry) => (
+                <SettingsRow key={entry.name} label={entry.name} description={entry.description}>
+                    <div className="text-right">
+                        <div className="text-[13px] font-medium text-foreground tabular-nums">{entry.value}</div>
+                        {entry.unit && <div className="text-xs text-muted-foreground">{entry.unit}</div>}
                     </div>
-                )}
-                {entries.map((entry) => (
-                    <div
-                        key={entry.name}
-                        className="flex items-start justify-between gap-4 px-4 py-3"
-                    >
-                        <div className="min-w-0">
-                            <div className="text-sm font-medium text-foreground">{entry.name}</div>
-                            {entry.description && (
-                                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                                    {entry.description}
-                                </p>
-                            )}
-                        </div>
-                        <div className="shrink-0 text-right">
-                            <div className="text-sm font-semibold tabular-nums text-foreground">
-                                {entry.value}
-                            </div>
-                            {entry.unit && (
-                                <div className="text-[11px] text-muted-foreground">{entry.unit}</div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </section>
+                </SettingsRow>
+            ))}
+        </SettingsGroup>
     );
 }

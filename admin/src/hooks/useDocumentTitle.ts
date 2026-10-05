@@ -4,13 +4,11 @@
 
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { NAV_GROUPS } from "@/components/layout/Sidebar";
+import { flatPages, NAV_GROUPS } from "@/components/layout/nav";
 
 const BRAND = "Warmbly Admin";
 
-const NAV_TITLES: Record<string, string> = Object.fromEntries(
-    NAV_GROUPS.flatMap((g) => g.items.map((item) => [item.to, item.label])),
-);
+const NAV_TITLES: Record<string, string> = Object.fromEntries(flatPages(NAV_GROUPS).map((p) => [p.to, p.title]));
 
 const STATIC_TITLES: Record<string, string> = {
     ...NAV_TITLES,

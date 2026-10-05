@@ -119,7 +119,11 @@ func (s *service) Notify(event Event) {
 		defer cancel()
 
 		subs := s.settings.Get(ctx).Notifications.Subscribers(event.Key)
+		def, _ := Def(event.Key)
 		for _, ch := range subs {
+			if def.OptIn && len(ch.Events) == 0 {
+				continue
+			}
 			// Sequential: the list is bounded at MaxChannels and this runs off
 			// the request path, so there is nothing to gain from more goroutines.
 			_ = s.Deliver(ctx, ch, event)

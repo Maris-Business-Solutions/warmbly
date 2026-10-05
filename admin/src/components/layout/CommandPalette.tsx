@@ -1,7 +1,7 @@
 // Cmd/Ctrl+K palette. "Go to" lists every nav item the admin can open;
 // typing two or more characters searches users, organizations, mailboxes
 // and workers live; "Actions" holds the shortcuts that are not pages.
-// Open state lives in a tiny module store so the Topbar button and the
+// Open state lives in a tiny module store so the sidebar button and the
 // keyboard shortcut share one palette without a context provider.
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -9,6 +9,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+    BellRing,
     Building2,
     ClipboardCopy,
     Mailbox,
@@ -32,7 +33,7 @@ import { listOrganizations } from "@/lib/api/client/admin/organizations";
 import { searchMailboxes } from "@/lib/api/client/admin/mailboxes";
 import { listFleetNodes, type FleetNode } from "@/lib/api/client/admin/fleetNodes";
 import { checkForUpdates } from "@/lib/api/client/admin/updates";
-import { visibleNavGroups } from "./Sidebar";
+import { flatPages, visibleNavGroups } from "./nav";
 
 // ---- open state -----------------------------------------------------------
 
@@ -172,9 +173,7 @@ export function CommandPalette() {
 
     const pages = useMemo(
         () =>
-            visibleNavGroups(mask)
-                .flatMap((g) => g.items)
-                .filter((item) => !query.trim() || includes(item.label, query.trim())),
+            flatPages(visibleNavGroups(mask)).filter((p) => !query.trim() || includes(p.title, query.trim())),
         [mask, query],
     );
 
@@ -210,6 +209,13 @@ export function CommandPalette() {
     }
 
     const actions = [
+        {
+            id: "notifications",
+            label: "Set up notifications (Slack, Discord, email)",
+            icon: BellRing,
+            run: () => go("/configuration?tab=notifications"),
+            show: hasAdminPerm(mask, AdminPerm.ManageSettings),
+        },
         {
             id: "copy-permissions",
             label: "Copy my admin permissions",
@@ -265,7 +271,7 @@ export function CommandPalette() {
                         {pages.map((item) => (
                             <CommandItem key={item.to} value={`page:${item.to}`} onSelect={() => go(item.to)}>
                                 <item.icon className="size-4" />
-                                <span>{item.label}</span>
+                                <span>{item.title}</span>
                                 <span className="ml-auto font-mono text-[11px] text-muted-foreground">
                                     {item.to}
                                 </span>

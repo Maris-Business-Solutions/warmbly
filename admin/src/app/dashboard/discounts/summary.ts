@@ -3,6 +3,7 @@
 // so a code never describes itself two ways.
 
 import type { DiscountCode, DiscountDuration, DiscountType } from "@/lib/api/models/admin";
+import type { Tone } from "@/lib/tones";
 
 /** The shape the builder holds mid-edit: every field optional, nothing saved. */
 export interface DiscountShape {
@@ -86,19 +87,19 @@ export function describeScope(d: DiscountCode, planNames: Map<string, string>): 
 }
 
 /** A code can be active and still unusable. The list shows the real state. */
-export function effectiveState(d: DiscountCode): { label: string; tone: string } {
-    if (d.status === "disabled") return { label: "disabled", tone: "border-zinc-300 text-zinc-600 bg-zinc-50" };
-    if (d.status === "expired") return { label: "expired", tone: "border-zinc-300 text-zinc-600 bg-zinc-50" };
+export function effectiveState(d: DiscountCode): { label: string; tone: Tone } {
+    if (d.status === "disabled") return { label: "disabled", tone: "neutral" };
+    if (d.status === "expired") return { label: "expired", tone: "neutral" };
 
     const now = Date.now();
     if (d.expires_at && new Date(d.expires_at).getTime() < now) {
-        return { label: "expired", tone: "border-zinc-300 text-zinc-600 bg-zinc-50" };
+        return { label: "expired", tone: "neutral" };
     }
     if (d.starts_at && new Date(d.starts_at).getTime() > now) {
-        return { label: "scheduled", tone: "border-sky-300 text-sky-700 bg-sky-50" };
+        return { label: "scheduled", tone: "info" };
     }
     if (d.max_redemptions != null && d.times_redeemed >= d.max_redemptions) {
-        return { label: "exhausted", tone: "border-amber-300 text-amber-700 bg-amber-50" };
+        return { label: "exhausted", tone: "warning" };
     }
-    return { label: "active", tone: "border-emerald-300 text-emerald-700 bg-emerald-50" };
+    return { label: "active", tone: "success" };
 }

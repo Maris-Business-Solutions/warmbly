@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -16,6 +17,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { grantAdminPermissions, type PermissionInfo } from "@/lib/api/client/admin/admins";
+import { Callout } from "@/components/ui/kit";
 import { cn } from "@/lib/utils";
 import { UserPicker, type PickedUser } from "./UserPicker";
 import { userName } from "../fleet/format";
@@ -107,11 +109,11 @@ export function GrantAdminDialog({
 
                 <div className="space-y-4">
                     <div className="space-y-1.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">User</div>
+                        <div className="text-xs font-medium text-muted-foreground">User</div>
                         {edit && user ? (
-                            <div className="rounded-md border border-border bg-card px-2.5 py-1.5 text-[12.5px]">
-                                <span className="font-medium">{userName(user)}</span>
-                                <span className="ml-1.5 text-[11px] text-muted-foreground">{user.email}</span>
+                            <div className="flex h-8 items-center rounded-md border border-border bg-muted/40 px-2.5 text-[13px]">
+                                <span className="truncate font-medium text-foreground">{userName(user)}</span>
+                                <span className="ml-1.5 truncate text-xs text-muted-foreground">{user.email}</span>
                             </div>
                         ) : (
                             <UserPicker value={user} onChange={pickUser} autoFocus />
@@ -119,8 +121,8 @@ export function GrantAdminDialog({
                     </div>
 
                     <div className="space-y-1.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Preset</div>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="text-xs font-medium text-muted-foreground">Preset</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
                             {PRESETS.map((p) => (
                                 <button
                                     key={p.id}
@@ -128,10 +130,10 @@ export function GrantAdminDialog({
                                     title={p.hint}
                                     onClick={() => setMask(presetMask(p.id, catalog))}
                                     className={cn(
-                                        "rounded-md border px-2.5 py-1 text-[12px] transition-colors",
+                                        "h-7 rounded-md border px-2.5 text-[12.5px] font-medium transition-colors",
                                         active === p.id
-                                            ? "border-[var(--admin-accent)] bg-[var(--admin-accent-soft)] font-medium text-[var(--admin-accent-strong)]"
-                                            : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                                            ? "border-[color-mix(in_oklab,var(--admin-accent)_40%,transparent)] bg-[var(--admin-accent-weak)] text-[var(--admin-accent-strong)]"
+                                            : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
                                     )}
                                 >
                                     {p.label}
@@ -140,29 +142,29 @@ export function GrantAdminDialog({
                             <button
                                 type="button"
                                 onClick={() => setMask(0)}
-                                className="rounded-md border border-border px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                className="h-7 rounded-md px-2 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                             >
                                 Clear
                             </button>
                         </div>
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                             {active ? PRESETS.find((p) => p.id === active)?.hint : "Custom selection."}
                         </p>
                     </div>
 
-                    <div className="max-h-72 space-y-3 overflow-auto rounded-md border border-border bg-card p-3">
+                    <div className="max-h-72 divide-y divide-border/70 overflow-auto surface-lit rounded-xl border border-border bg-card">
                         {groupByCategory(catalog).map((g) => (
-                            <div key={g.category}>
-                                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <div key={g.category} className="px-2 py-2.5">
+                                <div className="mb-1 px-1.5 text-xs font-medium text-muted-foreground">
                                     {g.category}
                                 </div>
-                                <div className="grid gap-1.5 sm:grid-cols-2">
+                                <div className="grid gap-0.5 sm:grid-cols-2">
                                     {g.items.map((p) => {
                                         const on = hasBit(shown, p.permission);
                                         return (
                                             <label
                                                 key={p.name}
-                                                className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1 text-[12.5px] hover:bg-muted/50"
+                                                className="flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1.5 text-[13px] transition-colors hover:bg-accent/60"
                                             >
                                                 <Checkbox
                                                     checked={on}
@@ -172,8 +174,8 @@ export function GrantAdminDialog({
                                                     className="mt-0.5"
                                                 />
                                                 <span className="min-w-0">
-                                                    <span className="block leading-tight">{humanize(p.name)}</span>
-                                                    <span className="block text-[11px] leading-tight text-muted-foreground">
+                                                    <span className="block leading-tight text-foreground first-letter:uppercase">{humanize(p.name)}</span>
+                                                    <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
                                                         {p.description}
                                                     </span>
                                                 </span>
@@ -184,20 +186,20 @@ export function GrantAdminDialog({
                             </div>
                         ))}
                         {catalog.length === 0 && (
-                            <div className="text-xs text-muted-foreground">The permission catalog is empty.</div>
+                            <div className="px-3 py-4 text-center text-[13px] text-muted-foreground">The permission catalog is empty.</div>
                         )}
                     </div>
 
                     {dropsOwnGrant && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                        <Callout tone="warning" icon={AlertTriangle}>
                             You are removing your own ability to grant admin access. You will not be able to undo this
                             from the panel.
-                        </div>
+                        </Callout>
                     )}
                 </div>
 
                 <DialogFooter className="sm:items-center sm:justify-between">
-                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                    <span className="text-xs tabular-nums text-muted-foreground">
                         {count} of {catalog.length} bits · mask {shown}
                     </span>
                     <div className="flex gap-2">

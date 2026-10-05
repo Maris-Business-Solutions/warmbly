@@ -28,7 +28,11 @@ import {
 } from "@/components/ui/select";
 import { convertWorkerToDedicated } from "@/lib/api/client/admin/fleet";
 import { listFleetNodes, nodeState, type FleetNode } from "@/lib/api/client/admin/fleetNodes";
+import { TONE_TEXT } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import { OrgPicker, type PickedOrg } from "./OrgPicker";
+
+const FIELD_LABEL = "text-xs font-medium text-muted-foreground";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -113,9 +117,9 @@ export function ConvertDedicatedDialog({
 
                 <div className="space-y-4">
                     <div className="space-y-1.5">
-                        <Label className="text-xs">Worker</Label>
+                        <Label className={FIELD_LABEL}>Worker</Label>
                         <Select value={workerId || undefined} onValueChange={setWorkerId}>
-                            <SelectTrigger className="h-8 w-full text-[12.5px]">
+                            <SelectTrigger className="h-8 w-full text-[13px]">
                                 <SelectValue placeholder={workersQ.isLoading ? "Loading workers…" : "Pick a worker"} />
                             </SelectTrigger>
                             <SelectContent>
@@ -132,12 +136,12 @@ export function ConvertDedicatedDialog({
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label className="text-xs">Workspace</Label>
+                        <Label className={FIELD_LABEL}>Workspace</Label>
                         <OrgPicker value={org} onChange={setOrg} />
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label htmlFor="sub-id" className="text-xs">
+                        <Label htmlFor="sub-id" className={FIELD_LABEL}>
                             Subscription id
                         </Label>
                         <Input
@@ -145,17 +149,20 @@ export function ConvertDedicatedDialog({
                             value={subscriptionId}
                             onChange={(e) => setSubscriptionId(e.target.value)}
                             placeholder="00000000-0000-0000-0000-000000000000"
-                            className="h-8 font-mono text-[12px]"
+                            aria-invalid={!!subscriptionId && !subOk}
+                            className="h-8 font-mono text-[12.5px]"
                         />
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-xs leading-relaxed text-muted-foreground">
                             The workspace's subscription row (a UUID). The organization page shows only the plan and
                             status, so read the id from the <code>subscriptions</code> table for this workspace, or from
                             the Stripe subscription's metadata.
-                            {subscriptionId && !subOk && <span className="ml-1 text-red-600">Not a UUID.</span>}
+                            {subscriptionId && !subOk && (
+                                <span className={cn("ml-1 font-medium", TONE_TEXT.danger)}>Not a UUID.</span>
+                            )}
                         </p>
                     </div>
 
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
                         Mailboxes already on this worker are not evicted here. The rotation loop
                         moves other tenants off it on its own schedule, so the reservation
                         becomes exclusive without re-authenticating every mailbox at once.

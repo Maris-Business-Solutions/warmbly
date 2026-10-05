@@ -1,33 +1,46 @@
-// Badge tones shared by the fleet tabs, derived from the legends so the
-// pills here read the same as everywhere else.
+// Status pills shared by the fleet pages, on the one palette in lib/tones so
+// they read the same as WORKER_HEALTH_LEGEND and everywhere else.
 
-import { Badge } from "@/components/ui/badge";
-import { WORKER_HEALTH_LEGEND } from "@/lib/legends";
-import { cn } from "@/lib/utils";
+import { StatusBadge, StatusDot } from "@/components/ui/kit";
+import type { Tone } from "@/lib/tones";
+import type { NodeState } from "@/lib/api/client/admin/fleetNodes";
 
-const HEALTH_TONE = Object.fromEntries(WORKER_HEALTH_LEGEND.map((e) => [e.term, e.tone ?? ""]));
-const FALLBACK = "border-zinc-300 text-zinc-600";
+const HEALTH_TONE: Record<string, Tone> = {
+    healthy: "success",
+    watch: "warning",
+    throttled: "orange",
+    quarantined: "danger",
+    blocked: "danger",
+};
+
+const NODE_STATE_TONE: Record<NodeState, Tone> = {
+    live: "success",
+    unreachable: "warning",
+    stopped: "neutral",
+};
 
 export function HealthPill({ state }: { state: string }) {
     return (
-        <Badge variant="outline" className={cn("text-[10px]", HEALTH_TONE[state] ?? FALLBACK)}>
+        <StatusBadge tone={HEALTH_TONE[state] ?? "neutral"} dot>
             {state || "unknown"}
-        </Badge>
+        </StatusBadge>
+    );
+}
+
+export function NodeStatePill({ state }: { state: NodeState }) {
+    return (
+        <StatusBadge tone={NODE_STATE_TONE[state]} dot>
+            {state}
+        </StatusBadge>
     );
 }
 
 export function LiveDot({ live, title }: { live: boolean; title?: string }) {
     return (
-        <span className="inline-flex items-center gap-1.5 text-xs" title={title}>
-            <span
-                className={cn(
-                    "inline-block size-2 rounded-full",
-                    live ? "bg-emerald-500" : "bg-zinc-300",
-                )}
-            />
-            <span className={live ? "text-emerald-700" : "text-muted-foreground"}>
-                {live ? "live" : "offline"}
-            </span>
+        <span title={title}>
+            <StatusDot tone={live ? "success" : "neutral"} className="text-[12.5px]">
+                <span className={live ? "text-foreground" : "text-muted-foreground"}>{live ? "live" : "offline"}</span>
+            </StatusDot>
         </span>
     );
 }

@@ -19,8 +19,8 @@ import {
     RotateCcw,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Stat, StatGrid, StatusBadge } from "@/components/ui/kit";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -40,14 +40,24 @@ import {
     type AdminSyncRow,
     type AdminSyncStateFilter,
 } from "@/lib/api/client/admin/sync";
-import { StatCard } from "@/app/dashboard/sends/StatCard";
 import { absolute, relative } from "@/app/dashboard/jobs/format";
+import type { Tone } from "@/lib/tones";
 
-const BACKFILL_TONE: Record<string, string> = {
-    pending: "border-zinc-300 bg-zinc-50 text-zinc-600",
-    running: "border-amber-300 bg-amber-50 text-amber-700",
-    complete: "border-emerald-300 bg-emerald-50 text-emerald-700",
+const BACKFILL_TONE: Record<string, Tone> = {
+    pending: "neutral",
+    running: "info",
+    complete: "success",
 };
+
+const PROVIDER_LABEL: Record<string, string> = {
+    gmail: "Gmail",
+    outlook: "Outlook",
+    smtp_imap: "SMTP / IMAP",
+};
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+const linkCls = "truncate text-foreground decoration-border-strong underline-offset-2 hover:text-[var(--admin-accent-strong)] hover:underline";
 
 function isThrottled(row: AdminSyncRow): boolean {
     return !!row.throttled_until && new Date(row.throttled_until).getTime() > Date.now();
@@ -139,16 +149,14 @@ export default function SyncPage() {
             id: "mailbox",
             header: "Mailbox",
             cell: (m) => (
-                <div>
+                <div className="min-w-0 py-1">
                     <div className="flex items-center gap-1.5">
-                        <span className="font-medium">{m.email}</span>
+                        <span className="truncate font-medium text-foreground">{m.email}</span>
                         {m.account_status && m.account_status !== "active" && (
-                            <Badge variant="outline" className="text-[10px] border-zinc-300 text-zinc-600">
-                                {m.account_status}
-                            </Badge>
+                            <StatusBadge tone="neutral">{cap(m.account_status)}</StatusBadge>
                         )}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{m.provider}</div>
+                    <div className="text-xs text-muted-foreground">{PROVIDER_LABEL[m.provider] ?? m.provider}</div>
                 </div>
             ),
             csv: (m) => m.email,
@@ -158,11 +166,11 @@ export default function SyncPage() {
             header: "Workspace",
             cell: (m) =>
                 m.organization_id ? (
-                    <Link to={`/organizations/${m.organization_id}`} className="text-xs text-[var(--admin-accent-strong)] hover:underline">
+                    <Link to={`/organizations/${m.organization_id}`} className={linkCls}>
                         {m.organization_name || m.organization_id}
                     </Link>
                 ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
+                    <span className="text-subtle-foreground">None</span>
                 ),
             csv: (m) => m.organization_name || "",
         },
@@ -170,18 +178,18 @@ export default function SyncPage() {
             id: "backfill",
             header: "Backfill",
             cell: (m) => (
-                <div>
+                <div className="py-1">
                     <div className="flex items-center gap-1.5">
-                        <Badge variant="outline" className={`text-[10px] ${BACKFILL_TONE[m.backfill_status] ?? "border-zinc-300 text-zinc-600"}`}>
-                            {m.backfill_status || "unknown"}
-                        </Badge>
+                        <StatusBadge tone={BACKFILL_TONE[m.backfill_status] ?? "neutral"} dot>
+                            {cap(m.backfill_status || "unknown")}
+                        </StatusBadge>
                         {m.stalled && (
-                            <Badge variant="outline" className="text-[10px] border-red-300 bg-red-50 text-red-700" title="Running, but its state has not moved for an hour">
-                                stalled
-                            </Badge>
+                            <StatusBadge tone="danger" title="Running, but its state has not moved for an hour">
+                                Stalled
+                            </StatusBadge>
                         )}
                     </div>
-                    <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                    <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
                         {m.backfill_synced.toLocaleString()} synced
                         {m.backfill_completed_at
                             ? ` · completed ${relative(m.backfill_completed_at)}`
@@ -199,22 +207,24 @@ export default function SyncPage() {
             cell: (m) => {
                 const throttled = isThrottled(m);
                 return (
-                    <div>
+                    <div className="py-1">
                         {throttled ? (
                             <div className="flex items-center gap-1.5">
-                                <Badge variant="outline" className="text-[10px] border-orange-300 bg-orange-50 text-orange-700">
-                                    throttled
-                                </Badge>
-                                <span className="text-xs">{m.throttle_reason || "over budget"}</span>
+                                <StatusBadge tone="orange" dot>
+                                    Throttled
+                                </StatusBadge>
+                                <span className="truncate text-[12.5px] text-foreground">{m.throttle_reason || "over budget"}</span>
                             </div>
                         ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-subtle-foreground">None</span>
                         )}
-                        <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                            {throttled && <span title={absolute(m.throttled_until)}>until {relative(m.throttled_until)}</span>}
-                            {throttled && m.deferred > 0 && " · "}
-                            {m.deferred > 0 && `${m.deferred.toLocaleString()} deferred`}
-                        </div>
+                        {(throttled || m.deferred > 0) && (
+                            <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                                {throttled && <span title={absolute(m.throttled_until)}>until {relative(m.throttled_until)}</span>}
+                                {throttled && m.deferred > 0 && " · "}
+                                {m.deferred > 0 && `${m.deferred.toLocaleString()} deferred`}
+                            </div>
+                        )}
                     </div>
                 );
             },
@@ -224,7 +234,7 @@ export default function SyncPage() {
             id: "synced",
             header: "Last synced",
             cell: (m) => (
-                <span className="text-xs text-muted-foreground" title={absolute(m.last_synced_at)}>
+                <span className="whitespace-nowrap text-muted-foreground" title={absolute(m.last_synced_at)}>
                     {relative(m.last_synced_at)}
                 </span>
             ),
@@ -234,7 +244,7 @@ export default function SyncPage() {
             id: "updated",
             header: "Updated",
             cell: (m) => (
-                <span className="text-xs text-muted-foreground" title={absolute(m.updated_at)}>
+                <span className="whitespace-nowrap text-muted-foreground" title={absolute(m.updated_at)}>
                     {relative(m.updated_at)}
                 </span>
             ),
@@ -246,11 +256,11 @@ export default function SyncPage() {
             defaultHidden: true,
             cell: (m) =>
                 m.worker_id ? (
-                    <Link to={`/workers/${m.worker_id}`} className="font-mono text-[11px] text-[var(--admin-accent-strong)] hover:underline">
+                    <Link to={`/workers/${m.worker_id}`} className={`font-mono text-xs ${linkCls}`}>
                         {m.worker_id.slice(0, 8)}
                     </Link>
                 ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
+                    <span className="text-subtle-foreground">None</span>
                 ),
             csv: (m) => m.worker_id || "",
         },
@@ -258,6 +268,7 @@ export default function SyncPage() {
             id: "actions",
             header: "",
             align: "right",
+            className: "w-10",
             cell: (m) => (
                 <RowActions
                     row={m}
@@ -276,15 +287,23 @@ export default function SyncPage() {
                 description="The platform copy of every mailbox's sync state: how far its history backfill has come and whether the fair-use governor is holding it back."
             />
 
-            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-                <StatCard icon={Database} label="Mailboxes" value={fmt(summary?.total)} loading={isLoading} />
-                <StatCard icon={PauseCircle} label="Throttled" value={fmt(summary?.throttled)} loading={isLoading} tone={summary?.throttled ? "warn" : "neutral"} />
-                <StatCard icon={Hourglass} label="Backfilling" value={fmt(summary?.backfilling)} loading={isLoading} />
-                <StatCard icon={AlertTriangle} label="Stalled" value={fmt(summary?.stalled)} loading={isLoading} tone={summary?.stalled ? "danger" : "neutral"} />
-                <StatCard icon={Clock} label="Pending" value={fmt(summary?.pending)} loading={isLoading} />
-                <StatCard icon={CheckCircle2} label="Complete" value={fmt(summary?.complete)} loading={isLoading} />
-                <StatCard icon={Gauge} label="Deferred" value={fmt(summary?.deferred)} loading={isLoading} sub="messages held for a later pass" />
-            </div>
+            {/* 7 tiles: Deferred spans the leftover cell at 2 and 4 columns so the strip has no hole. */}
+            <StatGrid className="mb-8 grid-cols-2 sm:grid-cols-4 xl:grid-cols-7">
+                <Stat icon={Database} label="Mailboxes" value={fmt(summary?.total)} loading={isLoading} />
+                <Stat icon={PauseCircle} label="Throttled" value={fmt(summary?.throttled)} loading={isLoading} tone={summary?.throttled ? "orange" : undefined} />
+                <Stat icon={Hourglass} label="Backfilling" value={fmt(summary?.backfilling)} loading={isLoading} />
+                <Stat icon={AlertTriangle} label="Stalled" value={fmt(summary?.stalled)} loading={isLoading} tone={summary?.stalled ? "danger" : undefined} />
+                <Stat icon={Clock} label="Pending" value={fmt(summary?.pending)} loading={isLoading} />
+                <Stat icon={CheckCircle2} label="Complete" value={fmt(summary?.complete)} loading={isLoading} />
+                <Stat
+                    icon={Gauge}
+                    label="Deferred"
+                    value={fmt(summary?.deferred)}
+                    loading={isLoading}
+                    sub="messages held for a later pass"
+                    className="col-span-2 sm:col-span-2 xl:col-span-1"
+                />
+            </StatGrid>
 
             <Explorer
                 activeCount={activeCount}
@@ -369,17 +388,17 @@ function RowActions({
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon-xs" title="More" disabled={busy} onClick={(e) => e.stopPropagation()}>
-                    <MoreHorizontal className="size-3" />
+                <Button variant="ghost" size="icon-sm" title="More" aria-label="Mailbox actions" disabled={busy} onClick={(e) => e.stopPropagation()}>
+                    <MoreHorizontal className="size-4" />
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
                 {throttled && (
-                    <DropdownMenuItem onSelect={onClear} className="text-[12.5px]">
+                    <DropdownMenuItem onSelect={onClear}>
                         <Gauge /> Clear throttle
                     </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onSelect={onRestart} className="text-[12.5px]">
+                <DropdownMenuItem onSelect={onRestart}>
                     <RotateCcw /> Restart backfill
                 </DropdownMenuItem>
             </DropdownMenuContent>

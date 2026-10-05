@@ -61,7 +61,7 @@ Two neighbouring endpoints round out the surface, both under **Instance** in the
 |---|---|---|
 | `GET /admin/instance/config` | `manage_settings` | Every configuration entry with its resolved value, source and restart requirement. Sensitive keys return a fingerprint, never a value |
 | `GET /admin/instance/limits` | `view_analytics` | The effective sending, warmup and rate limits this build compiles in |
-| `GET /admin/instance/update` | `view_analytics` | The running build, the newest release, and the updater's state. Backs the version pill in the top bar; see [Updates](/development/updates/) |
+| `GET /admin/instance/update` | `view_analytics` | The running build, the newest release, and the updater's state. Backs the version pill at the foot of the sidebar; see [Updates](/development/updates/) |
 
 ## Security and secrets
 
@@ -169,7 +169,7 @@ Platform mail is sent from a domain that differs from the dashboard's. Mailbox p
 
 ### update_available
 
-A newer Warmbly exists: a release on the configured channel is newer than the running build, or the checkout is behind its branch. The message names both versions and how to apply it. With the updater running, the version pill in the top bar has an **Update and restart** button; without it, `git pull && make up`. See [Updates](/development/updates/).
+A newer Warmbly exists: a release on the configured channel is newer than the running build, or the checkout is behind its branch. The message names both versions and how to apply it. With the updater running, the version pill at the foot of the sidebar has an **Update and restart** button; without it, `git pull && make up`. See [Updates](/development/updates/).
 
 ### updater_unreachable
 

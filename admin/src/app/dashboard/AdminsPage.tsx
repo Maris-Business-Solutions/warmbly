@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Pencil, ShieldOff, UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/kit";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useMe } from "@/hooks/useMe";
@@ -88,14 +89,24 @@ export default function AdminsPage() {
             id: "admin",
             header: "Admin",
             cell: (a) => (
-                <div>
-                    <div className="font-medium">
-                        {userName(a)}
-                        {a.id === me.data?.id && (
-                            <span className="ml-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">you</span>
-                        )}
+                <div className="flex min-w-0 items-center gap-2.5 py-1">
+                    <span
+                        aria-hidden
+                        className="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-[10.5px] font-medium text-muted-foreground"
+                    >
+                        {(userName(a)[0] || a.email[0] || "?").toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 font-medium text-foreground">
+                            <span className="truncate">{userName(a)}</span>
+                            {a.id === me.data?.id && (
+                                <StatusBadge tone="neutral" className="h-[18px] px-1.5 text-[11px]">
+                                    You
+                                </StatusBadge>
+                            )}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">{a.email}</div>
                     </div>
-                    <div className="text-[11px] text-muted-foreground">{a.email}</div>
                 </div>
             ),
             csv: (a) => a.email,
@@ -104,12 +115,12 @@ export default function AdminsPage() {
             id: "granted",
             header: "Granted",
             cell: (a) => (
-                <div className="text-xs text-muted-foreground">
-                    <div>{fmtDate(a.admin_granted_at)}</div>
+                <div className="whitespace-nowrap">
+                    <div className="tabular-nums text-foreground">{fmtDate(a.admin_granted_at)}</div>
                     {a.granted_by_user ? (
-                        <div className="text-[11px]">by {a.granted_by_user.email}</div>
+                        <div className="text-xs text-muted-foreground">by {a.granted_by_user.email}</div>
                     ) : a.admin_granted_by ? (
-                        <div className="font-mono text-[10px]">by {a.admin_granted_by.slice(0, 8)}</div>
+                        <div className="font-mono text-[11px] text-subtle-foreground">by {a.admin_granted_by.slice(0, 8)}</div>
                     ) : null}
                 </div>
             ),
@@ -129,7 +140,7 @@ export default function AdminsPage() {
                 <div className="flex justify-end gap-1">
                     <Button
                         size="xs"
-                        variant="outline"
+                        variant="ghost"
                         onClick={(e) => {
                             e.stopPropagation();
                             setDialog({ open: true, target: a });
@@ -140,8 +151,8 @@ export default function AdminsPage() {
                     </Button>
                     <Button
                         size="xs"
-                        variant="outline"
-                        className="text-red-700 hover:bg-red-50"
+                        variant="ghost"
+                        className="text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                         disabled={revoke.isPending}
                         onClick={(e) => {
                             e.stopPropagation();
@@ -160,10 +171,17 @@ export default function AdminsPage() {
         <div>
             <PageHeader
                 title="Admins"
+                meta={
+                    adminsQ.data?.pagination.total != null ? (
+                        <span className="text-[12.5px] tabular-nums text-muted-foreground">
+                            {adminsQ.data.pagination.total}
+                        </span>
+                    ) : undefined
+                }
                 description="Who can open this panel and what they can do in it. These permission bits gate the operator surface only; they are not workspace roles and grant nothing inside a customer's workspace."
             >
                 <Button size="sm" onClick={() => setDialog({ open: true, target: null })}>
-                    <UserPlus className="size-4" />
+                    <UserPlus className="size-3.5" />
                     Grant admin
                 </Button>
             </PageHeader>
@@ -179,6 +197,7 @@ export default function AdminsPage() {
                     catalogQ.refetch();
                 }}
                 errorTitle="Failed to load admins"
+                onRowClick={(a) => setDialog({ open: true, target: a })}
                 pager={{
                     canPrev: pager.canPrev,
                     canNext: !!adminsQ.data?.pagination.has_more,

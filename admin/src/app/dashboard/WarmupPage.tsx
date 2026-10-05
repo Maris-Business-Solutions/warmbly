@@ -1,5 +1,5 @@
 // Warmup pool admin. The platform's most critical safety surface per
-// CLAUDE.md — shared paid-pool reputation is more valuable than maximum
+// CLAUDE.md: shared paid-pool reputation is more valuable than maximum
 // access for one risky mailbox, so the page foregrounds:
 //
 //   1. Aggregate health (counts by state, avg spam-score & placement rate)
@@ -15,16 +15,27 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Activity, AlertTriangle, CheckCircle2, Flame, History, LayoutDashboard, ShieldOff, XCircle } from "lucide-react";
+import {
+    Activity,
+    AlertTriangle,
+    CheckCircle2,
+    Flame,
+    History,
+    Inbox,
+    LayoutDashboard,
+    ShieldCheck,
+    ShieldOff,
+    XCircle,
+} from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageTabs } from "@/components/layout/PageTabs";
 import { StateLegend } from "@/components/StateLegend";
 import { MAILBOX_HEALTH_LEGEND } from "@/lib/legends";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, Panel, Section, Stat, StatGrid, StatusBadge } from "@/components/ui/kit";
 import { ErrorState } from "@/components/ErrorState";
 import {
     Dialog,
@@ -48,6 +59,42 @@ import type {
     AdminBlockedAccount,
     WarmupAppeal,
 } from "@/lib/api/models/admin";
+import { TONE_DOT, TONE_TEXT, type Tone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
+
+// Hand-rolled table chrome, matching DataTable.
+const TABLE = "w-full border-collapse text-[13px]";
+const TH = "h-9 whitespace-nowrap px-3 text-left text-xs font-medium text-muted-foreground first:pl-4 last:pr-4";
+const TR = "h-10 border-b border-border/70 transition-colors last:border-0 hover:bg-accent/50";
+const TD = "px-3 align-middle first:pl-4 last:pr-4";
+
+// Health states in severity order, for the distribution bar.
+const STATE_TONE: Record<string, Tone> = {
+    healthy: "success",
+    watch: "warning",
+    throttled: "orange",
+    quarantined: "danger",
+    blocked: "danger",
+};
+const STATE_ORDER = ["healthy", "watch", "throttled", "quarantined", "blocked"];
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+function TableFrame({ children }: { children: React.ReactNode }) {
+    return (
+        <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
+            <div className="overflow-x-auto">{children}</div>
+        </div>
+    );
+}
+
+function EmptyFrame({ icon, title, hint }: { icon: typeof Inbox; title: string; hint?: string }) {
+    return (
+        <div className="surface-lit rounded-xl border border-border bg-card">
+            <EmptyState icon={icon} title={title} hint={hint} className="py-10" />
+        </div>
+    );
+}
 
 const TABS = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -79,7 +126,7 @@ export default function WarmupPage() {
         <div>
             <PageHeader
                 title="Warmup pools"
-                description="Pool health, blocked mailboxes, and pending appeals. Shared paid-pool reputation matters more than any single mailbox — quarantine early."
+                description="Pool health, blocked mailboxes, and pending appeals. Shared paid-pool reputation matters more than any single mailbox, so quarantine early."
             >
                 <StateLegend label="Health states explained" entries={MAILBOX_HEALTH_LEGEND} />
             </PageHeader>
@@ -97,20 +144,17 @@ function Overview() {
         <div>
             <HealthSummary />
 
-            <section className="mt-6">
-                <h2 className="text-sm font-semibold mb-2">Pools</h2>
+            <Section title="Pools" className="mt-8 first:mt-8">
                 <PoolsList />
-            </section>
+            </Section>
 
-            <section className="mt-6">
-                <h2 className="text-sm font-semibold mb-2">Blocked mailboxes</h2>
+            <Section title="Blocked mailboxes">
                 <BlockedAccounts />
-            </section>
+            </Section>
 
-            <section className="mt-6">
-                <h2 className="text-sm font-semibold mb-2">Appeals queue</h2>
+            <Section title="Appeals queue">
                 <AppealsQueue />
-            </section>
+            </Section>
         </div>
     );
 }
@@ -123,22 +167,15 @@ function HealthSummary() {
 
     if (isLoading) {
         return (
-            <div className="grid gap-3 md:grid-cols-4 mb-6">
-                {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-24" />
+            <StatGrid>
+                {["Total participants", "At risk", "Spam placement", "Blocked"].map((l) => (
+                    <Stat key={l} label={l} value={null} loading />
                 ))}
-            </div>
+            </StatGrid>
         );
     }
     if (error) {
-        return (
-            <ErrorState
-                error={error}
-                title="Failed to load warmup health"
-                onRetry={() => refetch()}
-                className="mb-6"
-            />
-        );
+        return <ErrorState error={error} title="Failed to load warmup health" onRetry={() => refetch()} />;
     }
     if (!data) return null;
 
@@ -146,11 +183,10 @@ function HealthSummary() {
     // throw and blank the whole tab.
     //
     // `avg_spam_placement_rate` is ALREADY a percent (the backend computes
-    // placements/sent*100), so we render it directly — no second *100.
+    // placements/sent*100), so we render it directly, no second *100.
     const placement = data.avg_spam_placement_rate ?? 0;
     const spamPct = placement.toFixed(1);
-    const placementTone =
-        placement >= 20 ? "text-red-700" : placement >= 10 ? "text-amber-700" : "text-emerald-600";
+    const placementTone: Tone = placement >= 20 ? "danger" : placement >= 10 ? "warning" : "success";
     const atRisk = data.at_risk_count ?? 0;
     const blocked = data.blocked_count ?? 0;
 
@@ -161,99 +197,106 @@ function HealthSummary() {
         (a, b) => b[1] - a[1],
     );
 
-    return (
-        <div className="mb-6">
-        <div className="grid gap-3 md:grid-cols-4">
-            <HealthCard
-                icon={<Activity className="size-4" />}
-                title="Total participants"
-                value={(data.total_participants ?? 0).toLocaleString()}
-                hint={Object.entries(data.by_state ?? {})
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join(" · ")}
-            />
-            <HealthCard
-                icon={<AlertTriangle className="size-4" />}
-                title="At risk"
-                value={atRisk.toLocaleString()}
-                hint={`avg health score ${(data.avg_health_score ?? 0).toFixed(1)}`}
-                tone={atRisk > 0 ? "text-amber-700" : undefined}
-            />
-            <HealthCard
-                icon={<Flame className="size-4" />}
-                title="Spam placement"
-                value={`${spamPct}%`}
-                hint="avg across pool"
-                tone={placementTone}
-            />
-            <HealthCard
-                icon={<ShieldOff className="size-4" />}
-                title="Blocked"
-                value={blocked.toLocaleString()}
-                hint="quarantined or hard-blocked"
-                tone={blocked > 0 ? "text-red-700" : undefined}
-            />
-        </div>
+    const byState = Object.entries(data.by_state ?? {}).sort(
+        (a, b) => rank(a[0]) - rank(b[0]),
+    );
 
-        {byProvider.length > 0 && (
-            <div className="mt-3 border border-border rounded-lg p-3 bg-card">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-                    <Flame className="size-4" />
-                    <span>Spam placements by provider (count)</span>
+    return (
+        <div>
+            <StatGrid>
+                <Stat
+                    icon={Activity}
+                    label="Total participants"
+                    value={(data.total_participants ?? 0).toLocaleString()}
+                    sub="across all pools"
+                />
+                <Stat
+                    icon={AlertTriangle}
+                    label="At risk"
+                    value={atRisk.toLocaleString()}
+                    sub={`avg health score ${(data.avg_health_score ?? 0).toFixed(1)}`}
+                    tone={atRisk > 0 ? "warning" : undefined}
+                />
+                <Stat icon={Flame} label="Spam placement" value={`${spamPct}%`} sub="avg across pool" tone={placementTone} />
+                <Stat
+                    icon={ShieldOff}
+                    label="Blocked"
+                    value={blocked.toLocaleString()}
+                    sub="quarantined or hard-blocked"
+                    tone={blocked > 0 ? "danger" : undefined}
+                />
+            </StatGrid>
+
+            {(byState.length > 0 || byProvider.length > 0) && (
+                <div className={cn("mt-4 grid gap-4", byState.length > 0 && byProvider.length > 0 && "lg:grid-cols-2")}>
+                    {byState.length > 0 && <StateDistribution entries={byState} />}
+                    {byProvider.length > 0 && <ProviderPlacements entries={byProvider} />}
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {byProvider.map(([provider, count]) => (
-                        <div
-                            key={provider}
-                            className="flex items-center justify-between text-xs"
-                        >
-                            <span className="capitalize truncate text-foreground">
-                                {provider}
-                            </span>
-                            <span className="tabular-nums font-medium text-foreground">
-                                {(count ?? 0).toLocaleString()}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        )}
+            )}
         </div>
     );
 }
 
-function HealthCard({
-    icon,
-    title,
-    value,
-    hint,
-    tone,
-}: {
-    icon: React.ReactNode;
-    title: string;
-    value: string;
-    hint?: string;
-    tone?: string;
-}) {
+function rank(state: string): number {
+    const i = STATE_ORDER.indexOf(state);
+    return i === -1 ? STATE_ORDER.length : i;
+}
+
+// One stacked bar of participants by health state, with a legend below.
+function StateDistribution({ entries }: { entries: [string, number][] }) {
+    const total = entries.reduce((n, [, v]) => n + (v ?? 0), 0);
     return (
-        <div className="border border-border rounded-lg p-3 bg-card">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {icon}
-                <span>{title}</span>
+        <Panel title="Participants by state" description={`${total.toLocaleString()} across all pools`}>
+            <div className="flex h-2 w-full gap-px overflow-hidden rounded-full bg-muted">
+                {total > 0 &&
+                    entries.map(([state, count]) =>
+                        count > 0 ? (
+                            <div
+                                key={state}
+                                title={`${state}: ${count.toLocaleString()}`}
+                                className={cn("h-full", TONE_DOT[STATE_TONE[state] ?? "neutral"])}
+                                style={{ width: `${(count / total) * 100}%` }}
+                            />
+                        ) : null,
+                    )}
             </div>
-            <div
-                className={`text-2xl font-semibold tabular-nums mt-1 ${
-                    tone ?? ""
-                }`}
-            >
-                {value}
+            <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
+                {entries.map(([state, count]) => (
+                    <div key={state} className="flex items-center justify-between gap-2 text-[13px]">
+                        <dt className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                            <span className={cn("size-2 shrink-0 rounded-full", TONE_DOT[STATE_TONE[state] ?? "neutral"])} />
+                            <span className="truncate">{cap(state)}</span>
+                        </dt>
+                        <dd className="font-medium tabular-nums text-foreground">{(count ?? 0).toLocaleString()}</dd>
+                    </div>
+                ))}
+            </dl>
+        </Panel>
+    );
+}
+
+// Raw spam-placement counts per provider, worst first, as bars against the max.
+function ProviderPlacements({ entries }: { entries: [string, number][] }) {
+    const max = Math.max(1, ...entries.map(([, c]) => c ?? 0));
+    return (
+        <Panel title="Spam placements by provider" description="Count of placements, worst first">
+            <div className="space-y-2">
+                {entries.map(([provider, count]) => (
+                    <div key={provider} className="grid grid-cols-[minmax(5rem,9rem)_1fr_auto] items-center gap-3 text-[13px]">
+                        <span className="truncate capitalize text-foreground">{provider}</span>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                                className="h-full rounded-full bg-[var(--admin-accent)]"
+                                style={{ width: `${((count ?? 0) / max) * 100}%` }}
+                            />
+                        </div>
+                        <span className="min-w-8 text-right font-medium tabular-nums text-foreground">
+                            {(count ?? 0).toLocaleString()}
+                        </span>
+                    </div>
+                ))}
             </div>
-            {hint && (
-                <div className="text-[10px] text-muted-foreground truncate mt-0.5">
-                    {hint}
-                </div>
-            )}
-        </div>
+        </Panel>
     );
 }
 
@@ -263,68 +306,49 @@ function PoolsList() {
         queryFn: listWarmupPools,
     });
 
-    if (isLoading) return <Skeleton className="h-24" />;
+    if (isLoading) return <Skeleton className="h-28 rounded-lg" />;
     if (error) {
         return <ErrorState error={error} title="Failed to load pools" onRetry={() => refetch()} />;
     }
     const pools = data ?? [];
 
+    if (pools.length === 0) return <EmptyFrame icon={Inbox} title="No pools." />;
+
     return (
-        <div className="border border-border rounded-lg overflow-hidden bg-card">
-            <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                    <tr>
-                        <th className="text-left px-3 py-2 font-medium">Pool</th>
-                        <th className="text-right px-3 py-2 font-medium">Total</th>
-                        <th className="text-right px-3 py-2 font-medium">Active</th>
-                        <th className="text-right px-3 py-2 font-medium">Blocked</th>
+        <TableFrame>
+            <table className={TABLE}>
+                <thead>
+                    <tr className="border-b border-border">
+                        <th className={TH}>Pool</th>
+                        <th className={cn(TH, "text-right")}>Total</th>
+                        <th className={cn(TH, "text-right")}>Active</th>
+                        <th className={cn(TH, "text-right")}>Blocked</th>
                     </tr>
                 </thead>
                 <tbody>
                     {pools.map((p) => (
-                        <tr key={p.type} className="border-t border-border">
-                            <td className="px-3 py-2">
-                                <Badge
-                                    variant="outline"
-                                    className={`text-[10px] ${
-                                        p.type === "premium"
-                                            ? "border-purple-300 text-purple-700 bg-purple-50"
-                                            : "border-zinc-300 text-zinc-700"
-                                    }`}
-                                >
-                                    {p.type}
-                                </Badge>
+                        <tr key={p.type} className={TR}>
+                            <td className={TD}>
+                                <StatusBadge tone={p.type === "premium" ? "strong" : "neutral"}>{cap(p.type)}</StatusBadge>
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                                {p.total_participants.toLocaleString()}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-emerald-600">
+                            <td className={cn(TD, "text-right tabular-nums")}>{p.total_participants.toLocaleString()}</td>
+                            <td className={cn(TD, "text-right tabular-nums", TONE_TEXT.success)}>
                                 {p.active_participants.toLocaleString()}
                             </td>
                             <td
-                                className={`px-3 py-2 text-right tabular-nums ${
-                                    p.blocked_count > 0
-                                        ? "text-red-700"
-                                        : "text-muted-foreground"
-                                }`}
+                                className={cn(
+                                    TD,
+                                    "text-right tabular-nums",
+                                    p.blocked_count > 0 ? TONE_TEXT.danger : "text-muted-foreground",
+                                )}
                             >
                                 {p.blocked_count.toLocaleString()}
                             </td>
                         </tr>
                     ))}
-                    {pools.length === 0 && (
-                        <tr>
-                            <td
-                                colSpan={4}
-                                className="text-center text-muted-foreground py-6 text-sm"
-                            >
-                                No pools.
-                            </td>
-                        </tr>
-                    )}
                 </tbody>
             </table>
-        </div>
+        </TableFrame>
     );
 }
 
@@ -344,31 +368,27 @@ function BlockedAccounts() {
         onError: (err: Error) => toast.error(err.message || "Failed to unblock"),
     });
 
-    if (isLoading) return <Skeleton className="h-32" />;
+    if (isLoading) return <Skeleton className="h-32 rounded-lg" />;
     if (error) {
         return <ErrorState error={error} title="Failed to load blocked mailboxes" onRetry={() => refetch()} />;
     }
     const rows = data?.data ?? [];
 
     if (rows.length === 0) {
-        return (
-            <div className="text-sm text-muted-foreground border border-border rounded-md p-4 bg-card">
-                No mailboxes are currently blocked.
-            </div>
-        );
+        return <EmptyFrame icon={ShieldCheck} title="No mailboxes are currently blocked." />;
     }
 
     return (
-        <div className="border border-border rounded-lg overflow-hidden bg-card">
-            <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                    <tr>
-                        <th className="text-left px-3 py-2 font-medium">Mailbox</th>
-                        <th className="text-left px-3 py-2 font-medium">Owner</th>
-                        <th className="text-left px-3 py-2 font-medium">Reason</th>
-                        <th className="text-left px-3 py-2 font-medium">Blocked</th>
-                        <th className="text-left px-3 py-2 font-medium">Appeal</th>
-                        <th className="text-right px-3 py-2 font-medium">Action</th>
+        <TableFrame>
+            <table className={TABLE}>
+                <thead>
+                    <tr className="border-b border-border">
+                        <th className={TH}>Mailbox</th>
+                        <th className={TH}>Owner</th>
+                        <th className={TH}>Reason</th>
+                        <th className={TH}>Blocked</th>
+                        <th className={TH}>Appeal</th>
+                        <th className={cn(TH, "text-right")}>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -377,7 +397,7 @@ function BlockedAccounts() {
                     ))}
                 </tbody>
             </table>
-        </div>
+        </TableFrame>
     );
 }
 
@@ -389,35 +409,29 @@ function BlockedRow({
     onUnblock: () => void;
 }) {
     return (
-        <tr className="border-t border-border">
-            <td className="px-3 py-2 font-mono text-xs">{account.email}</td>
-            <td className="px-3 py-2 text-xs">
-                {account.user?.email ?? account.user_id}
+        <tr className={TR}>
+            <td className={cn(TD, "font-medium text-foreground")}>{account.email}</td>
+            <td className={cn(TD, "text-muted-foreground")}>{account.user?.email ?? account.user_id}</td>
+            <td className={TD}>
+                <span className="block max-w-sm truncate" title={account.block_reason}>
+                    {account.block_reason}
+                </span>
             </td>
-            <td className="px-3 py-2 text-xs">{account.block_reason}</td>
-            <td className="px-3 py-2 text-xs text-muted-foreground">
+            <td className={cn(TD, "whitespace-nowrap tabular-nums text-muted-foreground")}>
                 {new Date(account.blocked_at).toLocaleDateString()}
             </td>
-            <td className="px-3 py-2 text-xs">
+            <td className={TD}>
                 {account.has_appeal ? (
-                    <Badge
-                        variant="outline"
-                        className="text-[10px] border-amber-300 text-amber-700 bg-amber-50"
-                    >
-                        {account.appeal_status ?? "pending"}
-                    </Badge>
+                    <StatusBadge tone="warning" dot>
+                        {cap(account.appeal_status ?? "pending")}
+                    </StatusBadge>
                 ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-subtle-foreground">None</span>
                 )}
             </td>
-            <td className="px-3 py-2 text-right">
-                <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={onUnblock}
-                    className="text-xs"
-                >
-                    <CheckCircle2 className="size-3" />
+            <td className={cn(TD, "text-right")}>
+                <Button size="xs" variant="outline" onClick={onUnblock}>
+                    <CheckCircle2 className={TONE_TEXT.success} />
                     Unblock
                 </Button>
             </td>
@@ -437,7 +451,7 @@ function AppealsQueue() {
         queryFn: () => listWarmupAppeals("pending"),
     });
 
-    if (isLoading) return <Skeleton className="h-32" />;
+    if (isLoading) return <Skeleton className="h-32 rounded-lg" />;
     if (error) {
         return <ErrorState error={error} title="Failed to load appeals" onRetry={() => refetch()} />;
     }
@@ -446,57 +460,49 @@ function AppealsQueue() {
     return (
         <>
             {rows.length === 0 ? (
-                <div className="text-sm text-muted-foreground border border-border rounded-md p-4 bg-card">
-                    No pending appeals.
-                </div>
+                <EmptyFrame icon={Inbox} title="No pending appeals." />
             ) : (
-                <div className="border border-border rounded-lg overflow-hidden bg-card">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                            <tr>
-                                <th className="text-left px-3 py-2 font-medium">Mailbox</th>
-                                <th className="text-left px-3 py-2 font-medium">User</th>
-                                <th className="text-left px-3 py-2 font-medium">Reason</th>
-                                <th className="text-left px-3 py-2 font-medium">Submitted</th>
-                                <th className="text-right px-3 py-2 font-medium">Action</th>
+                <TableFrame>
+                    <table className={TABLE}>
+                        <thead>
+                            <tr className="border-b border-border">
+                                <th className={TH}>Mailbox</th>
+                                <th className={TH}>User</th>
+                                <th className={TH}>Reason</th>
+                                <th className={TH}>Submitted</th>
+                                <th className={cn(TH, "text-right")}>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {rows.map((a) => (
-                                <tr key={a.id} className="border-t border-border">
-                                    <td className="px-3 py-2 font-mono text-xs">
+                                <tr key={a.id} className={TR}>
+                                    <td className={cn(TD, "font-medium text-foreground")}>
                                         {a.email_account?.email ?? a.email_account_id}
                                     </td>
-                                    <td className="px-3 py-2 text-xs">
-                                        {a.user?.email ?? a.user_id}
+                                    <td className={cn(TD, "text-muted-foreground")}>{a.user?.email ?? a.user_id}</td>
+                                    <td className={TD}>
+                                        <span className="block max-w-md truncate" title={a.reason}>
+                                            {a.reason}
+                                        </span>
                                     </td>
-                                    <td className="px-3 py-2 text-xs max-w-md truncate">
-                                        {a.reason}
-                                    </td>
-                                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                                    <td className={cn(TD, "whitespace-nowrap tabular-nums text-muted-foreground")}>
                                         {new Date(a.created_at).toLocaleDateString()}
                                     </td>
-                                    <td className="px-3 py-2 text-right space-x-1.5">
-                                        <Button
-                                            size="sm"
-                                            onClick={() => setReviewing({ appeal: a, mode: "approve" })}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                                        >
-                                            <CheckCircle2 className="size-3" /> Approve
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            onClick={() => setReviewing({ appeal: a, mode: "reject" })}
-                                            className="bg-red-600 hover:bg-red-700 text-white text-xs"
-                                        >
-                                            <XCircle className="size-3" /> Reject
-                                        </Button>
+                                    <td className={cn(TD, "text-right")}>
+                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                            <Button size="xs" variant="outline" onClick={() => setReviewing({ appeal: a, mode: "approve" })}>
+                                                <CheckCircle2 className={TONE_TEXT.success} /> Approve
+                                            </Button>
+                                            <Button size="xs" variant="outline" onClick={() => setReviewing({ appeal: a, mode: "reject" })}>
+                                                <XCircle className={TONE_TEXT.danger} /> Reject
+                                            </Button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                </div>
+                </TableFrame>
             )}
 
             {reviewing && (
@@ -554,8 +560,8 @@ function ReviewAppealDialog({
                             : "Rejecting keeps the mailbox blocked. Notes are recorded for audit and may be shown to the user."}
                     </DialogDescription>
                 </DialogHeader>
-                <div>
-                    <Label htmlFor="notes" className="text-xs font-medium">
+                <div className="space-y-1.5">
+                    <Label htmlFor="notes" className="text-xs font-medium text-muted-foreground">
                         Review notes
                     </Label>
                     <Input
@@ -579,11 +585,7 @@ function ReviewAppealDialog({
                             mutation.mutate();
                         }}
                         disabled={mutation.isPending}
-                        className={
-                            mode === "approve"
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                : "bg-red-600 hover:bg-red-700 text-white"
-                        }
+                        variant={mode === "approve" ? "default" : "destructive"}
                     >
                         {mutation.isPending
                             ? "Working…"
@@ -608,52 +610,64 @@ function ActionsTab() {
 
     return (
         <div>
-            <p className="mb-3 max-w-2xl text-[12.5px] text-muted-foreground">
+            <p className="mb-4 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
                 Every manual block, unblock and appeal decision an admin made on a warmup mailbox, newest first.
             </p>
             {isLoading ? (
-                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-40 w-full rounded-lg" />
             ) : error ? (
                 <ErrorState error={error} title="Failed to load action history" onRetry={() => refetch()} />
             ) : rows.length === 0 ? (
-                <div className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-                    No admin actions recorded yet. Blocking or unblocking a mailbox, or reviewing an appeal, writes a row
-                    here.
-                </div>
+                <EmptyFrame
+                    icon={History}
+                    title="No admin actions recorded yet"
+                    hint="Blocking or unblocking a mailbox, or reviewing an appeal, writes a row here."
+                />
             ) : (
-                <div className="overflow-hidden rounded-lg border border-border bg-card">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-muted/40 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                <tr>
-                                    <th className="px-3 py-2 text-left">When</th>
-                                    <th className="px-3 py-2 text-left">Admin</th>
-                                    <th className="px-3 py-2 text-left">Mailbox</th>
-                                    <th className="px-3 py-2 text-left">Action</th>
-                                    <th className="px-3 py-2 text-left">Reason</th>
+                <TableFrame>
+                    <table className={TABLE}>
+                        <thead>
+                            <tr className="border-b border-border">
+                                <th className={TH}>When</th>
+                                <th className={TH}>Admin</th>
+                                <th className={TH}>Mailbox</th>
+                                <th className={TH}>Action</th>
+                                <th className={TH}>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((a) => (
+                                <tr key={a.id} className={TR}>
+                                    <td className={cn(TD, "whitespace-nowrap tabular-nums text-muted-foreground")}>
+                                        {new Date(a.created_at).toLocaleString()}
+                                    </td>
+                                    <td className={TD}>{a.admin_email || a.admin_user_id.slice(0, 8)}</td>
+                                    <td className={cn(TD, "font-medium text-foreground")}>{a.email || a.email_account_id.slice(0, 8)}</td>
+                                    <td className={TD}>
+                                        <StatusBadge tone={ACTION_TONE[a.action] ?? "neutral"} dot>
+                                            {a.action}
+                                        </StatusBadge>
+                                    </td>
+                                    <td className={cn(TD, "max-w-md")}>
+                                        {a.reason ? (
+                                            <span className="block truncate" title={a.reason}>
+                                                {a.reason}
+                                            </span>
+                                        ) : (
+                                            <span className="text-subtle-foreground">None</span>
+                                        )}
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {rows.map((a) => (
-                                    <tr key={a.id} className="border-t border-border">
-                                        <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                                            {new Date(a.created_at).toLocaleString()}
-                                        </td>
-                                        <td className="px-3 py-2 text-xs">{a.admin_email || a.admin_user_id.slice(0, 8)}</td>
-                                        <td className="px-3 py-2 font-mono text-xs">{a.email || a.email_account_id.slice(0, 8)}</td>
-                                        <td className="px-3 py-2">
-                                            <Badge variant="outline" className="font-mono text-[10px]">
-                                                {a.action}
-                                            </Badge>
-                                        </td>
-                                        <td className="px-3 py-2 text-xs max-w-md">{a.reason || <span className="text-muted-foreground">—</span>}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                            ))}
+                        </tbody>
+                    </table>
+                </TableFrame>
             )}
         </div>
     );
 }
+
+const ACTION_TONE: Record<string, Tone> = {
+    block: "danger",
+    unblock: "success",
+};

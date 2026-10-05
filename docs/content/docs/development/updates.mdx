@@ -15,13 +15,13 @@ How "fetched" happens depends on how the instance was installed, and the updater
 
 ## The indicator
 
-The top bar of the **admin panel** (`:5174`) carries a version pill next to the environment label. It reads the running backend's build identity, so it shows exactly what is deployed, not what the checkout says.
+The foot of the **admin panel** (`:5174`) sidebar carries a version pill next to the environment label. It reads the running backend's build identity, so it shows exactly what is deployed, not what the checkout says.
 
 | Pill | Means |
 |---|---|
 | `v1.4.0` (grey) | Up to date. Click it for the details and a manual check |
-| `Update to v1.5.0` (amber) | A newer release exists on the configured channel |
-| `Update available` (amber) | The checkout is behind its branch (an install that tracks `main`) |
+| `Update to v1.5.0` (highlighted, pulsing) | A newer release exists on the configured channel |
+| `Update available` (highlighted, pulsing) | The checkout is behind its branch (an install that tracks `main`) |
 | `Updating` (blue, spinning) | An update job is running; the pill follows it from any tab |
 | `Restarting` (blue, spinning) | The backend is coming back after an update |
 

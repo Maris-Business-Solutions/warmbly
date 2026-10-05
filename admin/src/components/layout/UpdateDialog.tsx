@@ -27,7 +27,8 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Callout, Property, PropertyList, StatusBadge } from "@/components/ui/kit";
+import { TONE, TONE_DOT, TONE_PANEL, TONE_TEXT } from "@/lib/tones";
 import { docsUrl } from "@/lib/docs";
 import { cn } from "@/lib/utils";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
@@ -198,14 +199,10 @@ export function UpdateDialog({ open, onOpenChange }: Props) {
 
                 {phase === "done" && state && (
                     <div className="space-y-3 animate-in fade-in zoom-in-95 duration-300">
-                        <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 animate-in zoom-in-50 duration-300" />
-                            <div className="text-[13px] leading-relaxed text-emerald-800">
-                                <div className="font-semibold">Updated to {buildLabel(state)}</div>
-                                Every service is back and sending has resumed. Reload to pick up the
-                                new admin panel.
-                            </div>
-                        </div>
+                        <Callout tone="success" icon={CheckCircle2} title={`Updated to ${buildLabel(state)}`}>
+                            Every service is back and sending has resumed. Reload to pick up the
+                            new admin panel.
+                        </Callout>
                         {job?.log && <LogPanel lines={job.log} />}
                     </div>
                 )}
@@ -213,7 +210,7 @@ export function UpdateDialog({ open, onOpenChange }: Props) {
                 {phase === "failed" && (
                     <div className="space-y-3 animate-in fade-in duration-200">
                         <Notice tone="error">
-                            <div className="font-semibold text-foreground">The update failed</div>
+                            <div className="font-medium text-foreground">The update failed</div>
                             {job?.error ?? "See the log below."} The previous version is still running
                             unless the restart step had already begun.
                         </Notice>
@@ -239,13 +236,13 @@ export function UpdateDialog({ open, onOpenChange }: Props) {
                                 onClick={() => checkMut.mutate()}
                                 disabled={checkMut.isPending}
                             >
-                                <RefreshCw className={cn("size-4", checkMut.isPending && "animate-spin")} />
+                                <RefreshCw className={cn(checkMut.isPending && "animate-spin")} />
                                 {checkMut.isPending ? "Checking..." : "Check now"}
                             </Button>
                         )}
                         {phase === "idle" && canApply && !confirming && (
                             <Button size="sm" onClick={() => setConfirming(true)}>
-                                <RotateCw className="size-4" />
+                                <RotateCw />
                                 Update and restart
                             </Button>
                         )}
@@ -260,9 +257,9 @@ export function UpdateDialog({ open, onOpenChange }: Props) {
                                     disabled={applyMut.isPending}
                                 >
                                     {applyMut.isPending ? (
-                                        <Loader2 className="size-4 animate-spin" />
+                                        <Loader2 className="animate-spin" />
                                     ) : (
-                                        <RotateCw className="size-4" />
+                                        <RotateCw />
                                     )}
                                     Update now
                                 </Button>
@@ -290,108 +287,105 @@ function Overview({ state }: { state: UpdateState }) {
     const checkout = updater.checkout;
     const release = updater.release;
     return (
-        <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-[13px]">
-            <dt className="text-muted-foreground">Latest release</dt>
-            <dd>
-                {latest ? (
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{latest.tag}</span>
-                        {latest.published_at && (
-                            <span className="text-muted-foreground">
-                                {new Date(latest.published_at).toLocaleDateString()}
+        <div className="rounded-lg border border-border bg-card px-3.5 py-1">
+            <PropertyList>
+                <Property label="Latest release">
+                    {latest ? (
+                        <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="font-medium">{latest.tag}</span>
+                            {latest.published_at && (
+                                <span className="text-muted-foreground">
+                                    {new Date(latest.published_at).toLocaleDateString()}
+                                </span>
+                            )}
+                            {latest.html_url && (
+                                <a
+                                    href={latest.html_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs font-medium text-[var(--admin-accent-strong)] hover:underline"
+                                >
+                                    Release notes
+                                    <ExternalLink className="size-3" />
+                                </a>
+                            )}
+                        </span>
+                    ) : state.check_error ? (
+                        <span className={TONE_TEXT.warning}>Could not read releases: {state.check_error}</span>
+                    ) : state.enabled ? (
+                        <span className="text-muted-foreground">No release found for {state.repo}</span>
+                    ) : (
+                        <span className="text-muted-foreground">Release check is off</span>
+                    )}
+                </Property>
+
+                <Property label="Status">
+                    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {state.update_available ? (
+                            <StatusBadge tone="warning" dot>
+                                Update available
+                            </StatusBadge>
+                        ) : (
+                            <StatusBadge tone="success" dot>
+                                Up to date
+                            </StatusBadge>
+                        )}
+                        {state.checked_at && (
+                            <span className="text-xs text-muted-foreground">
+                                checked {new Date(state.checked_at).toLocaleTimeString()}, every{" "}
+                                {state.interval}
                             </span>
                         )}
-                        {latest.html_url && (
-                            <a
-                                href={latest.html_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-[var(--admin-accent-strong)] hover:underline"
-                            >
-                                Release notes
-                                <ExternalLink className="size-3" />
-                            </a>
-                        )}
                     </span>
-                ) : state.check_error ? (
-                    <span className="text-amber-700">Could not read releases: {state.check_error}</span>
-                ) : state.enabled ? (
-                    <span className="text-muted-foreground">No release found for {state.repo}</span>
-                ) : (
-                    <span className="text-muted-foreground">Release check is off</span>
-                )}
-            </dd>
+                </Property>
 
-            <dt className="text-muted-foreground">Status</dt>
-            <dd>
-                {state.update_available ? (
-                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">
-                        Update available
-                    </Badge>
-                ) : (
-                    <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700">
-                        Up to date
-                    </Badge>
-                )}
-                {state.checked_at && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                        checked {new Date(state.checked_at).toLocaleTimeString()}, every{" "}
-                        {state.interval}
-                    </span>
-                )}
-            </dd>
-
-            {release && (
-                <>
-                    <dt className="text-muted-foreground">Installed</dt>
-                    <dd className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 font-mono text-xs">
-                            <Package className="size-3.5 text-muted-foreground" />
-                            {release.prefix}/*:{release.tag}
-                        </span>
-                        <span className="text-muted-foreground">
-                            {release.pinned
-                                ? "pinned to this release"
-                                : "following the channel tag"}
-                        </span>
-                    </dd>
-                </>
-            )}
-
-            {checkout && (
-                <>
-                    <dt className="text-muted-foreground">Checkout</dt>
-                    <dd className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 font-mono text-xs">
-                            <GitBranch className="size-3.5 text-muted-foreground" />
-                            {checkout.detached ? "pinned" : checkout.branch}@{checkout.commit.slice(0, 7)}
-                        </span>
-                        {!checkout.detached && (
-                            <span className="text-muted-foreground">
-                                {checkout.behind > 0
-                                    ? `${checkout.behind} commit${checkout.behind === 1 ? "" : "s"} behind`
-                                    : "matches the remote"}
+                {release && (
+                    <Property label="Installed">
+                        <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="inline-flex items-center gap-1 font-mono text-xs">
+                                <Package className="size-3.5 text-subtle-foreground" />
+                                {release.prefix}/*:{release.tag}
                             </span>
-                        )}
-                        {checkout.fetch_error && (
-                            <span className="text-amber-700">fetch failed: {checkout.fetch_error}</span>
-                        )}
-                    </dd>
-                </>
-            )}
-
-            <dt className="text-muted-foreground">Updater</dt>
-            <dd>
-                {updater.status === "ok" && (
-                    <span>
-                        ready
-                        <span className="text-muted-foreground"> ({updater.mode} mode)</span>
-                    </span>
+                            <span className="text-muted-foreground">
+                                {release.pinned ? "pinned to this release" : "following the channel tag"}
+                            </span>
+                        </span>
+                    </Property>
                 )}
-                {updater.status === "off" && <span className="text-muted-foreground">not configured</span>}
-                {updater.status === "unreachable" && <span className="text-amber-700">unreachable</span>}
-            </dd>
-        </dl>
+
+                {checkout && (
+                    <Property label="Checkout">
+                        <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="inline-flex items-center gap-1 font-mono text-xs">
+                                <GitBranch className="size-3.5 text-subtle-foreground" />
+                                {checkout.detached ? "pinned" : checkout.branch}@{checkout.commit.slice(0, 7)}
+                            </span>
+                            {!checkout.detached && (
+                                <span className="text-muted-foreground">
+                                    {checkout.behind > 0
+                                        ? `${checkout.behind} commit${checkout.behind === 1 ? "" : "s"} behind`
+                                        : "matches the remote"}
+                                </span>
+                            )}
+                            {checkout.fetch_error && (
+                                <span className={TONE_TEXT.warning}>fetch failed: {checkout.fetch_error}</span>
+                            )}
+                        </span>
+                    </Property>
+                )}
+
+                <Property label="Updater">
+                    {updater.status === "ok" && (
+                        <span>
+                            ready
+                            <span className="text-muted-foreground"> ({updater.mode} mode)</span>
+                        </span>
+                    )}
+                    {updater.status === "off" && <span className="text-muted-foreground">not configured</span>}
+                    {updater.status === "unreachable" && <span className={TONE_TEXT.warning}>unreachable</span>}
+                </Property>
+            </PropertyList>
+        </div>
     );
 }
 
@@ -478,22 +472,22 @@ function Progress({
     const percent = Math.round(((currentIdx + 0.5) / steps.length) * 100);
     return (
         <div className="space-y-3 animate-in fade-in duration-200">
-            <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50/60 p-3">
-                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-sky-600" />
-                <div className="min-w-0 flex-1 text-[13px] leading-relaxed text-sky-900">
+            <div className={cn("flex items-start gap-3 rounded-lg border px-3.5 py-3", TONE_PANEL.info)}>
+                <Loader2 className={cn("mt-0.5 size-4 shrink-0 animate-spin", TONE_TEXT.info)} />
+                <div className="min-w-0 flex-1 text-[13px] leading-relaxed">
                     <div className="flex items-center justify-between gap-3">
-                        <span className="font-semibold">
+                        <span className="font-medium text-foreground">
                             {restarting ? "Restarting services" : `Updating: ${STEP_LABELS[current] ?? current}`}
                         </span>
-                        <span className="text-xs tabular-nums text-sky-700">{percent}%</span>
+                        <span className="text-xs tabular-nums text-muted-foreground">{percent}%</span>
                     </div>
-                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-sky-100">
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-border">
                         <div
-                            className="h-full rounded-full bg-sky-500 transition-[width] duration-500 ease-out"
+                            className="h-full rounded-full bg-[var(--admin-accent)] transition-[width] duration-500 ease-out"
                             style={{ width: `${percent}%` }}
                         />
                     </div>
-                    <div className="mt-1.5 text-xs text-sky-800/80">
+                    <div className="mt-2 text-xs text-muted-foreground">
                         {restarting
                             ? "The backend is coming back up. This panel reconnects on its own; keep the tab open or come back later, the result is kept."
                             : "You can close this dialog; the pill in the top bar keeps following the job."}
@@ -508,17 +502,19 @@ function Progress({
                         <li
                             key={s}
                             className={cn(
-                                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
-                                done && "border-emerald-200 bg-emerald-50 text-emerald-700",
-                                active && "border-sky-300 bg-sky-50 text-sky-700",
-                                !done && !active && "border-border text-muted-foreground",
+                                "inline-flex h-5 items-center gap-1 rounded-full border px-2 text-[11.5px] font-medium",
+                                done && TONE.success,
+                                active && TONE.info,
+                                !done && !active && "border-border text-subtle-foreground",
                             )}
                         >
                             {done ? (
                                 <Check className="size-3" />
                             ) : active ? (
                                 <Loader2 className="size-3 animate-spin" />
-                            ) : null}
+                            ) : (
+                                <span className={cn("size-1.5 rounded-full", TONE_DOT.neutral)} />
+                            )}
                             {STEP_LABELS[s] ?? s}
                         </li>
                     );
@@ -538,31 +534,34 @@ function LogPanel({ lines }: { lines: string[] }) {
     return (
         <pre
             ref={ref}
-            className="max-h-64 overflow-auto rounded-md border border-border bg-zinc-950 p-3 text-[11px] leading-relaxed text-zinc-200"
+            className="max-h-64 overflow-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-[11.5px] leading-relaxed text-foreground/90"
         >
             {lines.join("\n")}
         </pre>
     );
 }
 
+const NOTICE_TONE = { info: "info", warning: "warning", error: "danger" } as const;
+
 function Notice({ tone, children }: { tone: "info" | "warning" | "error"; children: React.ReactNode }) {
-    const styles = {
-        info: "border-sky-200 bg-sky-50/60 text-sky-900",
-        warning: "border-amber-200 bg-amber-50/60 text-amber-900",
-        error: "border-red-200 bg-red-50/60 text-red-900",
-    }[tone];
+    const t = NOTICE_TONE[tone];
     const Icon = tone === "error" ? XCircle : AlertTriangle;
     return (
-        <div className={cn("flex items-start gap-3 rounded-lg border p-3 text-[13px] leading-relaxed", styles)}>
-            <Icon className="mt-0.5 size-4 shrink-0" />
-            <div className="min-w-0 flex-1">{children}</div>
+        <div
+            className={cn(
+                "flex items-start gap-3 rounded-lg border px-3.5 py-3 text-[13px] leading-relaxed text-muted-foreground",
+                TONE_PANEL[t],
+            )}
+        >
+            <Icon className={cn("mt-0.5 size-4 shrink-0", TONE_TEXT[t])} />
+            <div className="min-w-0 flex-1 text-muted-foreground">{children}</div>
         </div>
     );
 }
 
 function Cmd({ children }: { children: string }) {
     return (
-        <code className="mt-1.5 mb-1.5 block rounded bg-white/70 px-2 py-1 font-mono text-[12px] text-foreground">
+        <code className="my-1.5 block rounded-md border border-border bg-card px-2 py-1 font-mono text-[12px] text-foreground">
             {children}
         </code>
     );

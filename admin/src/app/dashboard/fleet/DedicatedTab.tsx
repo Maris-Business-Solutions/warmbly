@@ -55,11 +55,15 @@ export function DedicatedTab() {
             id: "worker",
             header: "Worker",
             cell: (a) => (
-                <div>
-                    <Link to={`/workers/${a.worker_id}`} className="font-medium text-[var(--admin-accent-strong)] hover:underline">
+                <div className="min-w-0">
+                    <Link
+                        to={`/workers/${a.worker_id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-medium text-foreground underline-offset-2 hover:underline"
+                    >
                         {a.worker_name || shortId(a.worker_id)}
                     </Link>
-                    <div className="font-mono text-[10px] text-muted-foreground">{a.worker_id}</div>
+                    <div className="truncate font-mono text-[11px] text-subtle-foreground">{a.worker_id}</div>
                 </div>
             ),
             csv: (a) => a.worker_name || a.worker_id,
@@ -69,7 +73,11 @@ export function DedicatedTab() {
             id: "org",
             header: "Workspace",
             cell: (a) => (
-                <Link to={`/organizations/${a.organization_id}`} className="font-medium text-[var(--admin-accent-strong)] hover:underline">
+                <Link
+                    to={`/organizations/${a.organization_id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-foreground underline-offset-2 hover:underline"
+                >
                     {a.organization_name || shortId(a.organization_id)}
                 </Link>
             ),
@@ -79,13 +87,13 @@ export function DedicatedTab() {
             id: "sub",
             header: "Subscription",
             cell: (a) => (
-                <span className="font-mono text-[11px] text-muted-foreground" title={a.subscription_id}>
+                <span className="font-mono text-xs text-muted-foreground" title={a.subscription_id}>
                     {shortId(a.subscription_id)}
                 </span>
             ),
             csv: (a) => a.subscription_id,
         },
-        { id: "assigned", header: "Assigned", cell: (a) => <span className="text-xs text-muted-foreground">{fmtDate(a.assigned_at)}</span>, csv: (a) => a.assigned_at },
+        { id: "assigned", header: "Assigned", cell: (a) => <span className="whitespace-nowrap text-muted-foreground tabular-nums">{fmtDate(a.assigned_at)}</span>, csv: (a) => a.assigned_at },
         { id: "accounts", header: "Accounts", align: "right", cell: (a) => <span className="tabular-nums">{a.account_count}</span>, csv: (a) => a.account_count },
         {
             id: "actions",
@@ -94,7 +102,8 @@ export function DedicatedTab() {
             cell: (a) => (
                 <Button
                     size="xs"
-                    variant="outline"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-foreground"
                     onClick={(e) => {
                         e.stopPropagation();
                         void onRelease(a);
@@ -110,15 +119,15 @@ export function DedicatedTab() {
 
     return (
         <div>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[12.5px] text-muted-foreground max-w-2xl">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+                <p className="max-w-3xl text-[12.5px] leading-relaxed text-muted-foreground">
                     A reserved worker carries one workspace's mailboxes and nothing else, so that workspace always
                     authenticates to its mailbox providers from an address no other tenant sends from. That is what
                     the entitlement buys: fewer sign-in challenges and no shared per-IP auth throttle. It is a strong
                     placement preference, not a pin, so a worker going down never strands the workspace.
                 </p>
-                <Button size="sm" onClick={() => setConvertOpen(true)}>
-                    <Plus className="size-4" />
+                <Button size="sm" className="shrink-0" onClick={() => setConvertOpen(true)}>
+                    <Plus className="size-3.5" />
                     Reserve a worker
                 </Button>
             </div>

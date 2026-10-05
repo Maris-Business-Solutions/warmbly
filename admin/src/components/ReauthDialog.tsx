@@ -65,12 +65,12 @@ export function ReauthDialog() {
     return (
         <DialogPrimitive.Root open={pending !== null} onOpenChange={(open) => !open && cancel()}>
             <DialogPrimitive.Portal>
-                <DialogPrimitive.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[70] bg-black/50" />
+                <DialogPrimitive.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[70] bg-black/40 backdrop-blur-[2px] dark:bg-black/60" />
                 <DialogPrimitive.Content
                     role="alertdialog"
                     data-floating=""
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[70] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-xl border border-border p-6 shadow-lg duration-200 outline-none sm:max-w-sm"
+                    className="bg-background dark:bg-[oklch(0.19_0.004_286)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.96] data-[state=open]:slide-in-from-top-[1%] ease-[cubic-bezier(0.16,1,0.3,1)] fixed top-[50%] left-[50%] z-[70] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-xl border-0 p-5 shadow-popover duration-150 outline-none sm:max-w-sm"
                 >
                     <form onSubmit={submit} className="grid gap-4">
                         <div className="flex items-start gap-3">
@@ -78,10 +78,10 @@ export function ReauthDialog() {
                                 <ShieldCheck className="size-4" />
                             </span>
                             <div className="min-w-0 flex flex-col gap-1.5">
-                                <DialogPrimitive.Title className="text-base leading-snug font-semibold text-foreground">
+                                <DialogPrimitive.Title className="text-[15px] leading-snug font-semibold text-foreground">
                                     Confirm it is you
                                 </DialogPrimitive.Title>
-                                <DialogPrimitive.Description className="text-sm text-muted-foreground">
+                                <DialogPrimitive.Description className="text-[13px] leading-relaxed text-muted-foreground">
                                     This change needs a fresh check. Enter your password, or a code from your
                                     authenticator.
                                 </DialogPrimitive.Description>

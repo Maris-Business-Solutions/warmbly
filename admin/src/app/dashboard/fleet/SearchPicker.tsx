@@ -101,13 +101,13 @@ export function SearchPicker<T>({
 
     if (value) {
         return (
-            <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12.5px]">
+            <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-input bg-card pr-1 pl-2.5 text-[13px]">
                 <div className="min-w-0 flex-1">{renderSelected(value)}</div>
                 {!disabled && (
                     <button
                         type="button"
                         onClick={() => onChange(null)}
-                        className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="grid size-6 shrink-0 place-items-center rounded-md text-subtle-foreground transition-colors hover:bg-accent hover:text-foreground"
                         aria-label="Clear selection"
                     >
                         <X className="size-3.5" />
@@ -119,7 +119,7 @@ export function SearchPicker<T>({
 
     return (
         <div ref={rootRef} className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle-foreground" />
             <Input
                 value={term}
                 disabled={disabled}
@@ -132,7 +132,7 @@ export function SearchPicker<T>({
                 onFocus={() => setOpen(true)}
                 onKeyDown={onKeyDown}
                 placeholder={placeholder}
-                className="h-8 pl-8 pr-8 text-[12.5px]"
+                className="h-8 pr-8 pl-8 text-[13px]"
                 role="combobox"
                 aria-expanded={open}
                 aria-controls={listId}
@@ -140,14 +140,14 @@ export function SearchPicker<T>({
                 aria-activedescendant={open && items[highlight] ? `${listId}-${highlight}` : undefined}
             />
             {isFetching && (
-                <Loader2 className="absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+                <Loader2 className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 animate-spin text-subtle-foreground" />
             )}
             {open && term.trim().length > 0 && (
                 <div
                     data-floating
                     id={listId}
                     role="listbox"
-                    className="absolute left-0 right-0 z-40 mt-1 max-h-64 overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
+                    className="absolute right-0 left-0 z-40 mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-popover"
                 >
                     {!enabled ? (
                         <div className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -166,8 +166,8 @@ export function SearchPicker<T>({
                                 onMouseEnter={() => setHighlight(i)}
                                 onClick={() => pick(t)}
                                 className={cn(
-                                    "block w-full rounded px-2 py-1.5 text-left text-[12.5px]",
-                                    i === highlight ? "bg-muted" : "hover:bg-muted/60",
+                                    "block w-full rounded-md px-2 py-1.5 text-left text-[13px] transition-colors",
+                                    i === highlight ? "bg-accent" : "hover:bg-accent/60",
                                 )}
                             >
                                 {renderItem(t)}

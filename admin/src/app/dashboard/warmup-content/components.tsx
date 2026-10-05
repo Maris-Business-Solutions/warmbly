@@ -1,53 +1,35 @@
-// Small shared presentational components for the warmup-content section:
-// the pool badge and the overview stat card. Kept JSX-only (no constant/fn
-// exports) so React Fast Refresh stays happy — pure helpers live in
-// `shared.ts`.
+// Small shared presentational components for the warmup-content section. Kept
+// JSX-only (no constant/fn exports) so React Fast Refresh stays happy; pure
+// helpers live in `shared.ts`.
 
 import type { ReactNode } from "react";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/kit";
 
 export function PoolBadge({ pool }: { pool: string }) {
+    return <StatusBadge tone={pool === "premium" ? "strong" : "neutral"}>{pool}</StatusBadge>;
+}
+
+export function ModeBadge({ mode }: { mode: string | null | undefined }) {
+    return <StatusBadge tone={mode === "batch" ? "info" : "neutral"}>{mode ?? "sync"}</StatusBadge>;
+}
+
+// Header cell for the hand-rolled tables in this section.
+export function Th({ children, right }: { children?: ReactNode; right?: boolean }) {
     return (
-        <Badge
-            variant="outline"
-            className={`text-[10px] ${
-                pool === "premium"
-                    ? "border-purple-300 bg-purple-50 text-purple-700"
-                    : "border-zinc-300 text-zinc-700"
+        <th
+            className={`h-9 whitespace-nowrap px-3 text-xs font-medium text-muted-foreground first:pl-4 last:pr-4 ${
+                right ? "text-right" : "text-left"
             }`}
         >
-            {pool}
-        </Badge>
+            {children}
+        </th>
     );
 }
 
-export function StatCard({
-    icon,
-    title,
-    value,
-    hint,
-    tone,
-}: {
-    icon: ReactNode;
-    title: string;
-    value: string;
-    hint?: string;
-    tone?: string;
-}) {
+export function Td({ children, right, className }: { children?: ReactNode; right?: boolean; className?: string }) {
     return (
-        <div className="rounded-lg border border-border bg-card p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {icon}
-                <span>{title}</span>
-            </div>
-            <div className={`mt-1 text-2xl font-semibold tabular-nums ${tone ?? ""}`}>
-                {value}
-            </div>
-            {hint && (
-                <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                    {hint}
-                </div>
-            )}
-        </div>
+        <td className={`px-3 first:pl-4 last:pr-4 ${right ? "text-right tabular-nums" : ""} ${className ?? ""}`}>
+            {children}
+        </td>
     );
 }

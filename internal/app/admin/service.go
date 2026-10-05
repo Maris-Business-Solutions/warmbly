@@ -2,6 +2,8 @@ package admin
 
 import (
 	"context"
+	"fmt"
+	"math/bits"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,6 +90,48 @@ type adminService struct {
 	// sessions ends a banned user's live sessions. Nil-safe: without it a ban
 	// still lands, it just does not take effect until the tokens expire.
 	sessions SessionRevoker
+	// opsNotify tells the operator's channels about admin access changes. Nil-safe.
+	opsNotify OperatorNotifier
+}
+
+// OperatorNotifier is the slice of opsnotify this package emits through.
+type OperatorNotifier interface {
+	NotifyOperator(key, title, summary string, fields map[string]string)
+}
+
+// WireOperatorNotifier attaches the operator alert channels.
+func (s *adminService) WireOperatorNotifier(n OperatorNotifier) { s.opsNotify = n }
+
+// notifyAccessChange raises admin.access_changed when the mask actually moved.
+// The key is a literal so this package stays free of opsnotify; it matches
+// opsnotify.EventAdminAccess.
+func (s *adminService) notifyAccessChange(target, actor *models.AdminUserDetail, perms models.AdminPermission) {
+	if s.opsNotify == nil || target == nil || target.AdminPermissions == perms {
+		return
+	}
+	title := "Admin access changed"
+	switch {
+	case target.AdminPermissions == 0:
+		title = "Admin access granted"
+	case perms == 0:
+		title = "Admin access revoked"
+	}
+	by := ""
+	if actor != nil {
+		by = actor.Email
+	}
+	access := "None"
+	switch {
+	case perms.IsSuperAdmin():
+		access = "Every permission (super admin)"
+	case perms != 0:
+		access = fmt.Sprintf("%d permissions", bits.OnesCount32(uint32(perms)))
+	}
+	s.opsNotify.NotifyOperator("admin.access_changed", title, target.Email+": "+title+".", map[string]string{
+		"Account":    target.Email,
+		"Changed by": by,
+		"Access now": access,
+	})
 }
 
 // NewService creates a new admin service
@@ -640,6 +684,7 @@ func (s *adminService) GrantAdminPermissions(ctx context.Context, adminID, targe
 	}
 
 	s.logAction(ctx, adminID, "grant_admin", "user", targetUserID, map[string]any{"permissions": permissions}, ipAddress, userAgent)
+	s.notifyAccessChange(target, granter, permissions)
 	return nil
 }
 
@@ -683,6 +728,7 @@ func (s *adminService) RevokeAdminPermissions(ctx context.Context, adminID, targ
 	}
 
 	s.logAction(ctx, adminID, "revoke_admin", "user", targetUserID, nil, ipAddress, userAgent)
+	s.notifyAccessChange(target, revoker, 0)
 	return nil
 }
 

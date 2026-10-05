@@ -11,7 +11,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Callout } from "@/components/ui/kit";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +26,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { TONE_TEXT } from "@/lib/tones";
 import { createDiscount, updateDiscount } from "@/lib/api/client/admin/discounts";
 import { listAdminPlans } from "@/lib/api/client/admin/organizations";
 import type {
@@ -91,13 +94,11 @@ function Section({
     children: React.ReactNode;
 }) {
     return (
-        <section className="border-t border-border px-4 py-3.5 first:border-t-0">
-            <div className="mb-2.5">
-                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    {title}
-                </h3>
+        <section className="border-t border-border px-5 py-4 first:border-t-0">
+            <div className="mb-3">
+                <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
                 {description && (
-                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{description}</p>
+                    <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">{description}</p>
                 )}
             </div>
             <div className="space-y-3">{children}</div>
@@ -119,7 +120,7 @@ function Segmented<T extends string>({
     return (
         <div
             className={cn(
-                "flex gap-0.5 rounded-md border border-border bg-card p-0.5 text-[11px]",
+                "flex h-8 gap-0.5 rounded-md border border-border bg-muted/50 p-0.5",
                 disabled && "pointer-events-none opacity-50",
             )}
         >
@@ -129,10 +130,10 @@ function Segmented<T extends string>({
                     type="button"
                     onClick={() => onChange(o.value)}
                     className={cn(
-                        "flex-1 rounded px-2 py-1.5 transition-colors",
+                        "flex-1 rounded-[5px] px-2 text-[12.5px] font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
                         value === o.value
-                            ? "bg-[var(--admin-accent)] font-medium text-white"
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            ? "bg-card text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.08)] dark:bg-accent"
+                            : "text-muted-foreground hover:text-foreground",
                     )}
                 >
                     {o.label}
@@ -155,11 +156,11 @@ function FieldRow({
 }) {
     return (
         <div>
-            <Label htmlFor={htmlFor} className="mb-1 block text-[11px] font-medium">
+            <Label htmlFor={htmlFor} className="mb-1.5 block text-xs font-medium text-muted-foreground">
                 {label}
             </Label>
             {children}
-            {hint && <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{hint}</p>}
+            {hint && <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{hint}</p>}
         </div>
     );
 }
@@ -181,17 +182,12 @@ function OptionalCap({
 }) {
     return (
         <div>
-            <label className="flex cursor-pointer items-center gap-2 text-[12.5px]">
-                <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={(e) => onEnabledChange(e.target.checked)}
-                    className="size-3.5 accent-[var(--admin-accent)]"
-                />
+            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-foreground">
+                <Checkbox checked={enabled} onCheckedChange={(v) => onEnabledChange(v === true)} />
                 {label}
             </label>
-            {hint && <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{hint}</p>}
-            {enabled && <div className="mt-2 pl-6">{children}</div>}
+            {hint && <p className="mt-1 pl-5.5 text-xs leading-relaxed text-muted-foreground">{hint}</p>}
+            {enabled && <div className="mt-2 pl-5.5">{children}</div>}
         </div>
     );
 }
@@ -397,11 +393,11 @@ export function DiscountBuilderDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-                <DialogHeader className="shrink-0 px-4 pt-4 pb-3">
-                    <DialogTitle className="text-[13px]">
+                <DialogHeader className="shrink-0 px-5 pt-5 pb-4">
+                    <DialogTitle>
                         {editing ? `Edit ${existing?.code}` : "Create a promo code"}
                     </DialogTitle>
-                    <DialogDescription className="text-[11px] leading-relaxed">
+                    <DialogDescription className="leading-relaxed">
                         Customers type this at checkout or on the billing page. Warmbly validates it
                         and mints a matching one-off Stripe coupon per redemption, so there is
                         nothing to create in the Stripe dashboard.
@@ -425,7 +421,7 @@ export function DiscountBuilderDialog({
                                 disabled={editing}
                                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                                 placeholder="LAUNCH50"
-                                className="h-8 font-mono text-[12.5px] uppercase"
+                                className="font-mono uppercase"
                             />
                         </FieldRow>
                         <FieldRow
@@ -439,7 +435,6 @@ export function DiscountBuilderDialog({
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder="Launch offer, shared in the announcement post"
                                 rows={2}
-                                className="text-[12.5px]"
                             />
                         </FieldRow>
                     </Section>
@@ -458,7 +453,7 @@ export function DiscountBuilderDialog({
                             options={TYPE_OPTIONS}
                             disabled={editing}
                         />
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                             {TYPE_OPTIONS.find((t) => t.value === type)?.hint}
                         </p>
 
@@ -471,9 +466,9 @@ export function DiscountBuilderDialog({
                                         value={percentOff}
                                         onChange={(e) => setPercentOff(e.target.value)}
                                         placeholder="50"
-                                        className="h-8 pr-7 text-[12.5px] tabular-nums"
+                                        className="pr-7 tabular-nums"
                                     />
-                                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-subtle-foreground">
                                         %
                                     </span>
                                 </div>
@@ -481,7 +476,7 @@ export function DiscountBuilderDialog({
                         )}
 
                         {type === "fixed" && (
-                            <div className="flex gap-3">
+                            <div className="flex flex-wrap gap-3">
                                 <FieldRow label="Amount off" htmlFor="discount-amount">
                                     <Input
                                         id="discount-amount"
@@ -489,7 +484,7 @@ export function DiscountBuilderDialog({
                                         value={amountOff}
                                         onChange={(e) => setAmountOff(e.target.value)}
                                         placeholder="25.00"
-                                        className="h-8 w-32 text-[12.5px] tabular-nums"
+                                        className="w-32 tabular-nums"
                                     />
                                 </FieldRow>
                                 <FieldRow
@@ -503,7 +498,7 @@ export function DiscountBuilderDialog({
                                         onChange={(e) => setCurrency(e.target.value.toUpperCase())}
                                         placeholder="USD"
                                         maxLength={3}
-                                        className="h-8 w-20 font-mono text-[12.5px] uppercase"
+                                        className="w-20 font-mono uppercase"
                                     />
                                 </FieldRow>
                             </div>
@@ -521,7 +516,7 @@ export function DiscountBuilderDialog({
                                     value={trialDays}
                                     onChange={(e) => setTrialDays(e.target.value)}
                                     placeholder="14"
-                                    className="h-8 w-32 text-[12.5px] tabular-nums"
+                                    className="w-32 tabular-nums"
                                 />
                             </FieldRow>
                         )}
@@ -538,24 +533,23 @@ export function DiscountBuilderDialog({
                                         value={months}
                                         onChange={(e) => setMonths(e.target.value)}
                                         placeholder="3"
-                                        className="h-8 w-32 text-[12.5px] tabular-nums"
+                                        className="w-32 tabular-nums"
                                     />
                                 </FieldRow>
                             )}
                             {intervalNote && (
-                                <div className="flex gap-2 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-2">
-                                    <Info className="mt-px size-3.5 shrink-0 text-sky-600" />
-                                    <p className="text-[11px] leading-relaxed text-sky-900">{intervalNote}</p>
-                                </div>
+                                <Callout tone="info" icon={Info}>
+                                    {intervalNote}
+                                </Callout>
                             )}
                         </Section>
                     )}
 
                     <Section title="Eligible plans">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-4">
                             <div>
-                                <div className="text-[12.5px]">Valid on every plan</div>
-                                <p className="text-[11px] text-muted-foreground">
+                                <div className="text-[13px] text-foreground">Valid on every plan</div>
+                                <p className="text-xs text-muted-foreground">
                                     Turn off to restrict the code to specific plans.
                                 </p>
                             </div>
@@ -563,44 +557,42 @@ export function DiscountBuilderDialog({
                         </div>
 
                         {!allPlans && (
-                            <div className="rounded-md border border-border">
+                            <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
                                 {plans.isLoading ? (
-                                    <div className="px-2.5 py-2 text-[11px] text-muted-foreground">
+                                    <div className="px-3 py-2.5 text-xs text-muted-foreground">
                                         Loading plans…
                                     </div>
                                 ) : plans.isError ? (
-                                    <div className="px-2.5 py-2 text-[11px] text-red-600">
+                                    <div className={cn("px-3 py-2.5 text-xs", TONE_TEXT.danger)}>
                                         Could not load plans, so this list is not the full set.
                                     </div>
                                 ) : planRows.length === 0 ? (
-                                    <div className="px-2.5 py-2 text-[11px] text-muted-foreground">
+                                    <div className="px-3 py-2.5 text-xs text-muted-foreground">
                                         This instance has no plans.
                                     </div>
                                 ) : (
-                                    <ul className="max-h-44 divide-y divide-border overflow-y-auto">
+                                    <ul className="max-h-44 divide-y divide-border/70 overflow-y-auto">
                                         {planRows.map((p) => {
                                             const checked = planIds.includes(p.id);
                                             return (
                                                 <li key={p.id}>
-                                                    <label className="flex cursor-pointer items-center gap-2.5 px-2.5 py-2 text-[12.5px] hover:bg-muted/50">
-                                                        <input
-                                                            type="checkbox"
+                                                    <label className="flex h-9 cursor-pointer items-center gap-2.5 px-3 text-[13px] text-foreground hover:bg-accent/50">
+                                                        <Checkbox
                                                             checked={checked}
-                                                            onChange={() =>
+                                                            onCheckedChange={() =>
                                                                 setPlanIds((prev) =>
                                                                     checked
                                                                         ? prev.filter((id) => id !== p.id)
                                                                         : [...prev, p.id],
                                                                 )
                                                             }
-                                                            className="size-3.5 accent-[var(--admin-accent)]"
                                                         />
                                                         <span className="flex-1 truncate">
                                                             {p.name ?? p.id}
                                                         </span>
                                                         {p.public === false && (
-                                                            <span className="text-[10px] text-muted-foreground">
-                                                                private
+                                                            <span className="text-xs text-subtle-foreground">
+                                                                Private
                                                             </span>
                                                         )}
                                                     </label>
@@ -625,12 +617,12 @@ export function DiscountBuilderDialog({
                                 value={maxRedemptions}
                                 onChange={(e) => setMaxRedemptions(e.target.value)}
                                 placeholder="100"
-                                className="h-8 w-32 text-[12.5px] tabular-nums"
+                                className="w-32 tabular-nums"
                             />
                         </OptionalCap>
 
                         {editing && existing && (
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                                 Redeemed {existing.times_redeemed.toLocaleString()} time
                                 {existing.times_redeemed === 1 ? "" : "s"} so far. Lowering the cap below
                                 that does not undo anything already granted.
@@ -647,7 +639,7 @@ export function DiscountBuilderDialog({
                                 inputMode="numeric"
                                 value={perAccount}
                                 onChange={(e) => setPerAccount(e.target.value)}
-                                className="h-8 w-32 text-[12.5px] tabular-nums"
+                                className="w-32 tabular-nums"
                             />
                         </FieldRow>
                     </Section>
@@ -656,7 +648,7 @@ export function DiscountBuilderDialog({
                         title="Schedule"
                         description="Both are optional. A start in the future makes the code scheduled; an expiry is the end of that day in your timezone."
                     >
-                        <div className="flex gap-3">
+                        <div className="flex flex-wrap gap-3">
                             <FieldRow label="Starts" htmlFor="discount-starts">
                                 <Input
                                     id="discount-starts"
@@ -664,7 +656,7 @@ export function DiscountBuilderDialog({
                                     value={startsOn}
                                     max={expiresOn || undefined}
                                     onChange={(e) => setStartsOn(e.target.value)}
-                                    className="h-8 text-[12.5px]"
+                                    className="w-40"
                                 />
                             </FieldRow>
                             <FieldRow label="Expires" htmlFor="discount-expires">
@@ -674,7 +666,7 @@ export function DiscountBuilderDialog({
                                     value={expiresOn}
                                     min={startsOn || undefined}
                                     onChange={(e) => setExpiresOn(e.target.value)}
-                                    className="h-8 text-[12.5px]"
+                                    className="w-40"
                                 />
                             </FieldRow>
                         </div>
@@ -696,10 +688,10 @@ export function DiscountBuilderDialog({
                     </Section>
                 </div>
 
-                <DialogFooter className="shrink-0 items-center gap-3 border-t border-border bg-muted/30 px-4 py-3 sm:justify-between">
-                    <div className="min-w-0 text-[11px] leading-relaxed">
+                <DialogFooter className="shrink-0 items-center gap-3 border-t border-border bg-muted/40 px-5 py-3 sm:justify-between">
+                    <div className="min-w-0 text-xs leading-relaxed">
                         {problem ? (
-                            <span className="text-amber-700">{problem}</span>
+                            <span className={TONE_TEXT.warning}>{problem}</span>
                         ) : (
                             <span className="text-muted-foreground">
                                 <span className="font-mono text-foreground">
@@ -712,17 +704,13 @@ export function DiscountBuilderDialog({
                     </div>
                     <div className="flex shrink-0 gap-2">
                         <Button
-                            size="sm"
                             variant="outline"
-                            className="h-8"
                             onClick={() => onOpenChange(false)}
                             disabled={save.isPending}
                         >
                             Cancel
                         </Button>
                         <Button
-                            size="sm"
-                            className="h-8"
                             disabled={!!problem || save.isPending}
                             onClick={() => save.mutate()}
                         >

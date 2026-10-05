@@ -4,11 +4,12 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, StatusDot } from "@/components/ui/kit";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { StateLegend } from "@/components/StateLegend";
 import { WORKER_HEALTH_LEGEND } from "@/lib/legends";
 import { getFleetCapacity, type AdminFleetWorkerRow } from "@/lib/api/client/admin/fleet";
+import { TONE_DOT, TONE_TEXT } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import { HealthPill, LiveDot } from "./tones";
 import { fmtAgo } from "./format";
@@ -20,25 +21,25 @@ function UtilizationBar({ row }: { row: AdminFleetWorkerRow }) {
     const cold = u < 0.5;
     return (
         <div className="min-w-[160px]">
-            <div className="flex items-center justify-between text-[11px] tabular-nums">
-                <span>
+            <div className="flex items-center justify-between text-xs tabular-nums">
+                <span className="text-foreground">
                     {row.load_score.toFixed(0)}
-                    <span className="text-muted-foreground"> / {row.effective_capacity.toFixed(0)}</span>
+                    <span className="text-subtle-foreground"> / {row.effective_capacity.toFixed(0)}</span>
                 </span>
                 <span
                     className={cn(
                         "font-medium",
-                        hot ? "text-red-600" : cold ? "text-muted-foreground" : "text-emerald-700",
+                        hot ? TONE_TEXT.danger : cold ? "text-muted-foreground" : TONE_TEXT.success,
                     )}
                 >
                     {pct}%
                 </span>
             </div>
-            <div className="mt-1 h-1.5 overflow-hidden rounded bg-muted">
+            <div className="mt-1 h-1 overflow-hidden rounded-full bg-border">
                 <div
                     className={cn(
-                        "h-full",
-                        hot ? "bg-gradient-to-r from-amber-500 to-red-500" : cold ? "bg-zinc-300" : "bg-emerald-500",
+                        "h-full rounded-full",
+                        hot ? TONE_DOT.danger : cold ? "bg-subtle-foreground/50" : TONE_DOT.success,
                     )}
                     style={{ width: `${pct}%` }}
                 />
@@ -49,16 +50,16 @@ function UtilizationBar({ row }: { row: AdminFleetWorkerRow }) {
 
 function Pair({ a, b, tone, title }: { a: number; b: number; tone?: string; title?: string }) {
     return (
-        <span className="tabular-nums text-xs" title={title}>
+        <span className="tabular-nums" title={title}>
             <span className={tone}>{a.toLocaleString()}</span>
-            <span className="text-muted-foreground"> / {b.toLocaleString()}</span>
+            <span className="text-subtle-foreground"> / {b.toLocaleString()}</span>
         </span>
     );
 }
 
 function Count({ n, warnAbove = 0 }: { n: number; warnAbove?: number }) {
     return (
-        <span className={cn("tabular-nums text-xs", n > warnAbove ? "font-medium text-red-600" : "text-muted-foreground")}>
+        <span className={cn("tabular-nums", n > warnAbove ? cn("font-medium", TONE_TEXT.danger) : "text-subtle-foreground")}>
             {n.toLocaleString()}
         </span>
     );
@@ -70,15 +71,15 @@ const columns: Column<AdminFleetWorkerRow>[] = [
         header: "Worker",
         sortable: true,
         cell: (w) => (
-            <div>
+            <div className="min-w-0">
                 <Link
                     to={`/workers/${w.worker_id}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="font-medium text-[var(--admin-accent-strong)] hover:underline"
+                    className="font-medium text-foreground underline-offset-2 hover:underline"
                 >
                     {w.name || w.worker_id.slice(0, 8)}
                 </Link>
-                <div className="font-mono text-[10px] text-muted-foreground">{w.ip_addr}</div>
+                <div className="font-mono text-[11px] text-subtle-foreground">{w.ip_addr}</div>
             </div>
         ),
         csv: (w) => w.name || w.worker_id,
@@ -86,7 +87,12 @@ const columns: Column<AdminFleetWorkerRow>[] = [
     {
         id: "region",
         header: "Region",
-        cell: (w) => <span className="font-mono text-[11px]">{w.region || "—"}</span>,
+        cell: (w) =>
+            w.region ? (
+                <span className="font-mono text-xs text-muted-foreground">{w.region}</span>
+            ) : (
+                <span className="text-subtle-foreground">—</span>
+            ),
         csv: (w) => w.region,
     },
     { id: "health", header: "Health", cell: (w) => <HealthPill state={w.health_state} />, csv: (w) => w.health_state },
@@ -119,7 +125,7 @@ const columns: Column<AdminFleetWorkerRow>[] = [
         cell: (w) =>
             w.sends_attempted_1h === 0 ? (
                 <span
-                    className="text-xs text-muted-foreground"
+                    className="text-subtle-foreground"
                     title="The worker made no provider send attempts during the rolling last 60 minutes"
                 >
                     No attempts
@@ -138,7 +144,7 @@ const columns: Column<AdminFleetWorkerRow>[] = [
         id: "bounces",
         header: "Bounces 1h",
         align: "right",
-        cell: (w) => <Pair a={w.bounces_hard_1h} b={w.bounces_soft_1h} tone={w.bounces_hard_1h > 0 ? "text-red-600 font-medium" : "text-foreground"} />,
+        cell: (w) => <Pair a={w.bounces_hard_1h} b={w.bounces_soft_1h} tone={w.bounces_hard_1h > 0 ? cn("font-medium", TONE_TEXT.danger) : "text-foreground"} />,
         csv: (w) => `${w.bounces_hard_1h} hard / ${w.bounces_soft_1h} soft`,
     },
     { id: "complaints", header: "Complaints 1h", align: "right", cell: (w) => <Count n={w.complaints_1h} />, csv: (w) => w.complaints_1h },
@@ -150,13 +156,11 @@ const columns: Column<AdminFleetWorkerRow>[] = [
             w.tags && w.tags.length ? (
                 <div className="flex flex-wrap gap-1">
                     {w.tags.map((t) => (
-                        <Badge key={t} variant="outline" className="text-[10px]">
-                            {t}
-                        </Badge>
+                        <StatusBadge key={t}>{t}</StatusBadge>
                     ))}
                 </div>
             ) : (
-                <span className="text-xs text-muted-foreground">—</span>
+                <span className="text-subtle-foreground">—</span>
             ),
         csv: (w) => (w.tags || []).join(" "),
         defaultHidden: true,
@@ -196,21 +200,27 @@ export function CapacityTab() {
 
     return (
         <div>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-[12.5px] text-muted-foreground">
-                <span>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+                <p className="max-w-3xl text-[12.5px] leading-relaxed text-muted-foreground">
                     Placement spreads assigned mailboxes across live workers. The target is an operator-set
                     planning value, not a mailbox-provider send limit. New nodes fill gradually without
                     shrinking the displayed target. Send counters show succeeded / attempted during the
                     rolling last 60 minutes. “No attempts” is activity, not a capacity reading.
+                </p>
+                <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
                     {rows.length > 0 && (
-                        <span className="ml-1.5 tabular-nums">
-                            ({hot} hot, {cold} cold of {rows.length})
+                        <span className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
+                            <StatusDot tone={hot > 0 ? "danger" : "neutral"} className="text-xs">
+                                {hot} hot
+                            </StatusDot>
+                            <StatusDot tone="neutral" className="text-xs">
+                                {cold} cold
+                            </StatusDot>
+                            <span>of {rows.length}</span>
                         </span>
                     )}
-                </span>
-                <span className="flex flex-wrap gap-3">
                     <StateLegend label="Health states" entries={WORKER_HEALTH_LEGEND} />
-                </span>
+                </div>
             </div>
             <DataTable
                 columns={columns}

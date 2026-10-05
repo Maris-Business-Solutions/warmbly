@@ -3,11 +3,12 @@
 // the events ring buffer). Purely event-driven: no polling, no refetch.
 
 import { useMemo, useState } from "react";
-import { Pause, Play, Search, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ChevronRight, Pause, Play, Radio, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState, StatusBadge, StatusDot } from "@/components/ui/kit";
+import { TONE_DOT, TONE_TEXT, type Tone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import {
     MAX_EVENTS,
@@ -48,37 +49,30 @@ function inFamily(name: string, family: FamilyId): boolean {
     return FAMILY_MATCHERS.find((f) => f.id === family)!.match(upper);
 }
 
-// Badge tone by family; errors win over everything.
-function badgeTone(name: string): string {
+// Tone by family; errors win over everything.
+function eventTone(name: string): Tone {
     const n = name.toUpperCase();
-    if (n.includes("ERROR") || n.includes("FAILED")) return "bg-red-100 text-red-700";
-    if (n.includes("ACCOUNT") || n.includes("WARMUP")) return "bg-amber-100 text-amber-700";
-    if (n.includes("CAMPAIGN")) return "bg-purple-100 text-purple-700";
-    if (n.includes("EMAIL")) return "bg-sky-100 text-sky-700";
-    if (n.includes("AUDIT")) return "bg-zinc-100 text-zinc-700";
-    return "bg-zinc-100 text-zinc-700";
+    if (n.includes("ERROR") || n.includes("FAILED")) return "danger";
+    if (n.includes("ACCOUNT") || n.includes("WARMUP")) return "warning";
+    if (n.includes("CAMPAIGN")) return "strong";
+    if (n.includes("EMAIL")) return "info";
+    return "neutral";
 }
 
 // ------------------------------------------------------------------ pieces
 
-const STATUS_META: Record<RealtimeStatus, { label: string; dot: string; text: string }> = {
-    connected: { label: "Connected", dot: "bg-emerald-500", text: "text-emerald-700" },
-    connecting: { label: "Connecting", dot: "bg-amber-500 animate-pulse", text: "text-amber-700" },
-    disconnected: { label: "Disconnected", dot: "bg-red-500", text: "text-red-700" },
+const STATUS_META: Record<RealtimeStatus, { label: string; tone: Tone; pulse: boolean }> = {
+    connected: { label: "Connected", tone: "success", pulse: true },
+    connecting: { label: "Connecting", tone: "warning", pulse: true },
+    disconnected: { label: "Disconnected", tone: "danger", pulse: false },
 };
 
-function StatusPill({ status }: { status: RealtimeStatus }) {
+function ConnectionStatus({ status }: { status: RealtimeStatus }) {
     const meta = STATUS_META[status];
     return (
-        <span
-            className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium",
-                meta.text,
-            )}
-        >
-            <span className={cn("size-2 rounded-full", meta.dot)} />
+        <StatusDot tone={meta.tone} pulse={meta.pulse} className={cn("text-xs font-medium", TONE_TEXT[meta.tone])}>
             {meta.label}
-        </span>
+        </StatusDot>
     );
 }
 
@@ -115,31 +109,56 @@ function fmtTime(ts: number): string {
 function EventRow({ event }: { event: LiveEvent }) {
     const [expanded, setExpanded] = useState(false);
     const ids = idSummary(event.payload);
+    const tone = eventTone(event.name);
     return (
-        <li className="border-b border-border/60 last:border-0">
+        <li className="border-b border-border/70 last:border-0">
             <button
                 type="button"
+                aria-expanded={expanded}
                 onClick={() => setExpanded((v) => !v)}
-                className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+                className={cn(
+                    "group flex min-h-10 w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-left transition-colors outline-none hover:bg-accent/50 focus-visible:bg-accent/60",
+                    expanded && "bg-accent/40",
+                )}
             >
-                <span className="w-16 shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                <ChevronRight
+                    className={cn(
+                        "size-3.5 shrink-0 text-subtle-foreground transition-transform",
+                        expanded && "rotate-90",
+                    )}
+                />
+                <span className="w-16 shrink-0 font-mono text-[11.5px] tabular-nums text-subtle-foreground">
                     {fmtTime(event.receivedAt)}
                 </span>
-                <Badge className={cn("font-mono text-[11px] font-medium", badgeTone(event.name))}>
-                    {event.name}
-                </Badge>
-                <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 font-mono text-[11px] text-muted-foreground">
+                <span className="inline-flex min-w-0 items-center gap-2">
+                    <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[tone])} />
+                    <span
+                        className={cn(
+                            "truncate font-mono text-[12px] font-medium",
+                            tone === "neutral" ? "text-foreground" : TONE_TEXT[tone],
+                        )}
+                    >
+                        {event.name}
+                    </span>
+                </span>
+                <span className="flex min-w-0 flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground sm:ml-auto">
                     {ids.map((id) => (
-                        <span key={id.key}>
-                            <span className="opacity-60">{id.key}</span> {id.value}
+                        <span
+                            key={id.key}
+                            className="inline-flex h-5 items-center gap-1 rounded-[5px] border border-border bg-muted/50 px-1.5"
+                        >
+                            <span className="text-subtle-foreground">{id.key}</span>
+                            <span className="text-foreground/80">{id.value}</span>
                         </span>
                     ))}
                 </span>
             </button>
             {expanded && (
-                <pre className="mx-3 mb-2 max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[11px] leading-relaxed text-foreground">
-                    {JSON.stringify(event.payload, null, 2)}
-                </pre>
+                <div className="border-t border-border/70 bg-muted/30 px-4 py-3">
+                    <pre className="max-h-72 overflow-auto rounded-md border border-border bg-card p-3 font-mono text-[11.5px] leading-relaxed text-foreground">
+                        {JSON.stringify(event.payload, null, 2)}
+                    </pre>
+                </div>
             )}
         </li>
     );
@@ -163,75 +182,78 @@ export default function EventsPage() {
     return (
         <div>
             <PageHeader
-                title="Live Events"
+                title="Live events"
+                meta={
+                    <>
+                        <ConnectionStatus status={status} />
+                        {paused && (
+                            <StatusBadge tone="warning" className="ml-1">
+                                Paused
+                            </StatusBadge>
+                        )}
+                    </>
+                }
                 description="Every realtime event on the platform as it happens, mirrored from the org, user, and entity channels."
             >
-                <StatusPill status={status} />
-            </PageHeader>
-
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Filter by event name or id"
-                        className="h-8 w-64 pl-8 text-[12.5px]"
-                    />
-                </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5"
-                    onClick={() => setPaused(!paused)}
-                >
-                    {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+                <Button variant="outline" size="sm" onClick={() => setPaused(!paused)}>
+                    {paused ? <Play /> : <Pause />}
                     {paused
                         ? `Resume${missedCount > 0 ? ` (${missedCount.toLocaleString()} missed)` : ""}`
                         : "Pause"}
                 </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5"
-                    onClick={clearEvents}
-                    disabled={events.length === 0}
-                >
-                    <Trash2 className="size-3.5" />
+                <Button variant="ghost" size="sm" onClick={clearEvents} disabled={events.length === 0}>
+                    <Trash2 />
                     Clear
                 </Button>
+            </PageHeader>
+
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="relative w-full sm:w-64">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground" />
+                    <Input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Filter by event name or id"
+                        className="h-7 pl-8 text-[12.5px]"
+                    />
+                </div>
+                <div className="no-scrollbar -mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1">
+                    {FAMILY_CHIPS.map((chip) => {
+                        const active = family === chip.id;
+                        return (
+                            <button
+                                key={chip.id}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() => setFamily(chip.id)}
+                                className={cn(
+                                    "h-7 shrink-0 whitespace-nowrap rounded-md border px-2.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                                    active
+                                        ? "border-border-strong bg-accent text-foreground"
+                                        : "border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                                )}
+                            >
+                                {chip.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <span className="ml-auto hidden text-xs text-muted-foreground tabular-nums sm:inline">
+                    {filtered.length.toLocaleString()} of {events.length.toLocaleString()}
+                </span>
             </div>
 
-            <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                {FAMILY_CHIPS.map((chip) => (
-                    <button
-                        key={chip.id}
-                        type="button"
-                        onClick={() => setFamily(chip.id)}
-                        className={cn(
-                            "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                            family === chip.id
-                                ? "border-foreground/20 bg-foreground text-background"
-                                : "border-border bg-card text-muted-foreground hover:text-foreground",
-                        )}
-                    >
-                        {chip.label}
-                    </button>
-                ))}
-            </div>
-
-            <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <div className="overflow-hidden surface-lit rounded-xl border border-border bg-card">
                 {filtered.length === 0 ? (
-                    <div className="px-3 py-14 text-center">
-                        <div className="text-sm font-medium text-foreground">
-                            {events.length === 0 ? "No events yet" : "No matching events"}
-                        </div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                            {events.length === 0
+                    <EmptyState
+                        icon={Radio}
+                        title={events.length === 0 ? "No events yet" : "No matching events"}
+                        hint={
+                            events.length === 0
                                 ? "Events appear here as platform activity happens. The connection status is shown above."
-                                : "Try a different filter or family chip."}
-                        </div>
-                    </div>
+                                : "Try a different filter or family chip."
+                        }
+                    />
                 ) : (
                     <ul>
                         {filtered.map((ev) => (
@@ -241,7 +263,7 @@ export default function EventsPage() {
                 )}
             </div>
 
-            <p className="mt-2 text-[11px] text-muted-foreground">
+            <p className="mt-2.5 text-xs text-muted-foreground">
                 Showing the last {Math.min(events.length, MAX_EVENTS).toLocaleString()} events
                 (buffer capped at {MAX_EVENTS}). Older events are dropped.
             </p>

@@ -4,6 +4,7 @@
 
 import type { ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
+import { EmptyState } from "@/components/ui/kit";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 
 interface Props {
@@ -19,15 +20,11 @@ export function RequirePermission({ perm, permissionLabel, children }: Props) {
     if (allowed) return <>{children}</>;
 
     return (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center">
-            <ShieldAlert className="mx-auto size-5 text-muted-foreground" />
-            <div className="mt-2 text-sm font-medium text-foreground">
-                This page is restricted
-            </div>
-            <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-                Your admin account does not hold the {permissionLabel} permission. Ask an
-                admin who can grant admin access to add it.
-            </p>
-        </div>
+        <EmptyState
+            icon={ShieldAlert}
+            title="This page is restricted"
+            hint={`Your admin account does not hold the ${permissionLabel} permission. Ask an admin who can grant admin access to add it.`}
+            className="mt-16"
+        />
     );
 }

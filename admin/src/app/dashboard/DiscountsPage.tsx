@@ -1,4 +1,4 @@
-// Promo codes — filter rail + server-driven sortable, cursor-paged table,
+// Promo codes: filter rail + server-driven sortable, cursor-paged table,
 // mirroring the other admin browsers.
 //
 // This is the operator half of the discount system. The customer half (the
@@ -11,8 +11,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/kit";
 import {
     Dialog,
     DialogContent,
@@ -210,10 +210,10 @@ export default function DiscountsPage() {
             sortable: true,
             sortKey: "code",
             cell: (r) => (
-                <div>
-                    <div className="font-mono font-medium">{r.code}</div>
+                <div className="min-w-0">
+                    <div className="font-mono text-[12.5px] font-medium text-foreground">{r.code}</div>
                     {r.description && (
-                        <div className="max-w-xs truncate text-[10px] text-muted-foreground" title={r.description}>
+                        <div className="max-w-xs truncate text-xs text-muted-foreground" title={r.description}>
                             {r.description}
                         </div>
                     )}
@@ -224,14 +224,14 @@ export default function DiscountsPage() {
         {
             id: "discount",
             header: "Discount",
-            cell: (r) => <span className="text-xs">{describeDiscount(r)}</span>,
+            cell: (r) => <span className="text-[13px] text-foreground">{describeDiscount(r)}</span>,
             csv: (r) => describeDiscount(r),
         },
         {
             id: "plans",
             header: "Plans",
             cell: (r) => (
-                <span className="text-xs text-muted-foreground">{describeScope(r, planNames)}</span>
+                <span className="text-[13px] text-muted-foreground">{describeScope(r, planNames)}</span>
             ),
             csv: (r) => describeScope(r, planNames),
         },
@@ -242,9 +242,9 @@ export default function DiscountsPage() {
             sortable: true,
             sortKey: "times_redeemed",
             cell: (r) => (
-                <span className="tabular-nums">
+                <span className="text-[13px] whitespace-nowrap tabular-nums">
                     {r.times_redeemed.toLocaleString()}
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-subtle-foreground">
                         {r.max_redemptions != null ? ` / ${r.max_redemptions.toLocaleString()}` : " / ∞"}
                     </span>
                 </span>
@@ -256,7 +256,7 @@ export default function DiscountsPage() {
             header: "Per workspace",
             align: "right",
             defaultHidden: true,
-            cell: (r) => <span className="tabular-nums text-muted-foreground">{r.per_account_limit}</span>,
+            cell: (r) => <span className="text-[13px] text-muted-foreground tabular-nums">{r.per_account_limit}</span>,
             csv: (r) => r.per_account_limit,
         },
         {
@@ -267,9 +267,9 @@ export default function DiscountsPage() {
             cell: (r) => {
                 const s = effectiveState(r);
                 return (
-                    <Badge variant="outline" className={`text-[10px] ${s.tone}`}>
+                    <StatusBadge tone={s.tone} dot className="capitalize">
                         {s.label}
-                    </Badge>
+                    </StatusBadge>
                 );
             },
             csv: (r) => effectiveState(r).label,
@@ -280,7 +280,7 @@ export default function DiscountsPage() {
             sortable: true,
             sortKey: "starts_at",
             defaultHidden: true,
-            cell: (r) => <span className="text-xs text-muted-foreground">{fmtDate(r.starts_at)}</span>,
+            cell: (r) => <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">{fmtDate(r.starts_at)}</span>,
             csv: (r) => r.starts_at ?? "",
         },
         {
@@ -288,7 +288,7 @@ export default function DiscountsPage() {
             header: "Expires",
             sortable: true,
             sortKey: "expires_at",
-            cell: (r) => <span className="text-xs text-muted-foreground">{fmtDate(r.expires_at)}</span>,
+            cell: (r) => <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">{fmtDate(r.expires_at)}</span>,
             csv: (r) => r.expires_at ?? "",
         },
         {
@@ -297,7 +297,7 @@ export default function DiscountsPage() {
             sortable: true,
             sortKey: "created_at",
             defaultHidden: true,
-            cell: (r) => <span className="text-xs text-muted-foreground">{fmtDate(r.created_at)}</span>,
+            cell: (r) => <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">{fmtDate(r.created_at)}</span>,
             csv: (r) => r.created_at,
         },
         {
@@ -305,44 +305,45 @@ export default function DiscountsPage() {
             header: "",
             align: "right",
             cell: (r) => (
-                <div className="flex justify-end gap-1 whitespace-nowrap">
+                <div className="flex justify-end gap-0.5 whitespace-nowrap">
                     <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="Redemptions"
                         onClick={(e) => {
                             e.stopPropagation();
                             setViewing(r);
                         }}
                         title="Redemptions"
                     >
-                        <Users className="size-3" />
+                        <Users className="size-3.5" />
                     </Button>
                     {canManage && (
                         <>
                             <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7"
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label="Edit"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setBuilder({ existing: r });
                                 }}
                                 title="Edit"
                             >
-                                <Pencil className="size-3" />
+                                <Pencil className="size-3.5" />
                             </Button>
                             <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-red-600 hover:bg-red-50"
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label="Delete"
+                                className="hover:bg-destructive/10 hover:text-destructive"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setDeleting(r);
                                 }}
                                 title="Delete"
                             >
-                                <Trash2 className="size-3" />
+                                <Trash2 className="size-3.5" />
                             </Button>
                         </>
                     )}
@@ -358,7 +359,7 @@ export default function DiscountsPage() {
                 description="Codes customers type at checkout or on their billing page. Warmbly validates the code and mints a matching one-off Stripe coupon per redemption, so codes are never created in the Stripe dashboard."
             >
                 {canManage && (
-                    <Button size="sm" className="h-8" onClick={() => setBuilder({ existing: null })}>
+                    <Button size="sm" onClick={() => setBuilder({ existing: null })}>
                         <Plus className="size-3.5" /> New code
                     </Button>
                 )}
@@ -491,8 +492,10 @@ export default function DiscountsPage() {
                 <Dialog open onOpenChange={(v) => !v && setDeleting(null)}>
                     <DialogContent className="sm:max-w-md">
                         <DialogHeader>
-                            <DialogTitle className="text-[13px]">Delete {deleting.code}?</DialogTitle>
-                            <DialogDescription className="text-[11px] leading-relaxed">
+                            <DialogTitle>
+                                Delete <span className="font-mono">{deleting.code}</span>?
+                            </DialogTitle>
+                            <DialogDescription className="leading-relaxed">
                                 Nobody will be able to redeem it again. Workspaces that already redeemed it
                                 keep their discount: the Stripe coupon was minted per redemption and is not
                                 affected. Disable the code instead if you only want to stop new redemptions
@@ -501,17 +504,14 @@ export default function DiscountsPage() {
                         </DialogHeader>
                         <DialogFooter>
                             <Button
-                                size="sm"
                                 variant="outline"
-                                className="h-8"
                                 onClick={() => setDeleting(null)}
                                 disabled={remove.isPending}
                             >
                                 Cancel
                             </Button>
                             <Button
-                                size="sm"
-                                className="h-8 bg-red-600 text-white hover:bg-red-700"
+                                variant="destructive"
                                 disabled={remove.isPending}
                                 onClick={() => remove.mutate(deleting.id)}
                             >

@@ -5,12 +5,14 @@
 // value.
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Search, Settings2 } from "lucide-react";
+import { ExternalLink, Lock, Search, Settings2, Terminal } from "lucide-react";
 import { ErrorState } from "@/components/ErrorState";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, StatusBadge } from "@/components/ui/kit";
+import type { Tone } from "@/lib/tones";
+import { SettingsGroup } from "./SettingsLayout";
 import { docsUrl } from "@/lib/docs";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -38,37 +40,37 @@ const GROUP_LABELS: Record<string, string> = {
 
 const GROUP_ORDER = Object.keys(GROUP_LABELS);
 
-const SOURCE_STYLES: Record<ConfigSource, { label: string; className: string; title: string }> = {
+const SOURCE_STYLES: Record<ConfigSource, { label: string; tone: Tone; title: string }> = {
     env: {
         label: "env",
-        className: "border-emerald-300 bg-emerald-50 text-emerald-700",
+        tone: "success",
         title: "Read from this process's environment.",
     },
     default: {
         label: "default",
-        className: "border-zinc-300 bg-zinc-50 text-zinc-600",
+        tone: "neutral",
         title: "No environment variable set, so the built-in default applies.",
     },
     derived: {
         label: "derived",
-        className: "border-sky-300 bg-sky-50 text-sky-700",
+        tone: "info",
         title: "Computed from other values rather than set directly.",
     },
     unset: {
         label: "unset",
-        className: "border-amber-300 bg-amber-50 text-amber-700",
+        tone: "warning",
         title: "Not set and there is no default: the feature it controls is off.",
     },
 };
 
-const RESTART_STYLES: Record<RuntimeChangeable, { label: string; className: string }> = {
+const RESTART_STYLES: Record<RuntimeChangeable, { label: string; tone: Tone }> = {
     "boot-only": {
         label: "Restart to change",
-        className: "border-zinc-300 bg-zinc-50 text-zinc-600",
+        tone: "neutral",
     },
     "per-request": {
         label: "Takes effect immediately",
-        className: "border-emerald-300 bg-emerald-50 text-emerald-700",
+        tone: "success",
     },
 };
 
@@ -130,26 +132,26 @@ export function EnvironmentTab({ onSwitchTab }: EnvironmentTabProps) {
 
     return (
         <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <p className="max-w-2xl text-sm text-muted-foreground">
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+                <p className="max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
                     Every value here comes from the environment of the running backend. Change it
                     where you set your environment, then restart. What can be edited in place
                     lives under Settings.
                 </p>
                 <Button size="sm" variant="outline" onClick={() => onSwitchTab?.("settings")}>
-                    <Settings2 className="size-4" />
+                    <Settings2 />
                     Instance settings
                 </Button>
             </div>
 
-            <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="mb-8 flex flex-wrap items-center gap-3">
                 <div className="relative w-full max-w-sm">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground" />
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search variables, groups or effects"
-                        className="h-8 pl-8 text-[12.5px]"
+                        className="pl-8"
                     />
                 </div>
                 {entries.length > 0 && (
@@ -160,9 +162,13 @@ export function EnvironmentTab({ onSwitchTab }: EnvironmentTabProps) {
             </div>
 
             {configQ.isLoading && (
-                <div className="space-y-3">
-                    <Skeleton className="h-40 w-full" />
-                    <Skeleton className="h-40 w-full" />
+                <div className="space-y-10">
+                    {[0, 1].map((i) => (
+                        <div key={i}>
+                            <Skeleton className="mb-3 h-4 w-28" />
+                            <Skeleton className="h-40 w-full rounded-lg" />
+                        </div>
+                    ))}
                 </div>
             )}
 
@@ -175,39 +181,32 @@ export function EnvironmentTab({ onSwitchTab }: EnvironmentTabProps) {
             )}
 
             {configQ.data && entries.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                    The backend returned no configuration entries.
+                <div className="rounded-lg border border-dashed border-border">
+                    <EmptyState icon={Terminal} title="The backend returned no configuration entries." />
                 </div>
             )}
 
             {configQ.data && entries.length > 0 && filtered.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                    No variable matches "{search.trim()}".
+                <div className="rounded-lg border border-dashed border-border">
+                    <EmptyState icon={Search} title={`No variable matches "${search.trim()}".`} />
                 </div>
             )}
 
-            <div className="space-y-4">
-                {groups.map(([group, groupEntries]) => (
-                    <section
-                        key={group}
-                        className="overflow-hidden rounded-lg border border-border bg-white"
-                    >
-                        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                {groupLabel(group)}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground tabular-nums">
-                                {groupEntries.length}
-                            </div>
-                        </div>
-                        <div className="divide-y divide-border">
-                            {groupEntries.map((entry) => (
-                                <ConfigRow key={entry.key} entry={entry} />
-                            ))}
-                        </div>
-                    </section>
-                ))}
-            </div>
+            {groups.map(([group, groupEntries]) => (
+                <SettingsGroup
+                    key={group}
+                    title={groupLabel(group)}
+                    actions={
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                            {groupEntries.length}
+                        </span>
+                    }
+                >
+                    {groupEntries.map((entry) => (
+                        <ConfigRow key={entry.key} entry={entry} />
+                    ))}
+                </SettingsGroup>
+            ))}
         </div>
     );
 }
@@ -218,18 +217,20 @@ function ConfigRow({ entry }: { entry: InstanceConfigEntry }) {
 
     return (
         // Anchored on the variable name so a check can deep-link to its row.
-        <div id={entry.key} className="scroll-mt-20 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-                <code className="text-[12.5px] font-semibold text-foreground">{entry.key}</code>
-                <Badge variant="outline" className={`text-[10px] ${source.className}`} title={source.title}>
-                    {source.label}
-                </Badge>
-                <Badge variant="outline" className={`text-[10px] ${restart.className}`}>
-                    {restart.label}
-                </Badge>
+        <div id={entry.key} className="scroll-mt-20 px-4 py-3.5 target:bg-[var(--admin-accent-weak)]">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                <code className="min-w-0 break-all font-mono text-[12.5px] font-medium text-foreground">
+                    {entry.key}
+                </code>
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge tone={source.tone} title={source.title}>
+                        {source.label}
+                    </StatusBadge>
+                    <StatusBadge tone={restart.tone}>{restart.label}</StatusBadge>
+                </div>
             </div>
 
-            <div className="mt-1.5">
+            <div className="mt-2">
                 {entry.sensitive ? (
                     <SensitiveValue entry={entry} />
                 ) : (
@@ -238,7 +239,7 @@ function ConfigRow({ entry }: { entry: InstanceConfigEntry }) {
             </div>
 
             {entry.effect && (
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">
                     {entry.effect}
                 </p>
             )}
@@ -262,10 +263,10 @@ function ConfigRow({ entry }: { entry: InstanceConfigEntry }) {
 // resolves without any environment variable being present.
 function PlainValue({ entry }: { entry: InstanceConfigEntry }) {
     if (entry.value === "") {
-        return <span className="text-xs text-muted-foreground">Not set</span>;
+        return <span className="text-xs text-subtle-foreground">Not set</span>;
     }
     return (
-        <code className="block break-all rounded bg-muted px-2 py-1 font-mono text-xs text-foreground">
+        <code className="block break-all rounded-md border border-border/70 bg-muted/60 px-2 py-1 font-mono text-xs text-foreground">
             {entry.value}
         </code>
     );
@@ -278,11 +279,12 @@ function SensitiveValue({ entry }: { entry: InstanceConfigEntry }) {
     // reliable "has a value" signal; source covers a backend that omits it.
     const resolved = entry.fingerprint !== "" || entry.source !== "unset";
     if (!resolved) {
-        return <span className="text-xs text-muted-foreground">Not set</span>;
+        return <span className="text-xs text-subtle-foreground">Not set</span>;
     }
     return (
         <span className="inline-flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/60 px-2 py-1 font-mono text-xs text-muted-foreground">
+                <Lock className="size-3 text-subtle-foreground" />
                 Set, value hidden
             </span>
             {entry.fingerprint && (

@@ -1,21 +1,42 @@
-// User detail — composes /admin/users/:id/preview into one screen.
-// Header is profile + status + action buttons; body shows orgs,
-// mailboxes, recent bans, and the rate-limit override block.
+// User detail: composes /admin/users/:id/preview into one screen. The main
+// column holds the profile, usage, orgs, mailboxes and ban history; the
+// right column holds the properties.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-    ArrowLeft,
     Ban,
+    Building2,
     CheckCircle2,
     Gauge,
+    Mail,
+    Megaphone,
+    MoreHorizontal,
     ShieldAlert,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+    Property,
+    PropertyList,
+    Section,
+    Stat,
+    StatGrid,
+    StatusBadge,
+    StatusDot,
+} from "@/components/ui/kit";
+import { ErrorState } from "@/components/ErrorState";
+import type { Tone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
 import {
     getUserBans,
     getUserPreview,
@@ -24,8 +45,25 @@ import type { UserBan } from "@/lib/api/models/admin";
 import { UserBanDialog } from "./UserBanDialog";
 import { UserRateLimitsDialog } from "./UserRateLimitsDialog";
 
+const CRUMBS = [{ label: "Users", to: "/users" }];
+
+function mailboxTone(status: string): Tone {
+    const s = status.toLowerCase();
+    if (s === "active") return "success";
+    if (/(error|block|ban|suspend|fail|revoked)/.test(s)) return "danger";
+    if (/(pause|pending|warn)/.test(s)) return "warning";
+    return "neutral";
+}
+
+function initialsOf(first: string, last: string, email: string): string {
+    const a = (first || "").trim()[0] ?? "";
+    const b = (last || "").trim()[0] ?? "";
+    return (a + b || email[0] || "?").toUpperCase();
+}
+
 export default function UserDetailPage() {
     const { id = "" } = useParams<{ id: string }>();
+    const nav = useNavigate();
     const [banDialog, setBanDialog] = useState<"ban" | "unban" | null>(null);
     const [rateLimitsOpen, setRateLimitsOpen] = useState(false);
 
@@ -45,10 +83,12 @@ export default function UserDetailPage() {
     if (previewQuery.error || !previewQuery.data) {
         return (
             <div>
-                <BackLink />
-                <div className="text-sm text-red-600 border border-red-200 bg-red-50 rounded-md p-3">
-                    Failed to load user.
-                </div>
+                <PageHeader breadcrumbs={CRUMBS} title="User" />
+                <ErrorState
+                    error={previewQuery.error}
+                    title="Failed to load user."
+                    onRetry={() => previewQuery.refetch()}
+                />
             </div>
         );
     }
@@ -63,209 +103,267 @@ export default function UserDetailPage() {
     const isAdmin = u.admin_permissions > 0;
     const fullName = `${u.first_name} ${u.last_name}`.trim() || u.email;
     const bans = bansQuery.data?.data ?? [];
+    const customLimits = !!preview.rate_limits?.updated_at;
+
+    const statusBadge = banned ? (
+        <StatusBadge tone="danger" dot>
+            Banned
+        </StatusBadge>
+    ) : (
+        <StatusBadge tone="success" dot>
+            Active
+        </StatusBadge>
+    );
 
     return (
         <div>
-            <BackLink />
-            <PageHeader title={fullName} description={u.email}>
-                <div className="flex items-center gap-1.5">
-                    {banned ? (
-                        <Badge
-                            variant="outline"
-                            className="text-[10px] border-red-300 text-red-700 bg-red-50"
-                        >
-                            banned
-                        </Badge>
-                    ) : (
-                        <Badge
-                            variant="outline"
-                            className="text-[10px] border-emerald-300 text-emerald-700 bg-emerald-50"
-                        >
-                            active
-                        </Badge>
-                    )}
-                    {isAdmin && (
-                        <Badge
-                            variant="outline"
-                            className="text-[10px] border-[var(--admin-accent)] text-[var(--admin-accent-strong)] bg-[color-mix(in_srgb,var(--admin-accent)_15%,transparent)]"
-                        >
-                            <ShieldAlert className="size-2.5" />
-                            admin
-                        </Badge>
-                    )}
-                </div>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setRateLimitsOpen(true)}
-                >
+            <PageHeader
+                breadcrumbs={CRUMBS}
+                title={fullName}
+                meta={
+                    <>
+                        {statusBadge}
+                        {isAdmin && (
+                            <StatusBadge tone="accent">
+                                <ShieldAlert className="size-3" />
+                                Admin
+                            </StatusBadge>
+                        )}
+                    </>
+                }
+            >
+                <Button size="sm" variant="outline" onClick={() => setRateLimitsOpen(true)}>
                     <Gauge className="size-3.5" />
                     Rate limits
                 </Button>
-                {!banned ? (
-                    <Button
-                        size="sm"
-                        onClick={() => setBanDialog("ban")}
-                        disabled={isAdmin}
-                        className="bg-red-600 hover:bg-red-700 text-white disabled:bg-zinc-300"
-                        title={isAdmin ? "Cannot ban admin users" : undefined}
-                    >
-                        <Ban className="size-3.5" />
-                        Ban
-                    </Button>
-                ) : (
-                    <Button
-                        size="sm"
-                        onClick={() => setBanDialog("unban")}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                        <CheckCircle2 className="size-3.5" />
+                {banned && (
+                    <Button size="sm" variant="outline" onClick={() => setBanDialog("unban")}>
+                        <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                         Unban
                     </Button>
                 )}
+                <DropdownMenu modal={false}>
+                    <DropdownMenuTrigger asChild>
+                        <Button size="icon-sm" variant="ghost" aria-label="More actions">
+                            <MoreHorizontal className="size-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                        <DropdownMenuItem onSelect={() => setRateLimitsOpen(true)}>
+                            <Gauge />
+                            Edit rate limits
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {banned ? (
+                            <DropdownMenuItem onSelect={() => setBanDialog("unban")}>
+                                <CheckCircle2 />
+                                Unban user
+                            </DropdownMenuItem>
+                        ) : (
+                            <DropdownMenuItem
+                                variant="destructive"
+                                disabled={isAdmin}
+                                onSelect={() => setBanDialog("ban")}
+                            >
+                                <Ban />
+                                Ban user
+                                {isAdmin && (
+                                    <span className="ml-auto text-xs text-subtle-foreground">Admin</span>
+                                )}
+                            </DropdownMenuItem>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </PageHeader>
 
-            <div className="grid gap-4 md:grid-cols-3 mb-6">
-                <SummaryCard title="Stats">
-                    <Row label="Organizations" value={u.organization_count} />
-                    <Row label="Mailboxes" value={u.email_account_count} />
-                    <Row label="Campaigns" value={u.campaign_count} />
-                </SummaryCard>
-                <SummaryCard title="Lifecycle">
-                    <Row label="Joined" value={new Date(u.created_at).toLocaleDateString()} />
-                    <Row label="Updated" value={new Date(u.updated_at).toLocaleDateString()} />
-                    {u.banned_at && (
-                        <Row
-                            label="Banned"
-                            value={new Date(u.banned_at).toLocaleDateString()}
-                            tone="text-red-700"
-                        />
-                    )}
-                </SummaryCard>
-                <SummaryCard title="Trial">
-                    <Row
-                        label="Free trial used"
-                        value={u.free_trial_used ? "yes" : "no"}
-                    />
-                    <Row label="Max orgs" value={u.max_organizations} />
-                </SummaryCard>
-            </div>
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-10">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-3">
+                        <span
+                            aria-hidden
+                            className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted text-[13px] font-semibold text-muted-foreground"
+                        >
+                            {initialsOf(u.first_name, u.last_name, u.email)}
+                        </span>
+                        <div className="min-w-0">
+                            <div className="truncate text-[18px] leading-6 font-semibold tracking-[-0.01em] text-foreground">
+                                {fullName}
+                            </div>
+                            <div className="truncate text-[13px] text-muted-foreground">{u.email}</div>
+                        </div>
+                    </div>
 
-            <section className="mt-6">
-                <h2 className="text-sm font-semibold mb-2">
-                    Organizations
-                    <span className="text-muted-foreground font-normal ml-1.5">
-                        ({organizations.length})
-                    </span>
-                </h2>
-                {organizations.length === 0 ? (
-                    <Empty label="Not a member of any workspace." />
-                ) : (
-                    <div className="border border-border rounded-lg overflow-hidden bg-card">
-                        <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                                <tr>
-                                    <th className="text-left px-3 py-2 font-medium">Name</th>
-                                    <th className="text-left px-3 py-2 font-medium">Slug</th>
-                                    <th className="text-left px-3 py-2 font-medium">Role</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                    <StatGrid className="mt-6 grid-cols-3 md:grid-cols-3">
+                        <Stat label="Organizations" icon={Building2} value={u.organization_count} />
+                        <Stat label="Mailboxes" icon={Mail} value={u.email_account_count} />
+                        <Stat label="Campaigns" icon={Megaphone} value={u.campaign_count} />
+                    </StatGrid>
+
+                    <Section title={<Count label="Organizations" n={organizations.length} />}>
+                        {organizations.length === 0 ? (
+                            <Empty label="Not a member of any workspace." />
+                        ) : (
+                            <Table headers={["Name", "Slug", "Role"]}>
                                 {organizations.map((o) => {
                                     const isOwner = o.owner_user_id === u.id;
                                     return (
-                                        <tr key={o.id} className="border-t border-border hover:bg-muted/30">
-                                            <td className="px-3 py-2">
+                                        <tr
+                                            key={o.id}
+                                            onClick={() => nav(`/organizations/${o.id}`)}
+                                            className={cn(ROW, "cursor-pointer")}
+                                        >
+                                            <td className="py-2 pr-3 pl-4">
                                                 <Link
                                                     to={`/organizations/${o.id}`}
-                                                    className="text-[var(--admin-accent-strong)] hover:underline font-medium"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="font-medium text-foreground hover:underline"
                                                 >
                                                     {o.name}
                                                 </Link>
                                             </td>
-                                            <td className="px-3 py-2 text-xs text-muted-foreground font-mono">
+                                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                                                 {o.slug ?? "—"}
                                             </td>
-                                            <td className="px-3 py-2 text-xs">
+                                            <td className="py-2 pr-4 pl-3">
                                                 {isOwner ? (
-                                                    <span className="text-amber-700">owner</span>
+                                                    <StatusBadge tone="accent">Owner</StatusBadge>
                                                 ) : (
-                                                    <span className="text-muted-foreground">member</span>
+                                                    <span className="text-muted-foreground">Member</span>
                                                 )}
                                             </td>
                                         </tr>
                                     );
                                 })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </section>
+                            </Table>
+                        )}
+                    </Section>
 
-            <section className="mt-6">
-                <h2 className="text-sm font-semibold mb-2">
-                    Mailboxes
-                    <span className="text-muted-foreground font-normal ml-1.5">
-                        ({mailboxes.length})
-                    </span>
-                </h2>
-                {mailboxes.length === 0 ? (
-                    <Empty label="No mailboxes connected." />
-                ) : (
-                    <div className="border border-border rounded-lg overflow-hidden bg-card">
-                        <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                                <tr>
-                                    <th className="text-left px-3 py-2 font-medium">Email</th>
-                                    <th className="text-left px-3 py-2 font-medium">Provider</th>
-                                    <th className="text-left px-3 py-2 font-medium">Status</th>
-                                    <th className="text-left px-3 py-2 font-medium">Warmup</th>
-                                    <th className="text-left px-3 py-2 font-medium">Last sync</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                    <Section title={<Count label="Mailboxes" n={mailboxes.length} />}>
+                        {mailboxes.length === 0 ? (
+                            <Empty label="No mailboxes connected." />
+                        ) : (
+                            <Table headers={["Email", "Provider", "Status", "Warmup", "Last sync"]}>
                                 {mailboxes.map((a) => (
-                                    <tr key={a.id} className="border-t border-border">
-                                        <td className="px-3 py-2 font-mono text-xs">{a.email}</td>
-                                        <td className="px-3 py-2 text-xs">{a.provider}</td>
-                                        <td className="px-3 py-2 text-xs">{a.status}</td>
-                                        <td className="px-3 py-2 text-xs">
+                                    <tr key={a.id} className={ROW}>
+                                        <td className="py-2 pr-3 pl-4 font-mono text-xs text-foreground">{a.email}</td>
+                                        <td className="px-3 py-2 text-muted-foreground">{a.provider}</td>
+                                        <td className="px-3 py-2">
+                                            <StatusBadge tone={mailboxTone(a.status)} dot>
+                                                {a.status}
+                                            </StatusBadge>
+                                        </td>
+                                        <td className="px-3 py-2">
                                             {a.warmup_enabled ? (
-                                                <span className="text-emerald-600">on</span>
+                                                <StatusDot tone="success">On</StatusDot>
                                             ) : (
-                                                <span className="text-muted-foreground">off</span>
+                                                <StatusDot tone="neutral" className="text-muted-foreground">
+                                                    Off
+                                                </StatusDot>
                                             )}
                                         </td>
-                                        <td className="px-3 py-2 text-xs text-muted-foreground">
-                                            {a.last_synced_at
-                                                ? new Date(a.last_synced_at).toLocaleString()
-                                                : "—"}
+                                        <td className="py-2 pr-4 pl-3 text-muted-foreground tabular-nums">
+                                            {a.last_synced_at ? new Date(a.last_synced_at).toLocaleString() : "—"}
                                         </td>
                                     </tr>
                                 ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </section>
+                            </Table>
+                        )}
+                    </Section>
 
-            <section className="mt-6">
-                <h2 className="text-sm font-semibold mb-2">
-                    Ban history
-                    {bans.length > 0 && (
-                        <span className="text-muted-foreground font-normal ml-1.5">
-                            ({bans.length})
-                        </span>
-                    )}
-                </h2>
-                {bansQuery.isLoading ? (
-                    <Skeleton className="h-24 w-full" />
-                ) : bans.length === 0 ? (
-                    <Empty label="No bans on record." />
-                ) : (
-                    <BanList bans={bans} />
-                )}
-            </section>
+                    <Section title={<Count label="Ban history" n={bans.length || undefined} />}>
+                        {bansQuery.isLoading ? (
+                            <Skeleton className="h-24 w-full" />
+                        ) : bans.length === 0 ? (
+                            <Empty label="No bans on record." />
+                        ) : (
+                            <BanList bans={bans} />
+                        )}
+                    </Section>
+
+                    <Section title="Danger zone">
+                        <div className="flex flex-col gap-3 rounded-lg border border-red-500/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <div className="text-[13px] font-medium text-foreground">
+                                    {banned ? "Lift the ban" : "Ban this user"}
+                                </div>
+                                <div className="text-[12.5px] text-muted-foreground">
+                                    {banned
+                                        ? "Restores access within the scopes the ban removed."
+                                        : isAdmin
+                                          ? "Cannot ban admin users."
+                                          : "Blocks login, workspace creation or sending, depending on scope."}
+                                </div>
+                            </div>
+                            {banned ? (
+                                <Button size="sm" variant="outline" onClick={() => setBanDialog("unban")}>
+                                    <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                                    Unban
+                                </Button>
+                            ) : (
+                                <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => setBanDialog("ban")}
+                                    disabled={isAdmin}
+                                    title={isAdmin ? "Cannot ban admin users" : undefined}
+                                >
+                                    <Ban className="size-3.5" />
+                                    Ban
+                                </Button>
+                            )}
+                        </div>
+                    </Section>
+                </div>
+
+                <aside className="order-first lg:order-none lg:sticky lg:top-16 lg:self-start lg:border-l lg:border-border lg:pl-6">
+                    <div className="mb-1 text-xs font-medium text-muted-foreground">Properties</div>
+                    <PropertyList>
+                        <Property label="Status">{statusBadge}</Property>
+                        <Property label="Role">
+                            {isAdmin ? (
+                                <span className="inline-flex items-center gap-1.5">
+                                    <ShieldAlert className="size-3.5 text-[var(--admin-accent-strong)]" />
+                                    Admin
+                                </span>
+                            ) : (
+                                <span className="text-muted-foreground">User</span>
+                            )}
+                        </Property>
+                        <Property label="Joined">
+                            <span className="tabular-nums">{new Date(u.created_at).toLocaleDateString()}</span>
+                        </Property>
+                        <Property label="Updated">
+                            <span className="tabular-nums">{new Date(u.updated_at).toLocaleDateString()}</span>
+                        </Property>
+                        {u.banned_at && (
+                            <Property label="Banned">
+                                <span className="tabular-nums text-red-600 dark:text-red-400">
+                                    {new Date(u.banned_at).toLocaleDateString()}
+                                </span>
+                            </Property>
+                        )}
+                        <Property label="Free trial used">{u.free_trial_used ? "Yes" : "No"}</Property>
+                        <Property label="Max orgs">
+                            <span className="tabular-nums">{u.max_organizations}</span>
+                        </Property>
+                        <Property label="Rate limits">
+                            <button
+                                type="button"
+                                onClick={() => setRateLimitsOpen(true)}
+                                className="-mx-1 rounded px-1 text-left transition-colors hover:bg-accent"
+                            >
+                                {customLimits ? "Custom" : "Defaults"}
+                            </button>
+                        </Property>
+                    </PropertyList>
+                    <div className="mt-3 border-t border-border pt-3">
+                        <div className="text-xs text-muted-foreground">User ID</div>
+                        <div className="mt-0.5 font-mono text-[11.5px] break-all text-subtle-foreground select-all">
+                            {u.id}
+                        </div>
+                    </div>
+                </aside>
+            </div>
 
             <UserBanDialog
                 userId={u.id}
@@ -285,56 +383,45 @@ export default function UserDetailPage() {
     );
 }
 
-function BackLink() {
+const ROW = "h-10 border-b border-border/70 last:border-b-0 transition-colors hover:bg-accent/50";
+
+function Count({ label, n }: { label: string; n?: number }) {
     return (
-        <Link
-            to="/users"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2"
-        >
-            <ArrowLeft className="size-3" /> Back to users
-        </Link>
+        <span className="inline-flex items-baseline gap-1.5">
+            {label}
+            {n !== undefined && <span className="font-normal tabular-nums text-muted-foreground">{n}</span>}
+        </span>
     );
 }
 
-function SummaryCard({
-    title,
-    children,
-}: {
-    title: string;
-    children: React.ReactNode;
-}) {
+function Table({ headers, children }: { headers: string[]; children: ReactNode }) {
     return (
-        <div className="border border-border rounded-lg p-3 bg-card">
-            <div className="text-[10px] uppercase text-muted-foreground tracking-wider mb-1">
-                {title}
-            </div>
-            <div className="space-y-1 text-sm">{children}</div>
-        </div>
-    );
-}
-
-function Row({
-    label,
-    value,
-    tone,
-}: {
-    label: string;
-    value: React.ReactNode;
-    tone?: string;
-}) {
-    return (
-        <div className="flex justify-between items-baseline">
-            <span className="text-xs text-muted-foreground">{label}</span>
-            <span className={`text-sm font-medium tabular-nums ${tone ?? ""}`}>
-                {value}
-            </span>
+        <div className="overflow-x-auto surface-lit rounded-xl border border-border bg-card">
+            <table className="w-full text-[13px]">
+                <thead>
+                    <tr className="h-9 border-b border-border text-left text-xs text-muted-foreground">
+                        {headers.map((h, i) => (
+                            <th
+                                key={h}
+                                className={cn(
+                                    "font-medium whitespace-nowrap",
+                                    i === 0 ? "pr-3 pl-4" : i === headers.length - 1 ? "pr-4 pl-3" : "px-3",
+                                )}
+                            >
+                                {h}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>{children}</tbody>
+            </table>
         </div>
     );
 }
 
 function Empty({ label }: { label: string }) {
     return (
-        <div className="text-sm text-muted-foreground border border-border rounded-md p-4 bg-card">
+        <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-[13px] text-muted-foreground">
             {label}
         </div>
     );
@@ -342,57 +429,55 @@ function Empty({ label }: { label: string }) {
 
 function BanList({ bans }: { bans: UserBan[] }) {
     return (
-        <div className="border border-border rounded-lg overflow-hidden bg-card">
-            <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                    <tr>
-                        <th className="text-left px-3 py-2 font-medium">Banned</th>
-                        <th className="text-left px-3 py-2 font-medium">By</th>
-                        <th className="text-left px-3 py-2 font-medium">Reason</th>
-                        <th className="text-left px-3 py-2 font-medium">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {bans.map((b) => (
-                        <tr key={b.id} className="border-t border-border">
-                            <td className="px-3 py-2 text-xs text-muted-foreground">
-                                {new Date(b.banned_at).toLocaleString()}
-                            </td>
-                            <td className="px-3 py-2 text-xs">
-                                {b.banned_by_user?.email ?? b.banned_by}
-                            </td>
-                            <td className="px-3 py-2 text-xs">{b.reason}</td>
-                            <td className="px-3 py-2 text-xs">
-                                {b.unbanned_at ? (
-                                    <span className="text-emerald-600">
-                                        lifted {new Date(b.unbanned_at).toLocaleDateString()}
-                                    </span>
-                                ) : (
-                                    <span className="text-red-700">active</span>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+        <Table headers={["Banned", "By", "Reason", "Status"]}>
+            {bans.map((b) => (
+                <tr key={b.id} className={ROW}>
+                    <td className="py-2 pr-3 pl-4 whitespace-nowrap text-muted-foreground tabular-nums">
+                        {new Date(b.banned_at).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2">{b.banned_by_user?.email ?? b.banned_by}</td>
+                    <td className="px-3 py-2">{b.reason}</td>
+                    <td className="py-2 pr-4 pl-3">
+                        {b.unbanned_at ? (
+                            <StatusBadge tone="success">
+                                Lifted {new Date(b.unbanned_at).toLocaleDateString()}
+                            </StatusBadge>
+                        ) : (
+                            <StatusBadge tone="danger" dot>
+                                Active
+                            </StatusBadge>
+                        )}
+                    </td>
+                </tr>
+            ))}
+        </Table>
     );
 }
 
 function DetailSkeleton() {
     return (
         <div>
-            <BackLink />
-            <Skeleton className="h-8 w-64 mb-2" />
-            <Skeleton className="h-4 w-80 mb-6" />
-            <div className="grid gap-4 md:grid-cols-3 mb-6">
-                {Array.from({ length: 3 }).map((_, i) => (
-                    <Skeleton key={i} className="h-24 w-full" />
-                ))}
+            <PageHeader breadcrumbs={CRUMBS} title={<span className="inline-block h-4 w-36 animate-pulse rounded-md bg-muted align-middle" />} />
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-10">
+                <div>
+                    <div className="flex items-center gap-3">
+                        <Skeleton className="size-10 rounded-full" />
+                        <div className="space-y-1.5">
+                            <Skeleton className="h-5 w-48" />
+                            <Skeleton className="h-3.5 w-64" />
+                        </div>
+                    </div>
+                    <Skeleton className="mt-6 h-[84px] w-full rounded-lg" />
+                    <Skeleton className="mt-8 h-32 w-full rounded-lg" />
+                    <Skeleton className="mt-8 h-32 w-full rounded-lg" />
+                    <Skeleton className="mt-8 h-24 w-full rounded-lg" />
+                </div>
+                <div className="space-y-3 lg:border-l lg:border-border lg:pl-6">
+                    {Array.from({ length: 7 }).map((_, i) => (
+                        <Skeleton key={i} className="h-4 w-full" />
+                    ))}
+                </div>
             </div>
-            <Skeleton className="h-32 w-full mb-4" />
-            <Skeleton className="h-32 w-full mb-4" />
-            <Skeleton className="h-24 w-full" />
         </div>
     );
 }

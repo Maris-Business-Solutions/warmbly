@@ -5,6 +5,7 @@ import { SearchPicker } from "../fleet/SearchPicker";
 import { searchUsers } from "@/lib/api/client/admin/users";
 import type { AdminUserDetail } from "@/lib/api/models/admin";
 import { userName } from "../fleet/format";
+import { StatusBadge } from "@/components/ui/kit";
 
 export type PickedUser = Pick<AdminUserDetail, "id" | "email" | "first_name" | "last_name" | "admin_permissions">;
 
@@ -31,17 +32,19 @@ export function UserPicker({
                 <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                         <div className="truncate font-medium text-foreground">{userName(u)}</div>
-                        <div className="truncate text-[11px] text-muted-foreground">{u.email}</div>
+                        <div className="truncate text-xs text-muted-foreground">{u.email}</div>
                     </div>
                     {u.admin_permissions > 0 && (
-                        <span className="shrink-0 text-[10px] uppercase tracking-wider text-[var(--admin-accent-strong)]">admin</span>
+                        <StatusBadge tone="accent" className="h-[18px] px-1.5 text-[11px]">
+                            Admin
+                        </StatusBadge>
                     )}
                 </div>
             )}
             renderSelected={(u) => (
                 <div className="truncate">
                     <span className="font-medium">{userName(u)}</span>
-                    <span className="ml-1.5 text-[11px] text-muted-foreground">{u.email}</span>
+                    <span className="ml-1.5 text-xs text-muted-foreground">{u.email}</span>
                 </div>
             )}
         />

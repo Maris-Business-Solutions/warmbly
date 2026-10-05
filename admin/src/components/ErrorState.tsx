@@ -30,17 +30,17 @@ export function ErrorState({ error, title = "Couldn’t load this", onRetry, cla
     ].filter(Boolean) as string[];
 
     return (
-        <div className={cn("rounded-lg border border-red-200 bg-red-50 p-4", className)}>
+        <div className={cn("rounded-lg border border-red-500/20 bg-red-500/[0.06] p-4", className)}>
             <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600" />
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" />
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-red-800">{title}</div>
-                    <p className="mt-0.5 text-[13px] leading-relaxed text-red-700 break-words">{message}</p>
+                    <div className="text-[13px] font-medium text-foreground">{title}</div>
+                    <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground break-words">{message}</p>
                     {meta.length > 0 && (
-                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-red-600/80 select-text">
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-subtle-foreground select-text">
                             {meta.map((m, i) => (
                                 <span key={m} className="inline-flex items-center gap-2">
-                                    {i > 0 && <span className="text-red-300">·</span>}
+                                    {i > 0 && <span className="opacity-50">·</span>}
                                     {m}
                                 </span>
                             ))}
@@ -51,7 +51,7 @@ export function ErrorState({ error, title = "Couldn’t load this", onRetry, cla
                             size="sm"
                             variant="outline"
                             onClick={onRetry}
-                            className="mt-3 h-7 gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-100"
+                            className="mt-3"
                         >
                             <RotateCw className="size-3.5" />
                             Retry
