@@ -52,7 +52,7 @@ type FleetNode struct {
 	Notes string    `json:"notes"`
 
 	// Region is the sign-in geography hint placement scores on. Address is the
-	// public IPv4 the control plane observes, with the node report as fallback.
+	// public IPv4 reported by the node, never a proxy observed by the control plane.
 	Region  string `json:"region"`
 	Address string `json:"address"`
 	// CapacityTarget is the machine's operator-set assigned-mailbox target.
@@ -92,6 +92,11 @@ type NodeUsage struct {
 	MemoryMB      *int     `json:"memory_mb,omitempty"`
 	Goroutines    *int     `json:"goroutines,omitempty"`
 	UptimeSeconds *int64   `json:"uptime_seconds,omitempty"`
+	CPUScope      string   `json:"cpu_scope,omitempty"`
+	MemoryScope   string   `json:"memory_scope,omitempty"`
+	MemoryUsedMB  *int     `json:"memory_used_mb,omitempty"`
+	MemoryLimitMB *int     `json:"memory_limit_mb,omitempty"`
+	ResidentMB    *int     `json:"resident_mb,omitempty"`
 }
 
 // Live reports whether the node has beaten recently enough to be given work.

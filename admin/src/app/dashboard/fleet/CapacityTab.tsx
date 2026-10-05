@@ -9,40 +9,28 @@ import { DataTable, type Column } from "@/components/data/DataTable";
 import { StateLegend } from "@/components/StateLegend";
 import { WORKER_HEALTH_LEGEND } from "@/lib/legends";
 import { getFleetCapacity, type AdminFleetWorkerRow } from "@/lib/api/client/admin/fleet";
-import { TONE_DOT, TONE_TEXT } from "@/lib/tones";
+import { TONE_TEXT } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import { HealthPill, LiveDot } from "./tones";
-import { fmtAgo } from "./format";
+import { fmtAgo, resourceCSV } from "./format";
+import { ResourceUsage } from "./ResourceUsage";
 
-function UtilizationBar({ row }: { row: AdminFleetWorkerRow }) {
+function MailboxTarget({ row }: { row: AdminFleetWorkerRow }) {
     const u = row.utilization ?? 0;
-    const pct = Math.max(0, Math.min(100, Math.round(u * 100)));
-    const hot = u > 0.8;
-    const cold = u < 0.5;
+    const pct = Math.max(0, Math.round(u * 100));
     return (
         <div className="min-w-[160px]">
             <div className="flex items-center justify-between text-xs tabular-nums">
                 <span className="text-foreground">
-                    {row.load_score.toFixed(0)}
+                    {row.account_count.toLocaleString()}
                     <span className="text-subtle-foreground"> / {row.effective_capacity.toFixed(0)}</span>
                 </span>
                 <span
-                    className={cn(
-                        "font-medium",
-                        hot ? TONE_TEXT.danger : cold ? "text-muted-foreground" : TONE_TEXT.success,
-                    )}
+                    className="text-muted-foreground"
+                    title="Assigned mailboxes relative to the planning target, not CPU or RAM saturation"
                 >
-                    {pct}%
+                    {pct}% of plan
                 </span>
-            </div>
-            <div className="mt-1 h-1 overflow-hidden rounded-full bg-border">
-                <div
-                    className={cn(
-                        "h-full rounded-full",
-                        hot ? TONE_DOT.danger : cold ? "bg-subtle-foreground/50" : TONE_DOT.success,
-                    )}
-                    style={{ width: `${pct}%` }}
-                />
             </div>
         </div>
     );
@@ -65,7 +53,9 @@ function Count({ n, warnAbove = 0 }: { n: number; warnAbove?: number }) {
     );
 }
 
-const columns: Column<AdminFleetWorkerRow>[] = [
+type FleetAnalyticsRow = AdminFleetWorkerRow & { mailboxShare: number | null; sendShare: number | null };
+
+const columns: Column<FleetAnalyticsRow>[] = [
     {
         id: "name",
         header: "Worker",
@@ -79,10 +69,15 @@ const columns: Column<AdminFleetWorkerRow>[] = [
                 >
                     {w.name || w.worker_id.slice(0, 8)}
                 </Link>
-                <div className="font-mono text-[11px] text-subtle-foreground">{w.ip_addr}</div>
             </div>
         ),
         csv: (w) => w.name || w.worker_id,
+    },
+    {
+        id: "ip",
+        header: "Public IPv4",
+        cell: (w) => <span className="font-mono text-xs">{w.ip_addr || "Unavailable"}</span>,
+        csv: (w) => w.ip_addr,
     },
     {
         id: "region",
@@ -94,6 +89,7 @@ const columns: Column<AdminFleetWorkerRow>[] = [
                 <span className="text-subtle-foreground">—</span>
             ),
         csv: (w) => w.region,
+        defaultHidden: true,
     },
     { id: "health", header: "Health", cell: (w) => <HealthPill state={w.health_state} />, csv: (w) => w.health_state },
     {
@@ -104,7 +100,7 @@ const columns: Column<AdminFleetWorkerRow>[] = [
     },
     {
         id: "accounts",
-        header: "Accounts",
+        header: "Mailboxes",
         align: "right",
         sortable: true,
         cell: (w) => <span className="tabular-nums">{w.account_count}</span>,
@@ -112,11 +108,17 @@ const columns: Column<AdminFleetWorkerRow>[] = [
     },
     {
         id: "utilization",
-        header: "Load / target",
+        header: "Mailbox target",
         sortable: true,
-        cell: (w) => <UtilizationBar row={w} />,
-        csv: (w) => `${w.load_score.toFixed(0)}/${w.effective_capacity.toFixed(0)} (${Math.round(w.utilization * 100)}%)`,
+        cell: (w) => <MailboxTarget row={w} />,
+        csv: (w) => `${w.account_count}/${w.effective_capacity.toFixed(0)} (${Math.round(w.utilization * 100)}% of plan)`,
     },
+    { id: "cpu", header: "CPU", align: "right", cell: (w) => <ResourceUsage usage={w.usage} kind="cpu" live={w.live} />, csv: (w) => resourceCSV(w.usage, "cpu", w.live) },
+    { id: "memory", header: "RAM", align: "right", cell: (w) => <ResourceUsage usage={w.usage} kind="memory" live={w.live} />, csv: (w) => resourceCSV(w.usage, "memory", w.live) },
+    { id: "resident", header: "Process RAM", align: "right", cell: (w) => <ResourceUsage usage={w.usage} kind="resident" live={w.live} />, csv: (w) => w.live ? w.usage?.resident_mb ?? "" : "stale" },
+    { id: "mailboxShare", header: "Mailbox share", align: "right", cell: (w) => <span className="tabular-nums" title="Share of all mailboxes assigned across the fleet">{w.mailboxShare == null ? "N/A" : `${w.mailboxShare.toFixed(1)}%`}</span>, csv: (w) => w.mailboxShare?.toFixed(1) ?? "" },
+    { id: "sendShare", header: "Send share 60m", align: "right", cell: (w) => <span className="tabular-nums" title="Share of all provider send attempts in the rolling last 60 minutes">{w.sendShare == null ? "No attempts" : `${w.sendShare.toFixed(1)}%`}</span>, csv: (w) => w.sendShare?.toFixed(1) ?? "", defaultHidden: true },
+    { id: "successRate", header: "Send success 60m", align: "right", cell: (w) => <span className="tabular-nums" title="Successful provider handoffs / attempts, not inbox placement or delivery rate">{w.sends_attempted_1h === 0 ? "No attempts" : `${(w.sends_succeeded_1h / w.sends_attempted_1h * 100).toFixed(1)}%`}</span>, csv: (w) => w.sends_attempted_1h === 0 ? "" : (w.sends_succeeded_1h / w.sends_attempted_1h * 100).toFixed(1), defaultHidden: true },
     {
         id: "sends",
         header: "Send activity 60m",
@@ -146,9 +148,11 @@ const columns: Column<AdminFleetWorkerRow>[] = [
         align: "right",
         cell: (w) => <Pair a={w.bounces_hard_1h} b={w.bounces_soft_1h} tone={w.bounces_hard_1h > 0 ? cn("font-medium", TONE_TEXT.danger) : "text-foreground"} />,
         csv: (w) => `${w.bounces_hard_1h} hard / ${w.bounces_soft_1h} soft`,
+        defaultHidden: true,
     },
-    { id: "complaints", header: "Complaints 1h", align: "right", cell: (w) => <Count n={w.complaints_1h} />, csv: (w) => w.complaints_1h },
-    { id: "auth", header: "Auth errors 1h", align: "right", cell: (w) => <Count n={w.auth_errors_1h} />, csv: (w) => w.auth_errors_1h },
+    { id: "complaints", header: "Complaints 1h", align: "right", cell: (w) => <Count n={w.complaints_1h} />, csv: (w) => w.complaints_1h, defaultHidden: true },
+    { id: "auth", header: "Auth errors 1h", align: "right", cell: (w) => <Count n={w.auth_errors_1h} />, csv: (w) => w.auth_errors_1h, defaultHidden: true },
+    { id: "seen", header: "Last heartbeat", cell: (w) => w.last_seen_at ? <span title={new Date(w.last_seen_at).toLocaleString()}>{fmtAgo(w.last_seen_at)}</span> : "Never", csv: (w) => w.last_seen_at ?? "", defaultHidden: true },
     {
         id: "tags",
         header: "Tags",
@@ -192,31 +196,32 @@ export function CapacityTab() {
 
     const rows = useMemo(() => {
         const all = data?.data ?? [];
-        return sort.by ? [...all].sort((a, b) => compare(a, b, sort.by) * (sort.desc ? -1 : 1)) : all;
+        const mailboxes = all.reduce((sum, row) => sum + row.account_count, 0);
+        const attempts = all.reduce((sum, row) => sum + row.sends_attempted_1h, 0);
+        const enriched = all.map((row) => ({ ...row, mailboxShare: mailboxes ? row.account_count / mailboxes * 100 : null, sendShare: attempts ? row.sends_attempted_1h / attempts * 100 : null }));
+        return sort.by ? enriched.sort((a, b) => compare(a, b, sort.by) * (sort.desc ? -1 : 1)) : enriched;
     }, [data, sort]);
 
-    const hot = rows.filter((r) => r.utilization > 0.8).length;
-    const cold = rows.filter((r) => r.utilization < 0.5).length;
+    const live = rows.filter((r) => r.live).length;
+    const mailboxes = rows.reduce((sum, row) => sum + row.account_count, 0);
 
     return (
         <div>
             <div className="mb-4 flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
                 <p className="max-w-3xl text-[12.5px] leading-relaxed text-muted-foreground">
-                    Placement spreads assigned mailboxes across live workers. The target is an operator-set
-                    planning value, not a mailbox-provider send limit. New nodes fill gradually without
-                    shrinking the displayed target. Send counters show succeeded / attempted during the
-                    rolling last 60 minutes. “No attempts” is activity, not a capacity reading.
+                    Mailbox targets guide placement, not machine saturation or provider send limits.
+                    CPU and RAM are measured independently, labeled container or host. Process RAM is
+                    the worker's resident memory. Unavailable means not measured; stale means no fresh heartbeat.
+                    Shares show each worker's portion of fleet mailboxes and send attempts. Send counters
+                    cover the rolling last 60 minutes, not inbox placement.
                 </p>
                 <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
                     {rows.length > 0 && (
                         <span className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
-                            <StatusDot tone={hot > 0 ? "danger" : "neutral"} className="text-xs">
-                                {hot} hot
-                            </StatusDot>
                             <StatusDot tone="neutral" className="text-xs">
-                                {cold} cold
+                                {live} / {rows.length} live
                             </StatusDot>
-                            <span>of {rows.length}</span>
+                            <span>{mailboxes.toLocaleString()} mailboxes</span>
                         </span>
                     )}
                     <StateLegend label="Health states" entries={WORKER_HEALTH_LEGEND} />

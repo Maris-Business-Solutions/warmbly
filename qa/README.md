@@ -142,6 +142,25 @@ Recording against a stack the harness did not start is possible but explicit:
 whatever happens to answer on the default ports, which is usually another
 session's stack.
 
+## Fleet admin proof fixtures
+
+`flows/fleet-telemetry.flow.ts` is opt-in: apply `fixtures/fleet-telemetry.sql`
+to this worktree's isolated rich-seed database immediately before recording.
+It deliberately makes the capacity view stale while current worker rows hold
+the planning counts. All addresses, readings and send counters are synthetic.
+
+The lite stack serves the customer dashboard. Start `admin/` separately with
+`VITE_API_URL` pointing to this stack's API, and set `QA_WEB_URL` to its localhost
+origin. The seeded session needs view-workers permission (16), verified admin
+MFA, and the token JSON stored as `warmbly_admin_token` at that origin. These
+are local authentication fixtures, not MFA proof. Invalidate the seeded user's
+and session's isolated Redis cache entries after SQL permission/session changes.
+Never use production accounts, tokens or databases.
+
+Run `QA_FLEET_FIXTURES=1 pnpm proof fleet-telemetry` in `qa/`. Stop the additional
+admin server as well as the stack afterward. This proof does not validate real
+worker sampling, network egress, mail delivery or inbox placement.
+
 ## Writing a flow
 
 Flows live in `flows/<area>.flow.ts`, one `test` per walkthrough. Extend the

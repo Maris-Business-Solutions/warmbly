@@ -423,7 +423,7 @@ Keep the copies private. GeoLite2 may not be redistributed, which is also why no
 |---|---|---|---|
 | `WORKER_ID` | Stable uuid for this worker. Leave unset when running scaled replicas, which share one environment | derived, then random | yes |
 | `WORKER_BIND_IP` | Source address to bind outbound connections to, and the seed for a derived `WORKER_ID` | unset | yes |
-| `WORKER_PUBLIC_IP` | Public IPv4 fallback reported by the worker. The control plane uses the address observed on the heartbeat when it is public | detected | yes |
+| `WORKER_PUBLIC_IP` | Public IPv4 reported by the worker, never replaced by the backend-observed address, which may be a reverse proxy. Otherwise the node discovers HTTPS egress IPv4 using `api.ipify.org` every ten minutes. Set this explicitly when mail and HTTPS have different egress routes | detected | yes |
 | `WARMBLY_WORKER_CAPACITY` | Assigned-mailbox planning target for this worker. This guides placement and is not a mailbox-provider send limit | `100` | yes |
 | `WARMBLY_NODE_REGION` | Free-form label for where this node egresses from, e.g. `eu-central`. Placement prefers a worker near where a mailbox's provider expects sign-ins; unset scores neutral. Written by the join script from `--region` | unset | yes |
 | `ENCRYPTED_KEYS_BACKEND_URL` | Backend base the worker fetches organization keys from | unset | yes |
