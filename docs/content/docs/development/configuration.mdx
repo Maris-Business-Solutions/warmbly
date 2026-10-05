@@ -488,7 +488,9 @@ WARMBLY_GMAIL_OAUTH_CONNECT=true
 
 Both dashboards point `WARMBLY_API_URL` at the same API and set `WARMBLY_APP_URL` to their own dashboard URL. Containers generate `/config.js` at startup, so no second image is needed. Cloudflare Pages renders it during `build:pages`; set the variable on the intended Pages project and redeploy.
 
-On the shared backend, keep `APP_URL` as the primary dashboard and add both exact dashboard origins to `CORS_ALLOW_ORIGINS`, for example `https://app.example.com,https://assessment.example.com`. A Google mailbox connect or reauthorization binds the request's browser origin to its server-side, single-use OAuth state. The callback posts only to that allowlisted origin, and a popup without an opener returns to its `/oauth-return` page. Wildcards are not accepted as OAuth return origins. Google's registered mailbox redirect URI stays on the same API.
+On the shared backend, keep `APP_URL` as the primary dashboard and add both exact dashboard origins to `CORS_ALLOW_ORIGINS`, for example `https://app.example.com,https://assessment.example.com`. Google and Microsoft mailbox connects, reauthorization, whole-domain administrator grants, integration OAuth and Slack identity verification bind the initiating browser origin to their server-side OAuth state. The callback posts only to that allowlisted origin, and a popup without an opener returns to its `/oauth-return` page. Missing, expired or consumed routing state shows a retry notice instead of forwarding a code to another dashboard. Valid legacy states without an origin still use the primary dashboard. Wildcards are not accepted as OAuth return origins. Provider-registered callback URIs stay on the same API.
+
+Email/password login, OTP/2FA, signup, logout and ordinary dashboard navigation use local routes. Password-reset and invitation emails initiated from an allowlisted dashboard link back to that dashboard. Stripe checkout, credit top-ups, billing portal and warmup-plan returns use the initiating dashboard and retain safe same-origin paths. Referral share links use that dashboard's signup page too. Requests without a trusted browser origin use the primary dashboard.
 
 For Warmbly's hosted assessment dashboard, the shared backend needs both of these origins:
 
@@ -498,6 +500,16 @@ CORS_ALLOW_ORIGINS=https://app.warmbly.com,https://tac-security-assessment.warmb
 ```
 
 This is an environment example, not a built-in allowlist. Preserve any other existing origins, such as the admin dashboard: append `https://tac-security-assessment.warmbly.com` to the current `CORS_ALLOW_ORIGINS` value rather than replacing the list. On Railway, update the backend service's variable and redeploy it; changing the frontend variable or merging code does not update the live backend environment. Keep `APP_URL` and `APP_ORIGIN` pointing at the primary dashboard, not the assessment dashboard. The assessment frontend sets `WARMBLY_APP_URL=https://tac-security-assessment.warmbly.com` and `WARMBLY_GMAIL_OAUTH_CONNECT=true`.
+
+Before giving assessors access:
+
+- Set the assessment frontend's `WARMBLY_API_URL` to the shared API, and use an exact `WARMBLY_APP_URL` origin without a trailing slash.
+- Allow the assessment hostname on the existing Cloudflare Turnstile widget. A widget restricted to `app.warmbly.com` does not cover its sibling assessment hostname. Keep CAPTCHA enabled.
+- Append the assessment origin to the realtime service's `CHECK_ORIGIN_HOSTS`, preserving its existing origins. The API origin allowlist does not configure websocket origin checks.
+- For password-only assessor accounts, use **Admin > Testers**. These accounts are exempt from the emailed login-code step, but still use CAPTCHA and existing permission checks. Accounts with 2FA enabled still need their second factor.
+- Keep the existing `WEBAUTHN_RP_ID` unchanged. An `app.warmbly.com` passkey RP ID cannot serve a sibling assessment hostname, and changing it invalidates existing credentials. Reviewers can use email/password; passkey support across both hosts needs a separate migration decision.
+
+This is not a global rewrite of every primary-dashboard link. Dashboard Google/Apple/OIDC login remains primary-dashboard routed; assessment reviewers should use email/password. Server-generated notifications, Slack-launched links, CLI/bootstrap links and self-hosted Cloud broker returns retain their canonical instance routing. Cloud broker return origins remain bound to the registered instance, not the hosted assessment dashboard.
 
 Existing Google OAuth mailboxes can still re-authorize with the frontend flag off. App-password and SMTP/IMAP options stay available. When linked to Warmbly Cloud, Google consent is brokered by Cloud rather than the local backend, but the frontend opt-in is still required.
 

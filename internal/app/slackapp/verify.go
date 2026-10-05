@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 )
@@ -35,9 +36,24 @@ type LinkProof struct {
 }
 
 type verifyState struct {
-	CodeHash string    `json:"h"`
-	UserID   uuid.UUID `json:"u"`
-	Nonce    string    `json:"n"`
+	CodeHash     string    `json:"h"`
+	UserID       uuid.UUID `json:"u"`
+	Nonce        string    `json:"n"`
+	ReturnOrigin string    `json:"return_origin,omitempty"`
+}
+
+func (s *Service) OAuthReturnOrigin(ctx context.Context, state string) string {
+	if s.guard == nil {
+		return ""
+	}
+	var st verifyState
+	if json.Unmarshal([]byte(s.guard.get(ctx, verifyKey(state))), &st) != nil {
+		return ""
+	}
+	if st.ReturnOrigin == "" {
+		return config.PrimaryDashboardOrigin()
+	}
+	return config.DashboardOrigin(st.ReturnOrigin)
 }
 
 func verifyKey(state string) string { return "slack:link:verify:" + state }
@@ -84,7 +100,7 @@ func (s *Service) StartLinkVerify(ctx context.Context, userID uuid.UUID, code st
 	if err != nil {
 		return "", errx.InternalError()
 	}
-	blob, _ := json.Marshal(verifyState{CodeHash: hex.EncodeToString(hashLinkCode(code)), UserID: userID, Nonce: nonce})
+	blob, _ := json.Marshal(verifyState{CodeHash: hex.EncodeToString(hashLinkCode(code)), UserID: userID, Nonce: nonce, ReturnOrigin: config.DashboardOriginFromContext(ctx)})
 	s.guard.put(ctx, verifyKey(state), string(blob), verifyStateTTL)
 
 	clientID, _ := s.integ.SlackOAuthClient()

@@ -52,7 +52,7 @@ func (h *Handler) StartEmailOAuth(c *gin.Context) {
 	}
 
 	returnOrigin := ""
-	if req.Provider == string(models.InboxProviderGoogle) && req.Return == "web" {
+	if req.Return == "web" {
 		returnOrigin = c.GetHeader("Origin")
 	}
 	resp, xerr := h.EmailService.OAuthStart(c.Request.Context(), userID, orgID, models.InboxProvider(req.Provider), req.LoginHint, req.Return == "web", returnOrigin)

@@ -3,8 +3,45 @@ package config
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestDashboardEmailLinks(t *testing.T) {
+	t.Setenv("APP_URL", "https://app.warmbly.com")
+	t.Setenv("APP_ORIGIN", "")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://app.warmbly.com,https://tac-security-assessment.warmbly.com")
+	for _, tt := range []struct{ origin, want string }{
+		{"https://tac-security-assessment.warmbly.com", "https://tac-security-assessment.warmbly.com"},
+		{"https://app.warmbly.com", "https://app.warmbly.com"},
+		{"", "https://app.warmbly.com"},
+		{"https://evil.example.com", "https://app.warmbly.com"},
+	} {
+		ctx := WithDashboardOrigin(context.Background(), tt.origin)
+		if got := DashboardBaseURL(ctx); got != tt.want {
+			t.Errorf("dashboard base for %q = %q", tt.origin, got)
+		}
+		for _, got := range []string{GetPasswordResetURL("token&next=evil", DashboardOriginFromContext(ctx)), GetInviteURL("token&next=evil", DashboardOriginFromContext(ctx))} {
+			if !strings.HasPrefix(got, tt.want+"/") || !strings.HasSuffix(got, "token%26next%3Devil") {
+				t.Errorf("email URL for %q = %q", tt.origin, got)
+			}
+		}
+	}
+}
+
+func TestPrimaryDashboardOriginAndRevalidation(t *testing.T) {
+	t.Setenv("APP_URL", "https://app.warmbly.com/")
+	t.Setenv("APP_ORIGIN", "")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://tac-security-assessment.warmbly.com")
+	if got := PrimaryDashboardOrigin(); got != "https://app.warmbly.com" {
+		t.Fatalf("primary origin = %q", got)
+	}
+	ctx := WithDashboardOrigin(context.Background(), "https://tac-security-assessment.warmbly.com")
+	t.Setenv("CORS_ALLOW_ORIGINS", "*")
+	if DashboardOriginFromContext(ctx) != "" || DashboardBaseURL(ctx) != "https://app.warmbly.com" {
+		t.Fatal("removed origin must not remain trusted")
+	}
+}
 
 func TestSharedBackendDashboardOrigins(t *testing.T) {
 	t.Setenv("APP_URL", "https://app.warmbly.com")

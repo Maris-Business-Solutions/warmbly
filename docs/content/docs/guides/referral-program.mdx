@@ -16,10 +16,12 @@ The referral page lives under **Settings, Referral** and requires the **Manage b
 Open **Settings, Referral** in the dashboard. Warmbly mints one referral code per workspace the first time you visit, and the page shows it along with a ready-to-share link in the form:
 
 ```
-https://app.warmbly.com/register?ref=CODE
+https://app.warmbly.com/auth/register?ref=CODE
 ```
 
 Copy the link and send it to anyone you want to refer. When they open it, the code is captured automatically and carried through sign-up, so they do not have to type or remember anything.
+
+On a trusted secondary dashboard sharing the backend, the share link uses that dashboard's hostname. A request without a trusted dashboard origin uses the instance's default share address.
 
 The same page shows your running totals: how many people have signed up with your code, how many converted to a paid plan, and how much credit you have earned so far.
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"net"
 	"net/url"
 	"os"
@@ -51,6 +52,39 @@ func DashboardOrigin(value string) string {
 	return ""
 }
 
+type dashboardOriginKey struct{}
+
+func PrimaryDashboardOrigin() string {
+	if origin := DashboardOrigin(strings.TrimSpace(os.Getenv("APP_ORIGIN"))); origin != "" {
+		return origin
+	}
+	u, err := url.Parse(AppBaseURL())
+	if err != nil || u.User != nil {
+		return ""
+	}
+	return DashboardOrigin(u.Scheme + "://" + u.Host)
+}
+
+func WithDashboardOrigin(ctx context.Context, origin string) context.Context {
+	return context.WithValue(ctx, dashboardOriginKey{}, DashboardOrigin(origin))
+}
+
+func DashboardOriginFromContext(ctx context.Context) string {
+	origin, _ := ctx.Value(dashboardOriginKey{}).(string)
+	return DashboardOrigin(origin)
+}
+
+func dashboardBaseURL(origin string) string {
+	if trusted := DashboardOrigin(origin); trusted != "" {
+		return trusted
+	}
+	return AppBaseURL()
+}
+
+func DashboardBaseURL(ctx context.Context) string {
+	return dashboardBaseURL(DashboardOriginFromContext(ctx))
+}
+
 // inferredAppBaseURL reconstructs the dashboard origin from the rest of the
 // deployment's own configuration. CORS_ALLOW_ORIGINS is exact when it is set
 // (the dashboard is the first origin the browser calls the API from);
@@ -96,15 +130,13 @@ func WebsocketURL() string {
 	return v
 }
 
-func GetPasswordResetURL(sessionToken string) string {
-	return AppBaseURL() + "/auth/reset-password/confirm?session=" + url.QueryEscape(sessionToken)
+func GetPasswordResetURL(sessionToken, origin string) string {
+	return dashboardBaseURL(origin) + "/auth/reset-password/confirm?session=" + url.QueryEscape(sessionToken)
 }
 
-// GetInviteURL is the team-invitation accept link. Same reasoning as the reset
-// URL: the dashboard's own copy-link button already used the browser origin, so
-// only the emailed variant was broken on self-host.
-func GetInviteURL(token string) string {
-	return AppBaseURL() + "/invite?token=" + url.QueryEscape(token)
+// GetInviteURL uses a trusted initiating dashboard, or the primary dashboard.
+func GetInviteURL(token, origin string) string {
+	return dashboardBaseURL(origin) + "/invite?token=" + url.QueryEscape(token)
 }
 
 // FormsBaseURL is the origin hosted form pages are served from: FORMS_DOMAIN,

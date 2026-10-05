@@ -69,8 +69,12 @@ func (s *emailService) OAuthReturnOrigin(ctx context.Context, state string) stri
 		return ""
 	}
 	var data models.EmailOnboardingState
-	if json.Unmarshal(raw, &data) != nil || data.Nonce != state || data.Provider != string(models.InboxProviderGoogle) {
+	if json.Unmarshal(raw, &data) != nil || data.Nonce != state ||
+		(data.Provider != string(models.InboxProviderGoogle) && data.Provider != string(models.InboxProviderOutlook)) {
 		return ""
+	}
+	if data.ReturnOrigin == "" {
+		return config.PrimaryDashboardOrigin()
 	}
 	return config.DashboardOrigin(data.ReturnOrigin)
 }

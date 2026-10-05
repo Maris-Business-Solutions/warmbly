@@ -17,6 +17,7 @@ import (
 
 	"github.com/warmbly/warmbly/internal/api/middleware"
 	"github.com/warmbly/warmbly/internal/app/integration"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/pubsub"
 	"github.com/warmbly/warmbly/internal/models"
@@ -298,9 +299,16 @@ func (h *Handler) IntegrationOAuthCallback(c *gin.Context) {
 	// must not be able to read the code out of it. Falling back to "*" when the
 	// origin is unconfigured would reinstate exactly that, so an unconfigured
 	// origin delivers nothing instead.
-	origin, relay := callbackTargetOrigin(), callbackRelayURL()
-	if relay == "" {
-		origin = ""
+	origin, relay := "", ""
+	if h.IntegrationService != nil {
+		origin = h.IntegrationService.OAuthReturnOrigin(c.Request.Context(), payload["state"])
+	}
+	if origin == "" && h.SlackService != nil {
+		origin = h.SlackService.OAuthReturnOrigin(c.Request.Context(), payload["state"])
+	}
+	origin = config.DashboardOrigin(origin)
+	if origin != "" {
+		relay = origin + "/oauth-return"
 	}
 	originBlob, _ := json.Marshal(origin)
 	relayBlob, _ := json.Marshal(relay)
@@ -341,6 +349,7 @@ func (h *Handler) IntegrationOAuthCallback(c *gin.Context) {
 	c.Header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	c.Header("Cross-Origin-Opener-Policy", "unsafe-none")
 	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("Cache-Control", "no-store")
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.String(http.StatusOK, html)
 }

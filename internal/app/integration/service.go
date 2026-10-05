@@ -23,6 +23,7 @@ import (
 	"github.com/warmbly/warmbly/internal/app/cipher"
 	"github.com/warmbly/warmbly/internal/app/credits"
 	"github.com/warmbly/warmbly/internal/app/webhook"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/pubsub"
 	"github.com/warmbly/warmbly/internal/models"
@@ -60,6 +61,7 @@ type Service interface {
 	// OAuthStart returns the provider authorization URL for a one-click connect.
 	// params carries provider options (Salesforce: "environment", "domain").
 	OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provider models.IntegrationProvider, label string, params map[string]string) (*models.IntegrationOAuthStartResponse, error)
+	OAuthReturnOrigin(ctx context.Context, state string) string
 	// OAuthFinish completes the handshake: validates state, exchanges the code,
 	// resolves the account identity, and persists encrypted tokens. authorize
 	// runs against the state's organization before the code is exchanged.
@@ -477,6 +479,9 @@ func (s *service) OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provi
 		return nil, ErrOAuthNotConfigured
 	}
 	stParams := map[string]string{}
+	if origin := config.DashboardOriginFromContext(ctx); origin != "" {
+		stParams["return_origin"] = origin
+	}
 	loginHost := ""
 	if provider == models.IntegrationSalesforce {
 		in := params["domain"]
@@ -517,6 +522,17 @@ func (s *service) OAuthStart(ctx context.Context, orgID, userID uuid.UUID, provi
 		return nil, err
 	}
 	return &models.IntegrationOAuthStartResponse{URL: authURL, State: state}, nil
+}
+
+func (s *service) OAuthReturnOrigin(ctx context.Context, state string) string {
+	origin, err := s.repo.OAuthReturnOrigin(ctx, state)
+	if err != nil {
+		return ""
+	}
+	if origin == "" {
+		return config.PrimaryDashboardOrigin()
+	}
+	return config.DashboardOrigin(origin)
 }
 
 func (s *service) OAuthFinish(ctx context.Context, userID uuid.UUID, code, state string, authorize func(ctx context.Context, orgID uuid.UUID) error) (*models.IntegrationConnection, error) {

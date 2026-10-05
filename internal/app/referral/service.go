@@ -211,8 +211,12 @@ func (s *service) EnsureCode(ctx context.Context, ownerUserID, ownerOrgID uuid.U
 	return nil, errx.New(errx.Internal, "failed to mint a unique referral code")
 }
 
-func (s *service) shareURL(code string) string {
-	return s.shareBase + "/register?ref=" + code
+func (s *service) shareURL(ctx context.Context, code string) string {
+	base := s.shareBase
+	if origin := config.DashboardOriginFromContext(ctx); origin != "" {
+		base = origin
+	}
+	return base + "/auth/register?ref=" + code
 }
 
 func (s *service) Summary(ctx context.Context, ownerUserID, ownerOrgID uuid.UUID) (*models.ReferralSummary, *errx.Error) {
@@ -234,7 +238,7 @@ func (s *service) Summary(ctx context.Context, ownerUserID, ownerOrgID uuid.UUID
 
 	sum := &models.ReferralSummary{
 		Code:              code.Code,
-		ShareURL:          s.shareURL(code.Code),
+		ShareURL:          s.shareURL(ctx, code.Code),
 		Currency:          DefaultCurrency,
 		InviteePercentOff: InviteePercentOff,
 		InviteeMonths:     InviteeMonths,

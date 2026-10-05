@@ -90,7 +90,7 @@ type callbackData struct {
 }
 
 // callbackNoOriginNotice is shown instead of handing a code to an opener whose origin is unknown.
-const callbackNoOriginNotice = "This instance has no dashboard address configured, so the sign-in cannot be handed back. Ask the operator to set APP_URL, then try again."
+const callbackNoOriginNotice = "This sign-in has expired or has no trusted dashboard address. Close this window and start again from your dashboard. If it keeps happening, ask the operator to check APP_URL and the dashboard origin allowlist."
 
 // callbackTargetOrigin is the one origin an authorization code is posted to:
 // APP_ORIGIN when set, else the origin of APP_URL. Empty delivers nothing.
@@ -170,10 +170,17 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 		Web:            isDashboardState(state),
 		NoOriginNotice: callbackNoOriginNotice,
 	}
-	if provider == "gmail" && email.IsWebState(state) && h.EmailService != nil {
-		if origin := h.EmailService.OAuthReturnOrigin(c.Request.Context(), state); origin != "" && config.DashboardOrigin(origin) != "" {
-			data.AppOrigin = origin
-			data.Relay = origin + "/oauth-return"
+	if data.Web {
+		origin := ""
+		if email.IsWebState(state) && h.EmailService != nil {
+			origin = h.EmailService.OAuthReturnOrigin(c.Request.Context(), state)
+		} else if h.DelegationService != nil {
+			origin = h.DelegationService.OAuthReturnOrigin(c.Request.Context(), state)
+		}
+		data.AppOrigin = config.DashboardOrigin(origin)
+		data.Relay = ""
+		if data.AppOrigin != "" {
+			data.Relay = data.AppOrigin + "/oauth-return"
 		}
 	}
 	if strings.HasPrefix(state, delegation.GoogleStatePrefix) {

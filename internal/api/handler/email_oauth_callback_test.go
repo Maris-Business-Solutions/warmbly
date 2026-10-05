@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/warmbly/warmbly/internal/app/email"
+	"github.com/warmbly/warmbly/internal/app/integration"
 )
 
 type returnOriginService struct {
@@ -23,37 +24,37 @@ func (s *returnOriginService) OAuthReturnOrigin(_ context.Context, state string)
 	return s.origin
 }
 
-func TestGoogleCallbackUsesStateBoundDashboard(t *testing.T) {
+func TestMailboxCallbacksUseStateBoundDashboard(t *testing.T) {
 	t.Setenv("APP_URL", "https://app.warmbly.com")
 	t.Setenv("APP_ORIGIN", "")
 	t.Setenv("CORS_ALLOW_ORIGINS", "https://app.warmbly.com,https://tac-security-assessment.warmbly.com")
 	for _, tt := range []struct{ name, origin, want string }{
 		{"assessment", "https://tac-security-assessment.warmbly.com", "https://tac-security-assessment.warmbly.com"},
 		{"primary dashboard", "https://app.warmbly.com", "https://app.warmbly.com"},
-		{"legacy state", "", "https://app.warmbly.com"},
-		{"untrusted origin", "https://evil.example.com", "https://app.warmbly.com"},
+		{"missing or expired state", "", ""},
+		{"untrusted origin", "https://evil.example.com", ""},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
-			svc := &returnOriginService{origin: tt.origin}
-			h := &Handler{EmailService: svc}
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
-			c.Request = httptest.NewRequest(http.MethodGet, "/addresses/google/callback?code=c&state=w.nonce", nil)
-			h.EmailOAuthCallbackGmail(c)
-			body := w.Body.String()
-			if w.Code != http.StatusOK || svc.state != "w.nonce" || !strings.Contains(body, `var origin = "`+tt.want+`"`) || !strings.Contains(body, `var relay = "`+tt.want+`/oauth-return"`) {
-				t.Fatalf("callback did not use the expected state-bound target: %d %s", w.Code, body)
-			}
-			if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("Cache-Control") != "no-store" {
-				t.Fatal("callback must not leak through referrers or caches")
-			}
-		})
-	}
-	// Microsoft remains on its existing primary-dashboard routing.
-	svc := &returnOriginService{origin: "https://tac-security-assessment.warmbly.com"}
-	w := callbackRecorder(t, &Handler{EmailService: svc}, "code=c&state=w.nonce")
-	if svc.state != "" || !strings.Contains(w.Body.String(), `var relay = "https://app.warmbly.com/oauth-return"`) {
-		t.Fatal("Google callback routing must not change Microsoft OAuth")
+		for _, provider := range []string{"gmail", "outlook"} {
+			t.Run(tt.name+"/"+provider, func(t *testing.T) {
+				svc := &returnOriginService{origin: tt.origin}
+				h := &Handler{EmailService: svc}
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Request = httptest.NewRequest(http.MethodGet, "/addresses/google/callback?code=c&state=w.nonce", nil)
+				h.renderOAuthCallback(c, provider)
+				body := w.Body.String()
+				relay := ""
+				if tt.want != "" {
+					relay = tt.want + "/oauth-return"
+				}
+				if w.Code != http.StatusOK || svc.state != "w.nonce" || !strings.Contains(body, `var origin = "`+tt.want+`"`) || !strings.Contains(body, `var relay = "`+relay+`"`) {
+					t.Fatalf("callback did not use the expected state-bound target: %d %s", w.Code, body)
+				}
+				if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("Cache-Control") != "no-store" {
+					t.Fatal("callback must not leak through referrers or caches")
+				}
+			})
+		}
 	}
 }
 
@@ -82,15 +83,15 @@ func TestOutlookAdminApprovalReturnIsAStandalonePage(t *testing.T) {
 
 var webFlag = regexp.MustCompile(`var web =\s*true\s*;`)
 
-// A dashboard sign-in without an opener returns to the dashboard; the native app's still gets its scheme.
-func TestCallbackReturnsDashboardFlowsToTheDashboard(t *testing.T) {
+// Unknown dashboard state never forwards codes; native callbacks retain their scheme.
+func TestCallbackRefusesUnknownDashboardState(t *testing.T) {
 	t.Setenv("APP_ORIGIN", "")
 	t.Setenv("APP_URL", "https://app.acme.io/")
 	h := &Handler{}
 	for _, state := range []string{"w.abc", "gac_abc", "mac_abc"} {
 		w := callbackRecorder(t, h, "code=c&state="+state)
 		body := w.Body.String()
-		if !strings.Contains(body, `var relay = "https://app.acme.io/oauth-return"`) || !webFlag.MatchString(body) {
+		if !strings.Contains(body, `var relay = ""`) || !webFlag.MatchString(body) || strings.Contains(body, `https://app.acme.io/oauth-return`) {
 			t.Fatalf("state %s page = %s", state, body)
 		}
 		if w.Header().Get("Referrer-Policy") != "no-referrer" {
@@ -103,11 +104,35 @@ func TestCallbackReturnsDashboardFlowsToTheDashboard(t *testing.T) {
 	}
 }
 
-func TestIntegrationCallbackReturnsToTheDashboardWithoutAnOpener(t *testing.T) {
+type integrationReturnOriginService struct {
+	integration.Service
+	origin string
+}
+
+func (s *integrationReturnOriginService) OAuthReturnOrigin(_ context.Context, _ string) string {
+	return s.origin
+}
+
+func TestIntegrationCallbackUsesStateBoundDashboard(t *testing.T) {
 	t.Setenv("APP_ORIGIN", "")
 	t.Setenv("APP_URL", "https://app.acme.io")
-	body := serve(t, (&Handler{}).IntegrationOAuthCallback, "/cb?state=s&code=c").Body.String()
-	if !strings.Contains(body, `var relay = "https://app.acme.io/oauth-return"`) || !strings.Contains(body, "source=integration") {
-		t.Fatalf("integration page = %s", body)
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://tac-security-assessment.warmbly.com")
+	for _, origin := range []string{"https://app.acme.io", "https://tac-security-assessment.warmbly.com", "https://evil.example.com", ""} {
+		h := &Handler{IntegrationService: &integrationReturnOriginService{origin: origin}}
+		w := serve(t, h.IntegrationOAuthCallback, "/cb?state=s&code=c")
+		want := origin
+		if origin == "https://evil.example.com" {
+			want = ""
+		}
+		relay := ""
+		if want != "" {
+			relay = want + "/oauth-return"
+		}
+		if !strings.Contains(w.Body.String(), `var origin = "`+want+`"`) || !strings.Contains(w.Body.String(), `var relay = "`+relay+`"`) || !strings.Contains(w.Body.String(), "source=integration") {
+			t.Fatalf("integration origin %q page = %s", origin, w.Body.String())
+		}
+		if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("integration callback must not leak through referrers or caches")
+		}
 	}
 }

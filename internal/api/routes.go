@@ -298,6 +298,7 @@ func Run(
 	}
 
 	r.Use(cors.New(corsConfig))
+	r.Use(middleware.DashboardOriginMiddleware())
 
 	// Limit request body size to 10MB to prevent OOM. The contact file uploads
 	// apply their own, larger cap in the handler before reading.

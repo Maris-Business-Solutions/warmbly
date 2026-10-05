@@ -36,9 +36,7 @@ func (s *emailService) OAuthReauth(ctx context.Context, userID string, orgID *uu
 	}
 
 	provider := models.InboxProvider(account.Provider)
-	if provider != models.InboxProviderGoogle {
-		returnOrigin = ""
-	} else if returnOrigin != "" && config.DashboardOrigin(returnOrigin) == "" {
+	if returnOrigin != "" && config.DashboardOrigin(returnOrigin) == "" {
 		return nil, errx.ErrEmailOnboardReturnOrigin
 	}
 	if provider == models.InboxProviderSMTPIMAP {
