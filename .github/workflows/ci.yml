@@ -39,6 +39,7 @@ jobs:
       ios: ${{ steps.filter.outputs.ios }}
       installer: ${{ steps.filter.outputs.installer }}
       cli-installer: ${{ steps.filter.outputs.cli-installer }}
+      pages: ${{ steps.filter.outputs.pages }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -97,6 +98,24 @@ jobs:
               - 'site/public/cli.ps1'
               - 'scripts/check-cli-installer.sh'
               - 'scripts/build-cli.sh'
+            pages:
+              - '.github/scripts/pages-production-config*'
+              - '.github/workflows/release.yml'
+              - '.github/workflows/ci.yml'
+              - 'web/docker-entrypoint.sh'
+
+  pages-ci:
+    name: Pages release configuration
+    needs: changes
+    if: needs.changes.outputs.pages == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check production configuration import
+        run: node --test .github/scripts/pages-production-config.test.mjs
 
   migrations-ci:
     name: Migrations
@@ -519,7 +538,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [changes, migrations-ci, go-ci, web-ci, qa-ci, admin-ci, site-ci, forms-ci, installer-ci, cli-installer-ci, make-ci, rust-ci, elixir-ci, ios-ci, frontend-images]
+    needs: [changes, migrations-ci, go-ci, web-ci, qa-ci, admin-ci, site-ci, forms-ci, installer-ci, cli-installer-ci, make-ci, rust-ci, elixir-ci, ios-ci, frontend-images, pages-ci]
     if: always()
     steps:
       - name: Check CI status
