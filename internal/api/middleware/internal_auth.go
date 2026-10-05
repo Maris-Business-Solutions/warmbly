@@ -88,6 +88,42 @@ func (h *Handler) NodeAuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+// nodeUpdateOnlyKey marks a heartbeat that authenticated with INTERNAL_API_TOKEN where NODE_BROKER_TOKEN is required.
+const nodeUpdateOnlyKey = "node_update_only"
+
+// NodeHeartbeatAuthMiddleware guards the heartbeat like NodeAuthMiddleware, but
+// admits INTERNAL_API_TOKEN as update-only so a node on an older release can
+// always learn the version that sends NODE_BROKER_TOKEN.
+func (h *Handler) NodeHeartbeatAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		brokerTokenOnce.Do(loadBrokerToken)
+		shared := []byte(os.Getenv("INTERNAL_API_TOKEN"))
+		if os.Getenv("NODE_ACCEPT_INTERNAL_TOKEN") == "true" {
+			checkNodeToken(c, brokerToken, shared)
+			return
+		}
+		if len(shared) > 0 && subtle.ConstantTimeCompare(shared, brokerToken) != 1 && bearerIs(c, shared) {
+			c.Set(nodeUpdateOnlyKey, true)
+			c.Next()
+			return
+		}
+		checkNodeToken(c, brokerToken, nil)
+	}
+}
+
+// IsNodeUpdateOnly reports whether the heartbeat may only be told its version, not recorded.
+func IsNodeUpdateOnly(c *gin.Context) bool {
+	return c.GetBool(nodeUpdateOnlyKey)
+}
+
+func bearerIs(c *gin.Context, token []byte) bool {
+	header := c.GetHeader("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(header, "Bearer ")), token) == 1
+}
+
 func checkNodeToken(c *gin.Context, token, legacy []byte) {
 	if len(token) == 0 {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "internal auth not configured"})
