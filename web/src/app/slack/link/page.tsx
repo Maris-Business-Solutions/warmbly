@@ -139,11 +139,11 @@ function SlackLinkInner() {
                         </motion.div>
                     </AnimatePresence>
                 </motion.div>
-                <div className="theme-solid mt-5 flex items-center justify-center gap-3 text-[12px] text-white/70">
+                <div className="theme-solid mt-5 flex items-center justify-center gap-3 text-[12px] text-white/90">
                     <Link to="/app/integrations" className="hover:text-white transition-colors">
                         Back to dashboard
                     </Link>
-                    <span className="text-white/40">·</span>
+                    <span className="text-white/60">·</span>
                     <a href="https://docs.warmbly.com/guides/slack/#link-your-slack-account" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
                         How linking works
                     </a>
@@ -226,7 +226,7 @@ function Review({ p, connecting, verifying, onConnect, onVerify }: { p: SlackLin
                         disabled={busy}
                         className="w-full h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-900 text-[14px] font-medium inline-flex items-center justify-center gap-2.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        {verifying ? <Loader2Icon className="w-4 h-4 animate-spin text-slate-500" /> : <ProviderGlyph provider="slack" name="Slack" size={7} />}
+                        <span aria-hidden="true" className="inline-flex">{verifying ? <Loader2Icon className="w-4 h-4 animate-spin text-slate-500" /> : <ProviderGlyph provider="slack" name="Slack" size={7} />}</span>
                         Continue with Slack
                     </button>
                 )}
@@ -239,7 +239,7 @@ function Review({ p, connecting, verifying, onConnect, onVerify }: { p: SlackLin
                 </p>
             </div>
 
-            <p className="mt-6 text-center text-[11.5px] text-slate-400">This link works once and expires at {expires}.</p>
+            <p className="mt-6 text-center text-[11.5px] text-slate-500">This link works once and expires at {expires}.</p>
         </div>
     );
 }
@@ -252,7 +252,7 @@ function Account({ glyph, label, title, sub }: { glyph: React.ReactNode; label: 
                 <div className="text-[13.5px] font-medium text-slate-900 truncate">{title}</div>
                 <div className="text-[12px] text-slate-500 truncate">{sub}</div>
             </div>
-            <span className="shrink-0 text-[10.5px] uppercase tracking-[0.14em] font-medium text-slate-400">{label}</span>
+            <span className="shrink-0 text-[10.5px] uppercase tracking-[0.14em] font-medium text-slate-500">{label}</span>
         </div>
     );
 }
