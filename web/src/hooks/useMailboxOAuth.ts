@@ -19,7 +19,7 @@ import { finishCloudOAuth, startCloudOAuth } from "@/lib/api/client/app/cloudlin
 import type { CloudOAuthDoneMessage } from "@/app/cloud-oauth/done/page";
 import { capture } from "@/lib/productAnalytics";
 import useCloudPool from "@/hooks/useCloudPool";
-import { closePopup, navigatePopup, notifyPopupBlocked, reservePopup } from "@/lib/popup";
+import { BLOCKED_WAIT_MS, closePopup, navigatePopup, notifyPopupBlocked, reservePopup } from "@/lib/popup";
 
 export type MailboxOAuthProvider = "gmail" | "outlook";
 
@@ -83,6 +83,9 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     // A consent running on Warmbly Cloud's app; redeemed by session, not code.
     const pendingCloud = React.useRef<{ provider: MailboxOAuthProvider; session: string } | null>(null);
     const popupRef = React.useRef<Window | null>(null);
+    // A sign-in nobody finishes stops being honoured after BLOCKED_WAIT_MS.
+    const expiry = React.useRef<number | undefined>(undefined);
+    React.useEffect(() => () => window.clearTimeout(expiry.current), []);
 
     // The listeners read the latest callbacks without re-subscribing on every render.
     const optionsRef = React.useRef(options);
@@ -201,6 +204,13 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     // leaves the pending state listening: one the person allows from the
     // address bar still finishes, and the button is free to try again.
     const launch = React.useCallback((reserved: Window | null, url: string, name: string) => {
+        const s = pendingState.current;
+        const c = pendingCloud.current;
+        window.clearTimeout(expiry.current);
+        expiry.current = window.setTimeout(() => {
+            if (pendingState.current === s) pendingState.current = null;
+            if (pendingCloud.current === c) pendingCloud.current = null;
+        }, BLOCKED_WAIT_MS);
         const opened = navigatePopup(reserved, url, name);
         if (opened.status === "open") {
             popupRef.current = opened.window;

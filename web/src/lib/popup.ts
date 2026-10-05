@@ -81,13 +81,21 @@ export type PopupOpen = { status: "open"; window: Window } | { status: "blocked"
 export function navigatePopup(reserved: Window | null, url: string, name: string, size: PopupSize = DEFAULT_SIZE): PopupOpen {
     if (reserved) {
         if (reserved.closed) return { status: "closed" };
-        reserved.location.replace(url);
+        let moved = false;
         try {
-            reserved.focus();
+            reserved.location.replace(url);
+            moved = true;
         } catch {
-            /* ignore */
+            /* a torn-down window; reopen by name below */
         }
-        return { status: "open", window: reserved };
+        if (moved) {
+            try {
+                reserved.focus();
+            } catch {
+                /* ignore */
+            }
+            return { status: "open", window: reserved };
+        }
     }
     let w: Window | null = null;
     try {

@@ -13,7 +13,7 @@ import type { DomainGrant } from "@/lib/api/models/app/emails/MailboxSources";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { allowedCallbackOrigins, isAdminConsentState } from "@/hooks/useMailboxOAuth";
-import { closePopup, navigatePopup, notifyPopupBlocked, reservePopup } from "@/lib/popup";
+import { BLOCKED_WAIT_MS, closePopup, navigatePopup, notifyPopupBlocked, reservePopup } from "@/lib/popup";
 
 interface CallbackMessage {
     type: "email_oauth_callback";
@@ -56,6 +56,9 @@ export default function useAdminGrantPopup({
     const store = useStoreGrant();
     const [busy, setBusy] = React.useState(false);
     const pending = React.useRef<string | null>(null);
+    // A sign-in nobody finishes stops being honoured after BLOCKED_WAIT_MS.
+    const expiry = React.useRef<number | undefined>(undefined);
+    React.useEffect(() => () => window.clearTimeout(expiry.current), []);
     const popupRef = React.useRef<Window | null>(null);
 
     const cb = React.useRef({ finish, onGranted, onError });
@@ -153,6 +156,10 @@ export default function useAdminGrantPopup({
                 const { url, state } = await begin();
                 if (!url || !state) throw new Error("no sign-in");
                 pending.current = state;
+                window.clearTimeout(expiry.current);
+                expiry.current = window.setTimeout(() => {
+                    if (pending.current === state) pending.current = null;
+                }, BLOCKED_WAIT_MS);
                 const opened = navigatePopup(win, url, windowName);
                 if (opened.status === "open") {
                     popupRef.current = opened.window;
