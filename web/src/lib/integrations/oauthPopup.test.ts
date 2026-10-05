@@ -67,6 +67,17 @@ describe("authorizeInPopup", () => {
         await settled;
     });
 
+    it("ignores a callback whose state the authorization URL did not issue", async () => {
+        vi.spyOn(window, "open").mockReturnValue(fakeWindow() as unknown as Window);
+        const done = authorizeInPopup(async () => "https://provider.example/authorize?state=s3");
+        await Promise.resolve();
+        await Promise.resolve();
+        callback({ code: "forged", state: "other" });
+        callback({ error: "access_denied", state: "other" });
+        callback({ code: "c3", state: "s3" });
+        await expect(done).resolves.toEqual({ code: "c3", state: "s3" });
+    });
+
     it("hands back a provider error", async () => {
         vi.spyOn(window, "open").mockReturnValue(fakeWindow() as unknown as Window);
         const done = authorizeInPopup(async () => "https://provider.example/authorize");

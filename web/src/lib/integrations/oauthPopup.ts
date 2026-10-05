@@ -29,10 +29,20 @@ function callbackOrigins(): string[] {
     return origins;
 }
 
-function acceptCallback(event: MessageEvent): OAuthPopupResult | undefined {
+// The state the server put in the authorization URL; a callback carrying any other is not this flow's.
+function issuedState(url: string): string | null {
+    try {
+        return new URL(url, window.location.href).searchParams.get("state");
+    } catch {
+        return null;
+    }
+}
+
+function acceptCallback(event: MessageEvent, expectedState: string | null): OAuthPopupResult | undefined {
     if (!callbackOrigins().includes(event.origin)) return undefined;
     const data = event.data as { source?: string; code?: string; state?: string; error?: string } | undefined;
     if (!data || data.source !== POPUP_MESSAGE_SOURCE) return undefined;
+    if (expectedState && data.state !== expectedState) return undefined;
     if (data.error) throw new Error(data.error);
     if (data.code && data.state) return { code: data.code, state: data.state };
     throw new Error("Authorization was cancelled.");
@@ -71,5 +81,6 @@ export async function authorizeInPopup(start: () => Promise<string>, onOpened?: 
     if (opened.status === "closed") throw new Error(POPUP_CLOSED);
     if (opened.status === "blocked") notifyPopupBlocked();
     onOpened?.();
-    return waitForPopupMessage(opened.status === "open" ? opened.window : null, acceptCallback);
+    const expectedState = issuedState(url);
+    return waitForPopupMessage(opened.status === "open" ? opened.window : null, (event) => acceptCallback(event, expectedState));
 }
