@@ -19,9 +19,9 @@ export function useInstanceHealth(options?: { enabled?: boolean }) {
     });
 }
 
-// The endpoint returns only non-ok checks, so the list length is the count.
+// Informational notes are not problems and must not inflate the nav badge.
 export function findingCount(data: InstanceHealthResult | undefined): number {
-    return data?.checks?.length ?? 0;
+    return data?.checks?.filter((c) => c.severity === "error" || c.severity === "warning").length ?? 0;
 }
 
 export function worstSeverity(
@@ -30,6 +30,5 @@ export function worstSeverity(
     const checks = data?.checks ?? [];
     if (checks.some((c) => c.severity === "error")) return "error";
     if (checks.some((c) => c.severity === "warning")) return "warning";
-    if (checks.length > 0) return "info";
     return null;
 }

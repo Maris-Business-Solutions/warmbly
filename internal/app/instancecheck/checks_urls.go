@@ -20,7 +20,6 @@ func urlChecks() []check {
 	return []check{
 		{id: "app_url_unset", run: checkAppURLUnset},
 		{id: "app_url_insecure", run: checkAppURLInsecure},
-		{id: "app_url_host_mismatch", run: checkAppURLHostMismatch},
 		{id: "cors_missing_origin", run: checkCORSMissingOrigin},
 		{id: "api_public_url_unset_oidc", run: checkAPIPublicURLUnsetOIDC},
 		{id: "oidc_discovery_failed", run: checkOIDCDiscoveryFailed},
@@ -68,24 +67,6 @@ func checkAppURLInsecure(ctx context.Context, d Deps, in Input) *Finding {
 		fmt.Sprintf("%s %s. Browsers refuse WebAuthn outside a secure context, so passkeys are disabled, and session "+
 			"cookies and the reset and invitation tokens in emailed links all travel in the clear. Put the dashboard "+
 			"behind HTTPS.", source, raw),
-		docsAddresses)
-}
-
-func checkAppURLHostMismatch(ctx context.Context, d Deps, in Input) *Finding {
-	reached := hostOnly(in.Host)
-	configured := hostOf(appURL())
-	// Skip on loopback: a local stack legitimately reaches the API on one port
-	// and the dashboard on another.
-	if reached == "" || configured == "" || !appURLConfigured() || isLoopbackHost(reached) {
-		return nil
-	}
-	if strings.EqualFold(reached, configured) {
-		return nil
-	}
-	return result(CategoryURLs, SeverityWarning, "APP_URL does not match this host",
-		fmt.Sprintf("You reached this panel on %s but APP_URL is %s. "+
-			"Emailed links are built from APP_URL, so they will point somewhere other than where people actually reach this instance.",
-			reached, appURL()),
 		docsAddresses)
 }
 
