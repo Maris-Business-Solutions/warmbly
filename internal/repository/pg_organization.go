@@ -14,6 +14,7 @@ import (
 
 // OrganizationRepository defines the interface for organization data access
 type OrganizationRepository interface {
+	ProvisionTesterWorkspace(ctx context.Context, orgID, ownerID, adminID uuid.UUID, reason string, until time.Time) error
 	// Organization CRUD
 	Create(ctx context.Context, org *models.Organization) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Organization, error)
@@ -159,7 +160,7 @@ func (r *organizationRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 		       deletion_scheduled_at, deletion_scheduled_for,
 		       presence_show_online, presence_show_activity,
 		       product_description, icp_notes, voice_profile, inbox_agent_enabled,
-		       assistant_shared_history, timezone
+		       assistant_shared_history, timezone, category
 		FROM organizations WHERE id = $1
 	`
 	return r.scanOrganization(ctx, query, id)
@@ -172,7 +173,7 @@ func (r *organizationRepository) GetBySlug(ctx context.Context, slug string) (*m
 		       deletion_scheduled_at, deletion_scheduled_for,
 		       presence_show_online, presence_show_activity,
 		       product_description, icp_notes, voice_profile, inbox_agent_enabled,
-		       assistant_shared_history, timezone
+		       assistant_shared_history, timezone, category
 		FROM organizations WHERE slug = $1
 	`
 	return r.scanOrganization(ctx, query, slug)
@@ -181,7 +182,7 @@ func (r *organizationRepository) GetBySlug(ctx context.Context, slug string) (*m
 func (r *organizationRepository) scanOrganization(ctx context.Context, query string, args ...interface{}) (*models.Organization, error) {
 	row := r.db.QueryRow(ctx, query, args...)
 	var org models.Organization
-	err := row.Scan(&org.ID, &org.Name, &org.Slug, &org.AvatarURL, &org.OwnerUserID, &org.CreatedAt, &org.UpdatedAt, &org.DeletionScheduledAt, &org.DeletionScheduledFor, &org.PresenceShowOnline, &org.PresenceShowActivity, &org.ProductDescription, &org.ICPNotes, &org.VoiceProfile, &org.InboxAgentEnabled, &org.AssistantSharedHistory, &org.Timezone)
+	err := row.Scan(&org.ID, &org.Name, &org.Slug, &org.AvatarURL, &org.OwnerUserID, &org.CreatedAt, &org.UpdatedAt, &org.DeletionScheduledAt, &org.DeletionScheduledFor, &org.PresenceShowOnline, &org.PresenceShowActivity, &org.ProductDescription, &org.ICPNotes, &org.VoiceProfile, &org.InboxAgentEnabled, &org.AssistantSharedHistory, &org.Timezone, &org.Category)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -228,7 +229,7 @@ func (r *organizationRepository) GetUserOrganizations(ctx context.Context, userI
 			om.id, om.organization_id, om.user_id, om.role, om.permissions,
 			om.invited_by, om.invited_at, om.accepted_at,
 			o.id, o.name, o.slug, o.avatar_url, o.owner_user_id, o.created_at, o.updated_at,
-			o.deletion_scheduled_at, o.deletion_scheduled_for
+			o.deletion_scheduled_at, o.deletion_scheduled_for, o.category
 		FROM organization_members om
 		JOIN organizations o ON o.id = om.organization_id
 		WHERE om.user_id = $1
@@ -248,7 +249,7 @@ func (r *organizationRepository) GetUserOrganizations(ctx context.Context, userI
 			&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.Permissions,
 			&m.InvitedBy, &m.InvitedAt, &m.AcceptedAt,
 			&org.ID, &org.Name, &org.Slug, &org.AvatarURL, &org.OwnerUserID, &org.CreatedAt, &org.UpdatedAt,
-			&org.DeletionScheduledAt, &org.DeletionScheduledFor,
+			&org.DeletionScheduledAt, &org.DeletionScheduledFor, &org.Category,
 		)
 		if err != nil {
 			return nil, err
@@ -266,7 +267,7 @@ func (r *organizationRepository) GetUserDefaultOrganization(ctx context.Context,
 		       deletion_scheduled_at, deletion_scheduled_for,
 		       presence_show_online, presence_show_activity,
 		       product_description, icp_notes, voice_profile, inbox_agent_enabled,
-		       assistant_shared_history, timezone
+		       assistant_shared_history, timezone, category
 		FROM organizations WHERE owner_user_id = $1
 		ORDER BY created_at ASC LIMIT 1
 	`
@@ -769,7 +770,7 @@ const adminOrgListColumns = `
 	(SELECT COUNT(*) FROM campaigns c WHERE c.organization_id = o.id) AS campaign_count,
 	(SELECT COUNT(*) FROM campaigns c WHERE c.organization_id = o.id AND c.status = 'active') AS active_campaigns,
 	o.risk_state,
-	oa.utm_source, oa.utm_medium, oa.utm_campaign, oa.landing_path`
+	oa.utm_source, oa.utm_medium, oa.utm_campaign, oa.landing_path, o.category`
 
 // adminOrgAcquisitionJoin brings in the signup channel. LEFT because most
 // workspaces have no row: a direct signup carries nothing to record.
@@ -988,6 +989,7 @@ func (r *organizationRepository) SearchOrganizationsForAdmin(ctx context.Context
 			&item.MemberCount, &item.EmailAccountCount, &item.CampaignCount, &item.ActiveCampaigns,
 			&item.RiskState,
 			&item.UTMSource, &item.UTMMedium, &item.UTMCampaign, &item.LandingPath,
+			&item.Category,
 			&planName, &planPublic, &isEnterprise,
 			&managedAt, &managedReason, &managedUntil,
 		); err != nil {
@@ -1051,6 +1053,7 @@ func (r *organizationRepository) GetOrganizationAdminDetail(ctx context.Context,
 		&detail.MemberCount, &detail.EmailAccountCount, &detail.CampaignCount, &detail.ActiveCampaigns,
 		&detail.RiskState,
 		&detail.UTMSource, &detail.UTMMedium, &detail.UTMCampaign, &detail.LandingPath,
+		&detail.Category,
 		&detail.UpdatedAt, &detail.DeletionScheduledAt,
 		&detail.PlanName, &detail.SubscriptionStatus, &isEnterprise, &detail.CurrentPeriodEnd, &detail.TrialEnd,
 	)

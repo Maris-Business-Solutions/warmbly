@@ -717,16 +717,17 @@ type AdminOrgSearch struct {
 // summary state for the table (owner, counts, deletion status) without
 // joining to plans or subscriptions — those land on the detail endpoint.
 type AdminOrgListItem struct {
-	ID                   uuid.UUID  `json:"id"`
-	Name                 string     `json:"name"`
-	Slug                 *string    `json:"slug,omitempty"`
-	OwnerUserID          uuid.UUID  `json:"owner_user_id"`
-	OwnerEmail           string     `json:"owner_email"`
-	OwnerFirstName       string     `json:"owner_first_name"`
-	OwnerLastName        string     `json:"owner_last_name"`
-	OwnerBannedAt        *time.Time `json:"owner_banned_at,omitempty"`
-	CreatedAt            time.Time  `json:"created_at"`
-	DeletionScheduledFor *time.Time `json:"deletion_scheduled_for,omitempty"`
+	Category             OrganizationCategory `json:"category"`
+	ID                   uuid.UUID            `json:"id"`
+	Name                 string               `json:"name"`
+	Slug                 *string              `json:"slug,omitempty"`
+	OwnerUserID          uuid.UUID            `json:"owner_user_id"`
+	OwnerEmail           string               `json:"owner_email"`
+	OwnerFirstName       string               `json:"owner_first_name"`
+	OwnerLastName        string               `json:"owner_last_name"`
+	OwnerBannedAt        *time.Time           `json:"owner_banned_at,omitempty"`
+	CreatedAt            time.Time            `json:"created_at"`
+	DeletionScheduledFor *time.Time           `json:"deletion_scheduled_for,omitempty"`
 
 	// Resource counts. Cheap enough to inline on the list query so the
 	// table can show usage at a glance without an extra round-trip.

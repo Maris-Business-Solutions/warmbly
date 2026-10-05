@@ -3,6 +3,7 @@ import type { StateCreator } from 'zustand'
 export interface Organization {
   id: string
   name: string
+  category?: "standard" | "test"
   avatar?: string
   avatar_url?: string | null
   plan?: string

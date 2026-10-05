@@ -393,18 +393,19 @@ func (r *userRepository) CreateExemptUser(ctx context.Context, email *mail.Addre
 	firstName := displayname.FromEmail(address)
 	now := time.Now()
 	if _, ierr := tx.Exec(ctx, `
-		INSERT INTO users (id, email, password_hash, first_name, last_name, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, '', $5, $5)`,
+		INSERT INTO users (id, email, password_hash, first_name, last_name, created_at, updated_at, onboarding_completed_at)
+		VALUES ($1, $2, $3, $4, '', $5, $5, $5)`,
 		id, address, passwordHash, firstName, now); ierr != nil {
 		return nil, ierr
 	}
 	created := &models.User{
-		ID:        id,
-		FirstName: firstName,
-		Email:     address,
-		Roles:     make([]uuid.UUID, 0),
-		CreatedAt: now,
-		UpdatedAt: now,
+		OnboardingCompletedAt: &now,
+		ID:                    id,
+		FirstName:             firstName,
+		Email:                 address,
+		Roles:                 make([]uuid.UUID, 0),
+		CreatedAt:             now,
+		UpdatedAt:             now,
 	}
 	if _, eerr := tx.Exec(ctx, `
 		UPDATE users
@@ -427,6 +428,12 @@ func (r *userRepository) CreateExemptUser(ctx context.Context, email *mail.Addre
 func (r *userRepository) RevokeTester(ctx context.Context, id uuid.UUID) (bool, error) {
 	var cleared bool
 	err := r.DB.QueryRow(ctx, `
+		WITH ended_grants AS (
+			UPDATE subscriptions s SET managed_until = now(), updated_at = now()
+			FROM organizations o
+			WHERE s.organization_id = o.id AND o.owner_user_id = $1
+			  AND o.category = 'test' AND s.managed_plan_id = $2
+		)
 		UPDATE users u
 		SET login_code_exempt = false,
 		    login_code_exempt_reason = NULL,
@@ -438,7 +445,7 @@ func (r *userRepository) RevokeTester(ctx context.Context, id uuid.UUID) (bool, 
 		    updated_at = now()
 		FROM (SELECT id, password_expires_at IS NOT NULL AS tester FROM users WHERE id = $1 FOR UPDATE) old
 		WHERE u.id = old.id
-		RETURNING old.tester`, id).Scan(&cleared)
+		RETURNING old.tester`, id, models.TestPlanID).Scan(&cleared)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, ErrUserNotFound
 	}

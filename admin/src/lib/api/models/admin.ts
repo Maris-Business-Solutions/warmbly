@@ -731,6 +731,7 @@ export interface AdminUserPreview {
 // /admin/organizations* — workspace admin (read-only slice).
 
 export interface AdminOrgListItem {
+    category: "standard" | "test";
     id: string;
     name: string;
     slug?: string | null;

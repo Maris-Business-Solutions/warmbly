@@ -13,7 +13,8 @@ func (s *userService) GetUser(ctx context.Context, userID uuid.UUID) (*models.Us
 	if err != nil {
 		return nil, err
 	}
-	if u != nil {
+	// Onboarding may have been completed by an operator or a migration.
+	if u != nil && u.OnboardingCompletedAt != nil {
 		return u, nil
 	}
 

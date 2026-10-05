@@ -141,9 +141,10 @@ export default function TestersPage() {
                 description={
                     <>
                         Accounts for people outside the team. Each skips the emailed login code, because the
-                        holder cannot read this instance&apos;s mail. Everything else still applies: the password,
+                        holder cannot read this instance&apos;s mail, and arrives with onboarding complete. Authentication still requires the password,
                         the captcha and the sign-in risk assessment. A tester either gets a workspace of its own
-                        or joins one that already exists. Its password stops working on the date you choose, and
+                        or joins one that already exists. A new Test workspace includes paid-feature access and 100 test credits until the password expires.
+                        An existing workspace keeps its plan and the role you select. Its password stops working on the date you choose, and
                         revoking it ends the password and signs out every session at once.
                     </>
                 }
@@ -160,7 +161,7 @@ export default function TestersPage() {
                             <div className="mt-0.5 text-[12.5px] text-muted-foreground">
                                 {created.joined_existing
                                     ? "This account is a member of an existing workspace and will land in it on sign-in."
-                                    : "This account owns a new, empty workspace."}
+                                    : "This account owns a new Test workspace with paid-feature access and 100 test credits until the password expires."}
                             </div>
                         </div>
                         <Button size="sm" variant="outline" onClick={() => setCreated(null)}>

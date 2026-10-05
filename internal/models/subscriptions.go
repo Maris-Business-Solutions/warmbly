@@ -10,6 +10,8 @@ import (
 
 type Duration string
 
+var TestPlanID = uuid.MustParse("00000000-0000-0000-0000-0000000000e1")
+
 const (
 	DurationMonth Duration = "month"
 	DurationYear  Duration = "year"
