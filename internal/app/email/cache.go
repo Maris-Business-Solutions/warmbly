@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/warmbly/warmbly/internal/config"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/observability/errs"
@@ -56,4 +57,20 @@ func (s *emailService) takeOnboardingState(ctx context.Context, state string) (*
 		return nil, errx.InternalError()
 	}
 	return &out, nil
+}
+
+// OAuthReturnOrigin reads routing metadata without consuming the single-use state.
+func (s *emailService) OAuthReturnOrigin(ctx context.Context, state string) string {
+	if s.r == nil || !IsWebState(state) {
+		return ""
+	}
+	raw, err := s.r.Get(ctx, onboardingStateKey(state)).Bytes()
+	if err != nil {
+		return ""
+	}
+	var data models.EmailOnboardingState
+	if json.Unmarshal(raw, &data) != nil || data.Nonce != state || data.Provider != string(models.InboxProviderGoogle) {
+		return ""
+	}
+	return config.DashboardOrigin(data.ReturnOrigin)
 }

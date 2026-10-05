@@ -170,6 +170,12 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 		Web:            isDashboardState(state),
 		NoOriginNotice: callbackNoOriginNotice,
 	}
+	if provider == "gmail" && email.IsWebState(state) && h.EmailService != nil {
+		if origin := h.EmailService.OAuthReturnOrigin(c.Request.Context(), state); origin != "" && config.DashboardOrigin(origin) != "" {
+			data.AppOrigin = origin
+			data.Relay = origin + "/oauth-return"
+		}
+	}
 	if strings.HasPrefix(state, delegation.GoogleStatePrefix) {
 		data.Status = "Signed in. Finishing in Warmbly… this window will close."
 	}
@@ -188,6 +194,7 @@ func (h *Handler) renderOAuthCallback(c *gin.Context, provider string) {
 	c.Header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	c.Header("Cross-Origin-Opener-Policy", "unsafe-none")
 	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("Cache-Control", "no-store")
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
 	_ = callbackPage.Execute(c.Writer, data)

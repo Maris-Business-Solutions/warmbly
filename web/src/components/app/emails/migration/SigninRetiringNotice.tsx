@@ -1,4 +1,4 @@
-// The mailbox drawer's notice for a mailbox on the retiring per-mailbox Google
+// The mailbox drawer's optional alternatives to per-mailbox Google
 // sign-in, with the move that fits it: onto the domain's admin grant, the
 // whole-domain setup first, or an app password right here.
 import React from "react";
@@ -54,10 +54,10 @@ export default function SigninRetiringNotice({ mailbox }: { mailbox: { id: strin
                 <div className="flex items-start gap-2.5">
                     <ProviderLogo id="google" size="sm" className="mt-px" />
                     <div className="min-w-0 flex-1">
-                        <p className="text-[12.5px] font-medium text-amber-900">Google sign-in is being retired</p>
+                        <p className="text-[12.5px] font-medium text-amber-900">Other connection methods</p>
                         <p className="text-[11.5px] text-amber-800 leading-relaxed">
-                            This mailbox signs in with Google on its own. Nothing stops working today; move it to keep it working. It keeps
-                            its history, campaigns and warmup.
+                            This mailbox uses Google sign-in. You can keep it, or switch to an admin grant or an app password.
+                            Switching preserves its history, campaigns and warmup.
                         </p>
                     </div>
                 </div>

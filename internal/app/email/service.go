@@ -82,7 +82,8 @@ type EmailService interface {
 	// trip renewed an existing mailbox (OAuthReauth) rather than connecting
 	// a new one, so the handler can audit and answer accordingly.
 	// loginHint preselects an address in the provider's picker; "" for none.
-	OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string, web bool) (*models.EmailOnboardingStartResponse, *errx.Error)
+	OAuthStart(ctx context.Context, userID string, orgID *uuid.UUID, provider models.InboxProvider, loginHint string, web bool, returnOrigin string) (*models.EmailOnboardingStartResponse, *errx.Error)
+	OAuthReturnOrigin(ctx context.Context, state string) string
 	// authorize runs before the code is exchanged, against the organization the
 	// state names, so a caller removed mid-flow cannot finish it.
 	OAuthFinish(ctx context.Context, userID, code, state string, authorize FinishAuthorizer) (*models.Email, bool, *errx.Error)
@@ -93,7 +94,7 @@ type EmailService interface {
 	OnboardSMTPIMAPBulk(ctx context.Context, userID string, orgID *uuid.UUID, rows []models.NewSMTPIMAPAccount) *models.MailboxBulkResult
 	// OAuthReauth starts an OAuth round trip that renews the tokens of an
 	// existing Gmail/Outlook mailbox after the provider invalidated them.
-	OAuthReauth(ctx context.Context, userID string, orgID *uuid.UUID, accountID uuid.UUID) (*models.EmailOnboardingStartResponse, *errx.Error)
+	OAuthReauth(ctx context.Context, userID string, orgID *uuid.UUID, accountID uuid.UUID, returnOrigin string) (*models.EmailOnboardingStartResponse, *errx.Error)
 	// UpdateSMTPIMAPCredentials validates replacement credentials against a
 	// live worker, stores them, and puts the mailbox back to work.
 	UpdateSMTPIMAPCredentials(ctx context.Context, orgID *uuid.UUID, accountID uuid.UUID, creds *models.SmtpImap) (*models.Email, *errx.Error)

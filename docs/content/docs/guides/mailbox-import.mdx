@@ -95,6 +95,8 @@ Each mailbox is labelled with where it is hosted and how it signs in. The [API](
 
 A Google row whose password is not a 16-letter app password is flagged in the preview before anything is tried: Google refuses the account password over IMAP and SMTP. On an instance that connects new Gmail mailboxes with Google sign-in (`gmail_oauth_connect` in `GET /auth/config`), such a row waits for sign-in instead, like a Microsoft row.
 
+Google rows waiting for Google sign-in offer a **Sign in** action only on deployments where [Google mailbox OAuth is enabled](/development/configuration/#google-sign-in-per-dashboard-deployment). Otherwise use an app password or an admin grant. Microsoft sign-in is unaffected by that flag.
+
 ### Microsoft
 
 Exchange Online no longer accepts passwords over IMAP, so Microsoft 365 and Outlook.com rows connect with Microsoft sign-in. The import parks them as **needs sign-in** and the rest of the file carries on. Each has a **Sign in** button that opens Microsoft's sign-in with the address already filled in. When that address connects, from the row or by any other route, the row closes and the import's settings are applied to the mailbox.

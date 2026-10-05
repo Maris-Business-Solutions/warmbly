@@ -1,5 +1,5 @@
 // The mailboxes page's notice that some mailboxes still sign in with Google on
-// their own, which is being retired. A notice only: nothing stops working.
+// their own, with optional ways to switch their connection method.
 // "Later" hides it for a week, per workspace.
 import React from "react";
 import { AlertTriangleIcon, ArrowRightIcon } from "lucide-react";
@@ -43,8 +43,8 @@ export default function SigninMigrationBanner({ total, onOpen }: { total: number
             <div className="flex items-center gap-2 min-w-0 flex-1">
                 <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <p className="text-[12px] text-amber-900 min-w-0">
-                    {total === 1 ? "1 mailbox connects" : `${total.toLocaleString()} mailboxes connect`} with Google sign-in, which is being
-                    retired. Move {total === 1 ? "it" : "them"} to keep {total === 1 ? "it" : "them"} working.
+                    {total === 1 ? "1 mailbox connects" : `${total.toLocaleString()} mailboxes connect`} with Google sign-in.
+                    You can optionally switch to an admin grant or an app password without losing history.
                 </p>
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-auto">
@@ -77,15 +77,15 @@ export function SigninRetiringChip({ onClick, className }: { onClick: () => void
                 e.stopPropagation();
                 onClick();
             }}
-            title="Google sign-in is being retired. Move this mailbox to keep it working."
-            aria-label="Google sign-in retiring: move this mailbox"
+            title="This mailbox uses Google sign-in. You can optionally switch its connection method."
+            aria-label="Google sign-in: switch connection method"
             className={cn(
                 "inline-flex items-center gap-1 h-[18px] pl-0.5 pr-0.5 md:pr-1.5 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors shrink-0",
                 className,
             )}
         >
             <ProviderLogo id="google" size="xs" framed={false} title="" />
-            <span className="hidden md:inline text-[10.5px] font-medium whitespace-nowrap">Sign-in retiring</span>
+            <span className="hidden md:inline text-[10.5px] font-medium whitespace-nowrap">Google sign-in</span>
         </button>
     );
 }

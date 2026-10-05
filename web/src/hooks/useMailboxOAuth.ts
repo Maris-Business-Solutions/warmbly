@@ -19,6 +19,7 @@ import { finishCloudOAuth, startCloudOAuth } from "@/lib/api/client/app/cloudlin
 import type { CloudOAuthDoneMessage } from "@/app/cloud-oauth/done/page";
 import { capture } from "@/lib/productAnalytics";
 import useCloudPool from "@/hooks/useCloudPool";
+import useGmailOAuthConnect from "@/hooks/useGmailOAuthConnect";
 import { BLOCKED_WAIT_MS, closePopup, navigatePopup, notifyPopupBlocked, reservePopup } from "@/lib/popup";
 
 export type MailboxOAuthProvider = "gmail" | "outlook";
@@ -75,6 +76,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     const qc = useQueryClient();
     const pool = useCloudPool();
     const viaCloud = pool.connected;
+    const gmailAvailable = useGmailOAuthConnect(viaCloud);
 
     const [busy, setBusy] = React.useState<MailboxOAuthProvider | null>(null);
     // Microsoft only: forwarded to an administrator when the organization requires approval.
@@ -229,7 +231,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
     // Call it straight from the click: Safari blocks a window opened after an await.
     const start = React.useCallback(
         async (provider: MailboxOAuthProvider, opts: { loginHint?: string } = {}) => {
-            if (busy) return;
+            if (busy || (provider === "gmail" && !gmailAvailable)) return;
             const name = `connect-${provider}`;
             const reserved = reservePopup(name);
             setBusy(provider);
@@ -279,7 +281,7 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
                 toast.error(buildError(e));
             }
         },
-        [busy, viaCloud, launch],
+        [busy, viaCloud, gmailAvailable, launch],
     );
 
     // Forget any popup still out, e.g. when the dialog that opened it closes.
@@ -291,5 +293,5 @@ export default function useMailboxOAuth(options: MailboxOAuthOptions = {}) {
         popupRef.current = null;
     }, []);
 
-    return { busy, start, reset, viaCloud, selfHosted: pool.selfHosted, adminConsentUrl };
+    return { busy, start, reset, viaCloud, gmailAvailable, selfHosted: pool.selfHosted, adminConsentUrl };
 }

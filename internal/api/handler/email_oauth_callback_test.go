@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -8,7 +9,52 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/warmbly/warmbly/internal/app/email"
 )
+
+type returnOriginService struct {
+	email.EmailService
+	origin string
+	state  string
+}
+
+func (s *returnOriginService) OAuthReturnOrigin(_ context.Context, state string) string {
+	s.state = state
+	return s.origin
+}
+
+func TestGoogleCallbackUsesStateBoundDashboard(t *testing.T) {
+	t.Setenv("APP_URL", "https://app.example.com")
+	t.Setenv("APP_ORIGIN", "")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://app.example.com,https://assessment.example.com")
+	for _, tt := range []struct{ name, origin, want string }{
+		{"assessment", "https://assessment.example.com", "https://assessment.example.com"},
+		{"legacy state", "", "https://app.example.com"},
+		{"untrusted origin", "https://evil.example.com", "https://app.example.com"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &returnOriginService{origin: tt.origin}
+			h := &Handler{EmailService: svc}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/addresses/google/callback?code=c&state=w.nonce", nil)
+			h.EmailOAuthCallbackGmail(c)
+			body := w.Body.String()
+			if w.Code != http.StatusOK || svc.state != "w.nonce" || !strings.Contains(body, `var origin = "`+tt.want+`"`) || !strings.Contains(body, `var relay = "`+tt.want+`/oauth-return"`) {
+				t.Fatalf("callback did not use the expected state-bound target: %d %s", w.Code, body)
+			}
+			if w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("callback must not leak through referrers or caches")
+			}
+		})
+	}
+	// Microsoft remains on its existing primary-dashboard routing.
+	svc := &returnOriginService{origin: "https://assessment.example.com"}
+	w := callbackRecorder(t, &Handler{EmailService: svc}, "code=c&state=w.nonce")
+	if svc.state != "" || !strings.Contains(w.Body.String(), `var relay = "https://app.example.com/oauth-return"`) {
+		t.Fatal("Google callback routing must not change Microsoft OAuth")
+	}
+}
 
 func callbackRecorder(t *testing.T, h *Handler, query string) *httptest.ResponseRecorder {
 	t.Helper()

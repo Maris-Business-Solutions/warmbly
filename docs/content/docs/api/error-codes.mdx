@@ -433,7 +433,9 @@ Returned when authenticated but lacking necessary permissions.
 
 #### `mailbox_gmail_oauth_disabled`
 
-A `403` whose `code` is `mailbox_gmail_oauth_disabled` comes from `POST /emails/onboarding/oauth/start` with `provider: "gmail"`. The deployment routes new Gmail mailboxes through an app password over IMAP and SMTP instead of Google sign-in, which is the default; `GET /auth/config` announces it as `gmail_oauth_connect: false`. Nothing about the caller's permissions is wrong. Re-authorizing an existing Gmail mailbox (`POST /emails/onboarding/oauth/reauth/:id`) is never refused this way.
+A `400` with `code: "mailbox_oauth_return_origin"` instead means a Google mailbox connect or reauthorization came from a dashboard origin the backend does not allow. Add its exact HTTP(S) origin to `CORS_ALLOW_ORIGINS`, as in [shared-backend dashboard configuration](/development/configuration/#google-sign-in-per-dashboard-deployment). A wildcard is not an OAuth return allowlist.
+
+A `403` whose `code` is `mailbox_gmail_oauth_disabled` comes from `POST /emails/onboarding/oauth/start` with `provider: "gmail"`. The backend has no complete Google mailbox client credentials, or explicitly disables new Google OAuth connects through `BOX_GOOGLE_OAUTH_CONNECT`; `GET /auth/config` announces it as `gmail_oauth_connect: false`. Nothing about the caller's permissions is wrong. Re-authorizing an existing Gmail mailbox (`POST /emails/onboarding/oauth/reauth/:id`) is never refused this way.
 
 ```json
 {
@@ -446,7 +448,7 @@ A `403` whose `code` is `mailbox_gmail_oauth_disabled` comes from `POST /emails/
 
 **How to fix:**
 - Connect the mailbox through `POST /emails/onboarding/smtp-imap` with `smtp.gmail.com:465` and `imap.gmail.com:993`, both TLS, and a Google app password. See [Gmail and Google Workspace](/guides/mailboxes/#gmail-and-google-workspace)
-- A self-hosted instance with its own Google app can set `BOX_GOOGLE_OAUTH_CONNECT=true` to allow Google sign-in for new mailboxes
+- An instance with its own Google app must set both `BOX_GOOGLE_CLIENT_ID` and `BOX_GOOGLE_CLIENT_SECRET`. Leave `BOX_GOOGLE_OAUTH_CONNECT` unset or set it to `true`, then enable the [dashboard visibility flag](/development/configuration/#google-sign-in-per-dashboard-deployment) on the deployments that should offer Google sign-in
 
 #### Registration and invitation refusals
 

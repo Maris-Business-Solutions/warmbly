@@ -181,7 +181,7 @@ func TestFinishReauth_KeepsErrorsWhenReactivationFails(t *testing.T) {
 func TestOAuthReauth_RefusesSMTPIMAPMailboxes(t *testing.T) {
 	svc, repo, _, _ := reauthFixture("smtp_imap", "owner@example.com")
 
-	_, xerr := svc.OAuthReauth(context.Background(), repo.account.UserID, repo.account.OrganizationID, repo.account.ID)
+	_, xerr := svc.OAuthReauth(context.Background(), repo.account.UserID, repo.account.OrganizationID, repo.account.ID, "")
 	if xerr != errx.ErrEmailReauthProvider {
 		t.Fatalf("expected ErrEmailReauthProvider, got %v", xerr)
 	}

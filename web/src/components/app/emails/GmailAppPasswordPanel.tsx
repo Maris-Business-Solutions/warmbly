@@ -1,7 +1,7 @@
 // GmailAppPasswordPanel — the Gmail path of the connect modal.
 //
 // One Gmail or Google Workspace mailbox over IMAP and SMTP with an app
-// password; per-mailbox Google sign-in is being retired, and a whole Workspace
+// password; per-mailbox Google sign-in is deployment-dependent, and a whole Workspace
 // domain goes through an admin grant instead. The server settings never change, so
 // the only things a person has to produce are the app password and the
 // address, and the panel walks them to those in three steps: turn on 2-Step

@@ -34,6 +34,23 @@ func AppBaseURL() string {
 	return "https://app.warmbly.com"
 }
 
+// DashboardOrigin allows exact configured origins only, never a CORS wildcard.
+func DashboardOrigin(value string) string {
+	u, err := url.Parse(value)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+		return ""
+	}
+	allowed := splitCSV(os.Getenv("CORS_ALLOW_ORIGINS"))
+	allowed = append(allowed, os.Getenv("APP_ORIGIN"), AppBaseURL())
+	for _, candidate := range allowed {
+		v, err := url.Parse(strings.TrimSpace(candidate))
+		if err == nil && v.User == nil && v.Scheme+"://"+v.Host == value {
+			return value
+		}
+	}
+	return ""
+}
+
 // inferredAppBaseURL reconstructs the dashboard origin from the rest of the
 // deployment's own configuration. CORS_ALLOW_ORIGINS is exact when it is set
 // (the dashboard is the first origin the browser calls the API from);
