@@ -8,6 +8,7 @@ import { useLocation } from "react-router-dom";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { SidebarBrand } from "./Brand";
 import { EnvPill } from "./EnvPill";
+import { UpdatePill } from "./UpdatePill";
 import { NavList } from "./Sidebar";
 import { UserMenu } from "./UserMenu";
 
@@ -55,8 +56,9 @@ export function MobileNav({ open, onOpenChange }: Props) {
                     <NavList onNavigate={() => onOpenChange(false)} />
                 </nav>
                 <div className="shrink-0 px-2 pb-2">
-                    <div className="px-1 pb-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1.5">
                         <EnvPill />
+                        <UpdatePill />
                     </div>
                     <div className="border-t border-sidebar-border pt-2">
                         <UserMenu />

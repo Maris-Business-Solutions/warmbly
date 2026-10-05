@@ -10,14 +10,14 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
-import { findSection } from "./nav";
+import { findSection, isSectionPage } from "./nav";
 
 export function AppShell() {
     useDocumentTitle();
     const { pathname } = useLocation();
     const section = findSection(pathname);
     // A section's own pages share a key so its tabs switch instantly; detail pages ease in.
-    const pageKey = section?.pages.some((p) => p.to === pathname) ? section.label : pathname;
+    const pageKey = section?.pages.some((p) => isSectionPage(p, pathname)) ? section.label : pathname;
 
     return (
         <ConfirmProvider>

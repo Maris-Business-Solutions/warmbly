@@ -102,11 +102,19 @@ type OperatorNotifier interface {
 // WireOperatorNotifier attaches the operator alert channels.
 func (s *adminService) WireOperatorNotifier(n OperatorNotifier) { s.opsNotify = n }
 
-// notifyAccessChange raises admin.access_changed. The key is a literal so this
-// package stays free of opsnotify; it matches opsnotify.EventAdminAccess.
-func (s *adminService) notifyAccessChange(title string, target, actor *models.AdminUserDetail, perms models.AdminPermission) {
-	if s.opsNotify == nil || target == nil {
+// notifyAccessChange raises admin.access_changed when the mask actually moved.
+// The key is a literal so this package stays free of opsnotify; it matches
+// opsnotify.EventAdminAccess.
+func (s *adminService) notifyAccessChange(target, actor *models.AdminUserDetail, perms models.AdminPermission) {
+	if s.opsNotify == nil || target == nil || target.AdminPermissions == perms {
 		return
+	}
+	title := "Admin access changed"
+	switch {
+	case target.AdminPermissions == 0:
+		title = "Admin access granted"
+	case perms == 0:
+		title = "Admin access revoked"
 	}
 	by := ""
 	if actor != nil {
@@ -676,11 +684,7 @@ func (s *adminService) GrantAdminPermissions(ctx context.Context, adminID, targe
 	}
 
 	s.logAction(ctx, adminID, "grant_admin", "user", targetUserID, map[string]any{"permissions": permissions}, ipAddress, userAgent)
-	title := "Admin access granted"
-	if target != nil && target.AdminPermissions != 0 {
-		title = "Admin access changed"
-	}
-	s.notifyAccessChange(title, target, granter, permissions)
+	s.notifyAccessChange(target, granter, permissions)
 	return nil
 }
 
@@ -724,7 +728,7 @@ func (s *adminService) RevokeAdminPermissions(ctx context.Context, adminID, targ
 	}
 
 	s.logAction(ctx, adminID, "revoke_admin", "user", targetUserID, nil, ipAddress, userAgent)
-	s.notifyAccessChange("Admin access revoked", target, revoker, 0)
+	s.notifyAccessChange(target, revoker, 0)
 	return nil
 }
 

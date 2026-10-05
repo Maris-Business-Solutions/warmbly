@@ -13,7 +13,7 @@ import { ChevronRight, type LucideIcon } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
 import { hasAdminPerm } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
-import { findSection, pageMatches, type NavIcon } from "./nav";
+import { findSection, isSectionPage, pageMatches, type NavIcon } from "./nav";
 
 export interface Crumb {
     label: string;
@@ -42,7 +42,7 @@ export function PageHeader({ title, description, breadcrumbs, icon, meta, childr
     const tabs = (section?.pages ?? []).filter(
         (p) => p.perm === undefined || hasAdminPerm(me?.admin_permissions, p.perm),
     );
-    const showTabs = !breadcrumbs?.length && tabs.length > 1;
+    const showTabs = !breadcrumbs?.length && tabs.length > 1 && tabs.some((t) => isSectionPage(t, pathname));
 
     return (
         <>

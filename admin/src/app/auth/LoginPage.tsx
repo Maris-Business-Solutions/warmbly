@@ -371,12 +371,6 @@ export default function LoginPage() {
                                             )}
                                         </Button>
 
-                                        <TurnstileModal
-                                            visible={captcha}
-                                            required={captchaRequired}
-                                            onToken={onToken}
-                                            onError={onCaptchaError}
-                                        />
                                     </form>
                                 </motion.div>
                             ) : (
@@ -500,6 +494,15 @@ export default function LoginPage() {
                                 </motion.div>
                             )}
                         </AnimatePresence>
+                    </div>
+                    {/* Outside the steps: Resend on the code step needs a token too. */}
+                    <div className="flex justify-center">
+                        <TurnstileModal
+                            visible={captcha}
+                            required={captchaRequired}
+                            onToken={onToken}
+                            onError={onCaptchaError}
+                        />
                     </div>
                 </div>
             </main>

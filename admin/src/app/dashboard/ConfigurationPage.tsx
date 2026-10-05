@@ -30,6 +30,11 @@ const DISCARD_PROMPT = {
     destructive: true,
 };
 
+function tabOf(search: string): TabId {
+    const raw = new URLSearchParams(search).get("tab");
+    return isTabId(raw) ? raw : "settings";
+}
+
 export default function ConfigurationPage() {
     const [params, setParams] = useSearchParams();
     const raw = params.get("tab");
@@ -45,10 +50,15 @@ export default function ConfigurationPage() {
         setDirty(d);
     }, []);
 
-    // Only a pathname change counts: ?tab= switches are handled by setTab.
+    // Leaving the page or switching tab by link (the account menu, the palette)
+    // is guarded here; setTab confirms its own switch and lets itself through.
+    const ownSwitchRef = useRef(false);
     const blocker = useBlocker(
         ({ currentLocation, nextLocation }) =>
-            dirtyRef.current && currentLocation.pathname !== nextLocation.pathname,
+            dirtyRef.current &&
+            !ownSwitchRef.current &&
+            (currentLocation.pathname !== nextLocation.pathname ||
+                tabOf(currentLocation.search) !== tabOf(nextLocation.search)),
     );
 
     const promptingRef = useRef(false);
@@ -88,7 +98,9 @@ export default function ConfigurationPage() {
     async function setTab(next: string) {
         if (!isTabId(next) || next === tab) return;
         if (dirtyRef.current && !(await confirm(DISCARD_PROMPT))) return;
+        ownSwitchRef.current = true;
         writeTab(next);
+        ownSwitchRef.current = false;
     }
 
     return (

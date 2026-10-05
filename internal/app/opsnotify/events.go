@@ -44,6 +44,8 @@ type EventDef struct {
 	// SelfHostRelevant is false for events that only mean something on a
 	// commercial deployment, so a self-hosted panel can hide them.
 	SelfHostRelevant bool `json:"self_host_relevant"`
+	// OptIn events reach only channels that tick them, never a catch-all one.
+	OptIn bool `json:"opt_in"`
 }
 
 // Catalog is the inventory the admin panel renders. Declaration order is
@@ -88,13 +90,13 @@ var Catalog = []EventDef{
 	{
 		Key: EventAdminSignIn, Group: "Security",
 		Label:       "Admin signed in",
-		Description: "An account holding platform admin access started a new session, in the admin panel or the dashboard.",
-		Severity:    SeverityInfo, SelfHostRelevant: true,
+		Description: "An account holding platform admin access started a new session, in the admin panel or the dashboard. Sent only to channels that tick it.",
+		Severity:    SeverityInfo, SelfHostRelevant: true, OptIn: true,
 	},
 	{
 		Key: EventAdminAccess, Group: "Security",
 		Label:       "Admin access changed",
-		Description: "Platform admin permissions were granted to, changed for, or revoked from an account.",
+		Description: "Platform admin permissions were granted to, changed for, or revoked from an account in the admin panel.",
 		Severity:    SeverityWarning, SelfHostRelevant: true,
 	},
 	{

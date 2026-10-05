@@ -22,6 +22,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Inbox, ShieldCheck, ShieldOff, XCircle } from "lucide-react";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageTabs } from "@/components/layout/PageTabs";
 import { Button } from "@/components/ui/button";
@@ -424,6 +425,27 @@ function DecisionArea({ appeal }: { appeal: WarmupAppeal }) {
     const busy = mutation.isPending;
     const pendingMode = busy ? mutation.variables?.mode : undefined;
     const id = `decision-notes-${appeal.id}`;
+    const confirm = useConfirm();
+
+    // Named confirm, so a repeat click never lands on the next appeal unseen.
+    async function decide(mode: "approve" | "reject") {
+        const mailbox = mailboxOf(appeal);
+        const ok = await confirm(
+            mode === "approve"
+                ? {
+                      title: `Approve the appeal for ${mailbox}?`,
+                      description: "The mailbox is unblocked and re-admitted to the warmup pool.",
+                      confirmLabel: "Approve & unblock",
+                  }
+                : {
+                      title: `Reject the appeal for ${mailbox}?`,
+                      description: "The mailbox stays blocked from warmup.",
+                      confirmLabel: "Reject",
+                      destructive: true,
+                  },
+        );
+        if (ok) mutation.mutate({ mode, notes });
+    }
 
     return (
         <div className="border-t border-border bg-muted/30 px-4 py-3.5">
@@ -438,11 +460,11 @@ function DecisionArea({ appeal }: { appeal: WarmupAppeal }) {
                 className="mt-1.5 min-h-20 bg-card"
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button size="sm" disabled={busy} onClick={() => mutation.mutate({ mode: "approve", notes })}>
+                <Button size="sm" disabled={busy} onClick={() => decide("approve")}>
                     <ShieldCheck />
                     {pendingMode === "approve" ? "Working…" : "Approve & unblock"}
                 </Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => mutation.mutate({ mode: "reject", notes })}>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => decide("reject")}>
                     <XCircle className={TONE_TEXT.danger} />
                     {pendingMode === "reject" ? "Working…" : "Reject"}
                 </Button>

@@ -18,7 +18,7 @@ A channel is one destination. You can add up to 25.
 | Webhook | Any HTTPS endpoint | Receives the event as JSON, optionally signed |
 | Email | An address | Needs a working platform mail transport |
 
-Each channel picks which events it wants. Leave every event unchecked and it receives all of them, including ones added in later versions.
+Each channel picks which events it wants. Leave every event unchecked and it receives all of them, including ones added in later versions, except **Admin signed in**, which goes only to a channel that ticks it.
 
 Use **Test** on a channel to deliver a sample alert immediately. A test ignores the channel's on/off switch and its event selection, so it always sends, and it reports the transport error directly when delivery fails.
 
@@ -67,8 +67,8 @@ A chat webhook URL is a bearer credential: anyone holding it can post to that ch
 | Worker went offline | A worker stops heartbeating; the alert reports complete, partial, or failed recovery with moved and paused mailbox counts |
 | Warmup ban appealed | A blocked mailbox asks to rejoin the warmup pool |
 | Workspace risk escalated | Risk scoring moves a workspace into a different posture |
-| Admin signed in | An account holding platform admin access starts a new session, in the admin panel or the dashboard. The alert names the account, sign-in method, whether a second factor was presented, the device (flagged when it is new), the location and the IP address |
-| Admin access changed | Admin permissions are granted to, changed for, or revoked from an account, with who made the change |
+| Admin signed in | An account holding platform admin access starts a new session, in the admin panel or the dashboard. The alert names the account, sign-in method, whether a second factor was presented, the device (flagged when it is new), the location and the IP address. Sent only to channels that tick it |
+| Admin access changed | Admin permissions are granted to, changed for, or revoked from an account in the admin panel, with who made the change. Saving permissions unchanged sends nothing. A change made with `warmblyctl` on the server is not reported |
 
 A self-hosted instance is offered the subset that means something without billing, so the panel never lists an event that cannot fire there.
 

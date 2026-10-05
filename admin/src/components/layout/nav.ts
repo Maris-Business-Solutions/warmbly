@@ -35,6 +35,8 @@ export interface NavPage {
     title?: string;
     // Match the path exactly instead of as a prefix.
     end?: boolean;
+    // The page has sub-routes of its own (/warmup-content/library).
+    nested?: boolean;
     // Admin permission bit the backend gates this route's data on.
     perm?: number;
 }
@@ -82,7 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
                 pages: [
                     { to: "/warmup", label: "Pool", title: "Warmup", end: true, perm: AdminPerm.ViewWarmupPool },
                     { to: "/warmup/appeals", label: "Appeals", title: "Warmup appeals", perm: AdminPerm.ReviewAppeals },
-                    { to: "/warmup-content", label: "Content", title: "Warmup content", perm: AdminPerm.ViewWarmupPool },
+                    { to: "/warmup-content", label: "Content", title: "Warmup content", nested: true, perm: AdminPerm.ViewWarmupPool },
                     { to: "/placement", label: "Seed panel", perm: AdminPerm.ViewWarmupPool },
                 ],
             },
@@ -180,6 +182,12 @@ export function visibleNavGroups(mask: number | undefined): NavGroup[] {
 export function pageMatches(page: NavPage, pathname: string): boolean {
     if (page.to === "/" || page.end) return pathname === page.to;
     return pathname === page.to || pathname.startsWith(`${page.to}/`);
+}
+
+// isSectionPage is true on a section's own pages, not on detail or unknown
+// paths under their prefix.
+export function isSectionPage(page: NavPage, pathname: string): boolean {
+    return page.to === pathname || (!!page.nested && pathname.startsWith(`${page.to}/`));
 }
 
 export function sectionActive(item: NavItem, pathname: string): boolean {
