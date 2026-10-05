@@ -24,13 +24,14 @@ func (s *returnOriginService) OAuthReturnOrigin(_ context.Context, state string)
 }
 
 func TestGoogleCallbackUsesStateBoundDashboard(t *testing.T) {
-	t.Setenv("APP_URL", "https://app.example.com")
+	t.Setenv("APP_URL", "https://app.warmbly.com")
 	t.Setenv("APP_ORIGIN", "")
-	t.Setenv("CORS_ALLOW_ORIGINS", "https://app.example.com,https://assessment.example.com")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://app.warmbly.com,https://tac-security-assessment.warmbly.com")
 	for _, tt := range []struct{ name, origin, want string }{
-		{"assessment", "https://assessment.example.com", "https://assessment.example.com"},
-		{"legacy state", "", "https://app.example.com"},
-		{"untrusted origin", "https://evil.example.com", "https://app.example.com"},
+		{"assessment", "https://tac-security-assessment.warmbly.com", "https://tac-security-assessment.warmbly.com"},
+		{"primary dashboard", "https://app.warmbly.com", "https://app.warmbly.com"},
+		{"legacy state", "", "https://app.warmbly.com"},
+		{"untrusted origin", "https://evil.example.com", "https://app.warmbly.com"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &returnOriginService{origin: tt.origin}
@@ -49,9 +50,9 @@ func TestGoogleCallbackUsesStateBoundDashboard(t *testing.T) {
 		})
 	}
 	// Microsoft remains on its existing primary-dashboard routing.
-	svc := &returnOriginService{origin: "https://assessment.example.com"}
+	svc := &returnOriginService{origin: "https://tac-security-assessment.warmbly.com"}
 	w := callbackRecorder(t, &Handler{EmailService: svc}, "code=c&state=w.nonce")
-	if svc.state != "" || !strings.Contains(w.Body.String(), `var relay = "https://app.example.com/oauth-return"`) {
+	if svc.state != "" || !strings.Contains(w.Body.String(), `var relay = "https://app.warmbly.com/oauth-return"`) {
 		t.Fatal("Google callback routing must not change Microsoft OAuth")
 	}
 }

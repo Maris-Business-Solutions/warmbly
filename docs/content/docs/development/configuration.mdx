@@ -490,6 +490,15 @@ Both dashboards point `WARMBLY_API_URL` at the same API and set `WARMBLY_APP_URL
 
 On the shared backend, keep `APP_URL` as the primary dashboard and add both exact dashboard origins to `CORS_ALLOW_ORIGINS`, for example `https://app.example.com,https://assessment.example.com`. A Google mailbox connect or reauthorization binds the request's browser origin to its server-side, single-use OAuth state. The callback posts only to that allowlisted origin, and a popup without an opener returns to its `/oauth-return` page. Wildcards are not accepted as OAuth return origins. Google's registered mailbox redirect URI stays on the same API.
 
+For Warmbly's hosted assessment dashboard, the shared backend needs both of these origins:
+
+```dotenv
+APP_URL=https://app.warmbly.com
+CORS_ALLOW_ORIGINS=https://app.warmbly.com,https://tac-security-assessment.warmbly.com
+```
+
+This is an environment example, not a built-in allowlist. Preserve any other existing origins, such as the admin dashboard: append `https://tac-security-assessment.warmbly.com` to the current `CORS_ALLOW_ORIGINS` value rather than replacing the list. On Railway, update the backend service's variable and redeploy it; changing the frontend variable or merging code does not update the live backend environment. Keep `APP_URL` and `APP_ORIGIN` pointing at the primary dashboard, not the assessment dashboard. The assessment frontend sets `WARMBLY_APP_URL=https://tac-security-assessment.warmbly.com` and `WARMBLY_GMAIL_OAUTH_CONNECT=true`.
+
 Existing Google OAuth mailboxes can still re-authorize with the frontend flag off. App-password and SMTP/IMAP options stay available. When linked to Warmbly Cloud, Google consent is brokered by Cloud rather than the local backend, but the frontend opt-in is still required.
 
 <Callout type="warn" title="Visibility is not authorization">
