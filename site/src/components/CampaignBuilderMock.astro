@@ -3,10 +3,10 @@
  * The campaign Steps screen, mirrored from the app:
  *
  *   web/src/app/app/campaigns/[id]/layout.tsx                 header (back link, name, status, Start, actions) + tab bar
- *   web/src/components/app/campaigns/sequences/CampaignFlow.tsx the tree canvas (web/src/components/app/flow): the dots
- *                                                              background, the Stop on reply panel, the zoom controls,
- *                                                              StepCard cards with waits on the lines into them, branch
- *                                                              pills over their columns, + buttons and End terminals,
+ *   web/src/components/app/campaigns/sequences/CampaignFlow.tsx the tree canvas (web/src/components/app/flow): the dot
+ *                                                              grid, the Stop on reply toolbar row, the zoom controls,
+ *                                                              StepCard cards with waits beside the lines into them,
+ *                                                              branch pills over their columns, + buttons and End,
  *                                                              and the edit sheet a card click opens (NodeTypeSwitcher,
  *                                                              then the email editor or the ActionEditor with
  *                                                              SwitchStepFields / AIStepFields). The sheet itself stays
@@ -120,19 +120,18 @@ const tools = ['bold', 'italic', 'underline', 'strike', '|', 'h2', 'list', 'list
 
 // ── The canvas ───────────────────────────────────────────────────
 // Laid out as layoutFlow (web/src/components/app/flow/tree.ts) places it:
-// 280x78 cards, 60px between chained steps plus 28px for a wait chip, 120px
-// under a split, 40px between columns, then scaled to the zoom the builder
-// opens at for a flow this size.
+// 264x56 cards, 52px between chained steps, 92px under a split, 36px between
+// columns (never narrower than the pill naming them). Waits sit beside the
+// line into a step; a line's own + only shows on hover, so the mock draws the
+// + at the end of each path only.
 type Card = { id: string; x: number; y: number; icon: string; tone: string; kicker: string; title: string; summary: string; selected?: boolean };
 type Scene = {
   w: number;
-  zoom: number;
   cards: Card[];
   ends: [number, number][];
   lines: string[];
   pills: { x: number; y: number; label: string; cls: string }[];
-  chips: { x: number; y: number; label: string }[];
-  inserts: [number, number][];
+  notes: { x: number; y: number; label: string }[];
   adds: [number, number][];
 };
 const TONE = {
@@ -142,105 +141,92 @@ const TONE = {
   emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
 };
 const PILL = {
-  yes: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  no: 'border-slate-200 bg-slate-50 text-slate-600',
-  case: 'border-violet-200 bg-violet-50 text-violet-700',
+  yes: 'bg-emerald-50 text-emerald-700 ring-emerald-200/80',
+  no: 'bg-white text-slate-500 ring-slate-200',
+  case: 'bg-violet-50 text-violet-700 ring-violet-200/80',
 };
 const entry = (x: number): Card => ({ id: 'entry', x, y: 0, icon: 'login', tone: TONE.violet, kicker: 'Start', title: 'Contact enters the campaign', summary: 'First email right away' });
-const firstEmail = (x: number, selected = false): Card => ({ id: 'first', x, y: 166, icon: 'mail', tone: TONE.sky, kicker: 'First email', title: 'First email', summary: 'Quick question, {{.FirstName}}', selected });
+const firstEmail = (x: number, selected = false): Card => ({ id: 'first', x, y: 108, icon: 'mail', tone: TONE.sky, kicker: 'First email', title: 'First email', summary: 'Quick question, {{.FirstName}}', selected });
+// A branch from (sx, sy) across the bus at busY down to (tx, ty).
+const branch = (sx: number, sy: number, tx: number, ty: number) => {
+  const busY = sy + 20;
+  const r = Math.min(10, Math.abs(tx - sx) / 2);
+  const dir = tx >= sx ? 1 : -1;
+  return `M${sx},${sy} L${sx},${busY - r} Q${sx},${busY} ${sx + dir * r},${busY} L${tx - dir * r},${busY} Q${tx},${busY} ${tx},${busY + r} L${tx},${ty}`;
+};
 
 let scene: Scene;
 if (demo === 'switch') {
+  // Columns: 264 + 264 + 96.8 (wrong person) + 77.6 (Otherwise), 36 apart.
+  const cx = 405.2;
   scene = {
-    w: 848,
-    zoom: 0.7,
+    w: 810.4,
     cards: [
-      entry(284),
-      firstEmail(284),
-      { id: 'sw', x: 284, y: 332, icon: 'split', tone: TONE.purple, kicker: 'Switch', title: 'Route the reply', summary: "Read this contact's reply and company details. Decide whether…", selected: true },
-      { id: 'deal', x: 0, y: 558, icon: 'handshake', tone: TONE.emerald, kicker: 'Action', title: 'Open a deal', summary: 'Create a CRM deal' },
-      { id: 'later', x: 320, y: 558, icon: 'mail', tone: TONE.sky, kicker: 'Email', title: 'Check back later', summary: 'Circling back next quarter' },
+      entry(cx - 132),
+      firstEmail(cx - 132),
+      { id: 'sw', x: cx - 132, y: 216, icon: 'split', tone: TONE.purple, kicker: 'Switch', title: 'Route the reply', summary: "Read this contact's reply and company details. Decide whether…", selected: true },
+      { id: 'deal', x: 0, y: 364, icon: 'handshake', tone: TONE.emerald, kicker: 'Action', title: 'Open a deal', summary: 'Create a CRM deal' },
+      { id: 'later', x: 300, y: 364, icon: 'mail', tone: TONE.sky, kicker: 'Email', title: 'Check back later', summary: 'Circling back next quarter' },
     ],
-    ends: [[640, 558]],
+    ends: [[648.4, 376]],
     lines: [
-      'M424,78 L424,166',
-      'M424,244 L424,332',
-      'M424,410 L424,426 Q424,436 414,436 L150,436 Q140,436 140,446 L140,558',
-      'M424,410 L424,426 Q424,436 434,436 L450,436 Q460,436 460,446 L460,558',
-      'M424,410 L424,426 Q424,436 434,436 L700,436 Q710,436 710,446 L710,558',
-      'M424,410 L424,426 Q424,436 434,436 L824,436 Q834,436 834,446 L834,558',
-      'M140,636 L140,666',
-      'M460,636 L460,666',
+      `M${cx},56 L${cx},108`,
+      `M${cx},164 L${cx},216`,
+      branch(cx, 272, 132, 364),
+      branch(cx, 272, 432, 364),
+      branch(cx, 272, 648.4, 364),
+      branch(cx, 272, 771.6, 364),
+      'M132,420 L132,446',
+      'M432,420 L432,446',
     ],
     pills: [
-      { x: 140, y: 462, label: 'interested', cls: PILL.case },
-      { x: 460, y: 462, label: 'not ready yet', cls: PILL.case },
-      { x: 710, y: 462, label: 'wrong person', cls: PILL.case },
-      { x: 834, y: 462, label: 'Otherwise', cls: PILL.no },
+      { x: 132, y: 312, label: 'interested', cls: PILL.case },
+      { x: 432, y: 312, label: 'not ready yet', cls: PILL.case },
+      { x: 648.4, y: 312, label: 'wrong person', cls: PILL.case },
+      { x: 771.6, y: 312, label: 'Otherwise', cls: PILL.no },
     ],
-    chips: [
-      { x: 424, y: 150, label: 'Right away' },
-      { x: 424, y: 316, label: 'Wait 3 days' },
-      { x: 140, y: 542, label: 'No wait' },
-      { x: 460, y: 542, label: 'Wait 90 days' },
+    notes: [
+      { x: cx, y: 190, label: '3 days' },
+      { x: 432, y: 344, label: '90 days' },
     ],
-    inserts: [[424, 274], [140, 510], [460, 510], [710, 538]],
-    adds: [[140, 680], [460, 680], [834, 572]],
+    adds: [[132, 457], [432, 457], [771.6, 375]],
   };
 } else if (demo === 'agent') {
   scene = {
-    w: 280,
-    zoom: 1,
+    w: 264,
     cards: [
       entry(0),
       firstEmail(0),
-      { id: 'ai', x: 0, y: 332, icon: 'sparkles', tone: TONE.purple, kicker: 'AI step', title: 'Triage the reply', summary: 'Agent · 3 actions', selected: true },
+      { id: 'ai', x: 0, y: 216, icon: 'sparkles', tone: TONE.purple, kicker: 'AI step', title: 'Triage the reply', summary: 'Agent · 3 actions', selected: true },
     ],
     ends: [],
-    lines: ['M140,78 L140,166', 'M140,244 L140,332', 'M140,410 L140,440'],
+    lines: ['M132,56 L132,108', 'M132,164 L132,216', 'M132,272 L132,298'],
     pills: [],
-    chips: [
-      { x: 140, y: 150, label: 'Right away' },
-      { x: 140, y: 316, label: 'Wait 3 days' },
-    ],
-    inserts: [[140, 274]],
-    adds: [[140, 454]],
+    notes: [{ x: 132, y: 190, label: '3 days' }],
+    adds: [[132, 309]],
   };
 } else {
   scene = {
-    w: 600,
-    zoom: 0.85,
+    w: 564,
     cards: [
-      entry(160),
-      firstEmail(160, demo === 'ai'),
-      { id: 'followup', x: 0, y: 392, icon: 'mail', tone: TONE.sky, kicker: 'Reply in thread', title: 'Follow-up', summary: 'Quick question, {{.FirstName}}' },
-      { id: 'tag', x: 0, y: 558, icon: 'tag', tone: TONE.emerald, kicker: 'Action', title: 'Add engagement label', summary: 'Add a label' },
-      { id: 'alt', x: 320, y: 392, icon: 'mail', tone: TONE.sky, kicker: 'Email', title: 'Alternative', summary: 'Trying a different angle' },
+      entry(150),
+      firstEmail(150, demo === 'ai'),
+      { id: 'followup', x: 0, y: 256, icon: 'mail', tone: TONE.sky, kicker: 'Reply in thread', title: 'Follow-up', summary: 'Quick question, {{.FirstName}}' },
+      { id: 'tag', x: 0, y: 364, icon: 'tag', tone: TONE.emerald, kicker: 'Action', title: 'Add engagement label', summary: 'Add a label' },
+      { id: 'alt', x: 300, y: 256, icon: 'mail', tone: TONE.sky, kicker: 'Email', title: 'Alternative', summary: 'Trying a different angle' },
     ],
     ends: [],
-    lines: [
-      'M300,78 L300,166',
-      'M300,244 L300,260 Q300,270 290,270 L150,270 Q140,270 140,280 L140,392',
-      'M300,244 L300,260 Q300,270 310,270 L450,270 Q460,270 460,280 L460,392',
-      'M140,470 L140,558',
-      'M140,636 L140,666',
-      'M460,470 L460,500',
-    ],
+    lines: ['M282,56 L282,108', branch(282, 164, 132, 256), branch(282, 164, 432, 256), 'M132,312 L132,364', 'M132,420 L132,446', 'M432,312 L432,338'],
     pills: [
-      { x: 140, y: 296, label: 'Opened the email within 3d · instant', cls: PILL.yes },
-      { x: 460, y: 296, label: 'Otherwise', cls: PILL.no },
+      { x: 132, y: 204, label: 'Opened the email within 3d · instant', cls: PILL.yes },
+      { x: 432, y: 204, label: 'Otherwise', cls: PILL.no },
     ],
-    chips: [
-      { x: 300, y: 150, label: 'Right away' },
-      { x: 460, y: 376, label: 'Wait 2 days' },
-      { x: 140, y: 542, label: 'No wait' },
-    ],
-    inserts: [[140, 372], [460, 344], [140, 500]],
-    adds: [[140, 680], [460, 514]],
+    notes: [{ x: 432, y: 236, label: '2 days' }],
+    adds: [[132, 457], [432, 349]],
   };
 }
-// Centred in the canvas; an open panel covers the right 320px of it.
-const sceneLeft = `calc(${open ? '(100% - 320px) / 2' : '50%'} - ${(scene.w * scene.zoom) / 2}px)`;
+// Opens at 100%, centred; an open panel covers the right 320px of the canvas.
+const sceneLeft = `calc(${open ? '(100% - 320px) / 2' : '50%'} - ${scene.w / 2}px)`;
 
 const selected = scene.cards.find((c) => c.selected);
 const panelTitle = selected ? selected.title : 'First email';
@@ -303,14 +289,11 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
 
   <!-- Steps page body: the flow canvas -->
   <div class="p-5">
-    <!-- sm:h-[78vh] in the app; the shell is a 900px viewport, so 702px. -->
-    <div class="cb-flow relative h-[702px] w-full overflow-hidden rounded-md border border-slate-200 bg-slate-50/40">
-      <!-- React Flow Background: dots, gap 20, size 1.2, #e2e8f0, at the scene's zoom -->
-      <div aria-hidden="true" class="absolute inset-0 pointer-events-none" style={`background-image: radial-gradient(circle, #e2e8f0 0.6px, transparent 0.7px); background-size: ${20 * scene.zoom}px ${20 * scene.zoom}px;`}></div>
-
-      <!-- Panel top-left (15px margin): StopOnReplyToggle -->
-      <div class="absolute left-[15px] top-[15px] z-[5] flex max-w-[calc(1280px-1.5rem)] flex-col gap-1.5">
-        <div class="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
+    <!-- The canvas fills the rest of the window in the app; the shell is a 900px viewport, so 702px. -->
+    <div class="cb-flow relative flex h-[702px] w-full flex-col overflow-hidden rounded-md border border-slate-200 bg-white">
+      <!-- Toolbar row: StopOnReplyToggle (on, so no warning) -->
+      <div class="flex min-h-10 items-center gap-x-4 border-b border-slate-200 bg-white px-3 py-1.5">
+        <div class="flex items-center gap-2">
           <span class="text-[11.5px] text-slate-600">Stop on reply</span>
           <span role="switch" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-sky-600">
             <span class="inline-block size-4 translate-x-4 rounded-full bg-white shadow-sm"></span>
@@ -318,53 +301,52 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
         </div>
       </div>
 
-      <!-- Panel bottom-right (15px margin): ZoomControls -->
-      <div class="absolute right-[15px] bottom-[15px] z-[5] flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-        <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.minus}></svg></span>
-        <span class="inline-flex h-7 min-w-11 items-center justify-center rounded-md px-1 text-[11.5px] tabular-nums text-slate-600">{Math.round(scene.zoom * 100)}%</span>
-        <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
-        <span class="mx-0.5 h-4 w-px bg-slate-200"></span>
-        <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.maximize}></svg></span>
-      </div>
+      <!-- The surface: a dot grid that moves with the view -->
+      <div class="relative min-h-0 flex-1 overflow-hidden bg-slate-50/40" style="background-image: radial-gradient(circle, #dde3eb 1px, transparent 1.2px); background-size: 20px 20px;">
+        <!-- ZoomControls (bottom right) -->
+        <div class="absolute right-3 bottom-3 z-[5] flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm">
+          <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.minus}></svg></span>
+          <span class="inline-flex h-7 min-w-11 items-center justify-center rounded-md px-1 text-[11.5px] tabular-nums text-slate-600">100%</span>
+          <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
+          <span class="mx-0.5 h-4 w-px bg-slate-200"></span>
+          <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.maximize}></svg></span>
+        </div>
 
-      <!-- The tree in flow coordinates, scaled like the React Flow viewport. -->
-      <div class="absolute top-[56px] origin-top-left" style={`left:${sceneLeft}; width:${scene.w}px; transform: scale(${scene.zoom});`}>
-        <svg class="absolute left-0 top-0 overflow-visible pointer-events-none" width="1" height="1" aria-hidden="true">
-          {scene.lines.map((d) => <path d={d} fill="none" stroke="#cbd5e1" stroke-width="1.5" />)}
-        </svg>
-        {scene.pills.map((p) => (
-          <span class={`absolute max-w-[200px] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 ${p.cls}`} style={`left:${p.x}px; top:${p.y}px; transform: translate(-50%, -50%);`}>{p.label}</span>
-        ))}
-        {scene.chips.map((c) => (
-          <span class="absolute inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 bg-white px-2 text-[10.5px] font-medium text-slate-500 shadow-sm" style={`left:${c.x}px; top:${c.y}px; transform: translate(-50%, -50%);`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.clock}></svg>
-            {c.label}
-          </span>
-        ))}
-        {scene.inserts.map(([x, y]) => (
-          <span class="absolute flex size-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
-        ))}
-        {scene.adds.map(([x, y]) => (
-          <span class="absolute flex size-7 items-center justify-center rounded-full border border-dashed border-slate-300 bg-white text-slate-400" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
-        ))}
-        {scene.ends.map(([x, y]) => (
-          <div class="absolute flex h-[34px] w-[140px] items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white text-[12px] font-medium text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.05)]" style={`left:${x}px; top:${y}px;`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-rose-500" set:html={ic.flag}></svg>
-            End
-          </div>
-        ))}
-        {scene.cards.map((c) => (
-          <div class="absolute h-[78px] w-[280px]" style={`left:${c.x}px; top:${c.y}px;`} data-node={c.id} data-selected={c.selected ? '' : undefined}>
-            <div class="cb-node relative flex h-full w-full items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-              <span class={`inline-flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${c.tone}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic[c.icon]}></svg></span>
-              <div class="min-w-0 flex-1">
-                <div class="flex h-4 items-center gap-1.5"><span class="truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">{c.kicker}</span></div>
-                <div class="mt-0.5 truncate text-[13px] font-semibold leading-5 text-slate-900">{c.title}</div>
-                <div class="truncate text-[11.5px] leading-4 text-slate-500">{c.summary}</div>
+        <!-- The tree in flow coordinates, framed from the top -->
+        <div class="absolute top-[56px]" style={`left:${sceneLeft}; width:${scene.w}px;`}>
+          <svg class="absolute left-0 top-0 overflow-visible pointer-events-none" width="1" height="1" aria-hidden="true">
+            {scene.lines.map((d) => <path d={d} fill="none" stroke="#cbd5e1" stroke-width="1.25" />)}
+          </svg>
+          {scene.pills.map((p) => (
+            <span class={`absolute max-w-[200px] truncate whitespace-nowrap rounded-full px-2 py-px text-[11px] font-medium leading-[18px] ring-1 ring-inset ${p.cls}`} style={`left:${p.x}px; top:${p.y}px; transform: translate(-50%, -50%);`}>{p.label}</span>
+          ))}
+          {scene.notes.map((n) => (
+            <span class="absolute inline-flex items-center gap-1 whitespace-nowrap rounded px-1 text-[11px] text-slate-400" style={`left:${n.x + 14}px; top:${n.y}px; transform: translateY(-50%);`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.clock}></svg>
+              {n.label}
+            </span>
+          ))}
+          {scene.adds.map(([x, y]) => (
+            <span class="absolute flex size-[22px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
+          ))}
+          {scene.ends.map(([x, y]) => (
+            <span class="absolute inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.flag}></svg>
+              End
+            </span>
+          ))}
+          {scene.cards.map((c) => (
+            <div class="absolute h-[56px] w-[264px]" style={`left:${c.x}px; top:${c.y}px;`} data-node={c.id} data-selected={c.selected ? '' : undefined}>
+              <div class="cb-node relative flex h-full w-full items-center gap-2.5 rounded-xl border border-slate-200/90 bg-white pl-2.5 pr-8 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <span class={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${c.tone}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic[c.icon]}></svg></span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-[13px] font-medium leading-5 text-slate-900">{c.title}</div>
+                  <div class="truncate text-[11.5px] leading-4 text-slate-400">{c.kicker}<span class="text-slate-500"> · {c.summary}</span></div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <!-- Edit sheet: the builder's SidePanel (AutomationFlow.tsx), 320px,

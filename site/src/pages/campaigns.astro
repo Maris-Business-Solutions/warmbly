@@ -122,12 +122,11 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
 
       <!-- TOP-LEFT · a mini first-email card -->
       <div class="hero-float absolute top-[12%] left-[calc(50%_-_484px)] z-30" style="--drift:-10px;animation-duration:7.6s;animation-delay:-1.4s">
-        <div class="rotate-[-2deg] w-[230px] flex items-start gap-2 rounded-[12px] bg-white ring-1 ring-slate-900/5 shadow-[0_2px_4px_-2px_rgba(2,32,71,0.25),0_18px_36px_-12px_rgba(2,32,71,0.5)] px-2.5 py-2">
+        <div class="rotate-[-2deg] w-[230px] flex items-center gap-2 rounded-[12px] bg-white ring-1 ring-slate-900/5 shadow-[0_2px_4px_-2px_rgba(2,32,71,0.25),0_18px_36px_-12px_rgba(2,32,71,0.5)] px-2.5 py-2">
           <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-50 text-sky-600 ring-1 ring-inset ring-sky-100"><Icon name="mail" size={13} /></span>
           <div class="min-w-0">
-            <div class="text-[8.5px] font-medium uppercase tracking-[0.14em] text-slate-400">First email</div>
-            <div class="truncate text-[12px] font-semibold text-slate-900">First touch</div>
-            <div class="truncate text-[11px] text-slate-500">Quick question, Maya</div>
+            <div class="truncate text-[12px] font-medium text-slate-900">First touch</div>
+            <div class="truncate text-[11px] text-slate-400">First email<span class="text-slate-500"> · Quick question, Maya</span></div>
           </div>
         </div>
       </div>
@@ -143,7 +142,7 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
       <div class="hero-float absolute top-[30%] right-[calc(50%_-_404px)] z-20" style="--drift:-7px;animation-duration:8.2s;animation-delay:-0.7s">
         <div class="rotate-[-2deg] inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-white/95 ring-1 ring-slate-900/5 shadow-[0_8px_20px_-10px_rgba(2,32,71,0.4)]">
           <Icon name="clock" size={12} class="text-slate-400" />
-          <span class="text-[11.5px] font-medium text-slate-600">Wait 2 days</span>
+          <span class="text-[11.5px] font-medium text-slate-600">2 days</span>
         </div>
       </div>
 
@@ -241,29 +240,19 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
             <div class="flow-node mx-auto w-full sm:w-[280px]" style="--i:0">
               <div class="flow-card">
                 <span class="flow-tile bg-violet-50 text-violet-600 ring-violet-100"><Icon name="arrowRight" size={15} /></span>
-                <div class="min-w-0">
-                  <div class="flow-kicker">Start</div>
-                  <div class="flow-title">Contact enters the campaign</div>
-                  <div class="flow-sub">First email right away</div>
-                </div>
+                <div class="min-w-0"><div class="flow-title">Contact enters the campaign</div><div class="flow-sub"><span class="flow-kicker">Start</span> · First email right away</div></div>
               </div>
             </div>
 
             <div class="flow-conn flow-node" style="--i:1">
-              <span class="flow-line"></span>
-              <span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> Right away</span>
-              <span class="flow-line"></span>
+              <span class="flow-line h-8"></span>
             </div>
 
             <!-- First email -->
             <div class="flow-node mx-auto w-full sm:w-[280px]" style="--i:2">
               <div class="flow-card">
                 <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="mail" size={15} /></span>
-                <div class="min-w-0">
-                  <div class="flow-kicker">First email</div>
-                  <div class="flow-title">First touch</div>
-                  <div class="flow-sub">{`Quick question, {{.FirstName}}`}</div>
-                </div>
+                <div class="min-w-0"><div class="flow-title">First touch</div><div class="flow-sub"><span class="flow-kicker">First email</span> · {`Quick question, {{.FirstName}}`}</div></div>
               </div>
             </div>
 
@@ -281,20 +270,12 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
                 </div>
                 <div class="flow-card">
                   <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="mail" size={15} /></span>
-                  <div class="min-w-0">
-                    <div class="flow-kicker">Reply in thread</div>
-                    <div class="flow-title">Case study nudge</div>
-                    <div class="flow-sub">{`Quick question, {{.FirstName}}`}</div>
-                  </div>
+                  <div class="min-w-0"><div class="flow-title">Case study nudge</div><div class="flow-sub"><span class="flow-kicker">Reply in thread</span> · {`Quick question, {{.FirstName}}`}</div></div>
                 </div>
-                <div class="flow-conn"><span class="flow-line"></span><span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> Wait 3 days</span><span class="flow-line"></span></div>
+                <div class="flow-conn"><span class="flow-line"></span><span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> 3 days</span><span class="flow-line"></span></div>
                 <div class="flow-card">
                   <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="mail" size={15} /></span>
-                  <div class="min-w-0">
-                    <div class="flow-kicker">Email</div>
-                    <div class="flow-title">Last call</div>
-                    <div class="flow-sub">Should I close this out?</div>
-                  </div>
+                  <div class="min-w-0"><div class="flow-title">Last call</div><div class="flow-sub"><span class="flow-kicker">Email</span> · Should I close this out?</div></div>
                 </div>
                 <div class="flow-conn"><span class="flow-line"></span><span class="flow-add">+</span></div>
               </div>
@@ -304,14 +285,10 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
                   <span class="flow-branch flow-branch-else">Otherwise</span>
                   <span class="flow-line h-4"></span>
                 </div>
-                <div class="flow-conn"><span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> Wait 4 days</span><span class="flow-line"></span></div>
+                <div class="flow-conn"><span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> 4 days</span><span class="flow-line"></span></div>
                 <div class="flow-card">
                   <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="shuffle" size={14} /></span>
-                  <div class="min-w-0">
-                    <div class="flow-kicker">Action</div>
-                    <div class="flow-title">Move deal stage</div>
-                    <div class="flow-sub">Move the deal forward</div>
-                  </div>
+                  <div class="min-w-0"><div class="flow-title">Move deal stage</div><div class="flow-sub"><span class="flow-kicker">Action</span> · Move the deal forward</div></div>
                 </div>
                 <div class="flow-conn"><span class="flow-line"></span><span class="flow-add">+</span></div>
               </div>
@@ -718,38 +695,33 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
     .flow-line { width: 1.5px; height: 1rem; background: var(--border-strong); }
     .flow-wait {
       display: inline-flex; align-items: center; gap: 0.3rem;
-      height: 1.4rem; padding-inline: 0.55rem; margin-block: 0.15rem;
-      border-radius: 9999px; background: #fff;
-      border: 1px solid #e2e8f0;
-      font-size: 11px; font-weight: 500; color: #64748b;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.05);
+      margin-block: 0.25rem; font-size: 11px; color: #94a3b8;
     }
     .flow-branch {
       display: inline-flex; align-items: center;
-      padding: 0.15rem 0.6rem;
-      border-radius: 9999px; border: 1px solid;
-      font-size: 11.5px; font-weight: 500;
+      padding: 1px 0.5rem; border-radius: 9999px;
+      font-size: 11px; font-weight: 500; line-height: 18px;
     }
-    .flow-branch-then { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
-    .flow-branch-else { background: #f8fafc; color: #475569; border-color: #e2e8f0; }
+    .flow-branch-then { background: #ecfdf5; color: #047857; box-shadow: inset 0 0 0 1px rgb(167 243 208 / 0.8); }
+    .flow-branch-else { background: #fff; color: #64748b; box-shadow: inset 0 0 0 1px #e2e8f0; }
     .flow-card {
-      display: flex; align-items: flex-start; gap: 0.65rem;
-      padding: 0.65rem 0.75rem; border-radius: 0.75rem;
-      background: #fff; border: 1px solid #e2e8f0;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.05);
+      display: flex; align-items: center; gap: 0.65rem;
+      height: 3.5rem; padding: 0 2rem 0 0.65rem; border-radius: 0.75rem;
+      background: #fff; border: 1px solid rgb(226 232 240 / 0.9);
+      box-shadow: 0 1px 2px rgba(15,23,42,0.04);
     }
     .flow-tile {
       display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-      width: 2.25rem; height: 2.25rem; border-radius: 0.5rem;
+      width: 2rem; height: 2rem; border-radius: 0.5rem;
       box-shadow: inset 0 0 0 1px var(--tw-ring-color, #e2e8f0);
     }
-    .flow-kicker { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #94a3b8; }
-    .flow-title { margin-top: 0.125rem; font-size: 13px; font-weight: 600; line-height: 1.25rem; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .flow-kicker { color: #94a3b8; }
+    .flow-title { font-size: 13px; font-weight: 500; line-height: 1.25rem; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .flow-sub { font-size: 11.5px; line-height: 1rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .flow-add {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 1.75rem; height: 1.75rem; border-radius: 9999px;
-      border: 1px dashed #cbd5e1; background: #fff; color: #94a3b8; font-size: 15px; line-height: 1;
+      width: 22px; height: 22px; border-radius: 9999px;
+      border: 1px solid #e2e8f0; background: #fff; color: #94a3b8; font-size: 13px; line-height: 1;
     }
 
     .flow-node { animation: flowReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i, 0) * 90ms); }

@@ -7,8 +7,9 @@
  *   - the builder header: back, the name input, the Active switch, then
  *     Undo / Redo, History, Test and Saved
  *   - the tree canvas at the zoom it opens at: StepCard nodes laid out top
- *     down, the If / else splitting into Yes and No columns, a + on every
- *     line and at the end of each path, the zoom controls bottom right
+ *     down on a dot grid, the If / else splitting into Yes and No columns, a +
+ *     at the end of each path (a line's own + shows on hover), zoom controls
+ *     bottom right
  *   - the Test panel (InsightsPanel in a bare FlowPanel, 400px beside the
  *     canvas): the dry-run intro, the sample event, the steps to run, Run
  *     test, then one NodeResultRow per node the run touched. The finished run
@@ -60,40 +61,39 @@ const sample = `{
   "snippet": "Sure, let's talk next week."
 }`;
 
-// The canvas in flow coordinates, as layoutFlow places it: 280x78 cards, a
-// 60px chain gap, 120px under a split, 40px between columns. The viewport
-// opens top-anchored at 80%, the zoom the builder picks for a flow this tall.
-const ZOOM = 0.8;
-const VIEW = { x: 400, y: 56 };
+// The canvas in flow coordinates, as layoutFlow places it: 264x56 cards, a
+// 52px chain gap, 92px under a split, 36px between columns. It opens at 100%,
+// framed from the top and centred on the flow, like the builder.
+const ZOOM = 1;
+const VIEW = { x: 358, y: 56 };
 type Tile = { icon: string; tone: string } | { brand: 'slack' | 'hubspot' };
 type Card = { id: string; left: number; top: number; tile: Tile; kicker: string; title: string; summary: string; reached: boolean; result?: string };
 const cards: Card[] = [
-  { id: 'trigger', left: 160, top: 0, tile: { icon: zapIcon, tone: 'bg-sky-50 text-sky-600 ring-sky-100' }, kicker: 'Trigger', title: 'Prospect replies', summary: 'Starts this automation', reached: true },
-  { id: 'if', left: 160, top: 138, tile: { icon: gitBranchIcon, tone: 'bg-amber-50 text-amber-600 ring-amber-100' }, kicker: 'If / else', title: 'intent is Positive', summary: 'Checks the event', reached: true, result: 'Yes' },
-  { id: 'slack', left: 0, top: 336, tile: { brand: 'slack' }, kicker: 'Slack', title: 'Send a Slack message', summary: 'Slack · #sales', reached: true, result: 'Ran' },
-  { id: 'deal', left: 0, top: 474, tile: { icon: briefcaseIcon, tone: 'bg-sky-50 text-sky-600 ring-sky-100' }, kicker: 'Action', title: 'Create a deal', summary: '{{.company}} deal', reached: true, result: 'Ran' },
-  { id: 'hubspot', left: 0, top: 612, tile: { brand: 'hubspot' }, kicker: 'HubSpot', title: 'Create / update HubSpot contact', summary: 'HubSpot', reached: true, result: 'Ran' },
-  { id: 'label', left: 320, top: 336, tile: { icon: tagIcon, tone: 'bg-emerald-50 text-emerald-600 ring-emerald-100' }, kicker: 'Action', title: 'Add a label', summary: '1 label', reached: false },
-  { id: 'task', left: 320, top: 474, tile: { icon: checkSquareIcon, tone: 'bg-violet-50 text-violet-600 ring-violet-100' }, kicker: 'Action', title: 'Create a task', summary: 'Follow up later', reached: false },
+  { id: 'trigger', left: 150, top: 0, tile: { icon: zapIcon, tone: 'bg-sky-50 text-sky-600 ring-sky-100' }, kicker: 'Trigger', title: 'Prospect replies', summary: 'Starts this automation', reached: true },
+  { id: 'if', left: 150, top: 108, tile: { icon: gitBranchIcon, tone: 'bg-amber-50 text-amber-600 ring-amber-100' }, kicker: 'If / else', title: 'intent is Positive', summary: 'Checks the event', reached: true, result: 'Yes' },
+  { id: 'slack', left: 0, top: 256, tile: { brand: 'slack' }, kicker: 'Slack', title: 'Send a Slack message', summary: 'Slack · #sales', reached: true, result: 'Ran' },
+  { id: 'deal', left: 0, top: 364, tile: { icon: briefcaseIcon, tone: 'bg-sky-50 text-sky-600 ring-sky-100' }, kicker: 'Action', title: 'Create a deal', summary: '{{.company}} deal', reached: true, result: 'Ran' },
+  { id: 'hubspot', left: 0, top: 472, tile: { brand: 'hubspot' }, kicker: 'HubSpot', title: 'Create / update HubSpot contact', summary: 'HubSpot', reached: true, result: 'Ran' },
+  { id: 'label', left: 300, top: 256, tile: { icon: tagIcon, tone: 'bg-emerald-50 text-emerald-600 ring-emerald-100' }, kicker: 'Action', title: 'Add a label', summary: '1 label', reached: false },
+  { id: 'task', left: 300, top: 364, tile: { icon: checkSquareIcon, tone: 'bg-violet-50 text-violet-600 ring-violet-100' }, kicker: 'Action', title: 'Create a task', summary: 'Follow up later', reached: false },
 ];
 // Lines: the chain into the condition, the Yes and No branches off one bus,
 // then each column's chain down to its trailing add button.
 const lines = [
-  'M300,78 L300,138',
-  'M300,216 L300,232 Q300,242 290,242 L150,242 Q140,242 140,252 L140,336',
-  'M300,216 L300,232 Q300,242 310,242 L450,242 Q460,242 460,252 L460,336',
-  'M140,414 L140,474',
-  'M140,552 L140,612',
-  'M140,690 L140,720',
-  'M460,414 L460,474',
-  'M460,552 L460,582',
+  'M282,56 L282,108',
+  'M282,164 L282,174 Q282,184 272,184 L142,184 Q132,184 132,194 L132,256',
+  'M282,164 L282,174 Q282,184 292,184 L422,184 Q432,184 432,194 L432,256',
+  'M132,312 L132,364',
+  'M132,420 L132,472',
+  'M132,528 L132,554',
+  'M432,312 L432,364',
+  'M432,420 L432,446',
 ];
-// The + on each line that can take a step, and the trailing add buttons.
-const inserts = [[300, 108], [140, 316], [460, 316], [140, 444], [140, 582], [460, 444]];
-const ends = [[140, 734], [460, 596]];
+// The add button at the end of each path; a line's own + only shows on hover.
+const ends = [[132, 565], [432, 457]];
 const pills = [
-  { x: 140, y: 268, label: 'Yes', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  { x: 460, y: 268, label: 'No', cls: 'border-slate-200 bg-slate-50 text-slate-600' },
+  { x: 132, y: 204, label: 'Yes', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200/80' },
+  { x: 432, y: 204, label: 'No', cls: 'bg-white text-slate-500 ring-slate-200' },
 ];
 
 // Every action step on the canvas, in tree order, as the panel lists them.
@@ -159,39 +159,35 @@ const trace: Row[] = [
 
       <div class="relative flex min-h-[720px]">
         <!-- ── Canvas ────────────────────────────────────────────────── -->
-        <div class="relative min-w-0 flex-1 overflow-hidden bg-slate-50/40" style="background-image: radial-gradient(#e2e8f0 0.5px, transparent 0.6px); background-size: 16px 16px; background-position: 0 8px;">
-          <div class="absolute left-0 top-0 origin-top-left" style={`transform: translate(${VIEW.x}px, ${VIEW.y}px) scale(${ZOOM}); width:600px; height:760px;`}>
-            <svg width="600" height="760" viewBox="0 0 600 760" class="absolute inset-0 overflow-visible pointer-events-none" aria-hidden="true">
-              {lines.map((d) => <path d={d} fill="none" stroke="#cbd5e1" stroke-width="1.5" />)}
+        <div class="relative min-w-0 flex-1 overflow-hidden bg-slate-50/40" style={`background-image: radial-gradient(circle, #dde3eb 1px, transparent 1.2px); background-size: 20px 20px; background-position: ${VIEW.x}px ${VIEW.y}px;`}>
+          <div class="absolute left-0 top-0 origin-top-left" style={`transform: translate(${VIEW.x}px, ${VIEW.y}px) scale(${ZOOM}); width:564px; height:576px;`}>
+            <svg width="564" height="576" viewBox="0 0 564 576" class="absolute inset-0 overflow-visible pointer-events-none" aria-hidden="true">
+              {lines.map((d) => <path d={d} fill="none" stroke="#cbd5e1" stroke-width="1.25" />)}
             </svg>
 
             {pills.map((p) => (
-              <span class={`absolute rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 ${p.cls}`} style={`left:${p.x}px; top:${p.y}px; transform: translate(-50%, -50%);`}>{p.label}</span>
-            ))}
-            {inserts.map(([x, y]) => (
-              <span class="absolute flex size-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={plusIcon}></svg></span>
+              <span class={`absolute rounded-full px-2 py-px text-[11px] font-medium leading-[18px] ring-1 ring-inset ${p.cls}`} style={`left:${p.x}px; top:${p.y}px; transform: translate(-50%, -50%);`}>{p.label}</span>
             ))}
             {ends.map(([x, y]) => (
-              <span class="absolute flex size-7 items-center justify-center rounded-full border border-dashed border-slate-300 bg-white text-slate-400" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={plusIcon}></svg></span>
+              <span class="absolute flex size-[22px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={plusIcon}></svg></span>
             ))}
 
             {cards.map((c) => (
-              <div class={`ad-card absolute transition-opacity duration-200 ${c.reached ? '' : 'ad-unreached'}`} style={`left:${c.left}px; top:${c.top}px; width:280px; height:78px;`}>
-                <div class="relative flex h-full w-full items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+              <div class={`ad-card absolute transition-opacity duration-300 ${c.reached ? '' : 'ad-unreached'}`} style={`left:${c.left}px; top:${c.top}px; width:264px; height:56px;`}>
+                <div class="relative flex h-full w-full items-center gap-2.5 rounded-xl border border-slate-200/90 bg-white pl-2.5 pr-8 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                   {'brand' in c.tile ? (
                     c.tile.brand === 'slack'
-                      ? <div class="w-9 h-9 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 256 256" role="img" aria-label="slack" class="w-5 h-5" set:html={RAW_BRAND_LOGOS.slack.inner}></svg></div>
-                      : <div class="w-9 h-9 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 24 24" role="img" aria-label="hubspot" class="w-5 h-5" fill={BRAND_ICON.hubspot.hex}><path d={BRAND_ICON.hubspot.path}/></svg></div>
+                      ? <div class="w-7 h-7 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 256 256" role="img" aria-label="slack" class="w-4 h-4" set:html={RAW_BRAND_LOGOS.slack.inner}></svg></div>
+                      : <div class="w-7 h-7 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 24 24" role="img" aria-label="hubspot" class="w-4 h-4" fill={BRAND_ICON.hubspot.hex}><path d={BRAND_ICON.hubspot.path}/></svg></div>
                   ) : (
-                    <span class={`inline-flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${c.tile.tone}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={c.tile.icon}></svg></span>
+                    <span class={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${c.tile.tone}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={c.tile.icon}></svg></span>
                   )}
                   <div class="min-w-0 flex-1">
-                    <div class="flex h-4 items-center gap-1.5">
-                      <span class="truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">{c.kicker}</span>
-                      {c.result && <span class="ad-result ml-auto mr-5 inline-flex h-4 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">{c.result}</span>}
+                    <div class="flex items-center gap-1.5">
+                      <span class="truncate text-[13px] font-medium leading-5 text-slate-900">{c.title}</span>
+                      {c.result && <span class="ad-result inline-flex h-4 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">{c.result}</span>}
                     </div>
-                    <div class="mt-0.5 truncate text-[13px] font-semibold leading-5 text-slate-900">{c.title}</div>
-                    <div class="truncate text-[11.5px] leading-4 text-slate-500">{c.summary}</div>
+                    <div class="truncate text-[11.5px] leading-4 text-slate-400">{c.kicker}<span class="text-slate-500"> · {c.summary}</span></div>
                   </div>
                 </div>
               </div>
@@ -285,12 +281,12 @@ const trace: Row[] = [
 
   <style>
     /* Test opens the panel beside the canvas, which narrows to make room; the
-       panel fades and slides in (spring 420/38, about a third of a second). */
+       panel fades in over 120ms. */
     .ad-testbtn{transition:background-color .15s,border-color .15s,color .15s;}
     .ad-builder.is-test .ad-testbtn{border-color:#7dd3fc;background:#f0f9ff;color:#0369a1;}
     .ad-panel{display:none;}
-    .ad-builder.is-test .ad-panel{display:flex;animation:ad-panel-in .32s cubic-bezier(.22,1,.36,1);}
-    @keyframes ad-panel-in{from{opacity:0;transform:translateX(24px);}to{opacity:1;transform:none;}}
+    .ad-builder.is-test .ad-panel{display:flex;animation:ad-panel-in .12s ease-out;}
+    @keyframes ad-panel-in{from{opacity:0;}to{opacity:1;}}
     /* Run test: the button and the result area show Running…, then the trace. */
     .ad-run-busy,.ad-res-busy,.ad-res-done{display:none;}
     .ad-builder.is-running .ad-run{opacity:.6;}
