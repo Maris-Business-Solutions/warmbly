@@ -6,6 +6,7 @@
 // layout, a renderer for each step card, and what each button does.
 
 import React from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ClockIcon, CornerDownRightIcon, MaximizeIcon, MinusIcon, PlusIcon, XIcon } from "lucide-react";
 import type { BranchTone, FlowLayout, InsertPoint, PlacedEdge, PlacedNode } from "./tree";
 import type { RemoteCursor } from "@/hooks/useLiveCursors";
@@ -67,23 +68,36 @@ const PILL: Record<BranchTone, string> = {
     warn: "bg-amber-50 text-amber-700 ring-amber-200/80",
 };
 
+// Every line has the same six commands (a straight one just has zero-length
+// bends), so a line can morph between straight and branched as the layout moves.
 function edgePath(e: PlacedEdge): string {
-    const { sx, sy, tx, ty, busY } = e;
-    if (busY === null || Math.abs(tx - sx) < 0.5) return `M${sx},${sy} L${tx},${ty}`;
-    const r = Math.min(10, Math.abs(tx - sx) / 2, busY - sy);
-    const dir = tx > sx ? 1 : -1;
+    const { sx, sy, tx, ty } = e;
+    const busY = e.busY ?? (sy + ty) / 2;
+    const r = Math.max(0, Math.min(10, Math.abs(tx - sx) / 2, busY - sy));
+    const dir = tx >= sx ? 1 : -1;
+    const n = (v: number) => Math.round(v * 10) / 10;
     return [
-        `M${sx},${sy}`,
-        `L${sx},${busY - r}`,
-        `Q${sx},${busY} ${sx + dir * r},${busY}`,
-        `L${tx - dir * r},${busY}`,
-        `Q${tx},${busY} ${tx},${busY + r}`,
-        `L${tx},${ty}`,
+        `M${n(sx)},${n(sy)}`,
+        `L${n(sx)},${n(busY - r)}`,
+        `Q${n(sx)},${n(busY)} ${n(sx + dir * r)},${n(busY)}`,
+        `L${n(tx - dir * r)},${n(busY)}`,
+        `Q${n(tx)},${n(busY)} ${n(tx)},${n(busY + r)}`,
+        `L${n(tx)},${n(ty)}`,
     ].join(" ");
 }
 
-// Absolutely placed at a flow point, centred on it.
-const at = (x: number, y: number): React.CSSProperties => ({ left: x, top: y, transform: "translate(-50%, -50%)" });
+// One timing for every layout change, so a whole rearrangement reads as one move.
+const MOVE = { duration: 0.32, ease: [0.22, 1, 0.36, 1] } as const;
+const ENTER = { opacity: 0, scale: 0.94 };
+
+// Something centred on a flow point that glides when the point moves.
+function Pin({ x, y, className, children }: { x: number; y: number; className?: string; children: React.ReactNode }) {
+    return (
+        <motion.div className="absolute left-0 top-0" initial={{ x, y, opacity: 0 }} animate={{ x, y, opacity: 1 }} exit={{ opacity: 0 }} transition={MOVE}>
+            <div className={cn("absolute -translate-x-1/2 -translate-y-1/2", className)}>{children}</div>
+        </motion.div>
+    );
+}
 
 const INTERACTIVE = "button, a, input, textarea, select, [role='button'], [contenteditable='true'], [data-no-pan]";
 
@@ -468,11 +482,22 @@ export default function FlowCanvas({
     }, [revealId, ready, reveal]);
 
     // ── Drawing ──────────────────────────────────────────────────────────────
+    // Cards sit at the origin and glide to their place, so a layout change
+    // moves everything to its new spot together; a new card fades and grows in.
+    const place = (p: PlacedNode, opacity = 1) => ({
+        initial: { x: p.x, y: p.y, ...ENTER },
+        animate: { x: p.x, y: p.y, opacity, scale: 1 },
+        exit: ENTER,
+        transition: MOVE,
+        style: { left: 0, top: 0, width: p.w, height: p.h },
+    });
+
     const stepNode = (p: PlacedNode) => {
         const selected = p.key === selectedId;
         return (
-            <div
+            <motion.div
                 key={p.key}
+                {...place(p, dimmed?.has(p.key) ? 0.4 : 1)}
                 data-flow-step={p.key}
                 role="button"
                 tabIndex={0}
@@ -487,19 +512,17 @@ export default function FlowCanvas({
                     onSelect(p.key);
                 }}
                 className={cn(
-                    "absolute rounded-xl outline-none transition-opacity duration-200 focus-visible:ring-2 focus-visible:ring-sky-300",
-                    dimmed?.has(p.key) && "opacity-40",
+                    "absolute rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
                     hoverGoto === p.key && "ring-2 ring-sky-300 ring-offset-2",
                 )}
-                style={{ left: p.x, top: p.y, width: p.w, height: p.h }}
             >
                 {renderStep(p.key, selected, !!p.detached)}
-            </div>
+            </motion.div>
         );
     };
 
     const gotoNode = (p: PlacedNode) => (
-        <div key={p.key} className="group absolute" style={{ left: p.x, top: p.y, width: p.w, height: p.h }}>
+        <motion.div key={p.key} {...place(p)} className="group absolute">
             {onRemoveGoto && p.from !== undefined && (
                 <button
                     type="button"
@@ -533,14 +556,14 @@ export default function FlowCanvas({
                 <span className="shrink-0">Go to</span>
                 <span className="min-w-0 truncate font-medium text-slate-700">{stepTitle(p.ref)}</span>
             </button>
-        </div>
+        </motion.div>
     );
 
     const addNode = (p: PlacedNode) => {
         const point: InsertPoint = { from: p.ref, port: p.port ?? "", before: null };
         const active = samePoint(activeInsert, point);
         return (
-            <div key={p.key} className="absolute" style={{ left: p.x, top: p.y, width: p.w, height: p.h }}>
+            <motion.div key={p.key} {...place(p)} className="absolute">
                 {onInsert ? (
                     <button
                         type="button"
@@ -560,7 +583,7 @@ export default function FlowCanvas({
                 ) : (
                     <span className="mx-auto mt-2 block size-1.5 rounded-full bg-slate-300" aria-label="End of path" />
                 )}
-            </div>
+            </motion.div>
         );
     };
 
@@ -571,9 +594,10 @@ export default function FlowCanvas({
         const top = pillY !== null ? pillY + 12 : e.sy;
         const midY = (top + e.ty) / 2;
         const active = samePoint(activeInsert, e.insert);
-        return (
-            <React.Fragment key={e.key}>
-                {e.label && pillY !== null && (
+        const out: React.ReactNode[] = [];
+        if (e.label && pillY !== null) {
+            out.push(
+                <Pin key={`${e.key}:pill`} x={e.tx} y={pillY}>
                     <button
                         type="button"
                         disabled={!onPillClick}
@@ -583,17 +607,20 @@ export default function FlowCanvas({
                             onPillClick?.(e);
                         }}
                         className={cn(
-                            "absolute block max-w-[200px] truncate rounded-full px-2 py-px text-[11px] font-medium leading-[18px] ring-1 ring-inset transition-shadow disabled:cursor-default",
+                            "block max-w-[200px] truncate whitespace-nowrap rounded-full px-2 py-px text-[11px] font-medium leading-[18px] ring-1 ring-inset transition-shadow disabled:cursor-default",
                             PILL[tone],
                             onPillClick && "hover:shadow-sm",
                             activeEdge === e.key && "ring-2 ring-sky-400",
                         )}
-                        style={at(e.tx, pillY)}
                     >
                         {e.label}
                     </button>
-                )}
-                {e.note && (
+                </Pin>,
+            );
+        }
+        if (e.note) {
+            out.push(
+                <Pin key={`${e.key}:note`} x={e.tx} y={midY} className="translate-x-[14px]">
                     <button
                         type="button"
                         disabled={!onNoteClick}
@@ -602,16 +629,19 @@ export default function FlowCanvas({
                             ev.stopPropagation();
                             onNoteClick?.(e, ev.currentTarget.getBoundingClientRect());
                         }}
-                        className="absolute inline-flex items-center gap-1 whitespace-nowrap rounded px-1 text-[11px] text-slate-400 transition-colors enabled:hover:bg-slate-100 enabled:hover:text-slate-700 disabled:cursor-default"
-                        style={{ left: e.tx + 14, top: midY, transform: "translateY(-50%)" }}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded px-1 text-[11px] text-slate-400 transition-colors enabled:hover:bg-slate-100 enabled:hover:text-slate-700 disabled:cursor-default"
                     >
                         <ClockIcon className="size-3" />
                         {e.note}
                     </button>
-                )}
-                {onInsert && e.insert && (
-                    // A hover zone over the line: the + shows only there (always on touch).
-                    <div className="group/ins absolute flex w-8 items-center justify-center" style={{ ...at(e.tx, midY), height: Math.max(20, e.ty - top - 8) }}>
+                </Pin>,
+            );
+        }
+        if (onInsert && e.insert) {
+            // A hover zone over the line: the + shows only there (always on touch).
+            out.push(
+                <Pin key={`${e.key}:insert`} x={e.tx} y={midY}>
+                    <div className="group/ins flex w-8 items-center justify-center" style={{ height: Math.max(20, e.ty - top - 8) }}>
                         <button
                             type="button"
                             aria-label="Insert a step here"
@@ -630,10 +660,12 @@ export default function FlowCanvas({
                             <PlusIcon className="size-3" />
                         </button>
                     </div>
-                )}
-            </React.Fragment>
-        );
+                </Pin>,
+            );
+        }
+        return out;
     };
+
 
     // The dashed line from a hovered go-to chip to the step it jumps to.
     const gotoLinks = () => {
@@ -678,13 +710,30 @@ export default function FlowCanvas({
         >
             <div ref={layerRef} className={cn("absolute left-0 top-0 origin-top-left will-change-transform", !ready && "invisible")}>
                 <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1} aria-hidden="true">
-                    {layout.edges.map((e) => (
-                        <path key={e.key} d={edgePath(e)} fill="none" stroke={e.tone === "error" ? "var(--wb-edge-rose)" : "var(--wb-edge-faint)"} strokeWidth={1.25} vectorEffect="non-scaling-stroke" />
-                    ))}
+                    <AnimatePresence initial={false}>
+                        {layout.edges.map((e) => {
+                            const d = edgePath(e);
+                            return (
+                                <motion.path
+                                    key={e.key}
+                                    initial={{ d, opacity: 0 }}
+                                    animate={{ d, opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={MOVE}
+                                    fill="none"
+                                    stroke={e.tone === "error" ? "var(--wb-edge-rose)" : "var(--wb-edge-faint)"}
+                                    strokeWidth={1.25}
+                                    vectorEffect="non-scaling-stroke"
+                                />
+                            );
+                        })}
+                    </AnimatePresence>
                     {gotoLinks()}
                 </svg>
-                {layout.edges.map(edgeExtras)}
-                {layout.nodes.map((p) => (p.kind === "step" ? stepNode(p) : p.kind === "goto" ? gotoNode(p) : addNode(p)))}
+                <AnimatePresence initial={false}>
+                    {layout.edges.flatMap(edgeExtras)}
+                    {layout.nodes.map((p) => (p.kind === "step" ? stepNode(p) : p.kind === "goto" ? gotoNode(p) : addNode(p)))}
+                </AnimatePresence>
                 {(selections ?? []).map((s, si) => {
                     const boxes = s.ids.map((id) => stepByKey.get(id)).filter((n): n is PlacedNode => !!n);
                     if (!boxes.length) return null;
