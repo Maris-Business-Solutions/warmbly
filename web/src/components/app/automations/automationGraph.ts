@@ -152,11 +152,12 @@ function reachableSet(g: AutomationGraph): Set<string> {
 
 // What removing a step costs: the steps that only it leads to, which go with it.
 export function removalImpact(g: AutomationGraph, id: string): { graph: AutomationGraph; dropped: string[] } {
-    const outTargets = [...new Set(g.edges.filter((e) => e.source === id).map((e) => e.target))];
+    const out = g.edges.filter((e) => e.source === id);
+    const plain = [...new Set(out.filter((e) => (e.when ?? "") === "").map((e) => e.target))];
     let edges = g.edges.filter((e) => e.source !== id);
-    if (outTargets.length <= 1) {
-        // One way on: whatever led here now leads there.
-        const next = outTargets[0];
+    // Bridge only through the main path; an error, case or yes/no path never becomes it.
+    if (plain.length <= 1 && out.every((e) => (e.when ?? "") === "")) {
+        const next = plain[0];
         edges = edges.flatMap((e) => (e.target !== id ? [e] : next ? [{ ...e, target: next }] : []));
         return { graph: { nodes: g.nodes.filter((n) => n.id !== id), edges: dedupe(edges) }, dropped: [] };
     }
@@ -173,20 +174,34 @@ export function removalImpact(g: AutomationGraph, id: string): { graph: Automati
     return { graph, dropped };
 }
 
-// A switch's case paths follow their case through a rename (matched by
-// position), so editing a case name never strands the steps under it.
-export function renameCases(g: AutomationGraph, id: string, prev: string[], next: string[]): AutomationGraph {
-    if (prev.length !== next.length) return g;
+// A switch's case paths follow their case through a rename, matched by row.
+// `remembered` is each row's last non-empty name, so clearing a row and typing
+// a new name still carries its steps; a name still used on another row never moves.
+export function renameCases(
+    g: AutomationGraph,
+    id: string,
+    prevRaw: string[],
+    nextRaw: string[],
+    remembered: string[] = prevRaw,
+): { graph: AutomationGraph; remembered: string[] } {
+    const next = nextRaw.map((c) => c.trim());
+    if (prevRaw.length !== nextRaw.length) return { graph: g, remembered: next };
+    const keep = next.map((n, i) => n || (remembered[i] ?? "").trim());
     const map = new Map<string, string>();
-    prev.forEach((p, i) => {
-        if (p !== next[i] && next[i]) map.set(caseWhen(p), caseWhen(next[i]));
+    next.forEach((n, i) => {
+        const old = (remembered[i] ?? prevRaw[i] ?? "").trim();
+        if (!n || !old || n === old || next.includes(old)) return;
+        if (g.edges.some((e) => e.source === id && e.when === caseWhen(old))) map.set(caseWhen(old), caseWhen(n));
     });
-    if (!map.size) return g;
+    if (!map.size) return { graph: g, remembered: keep };
     return {
-        nodes: g.nodes,
-        edges: g.edges.map((e) => (e.source === id && map.has(e.when ?? "") ? { ...e, when: map.get(e.when!)! } : e)),
+        graph: { nodes: g.nodes, edges: g.edges.map((e) => (e.source === id && map.has(e.when ?? "") ? { ...e, when: map.get(e.when!)! } : e)) },
+        remembered: keep,
     };
 }
+
+// The raw case rows of a switch, blanks included (they line up with the editor's rows).
+export const rawCases = (n?: AutomationNode) => (Array.isArray(n?.config?.cases) ? (n!.config!.cases as unknown[]).map((c) => String(c ?? "")) : []);
 
 // The graph exactly as it is saved: case paths whose case is gone run always.
 export function healForSave(g: AutomationGraph): AutomationGraph {
@@ -258,9 +273,18 @@ export function graphIssues(g: AutomationGraph, trigger: string, order: string[]
     const rank = new Map(order.map((id, i) => [id, i]));
     const nodes = [...g.nodes].sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9));
     for (const n of nodes) {
-        const m = nodeIssue(n, trigger);
+        const m = nodeIssue(n, trigger) ?? staleCaseIssue(g, n);
         if (m) out.push({ id: n.id, message: m, blocking: true });
         else if (!reach.has(n.id)) out.push({ id: n.id, message: "Nothing leads here, so this step never runs.", blocking: false });
     }
     return out;
+}
+
+// A path hanging off a case the switch no longer has would run for every
+// verdict once saved, so it has to be resolved first.
+function staleCaseIssue(g: AutomationGraph, n: AutomationNode): string | null {
+    if (!isSwitch(n)) return null;
+    const known = new Set(switchCases(n).map((c) => c.toLowerCase()));
+    const stale = g.edges.some((e) => e.source === n.id && (e.when ?? "").startsWith(CASE_PREFIX) && !known.has(e.when!.slice(CASE_PREFIX.length).trim().toLowerCase()));
+    return stale ? "A path is under a case that no longer exists. Add the case back or delete the steps under it." : null;
 }

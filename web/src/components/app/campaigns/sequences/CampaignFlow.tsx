@@ -50,7 +50,8 @@ import {
     ELSE_PORT,
     ENTRY_ID,
     REPLY_CONDITION,
-    addCondition,
+    draftCondition,
+    insertCondition,
     branchAt,
     campaignSource,
     conditionText,
@@ -74,7 +75,8 @@ const MAX_WAIT_DAYS = 60;
 const SEQ_KEY = (id: string) => ["campaigns", id, "sequences"] as const;
 const POSITIVE_REPLY_FIELDS = ["replied", "reply_positive", "reply_negative", "reply_neutral", "reply_automated"];
 
-type Selection = { kind: "entry" } | { kind: "step"; id: string } | { kind: "path"; stepId: string; port: string } | null;
+// A path with a draft is a new condition not saved yet.
+type Selection = { kind: "entry" } | { kind: "step"; id: string } | { kind: "path"; stepId: string; port: string; draft?: SequenceBranch } | null;
 type Choice = "email" | "router" | SequenceActionType;
 
 const sizeOf = (id: string) => (isStopId(id) ? { w: TERMINAL_W, h: TERMINAL_H } : { w: STEP_W, h: STEP_H });
@@ -172,6 +174,8 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const saveBranches = React.useCallback(
         async (id: string, branches: SequenceBranch[]) => {
             const b = normalize(branches);
+            // A refetch still in flight would land on top of this patch and undo it.
+            await qc.cancelQueries({ queryKey: SEQ_KEY(campaignId) });
             patchCache(id, { conditions: { branches: b } });
             try {
                 await updateSequence(campaignId, id, { conditions: { branches: b } });
@@ -182,12 +186,13 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                 void invalidate();
             }
         },
-        [campaignId, patchCache, invalidate],
+        [campaignId, patchCache, invalidate, qc],
     );
 
     const saveWait = React.useCallback(
         async (id: string, value: number) => {
             const d = Math.max(0, Math.min(MAX_WAIT_DAYS, Math.round(value)));
+            await qc.cancelQueries({ queryKey: SEQ_KEY(campaignId) });
             patchCache(id, { wait_after: d });
             try {
                 await updateSequence(campaignId, id, { wait_after: d });
@@ -197,7 +202,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                 void invalidate();
             }
         },
-        [campaignId, patchCache, invalidate],
+        [campaignId, patchCache, invalidate, qc],
     );
 
     // Entry delay commits are chained: the PATCH has no revision check, so two
@@ -217,7 +222,10 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
 
     const setStopOnReply = (next: boolean) => {
         qc.setQueryData(["campaigns", campaignId], (old: unknown) => (old ? { ...(old as object), stop_on_reply: next } : old));
-        updateCampaign.mutateAsync({ stop_on_reply: next }).catch((err) => toast.error(buildError(err as AppError)));
+        updateCampaign.mutateAsync({ stop_on_reply: next }).catch(async (err) => {
+            toast.error(buildError(err as AppError));
+            await qc.invalidateQueries({ queryKey: ["campaigns", campaignId] });
+        });
     };
 
     // A new step, typed and pre-wired before anything points at it, so the
@@ -240,6 +248,17 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
 
     // Conditions go straight onto a step's own way on; anywhere else they need
     // a Condition step of their own.
+    // Opening the picker would replace a panel with unsaved edits, so it asks first.
+    const openPicker = (at: InsertPoint, anchor: DOMRect) => {
+        const open = () => setPicker((cur) => (cur && JSON.stringify(cur.at) === JSON.stringify(at) ? null : { at, anchor }));
+        if (!dirty.isDirty()) return open();
+        confirm.show("Discard your unsaved changes to this step?", async () => {
+            dirty.clear();
+            setSelection(null);
+            open();
+        });
+    };
+
     const canAttachCondition = (at: InsertPoint) => {
         const s = byId.get(at.from);
         return !!s && !isSwitchStep(s) && at.port === ELSE_PORT;
@@ -255,17 +274,16 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                 return;
             }
             if (item.key === "condition" || item.key === "reply") {
-                const cond = item.key === "reply" ? REPLY_CONDITION : DEFAULT_CONDITION;
+                // A new condition is a draft until it is saved in the path panel, so
+                // nothing routes on a default the user never chose.
+                const draft = draftCondition(item.key === "reply" ? REPLY_CONDITION : DEFAULT_CONDITION);
                 if (from && canAttachCondition(at)) {
-                    const { branches, branch } = addCondition(from, cond);
-                    await saveBranches(from.id, branches);
-                    setSelection({ kind: "path", stepId: from.id, port: `b:${branch.branch_id}` });
+                    setSelection({ kind: "path", stepId: from.id, port: `b:${draft.branch_id}`, draft });
                     return;
                 }
-                const condBranch: SequenceBranch = { branch_id: newBranchId(), target_step_id: null, conditions: [cond] };
-                const id = await createStep("router", [condBranch, ...continueTo(at.before)]);
+                const id = await createStep("router", continueTo(at.before));
                 if (from) await saveBranches(from.id, routePort(from, at.port, id));
-                setSelection({ kind: "path", stepId: id, port: `b:${condBranch.branch_id}` });
+                setSelection({ kind: "path", stepId: id, port: `b:${draft.branch_id}`, draft });
                 return;
             }
             const choice: Choice = item.key === "email" ? "email" : (item.key.slice("action:".length) as SequenceActionType);
@@ -298,8 +316,12 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                     await updateSequence(campaignId, r.id, { conditions: { branches: r.branches } });
                 }
                 await deleteSequence.mutateAsync(id);
-                dirty.clear();
-                setSelection((cur) => (cur && cur.kind !== "entry" && (cur.kind === "step" ? cur.id : cur.stepId) === id ? null : cur));
+                // Only the panel of the step being deleted loses its unsaved edits.
+                const cur = selectionRef.current;
+                if (cur && cur.kind !== "entry" && (cur.kind === "step" ? cur.id : cur.stepId) === id) {
+                    dirty.clear();
+                    setSelection(null);
+                }
                 toast.success("Step deleted");
             } catch (err) {
                 toast.error(buildError(err as AppError));
@@ -394,10 +416,9 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
             menu.push({
                 label: "Add a condition",
                 icon: <GitBranchIcon className="size-3.5" />,
-                onSelect: async () => {
-                    const { branches, branch } = addCondition(s, DEFAULT_CONDITION);
-                    await saveBranches(s.id, branches);
-                    select({ kind: "path", stepId: s.id, port: `b:${branch.branch_id}` });
+                onSelect: () => {
+                    const draft = draftCondition(DEFAULT_CONDITION);
+                    select({ kind: "path", stepId: s.id, port: `b:${draft.branch_id}`, draft });
                 },
             });
         }
@@ -432,7 +453,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const onPillClick = (e: PlacedEdge) => select({ kind: "path", stepId: e.from, port: e.port });
     const onNoteClick = (e: PlacedEdge, r: DOMRect) => {
         if (!canEdit) return;
-        setWaitEdit({ target: e.from === ENTRY_ID ? ENTRY_ID : e.to, anchor: { x: r.left, y: r.bottom } });
+        setWaitEdit({ target: e.from === ENTRY_ID ? ENTRY_ID : (e.target ?? e.to), anchor: { x: r.left, y: r.bottom } });
     };
 
     const panelStep = selection?.kind === "step" ? byId.get(selection.id) : undefined;
@@ -443,7 +464,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
         <div ref={boxRef} className="relative flex w-full overflow-hidden rounded-md border border-slate-200 bg-white" style={{ height: boxHeight }}>
             <div className="relative flex min-w-0 flex-1 flex-col bg-slate-50/40">
                 <div className="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 rounded-t-md border-b border-slate-200 bg-white px-3 py-1.5">
-                    <StopOnReplyToggle on={!!campaign?.stop_on_reply} onToggle={setStopOnReply} />
+                    <StopOnReplyToggle on={!!campaign?.stop_on_reply} onToggle={setStopOnReply} disabled={!canEdit} />
                     {campaign && !campaign.stop_on_reply && steps.length > 1 && <ReplyStopWarning hasReplyBranch={hasReplyBranch} onEnable={() => setStopOnReply(true)} />}
                 </div>
                 <div className="min-h-0 flex-1">
@@ -453,7 +474,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                         stepTitle={stepTitle}
                         selectedId={selectedStep}
                         onSelect={onSelectNode}
-                        onInsert={canEdit && !busy ? (at, anchor) => setPicker((cur) => (cur && JSON.stringify(cur.at) === JSON.stringify(at) ? null : { at, anchor })) : undefined}
+                        onInsert={canEdit && !busy ? openPicker : undefined}
                         onRemoveGoto={
                             canEdit
                                 ? (from, port) => {
@@ -478,7 +499,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
             <DirtyContext.Provider value={dirty.report}>
                 <AnimatePresence initial={false}>
                     {selection?.kind === "entry" && (
-                        <FlowPanel key="entry" {...entryView("")} title="Contact enters the campaign" onClose={() => select(null)}>
+                        <FlowPanel key="entry" readOnly={!canEdit} {...entryView("")} title="Contact enters the campaign" onClose={() => select(null)}>
                             <div className="space-y-2 p-3">
                                 <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Wait before the first email</div>
                                 <EntryDelayPicker value={entryDelay} onCommit={saveEntryDelay} disabled={!canEdit} />
@@ -501,10 +522,9 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                             onChanged={() => void invalidate()}
                             onDelete={() => removeStep(panelStep.id)}
                             onSelectPath={(port) => select({ kind: "path", stepId: panelStep.id, port })}
-                            onAddCondition={async () => {
-                                const { branches, branch } = addCondition(panelStep, DEFAULT_CONDITION);
-                                await saveBranches(panelStep.id, branches);
-                                select({ kind: "path", stepId: panelStep.id, port: `b:${branch.branch_id}` });
+                            onAddCondition={() => {
+                                const draft = draftCondition(DEFAULT_CONDITION);
+                                select({ kind: "path", stepId: panelStep.id, port: `b:${draft.branch_id}`, draft });
                             }}
                         />
                     )}
@@ -514,16 +534,25 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                             step={pathStep}
                             steps={steps}
                             port={selection.port}
+                            draft={selection.draft}
                             title={viewOf(pathStep).title}
                             canEdit={canEdit}
                             onClose={() => select(null)}
                             onSave={async (updated) => {
-                                await saveBranches(pathStep.id, (pathStep.conditions?.branches ?? []).map((b) => (b.branch_id === updated.branch_id ? updated : b)));
+                                const all = pathStep.conditions?.branches ?? [];
+                                // A step has one Otherwise; a second unconditional path would replace it.
+                                if (!isCond(updated) && all.some((b) => !isCond(b) && b.branch_id !== updated.branch_id)) {
+                                    toast.error("This step already has an Otherwise path. Keep a condition here, or remove that path first.");
+                                    return;
+                                }
+                                const exists = all.some((b) => b.branch_id === updated.branch_id);
+                                await saveBranches(pathStep.id, exists ? all.map((b) => (b.branch_id === updated.branch_id ? updated : b)) : insertCondition(pathStep, updated));
                                 dirty.clear();
+                                if (!exists) setSelection({ kind: "path", stepId: pathStep.id, port: `b:${updated.branch_id}` });
                                 toast.success("Path saved");
                             }}
                             onMove={(branchId, dir) => void saveBranches(pathStep.id, moveCondition(pathStep, branchId, dir))}
-                            onRemove={() => removePath(pathStep.id, selection.port)}
+                            onRemove={() => (selection.draft ? select(null) : removePath(pathStep.id, selection.port))}
                             waitDays={byId.get(branchAt(pathStep, selection.port)?.target_step_id ?? "")?.wait_after ?? 0}
                             onSetWait={(d) => {
                                 const t = branchAt(pathStep, selection.port)?.target_step_id;
@@ -615,7 +644,7 @@ function StepPanel({
     if (isRouterStep(step)) {
         const conds = (step.conditions?.branches ?? []).filter(isCond);
         return (
-            <FlowPanel icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer}>
+            <FlowPanel readOnly={!canEdit} icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer}>
                 <div className="space-y-3 p-3">
                     <p className="text-[11.5px] leading-relaxed text-slate-500">
                         Contacts reaching this step take the first path that matches, checked in this order. Anyone else goes on under Otherwise.
@@ -648,7 +677,7 @@ function StepPanel({
         );
     }
     return (
-        <FlowPanel icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer} wide={step.kind === "email"}>
+        <FlowPanel readOnly={!canEdit} icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer} wide={step.kind === "email"}>
             <div className="p-3">
                 <NodeTypeSwitcher campaignId={campaignId} sequence={step} onChanged={onChanged} />
                 {step.kind === "email" ? (
@@ -673,6 +702,7 @@ function PathPanel({
     step,
     steps,
     port,
+    draft,
     title,
     canEdit,
     onClose,
@@ -685,6 +715,8 @@ function PathPanel({
     step: Sequence;
     steps: Sequence[];
     port: string;
+    // A new condition not saved yet.
+    draft?: SequenceBranch;
     title: string;
     canEdit: boolean;
     onClose: () => void;
@@ -694,12 +726,12 @@ function PathPanel({
     waitDays: number;
     onSetWait: (days: number) => void;
 }) {
-    const branch = branchAt(step, port);
+    const branch = branchAt(step, port) ?? draft;
     const conds = (step.conditions?.branches ?? []).filter(isCond);
     const index = branch ? conds.findIndex((b) => b.branch_id === branch.branch_id) : -1;
     const label = port === ELSE_PORT ? "Otherwise" : branch ? conditionText(branch) : "Path";
     return (
-        <FlowPanel icon={<GitBranchIcon />} tone="amber" kicker={`Path from ${title}`} title={label} onClose={onClose}>
+        <FlowPanel readOnly={!canEdit} icon={<GitBranchIcon />} tone="amber" kicker={draft ? `New path from ${title}` : `Path from ${title}`} title={label} onClose={onClose}>
             {branch ? (
                 <>
                     {index >= 0 && conds.length > 1 && canEdit && (

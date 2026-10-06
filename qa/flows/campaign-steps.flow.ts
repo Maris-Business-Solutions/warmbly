@@ -28,6 +28,8 @@ test("build a campaign's steps where each one goes", async ({ page, proof }) => 
   await picker.getByRole("textbox").pressSequentially("reply", { delay: 70 });
   await picker.getByRole("button", { name: /^If they reply/ }).click();
   await expect(page.getByRole("button", { name: "Close panel" })).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Path saved")).toBeVisible();
   await proof.dwell();
   await proof.shot("reply-path", { caption: "A reply path becomes its own column next to Otherwise, edited in the side panel" });
   await page.getByRole("button", { name: "Close panel" }).click();

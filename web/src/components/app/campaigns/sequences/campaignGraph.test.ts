@@ -6,6 +6,8 @@ import {
     ELSE_PORT,
     ENTRY_ID,
     addCondition,
+    draftCondition,
+    insertCondition,
     campaignSource,
     casePort,
     conditionText,
@@ -90,6 +92,11 @@ describe("conditions", () => {
         expect(branch.target_step_id).toBeNull();
     });
 
+    it("saves a drafted condition before the catch-all", () => {
+        const draft = draftCondition(DEFAULT_CONDITION);
+        expect(insertCondition(step("a", [br("e", "z")]), draft).map((b) => b.branch_id)).toEqual([draft.branch_id, "e"]);
+    });
+
     it("reorders conditions and never the catch-all", () => {
         const s = step("a", [br("c1", null, opened), br("c2", null, opened), br("e", "z")]);
         expect(moveCondition(s, "c2", -1).map((b) => b.branch_id)).toEqual(["c2", "c1", "e"]);
@@ -113,6 +120,13 @@ describe("planRemoval", () => {
         expect(plan.successor).toBe("c");
         expect(plan.rewrites).toEqual([{ id: "a", branches: [br("x", "c", opened)] }]);
         expect(plan.stranded).toEqual([]);
+    });
+
+    it("never bridges a removed step through a conditional path", () => {
+        const steps = [step("a", [br("x", "b")]), step("b", [br("c1", "c", opened)]), step("c")];
+        const plan = planRemoval(steps, "b");
+        expect(plan.successor).toBeNull();
+        expect(plan.stranded).toEqual(["c"]);
     });
 
     it("ends a conditional path and drops a plain one when there is no single way on", () => {

@@ -70,8 +70,8 @@ import {
     normalizeGraph,
     removalImpact,
     removeEdge,
+    rawCases,
     renameCases,
-    switchCases,
     triggerId,
 } from "./automationGraph";
 import { pickerItems, stepView, type StepContext } from "./automationSteps";
@@ -278,6 +278,8 @@ export default function AutomationFlow({
         if (id) setPanel(null);
     }, []);
 
+    // Each switch's last non-empty case name per row (see renameCases).
+    const caseMemory = React.useRef(new Map<string, string[]>());
     const patchNode = React.useCallback(
         (id: string, patch: Partial<AutomationNode>, coalesce?: string) =>
             commit((d) => {
@@ -285,7 +287,11 @@ export default function AutomationFlow({
                 if (!prev) return d;
                 const next = { ...prev, ...patch };
                 let g: AutomationGraph = { nodes: d.graph.nodes.map((n) => (n.id === id ? next : n)), edges: d.graph.edges };
-                if (isSwitch(prev) && isSwitch(next)) g = renameCases(g, id, switchCases(prev), switchCases(next));
+                if (isSwitch(prev) && isSwitch(next)) {
+                    const r = renameCases(g, id, rawCases(prev), rawCases(next), caseMemory.current.get(id));
+                    g = r.graph;
+                    caseMemory.current.set(id, r.remembered);
+                }
                 return { ...d, graph: g };
             }, coalesce),
         [commit],
@@ -768,6 +774,7 @@ function StepPanel({
     const triggerOptions: SelectOption[] = TRIGGER_EVENTS.map((ev) => ({ value: ev, label: triggerLabel(ev) }));
     return (
         <FlowPanel
+            readOnly={!canEdit}
             icon={v.icon}
             tile={v.tile}
             tone={v.tone}

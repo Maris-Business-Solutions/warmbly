@@ -46,7 +46,7 @@ import { caseKey } from "./campaignGraph";
 const stepName = (s: Sequence | undefined) => (s?.name?.trim() ? s.name : "Untitled step");
 
 
-export function StopOnReplyToggle({ on, onToggle }: { on: boolean; onToggle: (next: boolean) => void }) {
+export function StopOnReplyToggle({ on, onToggle, disabled }: { on: boolean; onToggle: (next: boolean) => void; disabled?: boolean }) {
     return (
         <div
             className="flex items-center gap-2"
@@ -74,8 +74,9 @@ export function StopOnReplyToggle({ on, onToggle }: { on: boolean; onToggle: (ne
                 role="switch"
                 aria-checked={on}
                 aria-label="Stop on reply"
+                disabled={disabled}
                 onClick={() => onToggle(!on)}
-                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-default disabled:opacity-60 ${
                     on ? "bg-sky-600" : "bg-slate-200"
                 }`}
             >
@@ -488,7 +489,8 @@ export function ActionEditor({
                 const prev = (sequence.action?.type === "switch" ? sequence.action.switch_cases ?? [] : []).map((c) => c.trim());
                 const cur = (action.switch_cases ?? []).map((c) => c.trim());
                 const renamed = new Map<string, string>();
-                if (prev.length === cur.length) prev.forEach((p, i) => p && cur[i] && caseKey(p) !== caseKey(cur[i]) && renamed.set(caseKey(p), cur[i]));
+                // A name still on another row is still that case; it never moves.
+                if (prev.length === cur.length) prev.forEach((p, i) => p && cur[i] && caseKey(p) !== caseKey(cur[i]) && !cur.some((c) => caseKey(c) === caseKey(p)) && renamed.set(caseKey(p), cur[i]));
                 const keep = new Set(cur.map((c) => caseKey(c)).filter(Boolean));
                 const all = sequence.conditions?.branches ?? [];
                 const next = all.flatMap((b) => {

@@ -176,11 +176,18 @@ export function routePort(s: Sequence, port: string, target: string | null): Seq
 export const DEFAULT_CONDITION: BranchCondition = { field: "opened", operator: "within_days", value: 3 };
 export const REPLY_CONDITION: BranchCondition = { field: "reply_positive", operator: "ever" };
 
-// A new conditional path on a step, checked after its existing ones.
-export function addCondition(s: Sequence, cond: BranchCondition): { branches: SequenceBranch[]; branch: SequenceBranch } {
-    const branch: SequenceBranch = { branch_id: newBranchId(), target_step_id: null, conditions: [cond] };
+// A new conditional path, not on any step yet (it ends the sequence until steps go under it).
+export const draftCondition = (cond: BranchCondition): SequenceBranch => ({ branch_id: newBranchId(), target_step_id: null, conditions: [cond] });
+
+// A conditional path added to a step, checked after its existing ones.
+export function insertCondition(s: Sequence, branch: SequenceBranch): SequenceBranch[] {
     const all = s.conditions?.branches ?? [];
-    return { branches: normalize([...all.filter(isCond), branch, ...all.filter((b) => !isCond(b))]), branch };
+    return normalize([...all.filter(isCond), branch, ...all.filter((b) => !isCond(b))]);
+}
+
+export function addCondition(s: Sequence, cond: BranchCondition): { branches: SequenceBranch[]; branch: SequenceBranch } {
+    const branch = draftCondition(cond);
+    return { branches: insertCondition(s, branch), branch };
 }
 
 export function moveCondition(s: Sequence, branchId: string, dir: -1 | 1): SequenceBranch[] {
@@ -208,8 +215,11 @@ export interface StepRemoval {
 // unconnected rather than deleted.
 export function planRemoval(steps: Sequence[], id: string): StepRemoval {
     const gone = steps.find((s) => s.id === id);
-    const outs = [...new Set((gone?.conditions?.branches ?? []).map((b) => b.target_step_id).filter((t): t is string => !!t && t !== id))];
-    const successor = outs.length === 1 ? outs[0] : null;
+    const branches = gone?.conditions?.branches ?? [];
+    // Bridge only through the catch-all: a conditional path never becomes the way on for everyone.
+    const conditional = branches.some((b) => isCond(b) && b.target_step_id && b.target_step_id !== id);
+    const outs = [...new Set(branches.filter((b) => !isCond(b)).map((b) => b.target_step_id).filter((t): t is string => !!t && t !== id))];
+    const successor = !conditional && outs.length === 1 ? outs[0] : null;
     const rewrites: StepRemoval["rewrites"] = [];
     for (const s of steps) {
         if (s.id === id) continue;

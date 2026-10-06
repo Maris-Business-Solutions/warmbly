@@ -194,7 +194,7 @@ Once variants have sent, each card shows Sent, Open rate, Reply rate, and Bounce
 
 ## Branching
 
-A branch routes contacts by condition. Press **+** under a step and pick **If / else**, or choose **Add a condition** from the step's **⋯** menu, then pick the condition in the side panel. Each condition is a column under the step, checked left to right like `if` / `else if` / `else`, and the first match wins; **Check earlier** and **Check later** in the path panel change the order. Anyone matching nothing goes on under **Otherwise**, or stops if nothing is there.
+A branch routes contacts by condition. Press **+** under a step and pick **If / else**, or choose **Add a condition** from the step's **⋯** menu, then pick the condition in the side panel and press **Save**; nothing changes for contacts until you do. Each condition is a column under the step, checked left to right like `if` / `else if` / `else`, and the first match wins; **Check earlier** and **Check later** in the path panel change the order. Anyone matching nothing goes on under **Otherwise**, or stops if nothing is there.
 
 | Condition | Meaning |
 | --- | --- |
@@ -214,7 +214,7 @@ Reply intent, `opened`, and `clicked` can fire **instantly**, the moment the eve
 
 ## Reply branches
 
-**If they reply** in the step picker adds a path that fires the instant the contact replies (a positive reply; change it in the path panel). Add the steps it should run under it.
+**If they reply** in the step picker opens a new path that fires the instant the contact replies (a positive reply; change it in the path panel). Press **Save** to add it, then add the steps it should run under it.
 
 - A reply triggers the path of the **specific email it answers**, matched by threading headers. That is the email they actually replied to, not necessarily your latest step, and never both.
 - Unmatched replies fall back to the latest step.

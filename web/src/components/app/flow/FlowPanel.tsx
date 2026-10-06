@@ -19,6 +19,7 @@ export default function FlowPanel({
     footer,
     wide,
     bare,
+    readOnly,
     children,
 }: {
     icon?: React.ReactNode;
@@ -32,6 +33,8 @@ export default function FlowPanel({
     wide?: boolean;
     // Children bring their own header and scrolling.
     bare?: boolean;
+    // Members who may not edit see every control in the panel disabled.
+    readOnly?: boolean;
     children: React.ReactNode;
 }) {
     return (
@@ -73,7 +76,11 @@ export default function FlowPanel({
                         )}
                     </div>
                     {tabs}
-                    <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                        <fieldset disabled={readOnly} className="contents">
+                            {children}
+                        </fieldset>
+                    </div>
                     {footer && <div className="shrink-0 border-t border-slate-200 px-3 py-2">{footer}</div>}
                 </>
             )}

@@ -74,6 +74,8 @@ export interface PlacedEdge {
     // Where the inline add button on this edge inserts; null when the child is
     // itself an add button.
     insert: InsertPoint | null;
+    // The step this line leads into (a go-to's destination), if any.
+    target?: string;
     port: string;
     note?: string;
 }
@@ -225,6 +227,7 @@ export function layoutFlow(src: FlowSource): FlowLayout {
         tone: b.tone,
         insert: b.child.kind === "add" || b.noInsert ? null : { from, port: b.port, before: b.child.kind === "step" ? b.child.id : b.child.target },
         port: b.port,
+        target: b.child.kind === "step" ? b.child.id : b.child.kind === "goto" ? b.child.target : undefined,
         note: b.note,
     });
 

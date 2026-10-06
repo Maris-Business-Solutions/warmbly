@@ -344,9 +344,13 @@ export default function FlowCanvas({
         };
         window.addEventListener("keydown", down);
         window.addEventListener("keyup", up);
+        // A Space released while the window was not focused never sends keyup.
+        const release = () => setSpaceHeld(false);
+        window.addEventListener("blur", release);
         return () => {
             window.removeEventListener("keydown", down);
             window.removeEventListener("keyup", up);
+            window.removeEventListener("blur", release);
         };
     }, [fit, zoomAt]);
 
@@ -363,6 +367,8 @@ export default function FlowCanvas({
     };
 
     const onPointerDown = (e: React.PointerEvent) => {
+        // A gesture that ended without a click (touch, middle button) must not eat the next tap.
+        suppressClick.current = false;
         if (e.button !== 0 && e.pointerType === "mouse" && e.button !== 1) return;
         const onControl = !!(e.target as HTMLElement).closest(INTERACTIVE);
         if (onControl && !spaceHeld && e.button !== 1) return;
