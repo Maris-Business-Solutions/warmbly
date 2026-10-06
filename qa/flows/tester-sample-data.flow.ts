@@ -18,7 +18,7 @@ test("add sample data to a dedicated Test workspace once", async ({ page, proof 
   });
 
   const email = `sample-proof-${Date.now()}@example.test`;
-  const created = await page.request.post(`${env.apiURL}/v1/admin/testers`, {
+  const created = await page.request.post(`${env.apiURL}/admin/testers`, {
     headers,
     data: { email, org_name: "Sample review proof", reason: "Local sample-data proof", password_days: 30 },
   });
@@ -49,13 +49,13 @@ test("add sample data to a dedicated Test workspace once", async ({ page, proof 
     await expect(add).toBeDisabled();
     await proof.shot("tester-sample-data-added", { caption: "The real API persists the dataset and audit timestamp; repeat addition is disabled." });
 
-    const repeat = await page.request.post(`${env.apiURL}/v1/admin/organizations/${orgID}/sample-data`, { headers });
+    const repeat = await page.request.post(`${env.apiURL}/admin/organizations/${orgID}/sample-data`, { headers });
     expect(repeat.status()).toBe(200);
     expect((await repeat.json()).created).toBe(false);
     await page.reload();
     await expect(row).toContainText("Sample data added");
     await expect(add).toBeDisabled();
   } finally {
-    await page.request.delete(`${env.apiURL}/v1/admin/testers/${userID}`, { headers });
+    await page.request.delete(`${env.apiURL}/admin/testers/${userID}`, { headers });
   }
 });
