@@ -31,6 +31,7 @@ func SecurityHeaders() gin.HandlerFunc {
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		h.Set("Cross-Origin-Resource-Policy", "same-site")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()")
+		h.Set("Cache-Control", "no-store")
 
 		// default-src 'none' suits a JSON API. The handful of routes that
 		// return HTML (the OAuth bouncers, the unsubscribe page) set their own

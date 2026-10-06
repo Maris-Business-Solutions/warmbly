@@ -313,7 +313,7 @@ func (h *Handler) RevokeAIToolPolicy(c *gin.Context) {
 func sseEmitter(c *gin.Context) func(aiagent.StreamEvent) {
 	h := c.Writer.Header()
 	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache")
+	h.Set("Cache-Control", "no-cache, no-store")
 	h.Set("Connection", "keep-alive")
 	h.Set("X-Accel-Buffering", "no") // disable proxy buffering so deltas flush
 	c.Writer.WriteHeader(http.StatusOK)

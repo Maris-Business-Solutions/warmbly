@@ -87,6 +87,12 @@ describe("dashboard CSP", () => {
         expect(readFileSync(path.join(directory, "nginx-mail-preview-headers.conf"), "utf8")).toContain(`Content-Security-Policy "${mailPreviewCsp}"`);
     });
 
+    it("removes wildcard CORS from dashboard static responses", () => {
+        const headers = readFileSync(path.join(directory, "public/_headers"), "utf8");
+        expect(headers).toContain("/*\n  ! Access-Control-Allow-Origin\n");
+        expect(headers).not.toMatch(/^\s+Access-Control-Allow-Origin:\s*\*/m);
+    });
+
     it("derives exact resource origins and permits separately configured realtime", () => {
         expect(configuredSources({ VITE_API_URL: "https://api.example.test/v1", VITE_POSTHOG_HOST: "https://eu.i.posthog.com", WARMBLY_CSP_CONNECT_ORIGINS: "wss://realtime.example.test/socket" })).toEqual({
             connections: ["https://api.example.test", "wss://api.example.test", "wss://realtime.example.test"],
@@ -119,6 +125,7 @@ describe("dashboard CSP", () => {
             expect(policy).not.toContain("__");
             for (const hash of [...scripts, ...styles]) expect(policy).toContain(hash);
             const headers = readFileSync(path.join(temporary, "_headers"), "utf8");
+            expect(headers).toContain("/*\n  ! Access-Control-Allow-Origin\n");
             expect(headers).toContain(`Content-Security-Policy: ${policy}`);
             expect(headers).toContain(`Content-Security-Policy: ${mailPreviewCsp}`);
             execFileSync("sh", [path.join(directory, "docker-entrypoint.sh")], { env });
