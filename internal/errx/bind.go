@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
@@ -33,7 +34,7 @@ func (v rejectingTextValidator) ValidateStruct(value any) error {
 	if err := v.delegate.ValidateStruct(value); err != nil {
 		return err
 	}
-	return unsupportedText(reflect.ValueOf(value), "")
+	return ValidateText(value)
 }
 
 func (v rejectingTextValidator) Engine() any {
@@ -41,11 +42,17 @@ func (v rejectingTextValidator) Engine() any {
 }
 
 type unsupportedTextError struct {
-	field string
+	field  string
+	reason string
 }
 
 func (e *unsupportedTextError) Error() string {
-	return fmt.Sprintf("field %q contains a NUL character", e.field)
+	return fmt.Sprintf("field %q %s", e.field, e.reason)
+}
+
+// ValidateText rejects text PostgreSQL cannot store in a request value.
+func ValidateText(value any) error {
+	return unsupportedText(reflect.ValueOf(value), "")
 }
 
 func unsupportedText(value reflect.Value, path string) error {
@@ -61,11 +68,17 @@ func unsupportedText(value reflect.Value, path string) error {
 
 	switch value.Kind() {
 	case reflect.String:
+		var reason string
 		if strings.ContainsRune(value.String(), '\x00') {
+			reason = "contains a NUL character"
+		} else if !utf8.ValidString(value.String()) {
+			reason = "contains invalid UTF-8"
+		}
+		if reason != "" {
 			if path == "" {
 				path = "value"
 			}
-			return &unsupportedTextError{field: path}
+			return &unsupportedTextError{field: path, reason: reason}
 		}
 	case reflect.Struct:
 		typeOf := value.Type()
@@ -157,7 +170,7 @@ func InvalidBody(err error) *Error {
 	case errors.As(err, &timeErr):
 		return New(BadRequest, fmt.Sprintf("The request body has a time that is not RFC 3339 (such as 2026-10-01T09:00:00Z): %q.", strings.Trim(timeErr.Value, `"`)))
 	case errors.As(err, &textErr):
-		return New(BadRequest, fmt.Sprintf("Field %q contains a NUL character, which is not supported.", textErr.field))
+		return New(BadRequest, fmt.Sprintf("Field %q %s, which is not supported.", textErr.field, textErr.reason))
 	case strings.HasPrefix(err.Error(), "invalid UUID"):
 		return New(BadRequest, "The request body has a value that should be a UUID and is not one.")
 	}
@@ -171,7 +184,7 @@ func InvalidBody(err error) *Error {
 func InvalidQuery(err error) *Error {
 	var textErr *unsupportedTextError
 	if errors.As(err, &textErr) {
-		return New(BadRequest, fmt.Sprintf("Query parameter %q contains a NUL character, which is not supported.", textErr.field))
+		return New(BadRequest, fmt.Sprintf("Query parameter %q %s, which is not supported.", textErr.field, textErr.reason))
 	}
 	return New(BadRequest, "The query parameters are invalid. Check them against the API reference.")
 }

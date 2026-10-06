@@ -5,6 +5,7 @@
 #
 # build:pages fills the built policy's hashes and configured resource origins.
 /*
+  ! Access-Control-Allow-Origin
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin

@@ -146,7 +146,7 @@ func Run(
 
 	// Public invitation preview for the /invite landing page. Unauthenticated:
 	// the secret token in the query is the capability.
-	r.GET("/invitations/lookup", m.PublicIPRateLimitMiddleware(), h.PreviewInvitation)
+	r.GET("/invitations/lookup", middleware.QueryValidation(), m.PublicIPRateLimitMiddleware(), h.PreviewInvitation)
 
 	// On-demand TLS gate for the reverse proxy in front of this instance
 	// (Caddy's `ask`). Unauthenticated because the proxy has no credential to
@@ -299,6 +299,7 @@ func Run(
 
 	r.Use(cors.New(corsConfig))
 	r.Use(middleware.DashboardOriginMiddleware())
+	r.Use(middleware.QueryValidation())
 
 	// Limit request body size to 10MB to prevent OOM. The contact file uploads
 	// apply their own, larger cap in the handler before reading.

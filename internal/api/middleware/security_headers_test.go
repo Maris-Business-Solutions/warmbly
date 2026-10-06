@@ -18,6 +18,7 @@ func TestSecurityHeadersAreSet(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/x", nil))
 
 	want := map[string]string{
+		"Cache-Control":                "no-store",
 		"X-Content-Type-Options":       "nosniff",
 		"X-Frame-Options":              "DENY",
 		"Referrer-Policy":              "strict-origin-when-cross-origin",
@@ -31,6 +32,37 @@ func TestSecurityHeadersAreSet(t *testing.T) {
 	}
 	if w.Header().Get("Content-Security-Policy") == "" {
 		t.Error("a default Content-Security-Policy should be set")
+	}
+}
+
+func TestSecurityHeadersPreventCachingErrors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, status := range []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			r := gin.New()
+			r.Use(SecurityHeaders())
+			r.GET("/x", func(c *gin.Context) { c.AbortWithStatus(status) })
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/x", nil))
+			if got := w.Header().Get("Cache-Control"); got != "no-store" {
+				t.Errorf("Cache-Control = %q, want no-store", got)
+			}
+		})
+	}
+}
+
+func TestHandlerPublicCachePolicyWins(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(SecurityHeaders())
+	r.GET("/public/image.png", func(c *gin.Context) {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.Status(http.StatusOK)
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/public/image.png", nil))
+	if got := w.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Errorf("handler cache policy should survive, got %q", got)
 	}
 }
 
