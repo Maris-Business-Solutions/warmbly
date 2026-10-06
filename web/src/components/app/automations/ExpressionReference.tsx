@@ -3,7 +3,7 @@
 // grouped, with a link to the full guide. Mounted next to the Advanced
 // expression editor (and reusable anywhere a "?" reference helps).
 
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CircleHelpIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
 import { PopoverMenu, PopoverMenuTrigger, PopoverMenuContent } from "@/components/ui/popover-menu";
 

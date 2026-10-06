@@ -64,7 +64,7 @@ import {
     XIcon,
     ZapIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import PermissionButton from "@/components/ui/PermissionButton";
 import { usePermission } from "@/hooks/usePermission";
 import type { AppError } from "@/lib/api/client/normalizeError";

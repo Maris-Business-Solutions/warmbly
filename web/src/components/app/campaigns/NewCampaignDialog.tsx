@@ -24,7 +24,7 @@ import {
     RocketIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import useCampaignEstimate from "@/lib/api/hooks/app/campaigns/useCampaignEstimate";

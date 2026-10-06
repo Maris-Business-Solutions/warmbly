@@ -8,7 +8,7 @@
 // leaving the inbox.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     BanIcon,
     CalendarPlusIcon,

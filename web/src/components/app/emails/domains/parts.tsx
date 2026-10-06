@@ -1,7 +1,7 @@
 // Pieces the Sending domains page, its drawer and the import wizards share.
 import React from "react";
 import { CheckIcon, CircleDashedIcon, CopyIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { SendingDomain, TrackingSuggestion } from "@/lib/api/models/app/emails/SendingDomain";
 import { vendorLabel } from "@/lib/api/models/app/emails/MailboxSources";
 import ProviderLogo from "@/components/app/emails/ProviderLogo";

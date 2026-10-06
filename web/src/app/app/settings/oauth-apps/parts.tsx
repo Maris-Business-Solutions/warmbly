@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // Pieces shared by the OAuth apps page and its register dialog.
 
 import React from "react";
@@ -170,7 +172,7 @@ export function AppLogo({ name, url, size = "md" }: { name: string; url?: string
             : size === "sm"
               ? "w-8 h-8 text-[12px] rounded-md"
               : "w-9 h-9 text-[13px] rounded-lg";
-    if (url) return <img src={url} alt={name} className={cn(dim, "object-cover border border-slate-200 shrink-0")} />;
+    if (url) return <DashboardImage src={url} alt={name} className={cn(dim, "object-cover border border-slate-200 shrink-0")} />;
     const letter = (name.trim()[0] ?? "?").toUpperCase();
     const color = TILE_COLORS[letter.charCodeAt(0) % TILE_COLORS.length];
     return <div className={cn(dim, color, "flex items-center justify-center text-white font-semibold shrink-0")}>{letter}</div>;

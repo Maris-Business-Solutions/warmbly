@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
 import { useInstanceAdmin } from "@/hooks/usePermission";
 import CloudLinkCard from "@/components/app/cloud/CloudLinkCard";

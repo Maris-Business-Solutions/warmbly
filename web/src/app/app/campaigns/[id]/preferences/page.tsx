@@ -23,7 +23,7 @@ import { guardrailValidationError } from "@/lib/helper/guardrail";
 import CampaignFolderField from "@/components/app/campaigns/CampaignFolderField";
 import CampaignDangerZone from "@/components/app/campaigns/preferences/CampaignDangerZone";
 import useUpdateCampaign from "@/lib/api/hooks/app/campaigns/useUpdateCampaign";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import useCampaignSenders from "@/lib/api/hooks/app/campaigns/useCampaignSenders";

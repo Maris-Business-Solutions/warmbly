@@ -54,7 +54,7 @@ import {
     PencilLineIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useClickOutside from "@/hooks/useClickOutside";
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
 import { useConfirm } from "@/hooks/context/confirm";
@@ -62,6 +62,7 @@ import RichTextAIEdit from "@/components/app/ai/RichTextAIEdit";
 import RichTextAICaret from "@/components/app/ai/RichTextAICaret";
 import { useForms } from "@/lib/api/hooks/app/forms";
 import { EmailImage } from "./nodes/EmailImageNode";
+import { EmailImagePreviews } from "./nodes/EmailImagePreviews";
 import { EmailButton } from "./nodes/EmailButtonNode";
 import { ImageBubble, ImageMenu } from "./ImageControls";
 import { ButtonBubble, ButtonInsert } from "./ButtonControls";
@@ -164,6 +165,7 @@ export default function RichTextEditor({
     placeRef.current = placeImageFiles;
 
     const editor = useEditor({
+        injectCSS: false,
         extensions: [
             Document,
             EmailParagraph,
@@ -179,6 +181,7 @@ export default function RichTextEditor({
             ListItem,
             Link.configure({ openOnClick: false, autolink: true }),
             EmailImage,
+            EmailImagePreviews,
             EmailButton,
             // Real email markup: table layout, <div> containers, colours,
             // fonts and alignment. Without these a pasted design keeps its

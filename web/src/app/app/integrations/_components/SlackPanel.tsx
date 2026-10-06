@@ -35,7 +35,7 @@ import {
     UsersIcon,
     type LucideIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import ScrollStrip from "@/components/ui/scroll-strip";
 import { OptionSelect, Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";

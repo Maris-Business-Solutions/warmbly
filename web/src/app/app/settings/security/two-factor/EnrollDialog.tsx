@@ -5,7 +5,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     ArrowLeftIcon,
     CheckIcon,

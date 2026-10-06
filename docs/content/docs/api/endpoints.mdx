@@ -703,6 +703,10 @@ The two `/integrations/slack/link` routes that take a code do not need a workspa
 
 ## Public
 
+The dashboard's display-only `POST /v1/dashboard-image` endpoint accepts a session JWT and `{"url":"https://..."}` and returns image bytes. It is not API-key-capable. It reads owned public blobs through the active store, or fetches a public HTTPS image without forwarding browser credentials, cookies or referrer. The read rate limit applies; the body is limited to 16 KiB, the URL to 8,192 characters, the image to 5 MiB, and the request to ten seconds. Non-images, non-public destinations, unsafe redirects and unsupported ports are refused. Nothing is stored or changed, so retries need no idempotency key. Saved and sent emails retain the original URLs.
+
+`POST /v1/dashboard-image/public` has the same body and image limits but accepts only this instance's owned public objects and the Slack sign-in avatar providers (`avatars.slack-edge.com` and `secure.gravatar.com/avatar/`). It is per-IP rate limited and cannot fetch arbitrary customer URLs anonymously.
+
 - `GET /health`
 - `POST /auth/cli/code`, `POST /auth/cli/poll` (the [CLI](/api/cli/) device-code handshake, per-IP rate limited. Public by necessity: the CLI has no credential until the flow completes. `POST /auth/cli/code` returns `device_code`, `user_code`, `verification_uri`, `verification_uri_complete`, `expires_in` and `interval`; polling returns `{"status":"pending"}` until a member decides, then `{"status":"approved"}` carrying the minted key exactly once, or `{"status":"denied"}`. An unknown or expired `device_code` is a `404`, so a poller cannot probe for live handshakes)
 - `POST /webhook/stripe` (Stripe signature)

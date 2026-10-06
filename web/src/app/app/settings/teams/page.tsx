@@ -16,7 +16,7 @@ import {
     UsersIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Label, SearchInput, TextInput } from "@/components/ui/field";
 import {
     PopoverMenu,

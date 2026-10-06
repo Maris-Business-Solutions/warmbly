@@ -4,7 +4,7 @@
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRightIcon, ArrowRightIcon, ArrowLeftIcon, Loader2Icon, MailIcon, PlusIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { SettingRow, Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";

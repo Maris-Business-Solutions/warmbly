@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // Image insertion and editing for the campaign body editor (issue #380).
 //
 // Two surfaces: a toolbar menu that uploads, takes a URL, or picks from the
@@ -20,7 +22,7 @@ import {
     Trash2Icon,
     UploadCloudIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { Editor } from "@tiptap/react";
 import useClickOutside from "@/hooks/useClickOutside";
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
@@ -225,7 +227,7 @@ export function ImageMenu({ editor }: { editor: Editor }) {
                                                         }}
                                                         className="block aspect-square w-full overflow-hidden rounded-md border border-slate-200 bg-slate-50 transition-colors hover:border-sky-300"
                                                     >
-                                                        <img
+                                                        <DashboardImage
                                                             src={img.url}
                                                             alt={img.filename}
                                                             loading="lazy"

@@ -26,7 +26,7 @@ import {
     PlusIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import exportContacts, {
     downloadBlob,
@@ -507,4 +507,3 @@ function ScopeButton({
         </button>
     );
 }
-

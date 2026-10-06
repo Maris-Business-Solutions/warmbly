@@ -28,7 +28,7 @@ import {
     SheetIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import MapStep from "./import/MapStep";
 import ResultStep from "./import/ResultStep";
@@ -721,4 +721,3 @@ function OptionsStep({
         </div>
     );
 }
-

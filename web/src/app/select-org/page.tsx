@@ -18,7 +18,7 @@
 import React from "react";
 import { Navigate, useNavigate } from "@tanstack/react-router";
 import { LogOutIcon, Loader2Icon, MailIcon, PlusIcon, UsersIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import getToken from "@/lib/helper/getToken";
 import useOrganizations from "@/lib/api/hooks/app/organizations/useOrganizations";
 import useMyInvitations from "@/lib/api/hooks/app/organizations/useMyInvitations";

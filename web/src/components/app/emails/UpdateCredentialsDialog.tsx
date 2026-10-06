@@ -7,7 +7,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, InboxIcon, KeyRoundIcon, Loader2Icon, SendIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { TextInput } from "@/components/ui/field";

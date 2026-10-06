@@ -14,7 +14,7 @@ import {
     PlugIcon,
     RefreshCwIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { CrmBadge, CrmMark, CrmSyncedAt } from "@/components/app/crm/crmProviders";
 import { Checkbox } from "@/components/ui/checkbox";

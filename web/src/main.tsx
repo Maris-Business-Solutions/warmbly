@@ -28,7 +28,7 @@ createRoot(rootEl).render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       <Toaster />
-      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} styleNonce={document.querySelector<HTMLMetaElement>('meta[property="csp-nonce"]')?.nonce} />}
     </QueryClientProvider>
   </StrictMode>,
 )

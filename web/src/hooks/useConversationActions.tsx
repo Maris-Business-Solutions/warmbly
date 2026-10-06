@@ -11,7 +11,7 @@
 // what "Archive does nothing" looked like.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 
 import useMarkSeen from "@/lib/api/hooks/app/unibox/useMarkSeen";

@@ -4,7 +4,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2Icon, MegaphoneIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { SearchInput } from "@/components/ui/field";
 import { campaignStatusLabel, campaignStatusTone } from "@/components/app/campaigns/status";

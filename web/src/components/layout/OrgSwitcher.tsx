@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // Org picker — moved off the shadcn DropdownMenu onto the same
 // PopoverMenu primitive every other dropdown in the dashboard uses
 // (folders, sort, accounts, schedule, sort). One animation, one
@@ -12,7 +14,7 @@
 import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, PlusIcon, Settings2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useAppStore } from "@/stores";
 import useSwitchOrganization from "@/lib/api/hooks/app/organizations/useSwitchOrganization";
 import { NewWorkspaceDialog } from "@/components/app/organizations/NewWorkspaceDialog";
@@ -79,7 +81,7 @@ export function OrgSwitcher() {
                         }`}
                     >
                         {orgAvatar ? (
-                            <img
+                            <DashboardImage
                                 src={orgAvatar}
                                 alt=""
                                 className="w-full h-full object-cover rounded-[4px]"
@@ -115,7 +117,7 @@ export function OrgSwitcher() {
                                 icon={
                                     <span className={`size-5 rounded-md ring-1 ring-slate-200 flex items-center justify-center shrink-0 overflow-hidden ${avatar ? "bg-white dark:bg-transparent p-px" : "bg-slate-900"}`}>
                                         {avatar ? (
-                                            <img
+                                            <DashboardImage
                                                 src={avatar}
                                                 alt=""
                                                 className="w-full h-full object-cover rounded-[3px]"

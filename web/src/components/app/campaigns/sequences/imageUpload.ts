@@ -7,7 +7,7 @@
 // attachment URL.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { Editor } from "@tiptap/react";
 import { useUploadEmailImage } from "@/lib/api/hooks/app/campaigns/useEmailImages";
 import type EmailImage from "@/lib/api/models/app/campaigns/EmailImage";

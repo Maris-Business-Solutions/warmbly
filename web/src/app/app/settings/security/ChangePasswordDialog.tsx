@@ -4,7 +4,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2Icon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Label, TextInput } from "@/components/ui/field";
 import changePassword from "@/lib/api/client/auth/changePassword";
 import { endSession, saveTokens } from "@/lib/auth";

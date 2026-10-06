@@ -8,7 +8,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     AlertTriangleIcon,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, CopyIcon, DownloadIcon, ImageIcon, Loader2Icon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useExportCard from "@/hooks/useExportCard";
 import StatsShareCard, { type ShareAspect, type ShareCardData } from "./StatsShareCard";
 

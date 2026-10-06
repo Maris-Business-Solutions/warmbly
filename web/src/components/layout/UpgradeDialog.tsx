@@ -11,7 +11,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     ArrowRightIcon,
     ArrowUpRightIcon,

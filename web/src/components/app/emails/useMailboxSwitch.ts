@@ -1,4 +1,4 @@
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 import { useConfirm } from "@/hooks/context/confirm";
 import useUpdateEmail from "@/lib/api/hooks/app/emails/useUpdateEmail";

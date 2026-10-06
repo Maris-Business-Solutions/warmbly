@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -27,6 +28,18 @@ import (
 
 // ErrBlockedAddress is returned when a request targets a non-public address.
 var ErrBlockedAddress = errors.New("destination address is not publicly routable")
+
+var blockedIPv6 = []netip.Prefix{
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("2001::/32"),
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+	netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("2001:10::/28"),
+	netip.MustParsePrefix("2001:20::/28"),
+	netip.MustParsePrefix("fec0::/10"),
+}
 
 // allowUnsafe mirrors the existing WARMBLY_ALLOW_UNSAFE_WEBHOOK_URLS escape hatch
 // so local/self-hosted development can reach private hosts.
@@ -95,6 +108,13 @@ func IsBlockedIP(ip net.IP) bool {
 			return true
 		}
 	}
+	if addr, ok := netip.AddrFromSlice(ip); ok && addr.Is6() {
+		for _, prefix := range blockedIPv6 {
+			if prefix.Contains(addr) {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -102,9 +122,6 @@ func IsBlockedIP(ip net.IP) bool {
 // for user-supplied URLs (so a host that passes the IP check still cannot reach
 // 22/3306/6379/9200/etc.); the dev flag opens any port for local testing.
 func portAllowed(port string, ports []string) bool {
-	if allowUnsafe() {
-		return true
-	}
 	if len(ports) == 0 {
 		return port == "443" || port == "8443"
 	}
@@ -120,10 +137,21 @@ func portAllowed(port string, ports []string) bool {
 // is non-public, and dials the validated IP directly so no rebinding can occur
 // between validation and connect.
 func safeDialContext(dialer *net.Dialer, ports []string) func(context.Context, string, string) (net.Conn, error) {
+	publicDial := publicDialContext(dialer, ports)
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if allowUnsafe() {
 			return dialer.DialContext(ctx, network, addr)
 		}
+		return publicDial(ctx, network, addr)
+	}
+}
+
+func publicDialContext(dialer *net.Dialer, ports []string) func(context.Context, string, string) (net.Conn, error) {
+	resolver := dialer.Resolver
+	if resolver == nil {
+		resolver = net.DefaultResolver
+	}
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
@@ -136,7 +164,7 @@ func safeDialContext(dialer *net.Dialer, ports []string) func(context.Context, s
 			log.Warn().Str("host", host).Str("port", port).Msg("safehttp: blocked request to a non-web port")
 			return nil, ErrBlockedAddress
 		}
-		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+		ips, err := resolver.LookupIP(ctx, "ip", host)
 		if err != nil {
 			return nil, err
 		}
@@ -158,14 +186,33 @@ func safeDialContext(dialer *net.Dialer, ports []string) func(context.Context, s
 // NewTransport is the SSRF-hardened transport for the given ports; none means 443 and 8443.
 func NewTransport(ports ...string) *http.Transport {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	return transport(safeDialContext(dialer, ports))
+}
+
+func transport(dial func(context.Context, string, string) (net.Conn, error)) *http.Transport {
 	return &http.Transport{
-		DialContext:           safeDialContext(dialer, ports),
+		DialContext:           dial,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+// PublicClient never honors the development-only unsafe webhook escape hatch.
+func PublicClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport(publicDialContext(dialer, nil)),
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 || req.URL.Scheme != "https" || req.URL.User != nil {
+				return errors.New("image redirect is not allowed")
+			}
+			return nil
+		},
 	}
 }
 

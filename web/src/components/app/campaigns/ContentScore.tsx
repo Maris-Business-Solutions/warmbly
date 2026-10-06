@@ -25,7 +25,7 @@ import {
     SparklesIcon,
     WandSparklesIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import scoreTemplate from "@/lib/api/client/app/campaigns/scoreTemplate";
 import useAnalyzeTemplate from "@/lib/api/hooks/app/campaigns/useAnalyzeTemplate";
 import type TemplateScore from "@/lib/api/models/app/campaigns/TemplateScore";

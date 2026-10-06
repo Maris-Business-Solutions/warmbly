@@ -2,6 +2,7 @@ import * as React from "react"
 import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 import { cn } from "@/lib/utils"
+import { useDashboardImage } from "@/hooks/useDashboardImage"
 
 function Avatar({
   className,
@@ -25,13 +26,21 @@ function Avatar({
 
 function AvatarImage({
   className,
+  src,
+  onLoadingStatusChange,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  const { url, error } = useDashboardImage(src)
+  React.useEffect(() => {
+    if (error) onLoadingStatusChange?.("error")
+  }, [error, onLoadingStatusChange])
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
       className={cn("aspect-square size-full", className)}
       {...props}
+      src={url}
+      onLoadingStatusChange={onLoadingStatusChange}
     />
   )
 }

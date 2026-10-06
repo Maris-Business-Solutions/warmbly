@@ -10,7 +10,11 @@ import EmailBody from "./EmailBody";
 const TRACKED = `<p>Hi there</p><img src="https://tracker.example/open.gif" width="1" height="1">`;
 
 function srcDoc(container: HTMLElement): string {
-    return container.querySelector("iframe")!.getAttribute("srcdoc")!;
+    const frame = container.querySelector("iframe")!;
+    const doc = frame.contentDocument!;
+    if (!doc.documentElement) doc.appendChild(doc.createElement("html"));
+    fireEvent.load(frame);
+    return doc.documentElement.outerHTML;
 }
 
 function loadButton() {

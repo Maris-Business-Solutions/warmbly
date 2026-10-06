@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSearchParams } from "@/hooks/useSearchParams";
 import useRegisterConfirm from "@/lib/api/hooks/auth/useRegisterConfirm";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 

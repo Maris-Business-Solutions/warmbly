@@ -1,6 +1,6 @@
 import React from "react";
 import { LayersIcon, Loader2Icon, PlusIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useCampaign } from "@/hooks/context/campaign";
 import CampaignFlow from "@/components/app/campaigns/sequences/CampaignFlow";
 import PermissionButton from "@/components/ui/PermissionButton";

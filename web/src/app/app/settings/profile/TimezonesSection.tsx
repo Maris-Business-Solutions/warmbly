@@ -3,7 +3,7 @@
 // the per-campaign and per-mailbox zones, each editable inline.
 import React from "react";
 import { Link } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, ChevronDownIcon, ClockIcon, InboxIcon, MegaphoneIcon, UsersIcon } from "lucide-react";
 import { Row, Section } from "../_components/SectionShell";

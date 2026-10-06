@@ -19,7 +19,7 @@ import {
     MousePointerClickIcon,
     ReplyIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type ContactDetail from "@/lib/api/models/app/contacts/ContactDetail";
 import type Contact from "@/lib/api/models/app/contacts/Contact";
 import { useConfirm } from "@/hooks/context/confirm";

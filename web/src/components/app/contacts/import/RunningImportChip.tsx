@@ -1,6 +1,6 @@
 import React from "react";
 import { Loader2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { useContactImports } from "@/lib/api/hooks/app/contacts/useContactImports";
 import { isImportActive } from "@/lib/api/models/app/contacts/ContactImport";

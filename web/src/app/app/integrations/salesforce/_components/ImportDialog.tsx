@@ -18,7 +18,7 @@ import {
     XIcon,
     type LucideIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { Label, TextInput } from "@/components/ui/field";
 import CampaignPicker from "@/components/app/campaigns/CampaignPicker";

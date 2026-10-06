@@ -22,7 +22,7 @@ import {
     TrashIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { TextInput } from "@/components/ui/field";
 import useUpdateContactsBulk from "@/lib/api/hooks/app/contacts/useUpdateContactsBulk";
 import useCustomFieldKeys from "@/lib/api/hooks/app/contacts/useCustomFieldKeys";

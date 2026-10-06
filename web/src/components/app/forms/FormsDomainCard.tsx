@@ -5,7 +5,7 @@
 
 import React from "react";
 import { CheckIcon, CopyIcon, Loader2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { Label, TextInput } from "@/components/ui/field";
 import { useWriteGuard } from "@/hooks/usePermission";

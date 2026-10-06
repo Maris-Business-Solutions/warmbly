@@ -18,7 +18,7 @@ import { useCampaign } from "@/hooks/context/campaign";
 import type Campaign from "@/lib/api/models/app/campaigns/Campaign";
 import type { ScheduleInterval } from "@/lib/api/models/app/campaigns/Campaign";
 import useUpdateCampaign from "@/lib/api/hooks/app/campaigns/useUpdateCampaign";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { useUserProfile } from "@/hooks/context/user";

@@ -47,7 +47,7 @@ import {
     ShieldCheckIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Logo } from "@/components/svg";

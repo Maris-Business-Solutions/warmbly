@@ -15,7 +15,7 @@ vi.mock("@/lib/api/hooks/app/subscription/usePlans", () => ({ default: () => sta
 vi.mock("@/lib/api/hooks/app/subscription/useCreateCheckoutSession", () => ({ default: () => ({ mutateAsync: state.checkout }) }));
 vi.mock("@/lib/api/hooks/app/subscription/useChangePlan", () => ({ default: () => ({ mutateAsync: state.change }) }));
 vi.mock("@/lib/api/hooks/app/subscription/useCreatePortalSession", () => ({ default: () => ({ mutateAsync: state.portal, isPending: false }) }));
-vi.mock("react-hot-toast", () => ({ default: { promise: (p: Promise<unknown>) => p, error: state.error } }));
+vi.mock("react-hot-toast/headless", () => ({ default: { promise: (p: Promise<unknown>) => p, error: state.error } }));
 
 beforeEach(() => {
     vi.clearAllMocks();

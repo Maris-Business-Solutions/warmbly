@@ -49,6 +49,12 @@ Warmup keeps running on every warming mailbox, reduced to 5 emails a day while i
 
 Follow-ups that are due go out before new leads start, and the total assumes nobody replies or unsubscribes, so real sequences usually finish sooner. Replies, bounces, new contacts joining a linked segment and changes to a mailbox's health all move the real finish.
 
+## Images in the editor
+
+Warmbly loads external images through a display-only preview service while you edit. The image must be publicly reachable over HTTPS and 5 MiB or smaller. Images behind a login, private-network images and unavailable images show an unavailable preview. Uploaded images are read directly from the instance's object store.
+
+Your original image URLs, image links and background-image styles stay in saved templates and sent emails. Recipients load images directly from those original URLs, without a Warmbly login. Existing templates use the same preview behavior without a migration. This does not change recipient open or click tracking, or the remote-image consent in your inbox.
+
 ## Plain text only
 
 **Settings** > **Plain text only** sends the campaign without an HTML part. Recipients get the plain-text body with the mailbox's plain-text signature, and because open pixels and wrapped links need HTML, open and click tracking are off for that campaign whatever their toggles say. Test emails respect it too, so what lands in your own inbox is what recipients get.

@@ -68,7 +68,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import { useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
 import type { SequenceBranch, BranchCondition, BranchField } from "@/lib/api/models/app/campaigns/sequences/Branching";
 import { BRANCH_FIELD_LABELS, REPLY_INTENTS, isReplyBranchField, isInstantCapableField, replyIntentLabel } from "@/lib/api/models/app/campaigns/sequences/Branching";

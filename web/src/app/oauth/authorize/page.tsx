@@ -5,6 +5,7 @@
 
 "use client";
 
+import { DashboardImage } from "@/components/ui/dashboard-image";
 import React from "react";
 import { useSearchParams } from "@/hooks/useSearchParams";
 import { CheckIcon, ExternalLinkIcon, MinusIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react";
@@ -131,7 +132,7 @@ export default function OAuthConsentPage() {
         <div className={card}>
             <div className="flex flex-col items-center gap-2 border-b border-slate-100 px-6 pt-7 pb-5">
                 {info.logo_url ? (
-                    <img src={info.logo_url} alt={info.name} className="h-12 w-12 rounded-xl object-cover ring-1 ring-slate-200" />
+                    <DashboardImage src={info.logo_url} alt={info.name} className="h-12 w-12 rounded-xl object-cover ring-1 ring-slate-200" />
                 ) : (
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-50 text-[18px] font-semibold uppercase text-sky-700 ring-1 ring-sky-100">
                         {info.name.charAt(0)}

@@ -3,7 +3,7 @@
 // Microsoft: a Global Administrator approves Warmbly once. The draft and the
 // popups live in GrantImportWizard, so moving between steps loses nothing.
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeftIcon, ChevronRightIcon, ClockIcon, ExternalLinkIcon, GlobeIcon, Loader2Icon, ShieldCheckIcon } from "lucide-react";
 import { Label, TextInput } from "@/components/ui/field";

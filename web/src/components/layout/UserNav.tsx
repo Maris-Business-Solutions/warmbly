@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // User menu — bottom of the sidebar.
 //
 // Moved off the shadcn DropdownMenu onto the same PopoverMenu primitive
@@ -58,7 +60,7 @@ export function UserNav({ collapsed = false }: { collapsed?: boolean }) {
                 >
                     <div className="w-7 h-7 rounded-full bg-slate-900 flex items-center justify-center shrink-0 overflow-hidden">
                         {user.avatar_url ? (
-                            <img
+                            <DashboardImage
                                 src={user.avatar_url}
                                 alt=""
                                 className="w-full h-full object-cover"

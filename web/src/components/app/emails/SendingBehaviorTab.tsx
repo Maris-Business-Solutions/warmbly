@@ -19,7 +19,7 @@ import {
     SunsetIcon,
     TimerIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import WeekdayBitmask from "@/components/app/campaigns/schedule/WeekdayBitmask";

@@ -14,7 +14,7 @@ import {
     Settings2Icon,
     UnlinkIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { Logo } from "@/components/svg";
 import { SelectMenu } from "@/components/ui/select-menu";

@@ -1,4 +1,4 @@
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Monitor, Smartphone, Globe, LogOut } from "lucide-react";
 import { Section } from "../_components/SectionShell";
 import { Loading } from "@/components/loader";

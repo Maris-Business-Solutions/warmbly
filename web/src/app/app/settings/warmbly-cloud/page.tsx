@@ -6,7 +6,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CheckIcon, CloudIcon, ExternalLinkIcon, Loader2Icon, RefreshCwIcon, SparklesIcon } from "lucide-react";
 import { useInstanceAdmin, usePermission } from "@/hooks/usePermission";
 import { useConfirm } from "@/hooks/context/confirm";

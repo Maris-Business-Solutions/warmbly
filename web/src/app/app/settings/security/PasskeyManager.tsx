@@ -1,5 +1,5 @@
 import { useState } from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { KeyRound, Trash2, Plus, Check, Pencil } from "lucide-react";
 import { Section } from "../_components/SectionShell";
 import { Loading } from "@/components/loader";
