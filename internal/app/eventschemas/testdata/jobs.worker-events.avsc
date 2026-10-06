@@ -891,6 +891,22 @@
           "fields": [
             {
               "default": "",
+              "name": "email_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "filing_id",
+              "type": "string"
+            }
+          ],
+          "name": "warmbly.events.JobEventWarmupFiled",
+          "type": "record"
+        },
+        {
+          "fields": [
+            {
+              "default": "",
               "name": "user_id",
               "type": "string"
             },

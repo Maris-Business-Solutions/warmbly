@@ -49,6 +49,7 @@ type JobsService struct {
 	CloudLink            CloudLinkVerifier
 	WarmupContentRepo    repository.WarmupContentRepository
 	WarmupEngagementRepo repository.WarmupEngagementRepository
+	WarmupRecoveryRepo   repository.WarmupRecoveryRepository
 	// WarmupPlacementRepo keeps each sender's daily placement history. Optional.
 	WarmupPlacementRepo repository.WarmupPlacementRepository
 	// PlacementRepo resolves placement test probes from worker send results.

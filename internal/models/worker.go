@@ -191,6 +191,9 @@ func (a *AddWorkerEmail) SavesSentCopy() bool {
 }
 
 type RemoveWorkerEmail struct {
-	UserID  string `json:"user_id" avro:"user_id"`
-	EmailID string `json:"email_id" avro:"email_id"`
+	UserID           string   `json:"user_id" avro:"user_id"`
+	EmailID          string   `json:"email_id" avro:"email_id"`
+	WarmupMessageIDs []string `json:"warmup_message_ids,omitempty" avro:"warmup_message_ids"`
+	WarmupPlacement  string   `json:"warmup_placement,omitempty" avro:"warmup_placement"`
+	WarmupFolder     string   `json:"warmup_folder,omitempty" avro:"warmup_folder"`
 }

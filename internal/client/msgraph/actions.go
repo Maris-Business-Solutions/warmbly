@@ -93,12 +93,28 @@ func (c *Client) messageParentFolder(ctx context.Context, messageID string) (str
 	return msg.ParentFolderID, nil
 }
 
+func (c *Client) IsMessageInFolder(ctx context.Context, messageID, folder string) (bool, error) {
+	folderID, err := c.wellKnownFolderID(ctx, folder)
+	if err != nil {
+		return false, err
+	}
+	parentID, err := c.messageParentFolder(ctx, messageID)
+	return parentID == folderID, err
+}
+
 // MoveToFolder moves the message into a named folder, creating it if needed.
 // Used for the warmup sorting folder. Returns the message's new id.
 func (c *Client) MoveToFolder(ctx context.Context, messageID, folderName string) (string, error) {
 	folderID, err := c.ensureFolder(ctx, folderName)
 	if err != nil {
 		return "", err
+	}
+	parentID, err := c.messageParentFolder(ctx, messageID)
+	if err != nil {
+		return "", err
+	}
+	if parentID == folderID {
+		return messageID, nil
 	}
 	return c.move(ctx, messageID, folderID)
 }
@@ -107,7 +123,18 @@ func (c *Client) MoveToFolder(ctx context.Context, messageID, folderName string)
 // for the warmup placement that wants the mail out of sight without a folder of
 // its own. Returns the message's new id.
 func (c *Client) MoveToArchive(ctx context.Context, messageID string) (string, error) {
-	return c.move(ctx, messageID, FolderArchive)
+	folderID, err := c.wellKnownFolderID(ctx, FolderArchive)
+	if err != nil {
+		return "", err
+	}
+	parentID, err := c.messageParentFolder(ctx, messageID)
+	if err != nil {
+		return "", err
+	}
+	if parentID == folderID {
+		return messageID, nil
+	}
+	return c.move(ctx, messageID, folderID)
 }
 
 // move relocates a message and returns the new id from the destination folder

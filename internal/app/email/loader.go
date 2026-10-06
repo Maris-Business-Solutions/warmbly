@@ -253,10 +253,27 @@ func (s *emailService) dropFromWorker(ctx context.Context, userID string, accoun
 		return nil
 	}
 
-	if err := s.publisher.PublishRemoveEmail(ctx, *workerID, &models.RemoveWorkerEmail{
+	remove := &models.RemoveWorkerEmail{
 		UserID:  userID,
 		EmailID: accountID.String(),
-	}); err != nil {
+	}
+	if source, ok := s.emailRepository.(repository.WarmupDisconnectSource); ok {
+		account, aerr := s.emailRepository.GetByID(ctx, accountID)
+		if aerr != nil {
+			log.Warn().Err(aerr).Str("email_id", accountID.String()).Msg("pre-disconnect mailbox lookup failed")
+		} else if account != nil {
+			remove.WarmupPlacement, remove.WarmupFolder = account.WarmupFiling()
+			if remove.WarmupPlacement != models.WarmupPlacementInbox {
+				ids, err := source.WarmupDisconnectMessageIDs(ctx, accountID, 200)
+				if err != nil {
+					log.Warn().Err(err).Str("email_id", accountID.String()).Msg("pre-disconnect warmup lookup failed")
+				} else {
+					remove.WarmupMessageIDs = ids
+				}
+			}
+		}
+	}
+	if err := s.publisher.PublishRemoveEmail(ctx, *workerID, remove); err != nil {
 		log.Warn().Err(err).
 			Str("email_id", accountID.String()).
 			Str("worker_id", workerID.String()).

@@ -102,16 +102,20 @@ type stubEventPublisher struct {
 var errBusDown = errors.New("bus down")
 
 type workerRemoval struct {
-	workerID uuid.UUID
-	userID   string
-	emailID  string
+	workerID        uuid.UUID
+	userID          string
+	emailID         string
+	warmupIDs       []string
+	warmupPlacement string
+	warmupFolder    string
 }
 
 func (p *stubEventPublisher) PublishRemoveEmail(ctx context.Context, workerID uuid.UUID, remove *models.RemoveWorkerEmail) error {
 	if p.trace != nil {
 		*p.trace = append(*p.trace, "remove")
 	}
-	p.removed = append(p.removed, workerRemoval{workerID: workerID, userID: remove.UserID, emailID: remove.EmailID})
+	p.removed = append(p.removed, workerRemoval{workerID: workerID, userID: remove.UserID, emailID: remove.EmailID,
+		warmupIDs: remove.WarmupMessageIDs, warmupPlacement: remove.WarmupPlacement, warmupFolder: remove.WarmupFolder})
 	return p.removeErr
 }
 
@@ -291,6 +295,45 @@ func TestDeleteTellsTheWorkerBeforeTheRowGoes(t *testing.T) {
 	}
 	if f.repo.deleteCalls != 1 {
 		t.Errorf("delete called %d times, want 1", f.repo.deleteCalls)
+	}
+}
+
+type warmupRemovalRepo struct {
+	*stubRemovalRepo
+	limit int
+	err   error
+}
+
+func (r *warmupRemovalRepo) WarmupDisconnectMessageIDs(_ context.Context, _ uuid.UUID, limit int) ([]string, error) {
+	r.limit = limit
+	return []string{"<warmup@example.test>"}, r.err
+}
+
+func TestDisconnectCarriesBoundedWarmupSnapshotAndCurrentDestination(t *testing.T) {
+	f := newRemovalFixture(t)
+	repo := &warmupRemovalRepo{stubRemovalRepo: f.repo}
+	f.svc.emailRepository = repo
+	f.repo.account.WarmupFolder = "Reputation"
+	if err := f.svc.Delete(context.Background(), f.org.String(), f.mailbox.String()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.pub.removed) != 1 {
+		t.Fatal("disconnect did not tell the worker")
+	}
+	remove := f.pub.removed[0]
+	if repo.limit != 200 || len(remove.warmupIDs) != 1 || remove.warmupPlacement != models.WarmupPlacementFolder || remove.warmupFolder != "Reputation" {
+		t.Fatalf("disconnect lost bounded warmup snapshot or destination: limit=%d removal=%+v", repo.limit, remove)
+	}
+}
+
+func TestDisconnectStillCompletesWhenWarmupSnapshotFails(t *testing.T) {
+	f := newRemovalFixture(t)
+	f.svc.emailRepository = &warmupRemovalRepo{stubRemovalRepo: f.repo, err: errors.New("database unavailable")}
+	if err := f.svc.Delete(context.Background(), f.org.String(), f.mailbox.String()); err != nil {
+		t.Fatal(err)
+	}
+	if f.repo.deleteCalls != 1 || len(f.pub.removed) != 1 || len(f.pub.removed[0].warmupIDs) != 0 {
+		t.Fatal("best-effort warmup lookup stopped disconnect or published an invalid snapshot")
 	}
 }
 

@@ -115,6 +115,7 @@ type WarmupEmailAction struct {
 	// know it (the sender's own copy of a send), in which case the worker
 	// resolves it from the provider id it acted on.
 	InternalID string `json:"internal_id,omitempty" avro:"internal_id"`
+	FilingID   string `json:"filing_id,omitempty" avro:"filing_id"`
 
 	// Recheck marks a verify_removal for a strike recorded before removals
 	// were searched; the answer echoes it.

@@ -794,6 +794,10 @@ var Tables = []Table{
 		Scope:       `task_id IN ` + orgTasks,
 	},
 	{
+		Name: "warmup_recovery_identifiers", Group: models.OrgDataGroupWarmup,
+		Scope: scopeOrg,
+	},
+	{
 		Name: "task_failures", Group: models.OrgDataGroupSending,
 		Scope: `task_id IN ` + orgTasks,
 	},
@@ -968,6 +972,7 @@ var Tables = []Table{
 // with the reason. Kept as data so the docs page and the coverage test both
 // read from one list instead of restating it.
 var ExcludedTables = map[string]string{
+	"warmup_pending_filings":       "Provider filing awaiting acknowledgement on this instance. The destination resyncs mailbox messages.",
 	"unibox_pending_emails":        "Unverified mailbox-sync events awaiting this instance's warmup checks. The destination resyncs provider mail with its own warmup and cloud-link state.",
 	"organization_encrypted_keys":  "The organization's data key, wrapped by the source instance's KMS. The destination cannot unwrap it, and shipping it would put every org secret behind one exported blob.",
 	"api_idempotency_keys":         "A short-lived replay cache for in-flight API requests.",

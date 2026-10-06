@@ -2,6 +2,11 @@ package models
 
 import "github.com/google/uuid"
 
+type JobEventWarmupFiled struct {
+	EmailID  uuid.UUID `json:"email_id" avro:"email_id"`
+	FilingID uuid.UUID `json:"filing_id" avro:"filing_id"`
+}
+
 type JobEventNewEmail struct {
 	UserID  uuid.UUID              `json:"user_id" avro:"user_id"`
 	Message *EmailMessageStoreData `json:"message" avro:"message"`
