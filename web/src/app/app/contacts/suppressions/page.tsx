@@ -5,7 +5,7 @@
 
 import React from "react";
 import { GlobeIcon, MailIcon, MoreHorizontalIcon, PlusIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { EmptyBlock, Page, PageBody, PageTopbar, SectionBar, TopbarAction } from "@/components/layout/Page";
 import { SearchInput } from "@/components/ui/field";

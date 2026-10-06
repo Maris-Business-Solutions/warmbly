@@ -3,7 +3,7 @@
 // or forwards the root when it can, otherwise the DNS to add is listed after.
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AlertTriangleIcon, CheckCircle2Icon, CircleDashedIcon, CopyIcon, Loader2Icon, SparklesIcon, XIcon } from "lucide-react";
 import type { BulkDomainResult, RedirectServer, SendingDomain } from "@/lib/api/models/app/emails/SendingDomain";
 import { useBulkDomainSetup } from "@/lib/api/hooks/app/emails/useSendingDomains";

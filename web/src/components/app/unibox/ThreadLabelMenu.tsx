@@ -8,7 +8,7 @@
 
 import React from "react";
 import { CheckIcon, Loader2Icon, PlusIcon, TagIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useIsMutating } from "@tanstack/react-query";
 
 import {

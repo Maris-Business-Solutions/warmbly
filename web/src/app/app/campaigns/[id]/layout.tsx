@@ -24,7 +24,7 @@ import LaunchCampaignDialog from "@/components/app/campaigns/LaunchCampaignDialo
 import CampaignActionsMenu from "@/components/app/campaigns/CampaignActionsMenu";
 import UndeliverableBanner from "@/components/app/campaigns/UndeliverableBanner";
 import { canStartCampaign } from "@/components/app/campaigns/useCampaignActions";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CAMPAIGN_DELETED_EVENT, type CampaignDeletedDetail } from "@/lib/realtime/campaignDeleted";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
 import { usePresenceResource } from "@/hooks/PresenceProvider";

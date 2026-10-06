@@ -20,7 +20,7 @@ import {
     Trash2Icon,
     UploadCloudIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { Editor } from "@tiptap/react";
 import useClickOutside from "@/hooks/useClickOutside";
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";

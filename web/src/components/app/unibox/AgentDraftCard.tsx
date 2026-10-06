@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SparklesIcon, SendIcon, Trash2Icon, Loader2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import useAgentDrafts from "@/lib/api/hooks/app/unibox/useAgentDrafts";
 import { approveAgentDraft, discardAgentDraft } from "@/lib/api/client/app/unibox/agentDrafts";

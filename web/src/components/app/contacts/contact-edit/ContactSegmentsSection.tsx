@@ -4,7 +4,7 @@
 import React from "react";
 import { CheckIcon, Loader2Icon, MinusIcon, RotateCcwIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { useWriteGuard } from "@/hooks/usePermission";
 import { useContactSegments, useSetSegmentMembers } from "@/lib/api/hooks/app/segments";

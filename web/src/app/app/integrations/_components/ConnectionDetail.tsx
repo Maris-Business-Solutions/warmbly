@@ -20,7 +20,7 @@ import {
     Settings2Icon,
     UnplugIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { TextInput } from "@/components/ui/field";
 import { CRM_INFO, CrmMark, type ExternalCrm } from "@/components/app/crm/crmProviders";

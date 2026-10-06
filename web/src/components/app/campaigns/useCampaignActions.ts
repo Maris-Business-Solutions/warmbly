@@ -4,7 +4,7 @@
 // after a duplicate.
 
 import { useNavigate } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useConfirm } from "@/hooks/context/confirm";
 import { checkPermission, showPermissionDenied, type PermissionKey } from "@/hooks/usePermission";
 import useDeleteCampaign from "@/lib/api/hooks/app/campaigns/useDeleteCampaign";

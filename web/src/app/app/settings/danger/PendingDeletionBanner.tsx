@@ -6,7 +6,7 @@
 
 import React from "react";
 import { AlertOctagonIcon, Loader2Icon, UndoIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import buildError from "@/lib/helper/buildError";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import type ScheduledDeletion from "@/lib/api/models/app/dangerzone/ScheduledDeletion";

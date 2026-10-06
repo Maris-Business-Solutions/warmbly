@@ -1,7 +1,7 @@
 // Moves one mailbox off Google sign-in onto an app password, in place: same
 // mailbox, same history. The server checks the password with Gmail first.
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CheckIcon, ExternalLinkIcon, Loader2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SIGNIN_MIGRATION_KEY, useSwitchToAppPassword } from "@/lib/api/hooks/app/emails/useMailboxGrants";

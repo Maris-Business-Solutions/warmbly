@@ -16,7 +16,7 @@ import {
     UsersIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { SearchInput } from "@/components/ui/field";
 import CategoryPicker from "./CategoryPicker";
 import useSearchContacts from "@/lib/api/hooks/app/contacts/useSearchContacts";

@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import useLoginConfirm from "@/lib/api/hooks/auth/useLoginConfirm";
 import { saveTokens } from "@/lib/auth";
 import getUser from "@/lib/api/client/auth/getUser";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 

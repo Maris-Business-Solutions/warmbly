@@ -12,7 +12,7 @@
 import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, PlusIcon, Settings2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useAppStore } from "@/stores";
 import useSwitchOrganization from "@/lib/api/hooks/app/organizations/useSwitchOrganization";
 import { NewWorkspaceDialog } from "@/components/app/organizations/NewWorkspaceDialog";

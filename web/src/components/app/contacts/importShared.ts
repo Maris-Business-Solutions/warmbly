@@ -4,7 +4,7 @@
 // dedup options, and error formatter without tripping react-refresh's
 // "only export components" rule.
 
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type {
     ImportColumnMapping,
     ImportDedupStrategy,

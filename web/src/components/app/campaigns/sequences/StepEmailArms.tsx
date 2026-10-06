@@ -9,7 +9,7 @@
 
 import React from "react";
 import { Loader2Icon, Trash2Icon, TrophyIcon, PauseIcon, PlayIcon, SplitIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
 import type ABVariant from "@/lib/api/models/app/campaigns/ABVariant";
 import type { ABVariantStats } from "@/lib/api/models/app/campaigns/ABVariant";

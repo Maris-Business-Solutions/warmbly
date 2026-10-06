@@ -5,7 +5,7 @@
 import React from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { ArrowLeftIcon, ArrowUpRightIcon, Loader2Icon, SquareIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { EmptyBlock, SectionBar } from "@/components/layout/Page";
 import PermissionButton from "@/components/ui/PermissionButton";
 import EmailBody from "@/components/app/unibox/EmailBody";

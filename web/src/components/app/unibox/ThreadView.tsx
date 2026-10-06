@@ -9,7 +9,7 @@ import React from "react";
 import { useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
   AlertCircleIcon,
   ArchiveIcon,

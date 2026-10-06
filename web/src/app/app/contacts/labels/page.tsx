@@ -6,7 +6,7 @@ import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
 import { CheckIcon, MoreHorizontalIcon, PlusIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { EmptyBlock, Page, PageBody, PageTopbar, SectionBar, TopbarAction } from "@/components/layout/Page";
 import { SearchInput, TextInput } from "@/components/ui/field";

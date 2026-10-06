@@ -6,7 +6,7 @@
 // refreshes via the realtime spine (credit_purchase / credit_grant).
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Loader2Icon, SparklesIcon, PlusIcon } from "lucide-react";
 import useCredits from "@/lib/api/hooks/app/subscription/useCredits";
 import useCreditTransactions from "@/lib/api/hooks/app/subscription/useCreditTransactions";

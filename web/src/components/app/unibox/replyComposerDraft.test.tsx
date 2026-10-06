@@ -19,7 +19,7 @@ vi.mock("framer-motion", async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock("react-hot-toast", () => ({
+vi.mock("react-hot-toast/headless", () => ({
     default: { success: () => {}, error: () => {} },
 }));
 const sendReply = vi.hoisted(() => vi.fn(async () => ({})));

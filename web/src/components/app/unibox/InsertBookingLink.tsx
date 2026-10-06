@@ -4,7 +4,7 @@
 // Shared by the reply composer and the compose window.
 
 import { CalendarPlusIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useIntegrationConnections from "@/lib/api/hooks/app/integrations/useIntegrationConnections";
 import { bookingURL, prefilledBookingURL } from "@/lib/api/models/app/integrations/Integration";
 import { bareEmail } from "@/lib/helper/emailAddress";

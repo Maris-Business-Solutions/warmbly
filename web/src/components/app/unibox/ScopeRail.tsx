@@ -29,7 +29,7 @@ import {
   useReducedMotion,
   type DragControls,
 } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
   ArchiveIcon,
   ArrowDownIcon,

@@ -220,9 +220,12 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
     React.useEffect(() => () => observerRef.current?.disconnect(), []);
 
     const onLoad = React.useCallback(() => {
-        measure();
         const doc = frameRef.current?.contentDocument;
-        if (!doc?.body) return;
+        if (!doc?.documentElement) return;
+        // A network document has its own CSP, unlike srcdoc which inherits the dashboard's.
+        const parsed = new DOMParser().parseFromString(srcDoc, "text/html");
+        doc.documentElement.replaceChildren(doc.importNode(parsed.head, true), doc.importNode(parsed.body, true));
+        measure();
         // A reload replaces the document the previous observer watched.
         observerRef.current?.disconnect();
         const observer = new ResizeObserver(measure);
@@ -232,7 +235,7 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
             img.addEventListener("load", measure);
             img.addEventListener("error", measure);
         });
-    }, [measure]);
+    }, [measure, srcDoc]);
 
     if (!srcDoc) {
         return (
@@ -258,9 +261,10 @@ export default function EmailBody({ html, plain, blockRemote = false }: EmailBod
                 </div>
             )}
             <iframe
+                key={srcDoc}
                 ref={frameRef}
                 title="Message body"
-                srcDoc={srcDoc}
+                src="/mail-preview.html"
                 onLoad={onLoad}
                 // No allow-scripts: message markup can never run code. allow-popups
                 // (plus escape-to-normal-context) is what lets a link actually open.

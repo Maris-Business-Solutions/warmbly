@@ -6,7 +6,7 @@
 
 import React from "react";
 import { Loader2Icon, ReplyIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
 import EmailContentEditor from "./EmailContentEditor";
 import StepAttachments from "./StepAttachments";

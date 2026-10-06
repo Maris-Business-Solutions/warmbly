@@ -1,9 +1,9 @@
-if (!process.env.VITE_SENTRY_RELEASE && process.env.CF_PAGES_COMMIT_SHA) process.env.VITE_SENTRY_RELEASE = process.env.CF_PAGES_COMMIT_SHA;import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import tailwindcss from "@tailwindcss/vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { dashboardSecurityHeaders } from "./securityHeaders";
+import { dashboardCspPlugin, noncePlaceholder } from "./csp";
 
 // A Cloudflare Pages build sets no release, so its events are tagged with the commit it built.
 if (!process.env.VITE_SENTRY_RELEASE && process.env.CF_PAGES_COMMIT_SHA) process.env.VITE_SENTRY_RELEASE = process.env.CF_PAGES_COMMIT_SHA;
@@ -62,12 +62,14 @@ function preloadInterfaceFont(): Plugin {
     };
 }
 
-export default defineConfig({
+export default defineConfig(({ command, mode, isPreview }) => ({
+    html: { cspNonce: command === "serve" && !isPreview ? noncePlaceholder : undefined },
     plugins: [
         react(),
         tailwindcss(),
         preloadInterfaceFont(),
         ...sentryPlugins,
+        dashboardCspPlugin({ ...loadEnv(mode, process.cwd(), ""), ...process.env } as Record<string, string>),
     ],
     build: {
         // Only when they are going to be uploaded: shipping them otherwise
@@ -91,13 +93,12 @@ export default defineConfig({
             "framer-motion",
             "@tanstack/react-query",
             "@tanstack/react-query-devtools",
-            "react-hot-toast",
+            "react-hot-toast/headless",
             "lucide-react",
             "@remixicon/react",
         ],
     },
     server: {
-        headers: dashboardSecurityHeaders,
         // Permit Tailscale MagicDNS names (and any extra hosts via
         // VITE_ALLOWED_HOSTS) when the server is exposed with --host. Vite
         // always allows IPs + localhost; this only adds named hosts, so it's
@@ -115,7 +116,4 @@ export default defineConfig({
             ],
         },
     },
-    preview: {
-        headers: dashboardSecurityHeaders,
-    },
-});
+}));

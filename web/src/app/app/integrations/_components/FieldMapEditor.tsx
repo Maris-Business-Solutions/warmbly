@@ -8,7 +8,7 @@
 
 import React from "react";
 import { Loader2Icon, PlusIcon, Trash2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { TextInput } from "@/components/ui/field";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";

@@ -17,7 +17,7 @@ import {
     XCircleIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useContactImport, CONTACT_IMPORTS_KEY } from "@/lib/api/hooks/app/contacts/useContactImports";

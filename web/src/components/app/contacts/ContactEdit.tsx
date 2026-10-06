@@ -19,7 +19,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarPlusIcon, CheckIcon, CopyIcon, Loader2Icon, MailIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useUpdateContact from "@/lib/api/hooks/app/contacts/useUpdateContact";
 import useContact from "@/lib/api/hooks/app/contacts/useContact";
 import { useConfirm } from "@/hooks/context/confirm";

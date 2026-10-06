@@ -12,7 +12,7 @@ import AdvisorSummaryBar from "@/components/app/advisor/AdvisorSummaryBar";
 import { useAdvisorEntityIndex } from "@/lib/api/hooks/app/advisor/useAdvisor";
 import LaunchCampaignDialog from "@/components/app/campaigns/LaunchCampaignDialog";
 import CampaignActionsMenu from "@/components/app/campaigns/CampaignActionsMenu";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import type Campaign from "@/lib/api/models/app/campaigns/Campaign";

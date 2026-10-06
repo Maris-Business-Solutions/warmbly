@@ -3,7 +3,7 @@
 // them" acknowledgement the parent gates its Done button on.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CheckIcon, CopyIcon, DownloadIcon, PrinterIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";

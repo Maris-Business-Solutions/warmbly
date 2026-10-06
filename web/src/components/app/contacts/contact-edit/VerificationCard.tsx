@@ -5,7 +5,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     AlertTriangleIcon,
     BadgeCheckIcon,

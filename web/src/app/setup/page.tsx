@@ -24,7 +24,7 @@ import {
     RefreshCwIcon,
     ShieldCheckIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import claimSetup from "@/lib/api/client/auth/claimSetup";
 import getUser from "@/lib/api/client/auth/getUser";

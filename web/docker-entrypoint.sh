@@ -39,3 +39,46 @@ EOF
 # The redirect truncates in place and keeps whatever mode the built file had, so
 # a restrictive umask or checkout leaves nginx serving 403 for the whole config.
 chmod 644 "$CONFIG_OUT"
+
+# The build hashes the fixed inline bootstrap; deployment supplies resource origins.
+CSP_DIR=$(dirname "$CONFIG_OUT")
+if [ -f "$CSP_DIR/csp-template.txt" ]; then
+    origin() {
+        [ -n "$1" ] || return 0
+        case "$1" in /*) return 0 ;; esac
+        scheme=${1%%://*}
+        case "$scheme" in http|https|ws|wss) ;; *) printf 'Invalid CSP resource URL\n' >&2; exit 1 ;; esac
+        authority=${1#*://}
+        authority=${authority%%/*}
+        authority=${authority%%\?*}
+        authority=${authority%%\#*}
+        authority=${authority##*@}
+        printf '%s' "$authority" | grep -Eq '^([a-zA-Z0-9._-]+|\[[a-fA-F0-9:]+\])(:[0-9]+)?$' || {
+            printf 'Invalid CSP resource origin\n' >&2; exit 1;
+        }
+        printf '%s://%s' "$scheme" "$authority"
+    }
+    defaults() { if [ -f "$CSP_DIR/csp-origins.txt" ]; then sed -n "${1}p" "$CSP_DIR/csp-origins.txt"; fi; }
+    api=$(origin "${WARMBLY_API_URL:-${VITE_API_URL:-$(defaults 1)}}")
+    sentry=$(origin "${WARMBLY_SENTRY_DSN:-${VITE_SENTRY_DSN:-$(defaults 2)}}")
+    analytics_url=${WARMBLY_POSTHOG_HOST:-${VITE_POSTHOG_HOST:-$(defaults 3)}}
+    analytics=$(origin "${analytics_url:-https://us.i.posthog.com}")
+    connections=""
+    for resource in ${WARMBLY_CSP_CONNECT_ORIGINS:-${VITE_CSP_CONNECT_ORIGINS:-$(defaults 4)}}; do
+        connections="$connections $(origin "$resource")"
+    done
+    assets=$(printf '%s' "$analytics" | sed -e 's#://us\.i\.posthog\.com$#://us-assets.i.posthog.com#' -e 's#://eu\.i\.posthog\.com$#://eu-assets.i.posthog.com#')
+    websocket=$(printf '%s' "$api" | sed 's/^http/ws/')
+    policy=$(sed -e "s#__API_SOURCES__#$api $websocket#g" -e "s#__API_IMAGE_SOURCE__#$api#g" -e "s#__SENTRY_SOURCE__#$sentry#g" -e "s#__ANALYTICS_SOURCES__#$analytics $assets#g" -e "s#__CONNECT_SOURCES__#$connections#g" "$CSP_DIR/csp-template.txt")
+    if [ "${#policy}" -gt 1973 ]; then printf 'Dashboard CSP exceeds the static host header limit\n' >&2; exit 1; fi
+    printf '%s\n' "$policy" > "$CSP_DIR/csp-policy.txt"
+    if [ -f "$CSP_DIR/_headers" ]; then
+        CSP_POLICY="$policy" awk '/^  Content-Security-Policy:/ && !replaced { print "  Content-Security-Policy: " ENVIRON["CSP_POLICY"]; replaced=1; next } { print }' "$CSP_DIR/_headers" > "$CSP_DIR/_headers.new"
+        mv "$CSP_DIR/_headers.new" "$CSP_DIR/_headers"
+    fi
+    if [ "$CONFIG_OUT" = /usr/share/nginx/html/config.js ]; then
+        CSP_POLICY="$policy" awk '/^add_header Content-Security-Policy/ { print "add_header Content-Security-Policy \"" ENVIRON["CSP_POLICY"] "\" always;"; next } { print }' /etc/nginx/warmbly-security-headers.conf > /etc/nginx/warmbly-security-headers.conf.new
+        mv /etc/nginx/warmbly-security-headers.conf.new /etc/nginx/warmbly-security-headers.conf
+    fi
+    chmod 644 "$CSP_DIR/csp-policy.txt"
+fi

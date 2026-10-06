@@ -8,7 +8,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2Icon, UserPlusIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useAddContacts from "@/lib/api/hooks/app/contacts/useAddContacts";
 import type { AddContact } from "@/components/app/AddContacts";
 import { Label, TextInput } from "@/components/ui/field";

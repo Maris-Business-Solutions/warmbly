@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FlameIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 import { Label, NumberInput, TextInput } from "@/components/ui/field";
 import { OptionSelect } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";

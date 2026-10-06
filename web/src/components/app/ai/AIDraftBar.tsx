@@ -21,7 +21,7 @@ import {
     Trash2Icon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import useTypewriter from "./useTypewriter";

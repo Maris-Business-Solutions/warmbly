@@ -45,7 +45,7 @@ import {
     type LucideIcon,
 } from "lucide-react";
 import useMailboxSwitch from "@/components/app/emails/useMailboxSwitch";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import type Inbox from "@/lib/api/models/app/emails/Inbox";
 import type AccountStatusModel from "@/lib/api/models/app/analytics/AccountStatus";

@@ -20,7 +20,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, Loader2Icon, PencilIcon, PlusIcon, TrashIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { TextInput, Label } from "@/components/ui/field";

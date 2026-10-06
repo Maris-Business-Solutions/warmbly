@@ -2,7 +2,7 @@
 // sign-in, with the move that fits it: onto the domain's admin grant, the
 // whole-domain setup first, or an app password right here.
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { ArrowRightIcon, Building2Icon, Loader2Icon } from "lucide-react";
 import ProviderLogo from "@/components/app/emails/ProviderLogo";
 import { MoveError, useGrantConfig, useMoveToGrant, useSigninMigration } from "@/lib/api/hooks/app/emails/useMailboxGrants";

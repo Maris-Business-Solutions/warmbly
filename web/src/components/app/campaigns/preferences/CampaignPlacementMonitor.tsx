@@ -6,7 +6,7 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangleIcon, ArrowUpRightIcon, Layers3Icon, Loader2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Label, NumberInput } from "@/components/ui/field";
 import { SelectMenu } from "@/components/ui/select-menu";
 import { useConfirm } from "@/hooks/context/confirm";

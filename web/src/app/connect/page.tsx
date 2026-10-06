@@ -7,7 +7,7 @@ import { Link, Navigate } from "@tanstack/react-router";
 import { useSearchParams } from "@/hooks/useSearchParams";
 import { AnimatePresence, motion } from "framer-motion";
 import { REGEXP_ONLY_DIGITS_AND_CHARS } from "input-otp";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     ArrowLeftIcon,
     ArrowRightIcon,

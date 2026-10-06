@@ -63,7 +63,7 @@ import { usePauseLead } from "@/lib/api/hooks/app/campaigns/useLeadHold";
 import { CC_RESUME_CONFIRM, leadCanBePaused } from "@/lib/leadHold";
 import { PauseLeadButton, ResumeLeadButton } from "@/components/app/contacts/LeadHoldButtons";
 import LeadCCBar from "./LeadCCBar";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { useWriteGuard } from "@/hooks/usePermission";

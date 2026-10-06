@@ -6,7 +6,7 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     AlertTriangleIcon,
     Building2Icon,

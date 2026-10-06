@@ -8,7 +8,7 @@
 // deployments never render it.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircleIcon, Loader2Icon } from "lucide-react";
 import useInstanceVersion from "@/lib/api/hooks/auth/useInstanceVersion";

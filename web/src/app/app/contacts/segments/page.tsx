@@ -4,7 +4,7 @@
 import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontalIcon, PlusIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { EmptyBlock, Page, PageBody, PageTopbar, SectionBar, StatStrip, Stat, TopbarAction } from "@/components/layout/Page";
 import { NoAccess } from "@/components/layout/NoAccess";

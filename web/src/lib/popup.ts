@@ -7,7 +7,7 @@
 // blocks it anyway, the flow keeps listening, so a window the person then
 // allows from the address bar still finishes the sign-in.
 
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { listenForOAuthReturn } from "@/lib/oauthReturn";
 
 export interface PopupSize {

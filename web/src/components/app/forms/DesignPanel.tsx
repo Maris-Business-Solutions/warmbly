@@ -5,7 +5,7 @@
 
 import React from "react";
 import { ImageIcon, PlusIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { Label, NumberInput, TextInput } from "@/components/ui/field";
 import ColorPicker from "@/components/ui/color-picker";

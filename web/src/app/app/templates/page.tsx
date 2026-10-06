@@ -19,7 +19,7 @@ import {
     ChevronUpIcon,
     ChevronDownIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     Page,

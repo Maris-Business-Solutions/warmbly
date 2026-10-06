@@ -9,7 +9,7 @@ import {
     ShieldCheckIcon,
     XCircleIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { useSalesforcePermissionCheck } from "@/lib/api/hooks/app/integrations/useSalesforce";
 import type { SalesforceOverview } from "@/lib/api/models/app/integrations/Salesforce";

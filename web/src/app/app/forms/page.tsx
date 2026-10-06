@@ -6,7 +6,7 @@
 import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, ClipboardListIcon, LinkIcon, Loader2Icon, MoreHorizontalIcon, PlusIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { EmptyBlock, Page, PageBody, PageTopbar, SectionBar, Stat, StatStrip, TopbarAction } from "@/components/layout/Page";
 import { NoAccess } from "@/components/layout/NoAccess";

@@ -54,7 +54,7 @@ import {
     PencilLineIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useClickOutside from "@/hooks/useClickOutside";
 import { useAnchoredFloating } from "@/hooks/useAnchoredFloating";
 import { useConfirm } from "@/hooks/context/confirm";
@@ -164,6 +164,7 @@ export default function RichTextEditor({
     placeRef.current = placeImageFiles;
 
     const editor = useEditor({
+        injectCSS: false,
         extensions: [
             Document,
             EmailParagraph,

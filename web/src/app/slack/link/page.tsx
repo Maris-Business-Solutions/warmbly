@@ -5,7 +5,7 @@ import React from "react";
 import { Link, Navigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, ExternalLinkIcon, LinkIcon, Loader2Icon, TriangleAlertIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import BrandMark from "@/components/shared/BrandMark";
 import { Logo } from "@/components/svg";

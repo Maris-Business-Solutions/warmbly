@@ -10,7 +10,8 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast/headless";
+import { Toaster } from "@/components/ui/toaster";
 import { useAppStore } from "@/stores";
 import {
   applyRailOrder,

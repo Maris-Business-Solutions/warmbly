@@ -3,18 +3,25 @@
 # nginx-security-headers.conf; both exist because the hosted service serves the
 # frontends from Pages while a self-host serves them from the image.
 #
-# No script-src or connect-src: the API origin is runtime configuration
-# (config.js), so an allowlist fixed at build time would break an instance that
-# points the dashboard elsewhere.
+# build:pages fills the built policy's hashes and configured resource origins.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
-  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
 
 # Hashed build output never changes under a name, so a repeat visit loads every
 # page chunk from cache. Same rule as the nginx image.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+/mail-preview.html
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; style-src 'unsafe-inline'; img-src data: https: http:; font-src data: https:; media-src https:
+  ! X-Frame-Options
+  X-Frame-Options: SAMEORIGIN
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store

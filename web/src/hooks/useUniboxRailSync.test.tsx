@@ -24,7 +24,7 @@ vi.mock("@/lib/api/client/app/views/views", () => ({
         return { preferences: { view: "unibox_rail", columns: [], layout: body.layout, updated_at: new Date() } as ViewPreferences };
     },
 }));
-vi.mock("react-hot-toast", () => ({ default: { error: () => {}, success: () => {} } }));
+vi.mock("react-hot-toast/headless", () => ({ default: { error: () => {}, success: () => {} } }));
 
 import { useAppStore } from "@/stores/useAppStore";
 import { useUniboxRailSync } from "./useUniboxRailSync";

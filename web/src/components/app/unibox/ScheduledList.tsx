@@ -9,7 +9,7 @@
 
 import React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     AlertCircleIcon,
     ClockIcon,

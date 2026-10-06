@@ -16,7 +16,7 @@ import {
     PencilLineIcon,
     SparklesIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import RichTextEditor, { VariableMenu } from "./RichTextEditor";
 import EmailBody from "@/components/app/unibox/EmailBody";
 import { useTemplatePreview } from "@/lib/api/hooks/app/campaigns/useTemplatePreview";

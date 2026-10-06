@@ -4,7 +4,7 @@
 
 import React from "react";
 import { Loader2Icon, LayersIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import {
     PopoverMenu,

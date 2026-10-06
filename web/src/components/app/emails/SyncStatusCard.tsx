@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2Icon, DownloadIcon, HourglassIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CheckSquare } from "@/components/ui/check-square";
 import { TextInput } from "@/components/ui/field";
 import { useConfirm } from "@/hooks/context/confirm";

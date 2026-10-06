@@ -11,7 +11,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Loader2Icon, SendIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import cancelScheduled from "@/lib/api/client/app/unibox/cancelScheduled";
 import { useOutboxStore, type OutboxEntry } from "@/hooks/useOutboxStore";
 import { useComposeStore } from "@/hooks/useComposeStore";

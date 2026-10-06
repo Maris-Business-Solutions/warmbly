@@ -2,7 +2,7 @@
 // asking, who allowed them and when, and a way to make each one ask again.
 // Settings managers only; the list refreshes live through the audit spine.
 
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Loader2Icon, ShieldCheckIcon } from "lucide-react";
 import { useRevokeToolPolicy, useToolPolicies } from "@/lib/api/hooks/app/agent/useToolPolicies";
 import type { AppError } from "@/lib/api/client/normalizeError";

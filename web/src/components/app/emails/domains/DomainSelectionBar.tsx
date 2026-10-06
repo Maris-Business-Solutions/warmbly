@@ -2,7 +2,7 @@
 // bulk, re-check DNS, copy or export what is still to add, and clear either.
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     CheckIcon,

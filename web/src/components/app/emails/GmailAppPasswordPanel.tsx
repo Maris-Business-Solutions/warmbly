@@ -20,7 +20,7 @@ import {
     ShieldCheckIcon,
     SparklesIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { TextInput } from "@/components/ui/field";
 import type { AppError } from "@/lib/api/client/normalizeError";

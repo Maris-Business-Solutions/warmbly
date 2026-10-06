@@ -2,7 +2,7 @@
 // import. Hidden until the workspace has one. Each entry says what the import
 // is doing or waiting on, and can be hidden from the list.
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { FileSpreadsheetIcon, Loader2Icon, XIcon } from "lucide-react";
 import {
     PopoverMenu,

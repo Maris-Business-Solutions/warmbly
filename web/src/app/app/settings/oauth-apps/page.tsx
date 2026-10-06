@@ -6,7 +6,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     CheckIcon,

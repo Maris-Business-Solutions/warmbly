@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import setThreadLabels from "@/lib/api/client/app/unibox/setThreadLabels";
 import type { UniboxListRow } from "@/lib/api/client/app/unibox/searchIncoming";
 import type MiniCategory from "@/lib/api/models/app/contacts/MiniCategory";

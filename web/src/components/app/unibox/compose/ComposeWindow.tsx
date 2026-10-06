@@ -16,7 +16,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, useLocation } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     CheckIcon,
     ChevronDownIcon,

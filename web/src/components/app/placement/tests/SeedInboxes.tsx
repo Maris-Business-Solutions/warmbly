@@ -4,7 +4,7 @@
 
 import React from "react";
 import { InboxIcon, Loader2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Link } from "@tanstack/react-router";
 import { Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";
 import { EmptyBlock, SectionBar } from "@/components/layout/Page";

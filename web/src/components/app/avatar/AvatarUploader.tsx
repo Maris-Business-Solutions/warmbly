@@ -14,7 +14,7 @@
 
 import React from "react";
 import { CameraIcon, ImageIcon, Loader2Icon, TrashIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     AVATAR_ACCEPT,
     AVATAR_OUTPUT_DIMENSION,

@@ -1,7 +1,7 @@
 import { RiFireLine, RiMoreLine } from "@remixicon/react";
 import React, { useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "@/hooks/useSearchParams";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 import useEmails from "@/lib/api/hooks/app/emails/useEmails";
 import { NoAccess } from "@/components/layout/NoAccess";

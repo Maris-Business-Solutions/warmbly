@@ -1,7 +1,7 @@
 // Redirects whose DNS is right but visitors do not get, with Warmbly Cloud offered as the way out that needs no server work.
 import React from "react";
 import { motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AlertTriangleIcon, CloudIcon, Loader2Icon, XIcon } from "lucide-react";
 import type { SendingDomain } from "@/lib/api/models/app/emails/SendingDomain";
 import { useSetDomainRedirect } from "@/lib/api/hooks/app/emails/useSendingDomains";
