@@ -69,5 +69,13 @@ type LoginCodeExemption struct {
 	Reason    *string    `json:"reason,omitempty"`
 	GrantedAt *time.Time `json:"granted_at,omitempty"`
 	// PasswordExpiresAt is set on a tester whose password was handed out.
-	PasswordExpiresAt *time.Time `json:"password_expires_at,omitempty"`
+	PasswordExpiresAt  *time.Time `json:"password_expires_at,omitempty"`
+	TestWorkspaceID    *uuid.UUID `json:"test_workspace_id,omitempty"`
+	SampleDataSeededAt *time.Time `json:"sample_data_seeded_at,omitempty"`
+}
+
+type TesterSampleData struct {
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Created        bool      `json:"created"`
+	SeededAt       time.Time `json:"seeded_at"`
 }

@@ -90,3 +90,65 @@ func TestAdminCreateTesterOnlyGrantsDedicatedWorkspaces(t *testing.T) {
 		}
 	}
 }
+
+type testerSampleService struct {
+	organization.OrganizationService
+	orgID, actor uuid.UUID
+	ip, agent    string
+	called       bool
+	err          *errx.Error
+}
+
+func (s *testerSampleService) SeedTesterWorkspace(_ context.Context, orgID, actor uuid.UUID, ip, agent string) (*models.TesterSampleData, *errx.Error) {
+	s.called, s.orgID, s.actor, s.ip, s.agent = true, orgID, actor, ip, agent
+	return &models.TesterSampleData{OrganizationID: orgID, Created: true, SeededAt: time.Now()}, s.err
+}
+
+func TestAdminSeedTesterWorkspaceRequiresAuthorityAndValidTarget(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	actor, orgID := uuid.New(), uuid.New()
+	for _, tc := range []struct {
+		name    string
+		perms   models.AdminPermission
+		actor   bool
+		id      string
+		missing bool
+		err     *errx.Error
+		status  int
+		called  bool
+	}{
+		{name: "allowed", perms: models.AdminPermManageTesters, actor: true, id: orgID.String(), status: http.StatusOK, called: true},
+		{name: "view only", perms: models.AdminPermViewUsers, actor: true, id: orgID.String(), status: http.StatusForbidden},
+		{name: "no actor", perms: models.AdminPermManageTesters, id: orgID.String(), status: http.StatusUnauthorized},
+		{name: "invalid target", perms: models.AdminPermManageTesters, actor: true, id: "not-a-uuid", status: http.StatusBadRequest},
+		{name: "nil target", perms: models.AdminPermManageTesters, actor: true, id: uuid.Nil.String(), status: http.StatusBadRequest},
+		{name: "inactive workspace", perms: models.AdminPermManageTesters, actor: true, id: orgID.String(), err: errx.New(errx.BadRequest, "inactive"), status: http.StatusBadRequest, called: true},
+		{name: "unavailable", perms: models.AdminPermManageTesters, actor: true, id: orgID.String(), missing: true, status: http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &testerSampleService{err: tc.err}
+			h := &Handler{}
+			if !tc.missing {
+				h.OrganizationService = s
+			}
+			r := gin.New()
+			r.Use(func(c *gin.Context) {
+				c.Set(middleware.AdminPermissionsKey, tc.perms)
+				if tc.actor {
+					c.Set(middleware.AdminUserIDKey, actor)
+				}
+			})
+			r.POST("/organizations/:id/sample-data", middleware.RequireAdminPermission(models.AdminPermManageTesters), h.AdminSeedTesterWorkspace)
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/organizations/"+tc.id+"/sample-data", nil)
+			req.Header.Set("User-Agent", "sample-review")
+			r.ServeHTTP(w, req)
+			if w.Code != tc.status || s.called != tc.called {
+				t.Fatalf("HTTP %d, called=%v: %s", w.Code, s.called, w.Body.String())
+			}
+			if s.called && (s.orgID != orgID || s.actor != actor || s.agent != "sample-review" || s.ip == "") {
+				t.Fatal("target or audit attribution changed")
+			}
+		})
+	}
+}

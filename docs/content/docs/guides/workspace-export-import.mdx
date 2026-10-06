@@ -33,6 +33,8 @@ The data is split into groups. Every export includes **Workspace**; the rest are
 
 Inbox, send history, delivery events, and logs are the ones that grow without limit. Turn them off and you get a small archive that still rebuilds a working workspace; leave them on for a faithful copy.
 
+[Test workspace samples](/development/accounts-and-access/#adding-sample-data) move as ordinary contacts, campaigns and CRM records in their corresponding groups; reply templates are in **Assistant**. Their instance-wide admin audit marker does not travel, and import does not grant managed Test access.
+
 <Callout type="info" title="Suppression always travels with contacts">
 The suppression list is part of the Contacts group and is never optional within it. An import that dropped it would start mailing people who already opted out.
 </Callout>
