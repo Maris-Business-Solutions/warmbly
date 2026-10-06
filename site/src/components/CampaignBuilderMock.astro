@@ -303,8 +303,8 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
 
       <!-- The surface: a dot grid that moves with the view -->
       <div class="relative min-h-0 flex-1 overflow-hidden bg-slate-50/40" style="background-image: radial-gradient(circle, #dde3eb 1px, transparent 1.2px); background-size: 20px 20px;">
-        <!-- ZoomControls (bottom right) -->
-        <div class="absolute right-3 bottom-3 z-[5] flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm">
+        <!-- ZoomControls (bottom left) -->
+        <div class="absolute left-3 bottom-3 z-[5] flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm">
           <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.minus}></svg></span>
           <span class="inline-flex h-7 min-w-11 items-center justify-center rounded-md px-1 text-[11.5px] tabular-nums text-slate-600">100%</span>
           <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>

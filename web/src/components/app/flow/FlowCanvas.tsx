@@ -794,7 +794,7 @@ function ZoomControls({
         <div
             data-no-pan
             onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-3 right-3 z-10 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm backdrop-blur"
+            className="absolute bottom-3 left-3 z-10 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm backdrop-blur"
         >
             <button type="button" className={btn} aria-label="Zoom out" title="Zoom out (⌘−)" onClick={() => onZoom(1 / 1.25)}>
                 <MinusIcon className="size-3.5" />
