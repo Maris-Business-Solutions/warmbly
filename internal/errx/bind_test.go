@@ -104,6 +104,21 @@ func TestInvalidQueryRejectsNUL(t *testing.T) {
 	}
 }
 
+func TestInvalidQueryRejectsInvalidUTF8(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/?q=%FF", nil)
+	var query bindQuery
+	err := c.ShouldBindQuery(&query)
+	if err == nil {
+		t.Fatal("binding invalid UTF-8 succeeded")
+	}
+	got := InvalidQuery(err)
+	if got.Code != BadRequest || !strings.Contains(got.Message, `Query parameter "q" contains invalid UTF-8`) {
+		t.Fatalf("InvalidQuery() = %#v", got)
+	}
+}
+
 func TestInvalidBodyCapsTheList(t *testing.T) {
 	type many struct {
 		A string `json:"a" binding:"required"`

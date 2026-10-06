@@ -80,6 +80,8 @@ When the body cannot be read, the `message` says why:
 
 Fields are named by their JSON key, with nested fields as a dotted path (`inner.name`). The `code` is `bad_request` in every case, so branch on `code` and show or log `message`.
 
+Versioned API routes check every query parameter name and value before the endpoint runs, including endpoints that read filters directly. NUL characters, invalid UTF-8 and malformed query encoding return `400` rather than sending unsupported text to the database. For example, `?q=%00` returns `Query parameter "q[0]" contains a NUL character, which is not supported.` Valid Unicode text and properly encoded punctuation remain unchanged.
+
 **How to fix:**
 - Check that your JSON is valid
 - Verify all required fields are present
