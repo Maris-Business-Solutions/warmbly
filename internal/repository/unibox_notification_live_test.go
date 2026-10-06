@@ -96,6 +96,63 @@ func TestLiveUniboxNotificationExcludesMachineMail(t *testing.T) {
 	}
 }
 
+func TestLiveUniboxNotificationSweepPreservesActiveEmailClaims(t *testing.T) {
+	handle := liveUniboxFolderDB(t)
+	f := newUniboxFolderFixture(t, handle.Pool)
+	ctx := context.Background()
+	notifs := NewNotificationRepository(handle.Pool)
+	thread := "thread-" + uuid.NewString()
+	id := f.scopedMessage(t, NewUniboxRepository(handle), thread, "report@example.test", models.FolderInbox, time.Now())
+	due := time.Now().Add(-time.Minute)
+	create := func() uuid.UUID {
+		n, err := notifs.Create(ctx, &models.Notification{UserID: f.user, OrganizationID: &f.org, UniboxEmailID: &id, Category: models.NotifInboundReply, Title: "Reply", EmailState: "pending", EmailDueAt: &due})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.ID
+	}
+	active, stale := create(), create()
+	if _, err := notifs.ClaimDueEmails(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handle.Pool.Exec(ctx, `UPDATE notifications SET email_due_at = now() - interval '11 minutes' WHERE id = $1`, stale); err != nil {
+		t.Fatal(err)
+	}
+	pending := create()
+	f.judge(t, handle.Pool, id, thread, true)
+	assertState := func(id uuid.UUID, want string) {
+		var state string
+		if err := handle.Pool.QueryRow(ctx, `SELECT email_state FROM notifications WHERE id = $1`, id).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state != want {
+			t.Fatalf("email_state = %q, want %q", state, want)
+		}
+	}
+	for tick := range 2 {
+		rows, err := notifs.ClaimDueEmails(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			if row.UserID == f.user {
+				t.Fatal("automated notification was reclaimed")
+			}
+		}
+		assertState(active, "sending")
+		assertState(pending, "skipped")
+		if tick == 0 {
+			assertState(stale, "pending")
+		} else {
+			assertState(stale, "skipped")
+		}
+	}
+	if err := notifs.MarkEmailed(ctx, []uuid.UUID{active}); err != nil {
+		t.Fatal(err)
+	}
+	assertState(active, "sent")
+}
+
 func TestLiveUniboxNotificationLegacyReportIsMailboxScoped(t *testing.T) {
 	handle := liveUniboxFolderDB(t)
 	f := newUniboxFolderFixture(t, handle.Pool)

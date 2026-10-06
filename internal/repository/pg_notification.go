@@ -245,7 +245,7 @@ func (r *notificationRepository) MarkAllRead(ctx context.Context, userID uuid.UU
 // claims can be recovered back to pending.
 func (r *notificationRepository) ClaimDueEmails(ctx context.Context) ([]models.Notification, error) {
 	if _, err := r.db.Exec(ctx, `UPDATE notifications n SET email_state = 'skipped', email_due_at = NULL
-		WHERE email_state IN ('pending', 'sending') AND NOT `+notificationReplyVisibleSQL); err != nil {
+		WHERE email_state = 'pending' AND NOT `+notificationReplyVisibleSQL); err != nil {
 		return nil, err
 	}
 	_, _ = r.db.Exec(ctx, `
