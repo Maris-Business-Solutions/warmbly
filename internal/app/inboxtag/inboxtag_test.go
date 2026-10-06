@@ -39,6 +39,17 @@ type fixture struct {
 	ExpectIntent string `json:"expect_intent"`
 }
 
+func TestDeterministicKindSystemReportIsNotAnAutoresponder(t *testing.T) {
+	m := Message{
+		Subject:  "Report Domain: example.test Submitter: seznam.cz Report-ID: abc",
+		FromAddr: "abuse@seznam.cz", PreviousMessage: "Our campaign opener",
+		Headers: map[string][]string{"In-Reply-To": {"<opener@example.test>"}},
+	}
+	if got := DeterministicKind(m, nil); got != KindNotification {
+		t.Fatalf("deterministicKind = %s, want %s", got, KindNotification)
+	}
+}
+
 // loadFixtures reads every testdata/fixtures*.json and responses*.json, so a
 // set in another language is its own file next to the English one.
 func loadFixtures(t *testing.T) ([]fixture, map[string]Response) {
@@ -581,15 +592,15 @@ func TestDisabledMakesNoCalls(t *testing.T) {
 // a soft one. Decided from the headers, with no model call.
 func TestDeterministicKindReadsBounces(t *testing.T) {
 	daemon := map[string][]string{"From": {"Mail Delivery Subsystem <mailer-daemon@googlemail.com>"}}
-	hard := deterministicKind(Message{Headers: daemon, Subject: "Delivery Status Notification (Failure)", BodyText: "The group may not exist."}, nil)
+	hard := DeterministicKind(Message{Headers: daemon, Subject: "Delivery Status Notification (Failure)", BodyText: "The group may not exist."}, nil)
 	if hard != KindBounceHard {
 		t.Errorf("failure notice kind = %q, want %q", hard, KindBounceHard)
 	}
-	soft := deterministicKind(Message{Headers: daemon, Subject: "Delivery Status Notification (Delay)", BodyText: "Delivery is delayed; we will retry."}, nil)
+	soft := DeterministicKind(Message{Headers: daemon, Subject: "Delivery Status Notification (Delay)", BodyText: "Delivery is delayed; we will retry."}, nil)
 	if soft != KindBounceSoft {
 		t.Errorf("delay notice kind = %q, want %q", soft, KindBounceSoft)
 	}
-	if got := deterministicKind(Message{Headers: map[string][]string{"From": {"Jane <jane@example.org>"}}, Subject: "Re: Hi", BodyText: "Sounds good"}, nil); got != "" {
+	if got := DeterministicKind(Message{Headers: map[string][]string{"From": {"Jane <jane@example.org>"}}, Subject: "Re: Hi", BodyText: "Sounds good"}, nil); got != "" {
 		t.Errorf("a person's reply kind = %q, want it left to the model", got)
 	}
 }
@@ -604,8 +615,8 @@ func TestMessageFromReadsSyncedHeaders(t *testing.T) {
 		Flags:     []string{"\\Seen", "X-Failed-Recipients:info@example.org"},
 		InReplyTo: []string{"<a@example.test>"},
 	}, nil, "", "")
-	if deterministicKind(m, nil) != KindBounceHard {
-		t.Errorf("kind = %q, want %q from the synced header", deterministicKind(m, nil), KindBounceHard)
+	if DeterministicKind(m, nil) != KindBounceHard {
+		t.Errorf("kind = %q, want %q from the synced header", DeterministicKind(m, nil), KindBounceHard)
 	}
 	if len(m.InReplyTo) != 1 {
 		t.Errorf("InReplyTo not carried: %v", m.InReplyTo)
@@ -616,11 +627,11 @@ func TestMessageFromReadsSyncedHeaders(t *testing.T) {
 // answers something is an auto-reply. The sender alone decides it, which is
 // all the backfill has.
 func TestDeterministicKindTellsNoticesFromAutoReplies(t *testing.T) {
-	alert := deterministicKind(Message{FromAddr: "Google <no-reply@accounts.google.com>", Subject: "Security alert", BodyText: "2-Step Verification turned on"}, nil)
+	alert := DeterministicKind(Message{FromAddr: "Google <no-reply@accounts.google.com>", Subject: "Security alert", BodyText: "2-Step Verification turned on"}, nil)
 	if alert != KindNotification {
 		t.Errorf("security alert kind = %q, want %q", alert, KindNotification)
 	}
-	ack := deterministicKind(Message{
+	ack := DeterministicKind(Message{
 		FromAddr:  "Support <noreply@helpdesk.example>",
 		Subject:   "Re: Partnership",
 		BodyText:  "We received your request.",

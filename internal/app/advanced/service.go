@@ -1209,6 +1209,28 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		return nil
 	}
 
+	kind := inboxtag.DeterministicKind(inboxtag.Message{
+		Headers: buildReplyHeaders(msg), Subject: msg.Subject,
+		BodyText: firstNonEmpty(msg.BodyText, msg.Snippet), InReplyTo: msg.InReplyTo,
+	}, nil)
+	var verdict replyclassify.Result
+	if s.inboxTags != nil && msg.MessageID != "" {
+		stored, tagErr := s.inboxTags.GetByMessageID(ctx, *account.OrganizationID, msg.MessageID)
+		if tagErr == nil && stored != nil && stored.KindConfidence >= inboxtag.ConfFloor && stored.ReviewReason != "kind" {
+			if inboxtag.IsAutomatedKind(stored.Kind) {
+				kind = stored.Kind
+				verdict = replyclassify.Result{
+					Class:      inboxtag.ReplyClassFor(stored.Kind, stored.Intent),
+					Confidence: stored.KindConfidence, Source: replyclassify.SourceModel,
+				}
+			}
+		}
+	}
+	switch kind {
+	case inboxtag.KindNotification, inboxtag.KindBounceHard, inboxtag.KindBounceSoft:
+		return nil
+	}
+
 	settings, err := s.repo.GetOutreachSettings(ctx, *account.OrganizationID)
 	if err != nil {
 		return toErrx(err)
@@ -1233,7 +1255,6 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 	// only inside that block means a reply with no campaign match never spends a
 	// model call. verdict is what it decided, read after the block; held is
 	// when an out-of-office hold lifts, for the notification to name.
-	var verdict replyclassify.Result
 	replyClaimToken := uuid.Nil
 	replyClaimCompleted := false
 
@@ -1389,15 +1410,18 @@ func (s *service) ProcessIncomingReply(ctx context.Context, emailAccountID uuid.
 		}
 		replyClaimToken = claimToken
 
-		replyResult := replyclassify.ClassifyGated(ctx, replyclassify.Input{
-			Headers:  buildReplyHeaders(msg),
-			Subject:  msg.Subject,
-			BodyText: msg.Snippet,
-			// The typed layer answers from the tagger's stored verdict for
-			// this message, so a reply is judged once.
-			OrganizationID: *account.OrganizationID,
-			MessageID:      msg.MessageID,
-		}, gate)
+		replyResult := verdict
+		if replyResult.Class == "" {
+			replyResult = replyclassify.ClassifyGated(ctx, replyclassify.Input{
+				Headers:  buildReplyHeaders(msg),
+				Subject:  msg.Subject,
+				BodyText: msg.Snippet,
+				// The typed layer answers from the tagger's stored verdict for
+				// this message, so a reply is judged once.
+				OrganizationID: *account.OrganizationID,
+				MessageID:      msg.MessageID,
+			}, gate)
+		}
 
 		// Always persist the classifier verdict so reply_* branches can route on
 		// it (including reply_automated for OOO / autoresponders). Layers 1-2 run

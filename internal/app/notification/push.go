@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/warmbly/warmbly/internal/app/replyclassify"
 	"github.com/warmbly/warmbly/internal/infrastructure/apns"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -35,9 +36,10 @@ const (
 )
 
 type pendingPush struct {
-	Title string `json:"title"`
-	Body  string `json:"body,omitempty"`
-	Link  string `json:"link,omitempty"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body,omitempty"`
+	Link      string     `json:"link,omitempty"`
+	MessageID *uuid.UUID `json:"unibox_email_id,omitempty"`
 }
 
 func pushWindow() time.Duration {
@@ -89,9 +91,12 @@ func dueKey() string                  { return pushKeyPrefix + ":due" }
 
 // deliverPush is the per-notification ingress (detached, best-effort). First
 // event in a quiet window pushes right away; the rest queue for the digest.
-func (s *service) deliverPush(userID uuid.UUID, category models.NotificationCategory, title, body, link string) {
+func (s *service) deliverPush(userID uuid.UUID, category models.NotificationCategory, p pendingPush) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if !s.canPushMessage(ctx, category, p) {
+		return
+	}
 
 	member := pushMember(userID, category)
 	window := pushWindow()
@@ -101,12 +106,12 @@ func (s *service) deliverPush(userID uuid.UUID, category models.NotificationCate
 		return
 	}
 	if ok {
-		s.sendPush(ctx, userID, category, apnsAlert(category, title, body, link, 1))
+		s.sendPush(ctx, userID, category, apnsAlert(category, p.Title, p.Body, p.Link, 1))
 		return
 	}
 
 	// Inside the window: queue and make sure a digest fires when it closes.
-	item, merr := json.Marshal(pendingPush{Title: title, Body: body, Link: link})
+	item, merr := json.Marshal(p)
 	if merr != nil {
 		return
 	}
@@ -175,7 +180,7 @@ func (s *service) sendDigest(ctx context.Context, member string) {
 	items := make([]pendingPush, 0, len(raw))
 	for _, r := range raw {
 		var p pendingPush
-		if json.Unmarshal([]byte(r), &p) == nil {
+		if json.Unmarshal([]byte(r), &p) == nil && s.canPushMessage(ctx, category, p) {
 			items = append(items, p)
 		}
 	}
@@ -190,6 +195,14 @@ func (s *service) sendDigest(ctx context.Context, member string) {
 	n := apnsAlert(category, digestTitle(category, len(items)), "Latest: "+last.Title, last.Link, len(items))
 	n.CollapseID = "digest:" + string(category)
 	s.sendPush(ctx, userID, category, n)
+}
+
+func (s *service) canPushMessage(ctx context.Context, category models.NotificationCategory, p pendingPush) bool {
+	if (category == models.NotifInboundReply || category == models.NotifInboundOOO) &&
+		replyclassify.IsSystemReport(replyclassify.Input{Subject: p.Body}) {
+		return false
+	}
+	return s.canNotifyMessage(ctx, category, p.MessageID)
 }
 
 func apnsAlert(category models.NotificationCategory, title, body, link string, count int) apns.Notification {
