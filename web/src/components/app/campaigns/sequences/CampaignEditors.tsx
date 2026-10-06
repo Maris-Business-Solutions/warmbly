@@ -174,7 +174,7 @@ export function PathEditor({
 
     const isAlways = field === "always";
     const isRandom = field === "random";
-    // A Switch case path: the case lives on the node (its dot + name), so this
+    // A Switch case path: the case is named on the step itself, so this
     // editor only handles the target/wait — the condition itself is fixed.
     const isCasePath = c0?.field === "ai_label";
     const caseName = isCasePath ? (c0?.label ?? "").trim() : "";
@@ -1108,7 +1108,7 @@ function AIStepFields({
 }
 
 // SwitchStepFields — the multi-way router. Configure the case names (each one
-// becomes its own drag dot on the node) and the decider: an AI prompt over the
+// becomes its own column under the step) and the decider: an AI prompt over the
 // contact's data, or a template value matched against the case names.
 function SwitchStepFields({
     action,
@@ -1246,7 +1246,7 @@ function SwitchStepFields({
                 </div>
                 {cases.length === 0 ? (
                     <p className="text-[11px] text-slate-400">
-                        Each case becomes its own dot on the node — drag it to the step that path leads to.
+                        Each case becomes its own column under the step.
                     </p>
                 ) : (
                     <div className="space-y-1.5">
@@ -1294,9 +1294,8 @@ function SwitchStepFields({
             )}
 
             <p className="rounded-md bg-slate-50 px-2.5 py-2 text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-200">
-                Every case gets its own dot on the node — drag each dot to the step that path leads to, and the bottom
-                dot is the “otherwise” fallback for contacts no case matched. Put normal action steps (label, deal, task…)
-                on a path to make things happen for the contacts routed down it.
+                Every case gets its own column under the step, and Otherwise catches contacts no case matched. Put
+                normal action steps (label, deal, task) under a case to make things happen for the contacts routed down it.
             </p>
         </div>
     );

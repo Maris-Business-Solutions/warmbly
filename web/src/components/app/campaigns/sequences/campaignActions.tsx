@@ -148,7 +148,7 @@ export function defaultActionFor(type: SequenceActionType): SequenceAction {
         return { type, label_ids: [] };
     }
     if (type === "switch") {
-        // Two starter cases so the node shows draggable dots immediately.
+        // Two starter cases so the step shows its case columns at once.
         return { type, switch_on: "ai", switch_cases: ["interested", "not interested"] };
     }
     if (type === "ai_step") {

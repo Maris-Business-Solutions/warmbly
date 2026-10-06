@@ -3,23 +3,18 @@
  * The campaign Steps screen, mirrored from the app:
  *
  *   web/src/app/app/campaigns/[id]/layout.tsx                 header (back link, name, status, Start, actions) + tab bar
- *   web/src/components/app/campaigns/sequences/CampaignFlow.tsx the flow canvas: React Flow dots background, the
- *                                                              top-left panel (Add step split button, Tidy up,
- *                                                              Stop on reply), the bottom-center hint panel, the
- *                                                              zoom controls, StepNode / IfNode / ActionNode /
- *                                                              SwitchNode / StopNode with their handles, converge
- *                                                              edges with closed arrowheads, and the edit sheet
- *                                                              a node click opens (NodeTypeSwitcher, then the email
- *                                                              editor or the ActionEditor with SwitchStepFields /
- *                                                              AIStepFields). The sheet itself is the builder's
- *                                                              320px SidePanel from AutomationFlow.tsx, springing in
- *                                                              from the right over the whole window.
+ *   web/src/components/app/campaigns/sequences/CampaignFlow.tsx the tree canvas (web/src/components/app/flow): the dots
+ *                                                              background, the Stop on reply panel, the zoom controls,
+ *                                                              StepCard cards with waits on the lines into them, branch
+ *                                                              pills over their columns, + buttons and End terminals,
+ *                                                              and the edit sheet a card click opens (NodeTypeSwitcher,
+ *                                                              then the email editor or the ActionEditor with
+ *                                                              SwitchStepFields / AIStepFields). The sheet itself stays
+ *                                                              the 320px SidePanel springing in from the right over the
+ *                                                              whole window.
  *   .../sequences/StepEmailArms.tsx + SequenceView.tsx + EmailContentEditor.tsx + RichTextEditor.tsx
  *   web/src/components/app/campaigns/ContentScore.tsx
  *   web/src/components/app/ai/RichTextAICaret.tsx              the caret companion and its ⌘J menu
- *
- * Edges are drawn at runtime from the handle boxes with the same geometry as
- * getNaturalPath in CampaignFlow.tsx, so lines meet the handles exactly.
  *
  * `demo` picks the screen:
  *   flow    the cursor clicks the first step (the edit panel appears at once,
@@ -28,7 +23,7 @@
  *           on the caret line, types an instruction, and the assistant writes
  *           the email at the caret
  *   switch  a Switch step is open: AI reads each contact and picks a case,
- *           every case its own dot on the node
+ *           every case its own column under the step
  *   agent   an AI step is open: an instruction plus the actions the agent may
  *           take for each contact
  */
@@ -50,6 +45,10 @@ const ic: Record<string, string> = {
   calendar: '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>',
   settings2: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  minus: '<path d="M5 12h14"/>',
+  maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  login: '<path d="m10 17 5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
   mail: '<path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/><rect x="2" y="4" width="20" height="16" rx="2"/>',
   trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
@@ -119,69 +118,132 @@ const stepTypes = [
 // Toolbar of RichTextEditor, in order.
 const tools = ['bold', 'italic', 'underline', 'strike', '|', 'h2', 'list', 'listOrdered', 'link2', '|'];
 
-// ── The graph ────────────────────────────────────────────────────
-// Handles are `id:key` with a direction the edge leaves or enters by.
-type StepN = { kind: 'step'; id: string; x: number; y: number; name: string; subject: string; start?: boolean; selected?: boolean };
-type IfN = { kind: 'if'; id: string; x: number; y: number; label: string; instant?: boolean };
-type ActionN = { kind: 'action'; id: string; x: number; y: number; name: string; meta: string; icon: string; tint: string; subtitle: string; ends?: boolean; selected?: boolean };
-type SwitchN = { kind: 'switch'; id: string; x: number; y: number; name: string; subtitle: string; cases: string[]; selected?: boolean };
-type StopN = { kind: 'stop'; id: string; x: number; y: number };
-type N = StepN | IfN | ActionN | SwitchN | StopN;
-type E = { from: string; to: string; style: 'cond' | 'case' | 'plain'; label?: string };
-
-const stepBody = (x: number, y: number, name: string, subject: string, extra: Partial<StepN> = {}): StepN =>
-  ({ kind: 'step', id: name.toLowerCase().replace(/[^a-z]+/g, ''), x, y, name, subject, ...extra });
-
-let nodes: N[];
-let edges: E[];
-if (demo === 'switch') {
-  nodes = [
-    stepBody(40, 0, 'First email', 'Quick question, {{.FirstName}}', { id: 'first', start: true }),
-    { kind: 'switch', id: 'sw', x: 40, y: 150, name: 'Route the reply', subtitle: 'Read this contact\'s reply and company details. Decide whether…', cases: ['interested', 'not ready yet', 'wrong person'], selected: true },
-    { kind: 'action', id: 'deal', x: 420, y: 96, name: 'Open a deal', meta: 'Create deal', icon: 'handshake', tint: 'text-emerald-600', subtitle: 'Create a CRM deal', ends: true },
-    stepBody(420, 236, 'Check back later', 'Circling back next quarter', { id: 'later' }),
-    { kind: 'stop', id: 'stop', x: 420, y: 400 },
-  ];
-  edges = [
-    { from: 'first:s', to: 'sw', style: 'plain', label: 'wait 3d' },
-    { from: 'sw:c0', to: 'deal', style: 'case', label: 'interested' },
-    { from: 'sw:c1', to: 'later', style: 'case', label: 'not ready yet · wait 90d' },
-    { from: 'sw:c2', to: 'stop', style: 'case', label: 'wrong person' },
-  ];
-} else if (demo === 'agent') {
-  nodes = [
-    stepBody(40, 0, 'First email', 'Quick question, {{.FirstName}}', { id: 'first', start: true }),
-    { kind: 'action', id: 'ai', x: 40, y: 150, name: 'Triage the reply', meta: 'AI step', icon: 'sparkles', tint: 'text-purple-600', subtitle: 'Agent · 3 actions', ends: true, selected: true },
-  ];
-  edges = [{ from: 'first:s', to: 'ai', style: 'plain', label: 'wait 3d' }];
-} else {
-  nodes = [
-    stepBody(236, 0, 'First email', 'Quick question, {{.FirstName}}', { id: 'first', start: true, selected: demo === 'ai' }),
-    { kind: 'if', id: 'if1', x: 262, y: 150, label: 'opened the email within 3d', instant: true },
-    stepBody(464, 218, 'Follow-up', 'Following up on my message', { id: 'followup' }),
-    stepBody(56, 218, 'Alternative', 'Trying a different angle', { id: 'alt' }),
-    { kind: 'action', id: 'tag', x: 464, y: 372, name: 'Add engagement tag', meta: 'Add tag', icon: 'tag', tint: 'text-emerald-600', subtitle: 'Add a tag', ends: true },
-    { kind: 'stop', id: 'stop', x: 148, y: 384 },
-  ];
-  edges = [
-    { from: 'first:s', to: 'if1', style: 'cond' },
-    { from: 'if1:out', to: 'followup', style: 'cond', label: 'instant <=3d' },
-    { from: 'if1:else', to: 'alt', style: 'plain', label: 'else · wait 2d' },
-    { from: 'followup:s', to: 'tag', style: 'plain' },
-    { from: 'alt:s', to: 'stop', style: 'plain' },
-  ];
-}
-
-// Edge strokes and label colours from CampaignFlow.tsx (edgeStyle + the
-// per-edge labelStyle / labelBgStyle).
-const edgeLook = {
-  cond: { stroke: '#0ea5e9', width: 2, marker: 'sky', fg: '#0369a1', bg: '#bae6fd' },
-  case: { stroke: '#a855f7', width: 2, marker: 'purple', fg: '#7e22ce', bg: '#e9d5ff' },
-  plain: { stroke: '#94a3b8', width: 1, marker: 'slate', fg: '#475569', bg: '#e2e8f0' },
+// ── The canvas ───────────────────────────────────────────────────
+// Laid out as layoutFlow (web/src/components/app/flow/tree.ts) places it:
+// 280x78 cards, 60px between chained steps plus 28px for a wait chip, 120px
+// under a split, 40px between columns, then scaled to the zoom the builder
+// opens at for a flow this size.
+type Card = { id: string; x: number; y: number; icon: string; tone: string; kicker: string; title: string; summary: string; selected?: boolean };
+type Scene = {
+  w: number;
+  zoom: number;
+  cards: Card[];
+  ends: [number, number][];
+  lines: string[];
+  pills: { x: number; y: number; label: string; cls: string }[];
+  chips: { x: number; y: number; label: string }[];
+  inserts: [number, number][];
+  adds: [number, number][];
 };
+const TONE = {
+  sky: 'bg-sky-50 text-sky-600 ring-sky-100',
+  violet: 'bg-violet-50 text-violet-600 ring-violet-100',
+  purple: 'bg-purple-50 text-purple-600 ring-purple-100',
+  emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+};
+const PILL = {
+  yes: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  no: 'border-slate-200 bg-slate-50 text-slate-600',
+  case: 'border-violet-200 bg-violet-50 text-violet-700',
+};
+const entry = (x: number): Card => ({ id: 'entry', x, y: 0, icon: 'login', tone: TONE.violet, kicker: 'Start', title: 'Contact enters the campaign', summary: 'First email right away' });
+const firstEmail = (x: number, selected = false): Card => ({ id: 'first', x, y: 166, icon: 'mail', tone: TONE.sky, kicker: 'First email', title: 'First email', summary: 'Quick question, {{.FirstName}}', selected });
 
-const selected = nodes.find((n) => 'selected' in n && n.selected);
-const panelTitle = selected && 'name' in selected ? selected.name : 'First email';
+let scene: Scene;
+if (demo === 'switch') {
+  scene = {
+    w: 848,
+    zoom: 0.7,
+    cards: [
+      entry(284),
+      firstEmail(284),
+      { id: 'sw', x: 284, y: 332, icon: 'split', tone: TONE.purple, kicker: 'Switch', title: 'Route the reply', summary: "Read this contact's reply and company details. Decide whether…", selected: true },
+      { id: 'deal', x: 0, y: 558, icon: 'handshake', tone: TONE.emerald, kicker: 'Action', title: 'Open a deal', summary: 'Create a CRM deal' },
+      { id: 'later', x: 320, y: 558, icon: 'mail', tone: TONE.sky, kicker: 'Email', title: 'Check back later', summary: 'Circling back next quarter' },
+    ],
+    ends: [[640, 558]],
+    lines: [
+      'M424,78 L424,166',
+      'M424,244 L424,332',
+      'M424,410 L424,426 Q424,436 414,436 L150,436 Q140,436 140,446 L140,558',
+      'M424,410 L424,426 Q424,436 434,436 L450,436 Q460,436 460,446 L460,558',
+      'M424,410 L424,426 Q424,436 434,436 L700,436 Q710,436 710,446 L710,558',
+      'M424,410 L424,426 Q424,436 434,436 L824,436 Q834,436 834,446 L834,558',
+      'M140,636 L140,666',
+      'M460,636 L460,666',
+    ],
+    pills: [
+      { x: 140, y: 462, label: 'interested', cls: PILL.case },
+      { x: 460, y: 462, label: 'not ready yet', cls: PILL.case },
+      { x: 710, y: 462, label: 'wrong person', cls: PILL.case },
+      { x: 834, y: 462, label: 'Otherwise', cls: PILL.no },
+    ],
+    chips: [
+      { x: 424, y: 150, label: 'Right away' },
+      { x: 424, y: 316, label: 'Wait 3 days' },
+      { x: 140, y: 542, label: 'No wait' },
+      { x: 460, y: 542, label: 'Wait 90 days' },
+    ],
+    inserts: [[424, 274], [140, 510], [460, 510], [710, 538]],
+    adds: [[140, 680], [460, 680], [834, 572]],
+  };
+} else if (demo === 'agent') {
+  scene = {
+    w: 280,
+    zoom: 1,
+    cards: [
+      entry(0),
+      firstEmail(0),
+      { id: 'ai', x: 0, y: 332, icon: 'sparkles', tone: TONE.purple, kicker: 'AI step', title: 'Triage the reply', summary: 'Agent · 3 actions', selected: true },
+    ],
+    ends: [],
+    lines: ['M140,78 L140,166', 'M140,244 L140,332', 'M140,410 L140,440'],
+    pills: [],
+    chips: [
+      { x: 140, y: 150, label: 'Right away' },
+      { x: 140, y: 316, label: 'Wait 3 days' },
+    ],
+    inserts: [[140, 274]],
+    adds: [[140, 454]],
+  };
+} else {
+  scene = {
+    w: 600,
+    zoom: 0.85,
+    cards: [
+      entry(160),
+      firstEmail(160, demo === 'ai'),
+      { id: 'followup', x: 0, y: 392, icon: 'mail', tone: TONE.sky, kicker: 'Reply in thread', title: 'Follow-up', summary: 'Quick question, {{.FirstName}}' },
+      { id: 'tag', x: 0, y: 558, icon: 'tag', tone: TONE.emerald, kicker: 'Action', title: 'Add engagement label', summary: 'Add a label' },
+      { id: 'alt', x: 320, y: 392, icon: 'mail', tone: TONE.sky, kicker: 'Email', title: 'Alternative', summary: 'Trying a different angle' },
+    ],
+    ends: [],
+    lines: [
+      'M300,78 L300,166',
+      'M300,244 L300,260 Q300,270 290,270 L150,270 Q140,270 140,280 L140,392',
+      'M300,244 L300,260 Q300,270 310,270 L450,270 Q460,270 460,280 L460,392',
+      'M140,470 L140,558',
+      'M140,636 L140,666',
+      'M460,470 L460,500',
+    ],
+    pills: [
+      { x: 140, y: 296, label: 'Opened the email within 3d · instant', cls: PILL.yes },
+      { x: 460, y: 296, label: 'Otherwise', cls: PILL.no },
+    ],
+    chips: [
+      { x: 300, y: 150, label: 'Right away' },
+      { x: 460, y: 376, label: 'Wait 2 days' },
+      { x: 140, y: 542, label: 'No wait' },
+    ],
+    inserts: [[140, 372], [460, 344], [140, 500]],
+    adds: [[140, 680], [460, 514]],
+  };
+}
+// Centred in the canvas; an open panel covers the right 320px of it.
+const sceneLeft = `calc(${open ? '(100% - 320px) / 2' : '50%'} - ${(scene.w * scene.zoom) / 2}px)`;
+
+const selected = scene.cards.find((c) => c.selected);
+const panelTitle = selected ? selected.title : 'First email';
 
 // What the assistant writes at the caret (ai demo).
 const written = [
@@ -243,156 +305,64 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
   <div class="p-5">
     <!-- sm:h-[78vh] in the app; the shell is a 900px viewport, so 702px. -->
     <div class="cb-flow relative h-[702px] w-full overflow-hidden rounded-md border border-slate-200 bg-slate-50/40">
-      <!-- React Flow Background: dots, gap 24, size 1, #e9eef5 -->
-      <div aria-hidden="true" class="absolute inset-0 pointer-events-none" style="background-image: radial-gradient(circle, #e9eef5 0.5px, transparent 0.6px); background-size: 24px 24px;"></div>
+      <!-- React Flow Background: dots, gap 20, size 1.2, #e2e8f0, at the scene's zoom -->
+      <div aria-hidden="true" class="absolute inset-0 pointer-events-none" style={`background-image: radial-gradient(circle, #e2e8f0 0.6px, transparent 0.7px); background-size: ${20 * scene.zoom}px ${20 * scene.zoom}px;`}></div>
 
-      <!-- Panel top-left (15px margin): Add step split button, Tidy up, Stop on reply -->
+      <!-- Panel top-left (15px margin): StopOnReplyToggle -->
       <div class="absolute left-[15px] top-[15px] z-[5] flex max-w-[calc(1280px-1.5rem)] flex-col gap-1.5">
-        <div class="flex flex-wrap items-center gap-1.5">
-          <div class="relative inline-flex">
-            <button type="button" class="inline-flex h-8 items-center gap-1.5 rounded-l-md bg-sky-600 px-3 text-[12px] font-medium text-white shadow-sm">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg>
-              Add step
-            </button>
-            <button type="button" aria-label="More step types" class="inline-flex h-8 items-center rounded-r-md border-l border-sky-500/60 bg-sky-600 px-1.5 text-white shadow-sm">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.chevron}></svg>
-            </button>
-          </div>
-          <button type="button" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 shadow-sm">Tidy up</button>
-          <div class="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
-            <span class="text-[11.5px] text-slate-600">Stop on reply</span>
-            <span role="switch" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-sky-600">
-              <span class="inline-block size-4 translate-x-4 rounded-full bg-white shadow-sm"></span>
-            </span>
-          </div>
+        <div class="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
+          <span class="text-[11.5px] text-slate-600">Stop on reply</span>
+          <span role="switch" aria-checked="true" class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-sky-600">
+            <span class="inline-block size-4 translate-x-4 rounded-full bg-white shadow-sm"></span>
+          </span>
         </div>
       </div>
 
-      <!-- Panel bottom-center: the mouse-and-keyboard hint -->
-      <div class="absolute bottom-[15px] left-1/2 -translate-x-1/2 z-[5] max-w-[calc(100%-30px)]">
-        <div class="hidden @md:flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-white/95 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm">
-          <span class="text-slate-400">drag a node’s bottom dot onto another node to connect, or onto empty space to pick what comes next (email, action, condition, or Stop) · click a line to set its condition · add Condition nodes to branch, and chain them for nested trees · click a line then press Delete to remove it · a step with no outgoing line just ends</span>
-        </div>
+      <!-- Panel bottom-right (15px margin): ZoomControls -->
+      <div class="absolute right-[15px] bottom-[15px] z-[5] flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+        <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.minus}></svg></span>
+        <span class="inline-flex h-7 min-w-11 items-center justify-center rounded-md px-1 text-[11.5px] tabular-nums text-slate-600">{Math.round(scene.zoom * 100)}%</span>
+        <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
+        <span class="mx-0.5 h-4 w-px bg-slate-200"></span>
+        <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.maximize}></svg></span>
       </div>
 
-      <!-- Controls (bottom-left, 15px margin): zoom in, zoom out, fit view -->
-      <div class="absolute left-[15px] bottom-[15px] z-[5] flex flex-col" style="box-shadow: 0 0 2px 1px rgba(0,0,0,.08);">
-        <span class="flex items-center justify-center w-[26px] h-[26px] border-b border-[#eee]" style="background:#fefefe;"><svg width="12" height="12" viewBox="0 0 32 32" fill="#0f172a"><path d="M32 18.133H18.133V32h-4.266V18.133H0v-4.266h13.867V0h4.266v13.867H32z"/></svg></span>
-        <span class="flex items-center justify-center w-[26px] h-[26px] border-b border-[#eee]" style="background:#fefefe;"><svg width="12" height="1.875" viewBox="0 0 32 5" fill="#0f172a"><path d="M0 0h32v4.2H0z"/></svg></span>
-        <span class="flex items-center justify-center w-[26px] h-[26px]" style="background:#fefefe;"><svg width="12" height="11.25" viewBox="0 0 32 30" fill="#0f172a"><path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM27.354 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215H32V4.631A4.624 4.624 0 0027.354 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-23.677.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z"/></svg></span>
-      </div>
-
-      <!-- Node layer. Edges are drawn into the SVG from the handle boxes. -->
-      <div class="cb-layer absolute" style="left:72px; top:72px; width:720px; height:440px;">
-        <svg class="cb-edges absolute inset-0 overflow-visible pointer-events-none" width="720" height="440" aria-hidden="true">
-          <defs>
-            <marker id="cb-arrow-sky" viewBox="-10 -10 20 20" markerWidth="16" markerHeight="16" refX="0" refY="0" orient="auto-start-reverse" markerUnits="strokeWidth"><polyline stroke-linecap="round" stroke-linejoin="round" points="-5,-4 0,0 -5,4 -5,-4" fill="#0ea5e9" stroke="#0ea5e9" stroke-width="1"/></marker>
-            <marker id="cb-arrow-purple" viewBox="-10 -10 20 20" markerWidth="16" markerHeight="16" refX="0" refY="0" orient="auto-start-reverse" markerUnits="strokeWidth"><polyline stroke-linecap="round" stroke-linejoin="round" points="-5,-4 0,0 -5,4 -5,-4" fill="#a855f7" stroke="#a855f7" stroke-width="1"/></marker>
-            <marker id="cb-arrow-slate" viewBox="-10 -10 20 20" markerWidth="16" markerHeight="16" refX="0" refY="0" orient="auto-start-reverse" markerUnits="strokeWidth"><polyline stroke-linecap="round" stroke-linejoin="round" points="-5,-4 0,0 -5,4 -5,-4" fill="#94a3b8" stroke="#94a3b8" stroke-width="1"/></marker>
-          </defs>
-          {edges.map((e) => (
-            <path data-from={e.from} data-to={e.to} fill="none" stroke={edgeLook[e.style].stroke} stroke-width={edgeLook[e.style].width} marker-end={`url(#cb-arrow-${edgeLook[e.style].marker})`} />
-          ))}
+      <!-- The tree in flow coordinates, scaled like the React Flow viewport. -->
+      <div class="absolute top-[56px] origin-top-left" style={`left:${sceneLeft}; width:${scene.w}px; transform: scale(${scene.zoom});`}>
+        <svg class="absolute left-0 top-0 overflow-visible pointer-events-none" width="1" height="1" aria-hidden="true">
+          {scene.lines.map((d) => <path d={d} fill="none" stroke="#cbd5e1" stroke-width="1.5" />)}
         </svg>
-        {edges.filter((e) => e.label).map((e) => (
-          <div class="cb-label pointer-events-none absolute rounded border px-1 py-px text-[10px]" data-label-for={e.from} style={`border-color:${edgeLook[e.style].bg}; background:#fff; color:${edgeLook[e.style].fg}; transform: translate(-50%, -50%) translate(0px, 0px);`}>{e.label}</div>
+        {scene.pills.map((p) => (
+          <span class={`absolute max-w-[200px] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 ${p.cls}`} style={`left:${p.x}px; top:${p.y}px; transform: translate(-50%, -50%);`}>{p.label}</span>
         ))}
-
-        {nodes.map((n) => (
-          <div class="absolute" style={`left:${n.x}px; top:${n.y}px;`} data-node={n.id} data-selected={'selected' in n && n.selected ? '' : undefined}>
-            {n.kind === 'step' && (
-              <div class="cb-node w-[248px] rounded-xl border border-slate-200 bg-white shadow-sm relative">
-                <span class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rounded-full border-2 border-white bg-slate-300" data-handle={`${n.id}:t`} data-dir="u"></span>
-                <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-white px-2.5 py-1.5">
-                  <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200/70"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.mail}></svg></span>
-                  <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">{n.name}</span>
-                  {n.start && <span class="shrink-0 rounded bg-sky-600 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.12em] text-white">Start</span>}
-                  <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.trash}></svg></span>
-                </div>
-                <div class="px-2.5 py-2">
-                  <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Email</div>
-                  <div class="mt-0.5 truncate text-[11.5px] text-slate-500">{n.subject}</div>
-                </div>
-                <div class="flex w-full items-center gap-1.5 border-t border-slate-200/70 px-2.5 py-1.5 text-[10.5px] font-medium text-violet-600">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.zap}></svg>
-                  On reply
-                </div>
-                <span class="absolute left-1/2 -bottom-1 -translate-x-1/2 h-3 w-3 rounded-full border-2 border-white bg-sky-500" data-handle={`${n.id}:s`} data-dir="d"></span>
+        {scene.chips.map((c) => (
+          <span class="absolute inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 bg-white px-2 text-[10.5px] font-medium text-slate-500 shadow-sm" style={`left:${c.x}px; top:${c.y}px; transform: translate(-50%, -50%);`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.clock}></svg>
+            {c.label}
+          </span>
+        ))}
+        {scene.inserts.map(([x, y]) => (
+          <span class="absolute flex size-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
+        ))}
+        {scene.adds.map(([x, y]) => (
+          <span class="absolute flex size-7 items-center justify-center rounded-full border border-dashed border-slate-300 bg-white text-slate-400" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.plus}></svg></span>
+        ))}
+        {scene.ends.map(([x, y]) => (
+          <div class="absolute flex h-[34px] w-[140px] items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white text-[12px] font-medium text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.05)]" style={`left:${x}px; top:${y}px;`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-rose-500" set:html={ic.flag}></svg>
+            End
+          </div>
+        ))}
+        {scene.cards.map((c) => (
+          <div class="absolute h-[78px] w-[280px]" style={`left:${c.x}px; top:${c.y}px;`} data-node={c.id} data-selected={c.selected ? '' : undefined}>
+            <div class="cb-node relative flex h-full w-full items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+              <span class={`inline-flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${c.tone}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic[c.icon]}></svg></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex h-4 items-center gap-1.5"><span class="truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">{c.kicker}</span></div>
+                <div class="mt-0.5 truncate text-[13px] font-semibold leading-5 text-slate-900">{c.title}</div>
+                <div class="truncate text-[11.5px] leading-4 text-slate-500">{c.summary}</div>
               </div>
-            )}
-            {n.kind === 'if' && (
-              <div class={`cb-node relative rounded-lg border bg-gradient-to-b from-sky-50 to-white px-2 py-1 shadow-sm ${n.instant ? 'border-violet-200' : 'border-sky-200'}`}>
-                <span class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rounded-full border-2 border-white bg-slate-300" data-handle={`${n.id}:t`} data-dir="u"></span>
-                <span class="absolute -right-1 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full border-2 border-white bg-sky-500" data-handle={`${n.id}:out`} data-dir="r"></span>
-                <div class="flex items-center gap-1.5">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-sky-600" set:html={ic.branch}></svg>
-                  <span class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-sky-500">if</span>
-                  <span class="max-w-[150px] truncate text-[11px] font-medium text-sky-800">{n.label}</span>
-                  {n.instant && (
-                    <span class="inline-flex shrink-0 items-center gap-0.5 rounded bg-violet-50 px-1 py-px text-[8.5px] font-semibold uppercase tracking-[0.1em] text-violet-600 ring-1 ring-violet-200/70">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.zap}></svg>
-                      instant
-                    </span>
-                  )}
-                  <span class="inline-flex size-4 items-center justify-center rounded text-sky-400"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.trash}></svg></span>
-                </div>
-                <span class="absolute left-1/2 -bottom-1 -translate-x-1/2 h-3 w-3 rounded-full border-2 border-white bg-slate-400" data-handle={`${n.id}:else`} data-dir="d"></span>
-              </div>
-            )}
-            {n.kind === 'action' && (
-              <div class="cb-node w-[248px] rounded-xl border border-slate-200 bg-white shadow-sm relative">
-                <span class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rounded-full border-2 border-white bg-slate-300" data-handle={`${n.id}:t`} data-dir="u"></span>
-                <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-2.5 py-1.5">
-                  <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-slate-100 ring-1 ring-slate-200/70"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={n.tint} set:html={ic[n.icon]}></svg></span>
-                  <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">{n.name}</span>
-                  <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.trash}></svg></span>
-                </div>
-                <div class="px-2.5 py-2">
-                  <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">{n.meta}</div>
-                  <div class="mt-0.5 truncate text-[11.5px] text-slate-500">{n.subtitle}</div>
-                </div>
-                {n.ends && (
-                  <div class="flex items-center gap-1 border-t border-slate-200/70 px-2.5 py-1 text-[10.5px] text-slate-400">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-400" set:html={ic.flag}></svg>
-                    Ends here
-                  </div>
-                )}
-                <span class="absolute left-1/2 -bottom-1 -translate-x-1/2 h-3 w-3 rounded-full border-2 border-white bg-sky-500" data-handle={`${n.id}:s`} data-dir="d"></span>
-              </div>
-            )}
-            {n.kind === 'switch' && (
-              <div class="cb-node cb-switch w-[248px] rounded-xl border border-purple-200 bg-white shadow-sm relative">
-                <span class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rounded-full border-2 border-white bg-slate-300" data-handle={`${n.id}:t`} data-dir="u"></span>
-                <div class="flex items-center gap-2 rounded-t-xl border-b border-purple-200/60 bg-gradient-to-r from-purple-50/60 to-white px-2.5 py-1.5">
-                  <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-purple-100 text-purple-600 ring-1 ring-purple-200/70"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.split}></svg></span>
-                  <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">{n.name}</span>
-                  <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.trash}></svg></span>
-                </div>
-                <div class="px-2.5 pt-1.5 pb-1">
-                  <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">AI decides</div>
-                  <div class="mt-0.5 truncate text-[11.5px] text-slate-500">{n.subtitle}</div>
-                </div>
-                <div class="pb-1.5">
-                  {n.cases.map((c, i) => (
-                    <div class="relative flex h-6 items-center pl-2.5 pr-4">
-                      <span class="min-w-0 flex-1 truncate text-[11.5px] text-slate-700">{c}</span>
-                      <span class="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-white bg-purple-500" data-handle={`${n.id}:c${i}`} data-dir="r"></span>
-                    </div>
-                  ))}
-                </div>
-                <div class="relative flex h-6 items-center rounded-b-xl border-t border-slate-200/70 bg-slate-50/60 pl-2.5 pr-4">
-                  <span class="min-w-0 flex-1 truncate text-[10.5px] font-medium uppercase tracking-[0.1em] text-slate-400">Otherwise</span>
-                  <span class="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-white bg-slate-400" data-handle={`${n.id}:s`} data-dir="r"></span>
-                </div>
-              </div>
-            )}
-            {n.kind === 'stop' && (
-              <div class="relative inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11.5px] font-medium text-rose-600">
-                <span class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rounded-full border border-white bg-rose-300" data-handle={`${n.id}:t`} data-dir="u"></span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={ic.flag}></svg>
-                Stop
-              </div>
-            )}
+            </div>
           </div>
         ))}
       </div>
@@ -636,7 +606,7 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
                 </div>
                 <p class="mt-1 text-[11px] text-slate-400">Contact fields are always included.</p>
               </div>
-              <p class="rounded-md bg-slate-50 px-2.5 py-2 text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-200">Every case gets its own dot on the node — drag each dot to the step that path leads to, and the bottom dot is the “otherwise” fallback for contacts no case matched. Put normal action steps (tag, deal, task…) on a path to make things happen for the contacts routed down it.</p>
+              <p class="rounded-md bg-slate-50 px-2.5 py-2 text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-200">Every case gets its own column under the step, and Otherwise catches contacts no case matched. Put normal action steps (label, deal, task) under a case to make things happen for the contacts routed down it.</p>
             </div>
             <div class="flex items-center justify-end pt-1">
               <span class="h-7 rounded-md bg-sky-600 px-3 text-[12px] font-medium text-white inline-flex items-center">Save action</span>
@@ -756,8 +726,7 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
     .cb-edit { transform: translateX(100%); visibility: hidden; transition: transform .45s cubic-bezier(.22,.85,.35,1), visibility 0s .45s; }
     .cb.is-open .cb-edit { transform: none; visibility: visible; transition: transform .45s cubic-bezier(.22,.85,.35,1), visibility 0s; }
     /* The clicked node is the selected one while its editor is open. */
-    .cb.is-open [data-selected] > .cb-node, .cb.is-open .is-selected > .cb-node { border-color: #38bdf8; box-shadow: 0 0 0 2px #e0f2fe, 0 1px 2px 0 rgb(0 0 0 / .05); }
-    .cb.is-open [data-selected] > .cb-switch { border-color: #c084fc; box-shadow: 0 0 0 2px #f3e8ff, 0 1px 2px 0 rgb(0 0 0 / .05); }
+    .cb.is-open [data-selected] > .cb-node, .cb.is-open .is-selected > .cb-node { border-color: #38bdf8; box-shadow: 0 0 0 3px #e0f2fe; }
     /* Merge chips inside the editor body (.tpl-var in the app). */
     .cb-var {
       display: inline-flex; align-items: center; gap: 0.2rem; height: 1.25rem; padding: 0 0.375rem;
@@ -805,7 +774,7 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
 
     /* Reduced motion: hold the load-bearing state still. */
     .cb.is-static .cb-edit { transform: none; visibility: visible; transition: none; }
-    .cb.is-static[data-scene="flow"] [data-node="first"] > .cb-node { border-color: #38bdf8; box-shadow: 0 0 0 2px #e0f2fe, 0 1px 2px 0 rgb(0 0 0 / .05); }
+    .cb.is-static[data-scene="flow"] [data-node="first"] > .cb-node { border-color: #38bdf8; box-shadow: 0 0 0 3px #e0f2fe; }
     .cb.is-static .cb-gen { display: block; }
     .cb.is-static .cb-empty, .cb.is-static .cb-spark, .cb.is-static .cb-menu { display: none; }
   </style>
@@ -813,49 +782,6 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
 
 <script>
   import { playCursor } from '../lib/cursor';
-
-  type Pt = { x: number; y: number; dir: [number, number] };
-
-  // getNaturalPath from CampaignFlow.tsx: a cubic whose control lengths
-  // scale with the gap and shrink when the target sits behind the exit.
-  function naturalPath(s: Pt, t: Pt): [string, number, number] {
-    const dist = Math.hypot(t.x - s.x, t.y - s.y) || 1;
-    const base = Math.max(34, Math.min(dist * 0.5, 160));
-    const sAlong = ((t.x - s.x) * s.dir[0] + (t.y - s.y) * s.dir[1]) / dist;
-    const sLen = base * (0.32 + 0.68 * Math.max(0, sAlong));
-    const tAlong = ((s.x - t.x) * t.dir[0] + (s.y - t.y) * t.dir[1]) / dist;
-    const tLen = base * (0.32 + 0.68 * Math.max(0, tAlong));
-    const c1x = s.x + s.dir[0] * sLen;
-    const c1y = s.y + s.dir[1] * sLen;
-    const c2x = t.x + t.dir[0] * tLen;
-    const c2y = t.y + t.dir[1] * tLen;
-    const d = `M${s.x},${s.y} C${c1x},${c1y} ${c2x},${c2y} ${t.x},${t.y}`;
-    return [d, (s.x + 3 * c1x + 3 * c2x + t.x) / 8, (s.y + 3 * c1y + 3 * c2y + t.y) / 8];
-  }
-
-  const DIR: Record<string, [number, number]> = { u: [0, -1], d: [0, 1], r: [1, 0] };
-
-  function drawEdges(root: HTMLElement) {
-    const layer = root.querySelector<HTMLElement>('.cb-layer');
-    if (!layer) return;
-    const lr = layer.getBoundingClientRect();
-    const k = lr.width ? layer.offsetWidth / lr.width : 1;
-    const centre = (id: string): Pt | null => {
-      const el = layer.querySelector<HTMLElement>(`[data-handle="${id}"]`);
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { x: (r.left - lr.left + r.width / 2) * k, y: (r.top - lr.top + r.height / 2) * k, dir: DIR[el.dataset.dir ?? 'd'] ?? [0, 1] };
-    };
-    layer.querySelectorAll<SVGPathElement>('path[data-from]').forEach((p) => {
-      const s = centre(p.dataset.from ?? '');
-      const t = centre(`${p.dataset.to}:t`);
-      if (!s || !t) return;
-      const [d, lx, ly] = naturalPath(s, t);
-      p.setAttribute('d', d);
-      const label = layer.querySelector<HTMLElement>(`[data-label-for="${p.dataset.from}"]`);
-      if (label) label.style.transform = `translate(-50%, -50%) translate(${lx}px, ${ly}px)`;
-    });
-  }
 
   // RichTextAICaret's placement: the companion at the caret line's top, 28px
   // in from the editor's right edge; the menu bottom-start off the caret, 8px
@@ -885,7 +811,7 @@ const rootClass = ['cb relative w-full bg-white text-slate-900 flex flex-col', o
   }
 
   document.querySelectorAll<HTMLElement>('.cb').forEach((root) => {
-    const draw = () => { drawEdges(root); placeCaretUI(root); };
+    const draw = () => placeCaretUI(root);
     draw();
     requestAnimationFrame(draw);
     window.addEventListener('load', draw);
