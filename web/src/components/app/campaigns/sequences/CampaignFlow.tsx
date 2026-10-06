@@ -352,6 +352,19 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const { user: selfUser } = useUserProfile();
     const selfColor = cursorColor(selfUser?.id ?? "");
 
+    // The canvas fills the rest of the window, like a design tool's surface.
+    const boxRef = React.useRef<HTMLDivElement>(null);
+    const [boxHeight, setBoxHeight] = React.useState(560);
+    React.useLayoutEffect(() => {
+        const measure = () => {
+            const el = boxRef.current;
+            if (el) setBoxHeight(Math.max(480, Math.round(window.innerHeight - el.getBoundingClientRect().top - 16)));
+        };
+        measure();
+        window.addEventListener("resize", measure);
+        return () => window.removeEventListener("resize", measure);
+    }, []);
+
     // ── Rendering ────────────────────────────────────────────────────────────
     const stepTitle = (id: string) => {
         const s = byId.get(id);
@@ -427,43 +440,45 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const waitStep = waitEdit && waitEdit.target !== ENTRY_ID ? byId.get(waitEdit.target) : undefined;
 
     return (
-        <div className="relative flex min-h-[420px] w-full rounded-md border border-slate-200 bg-white">
-            <div className="relative flex min-w-0 flex-1 flex-col rounded-md bg-slate-50/40">
+        <div ref={boxRef} className="relative flex w-full overflow-hidden rounded-md border border-slate-200 bg-white" style={{ height: boxHeight }}>
+            <div className="relative flex min-w-0 flex-1 flex-col bg-slate-50/40">
                 <div className="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 rounded-t-md border-b border-slate-200 bg-white px-3 py-1.5">
                     <StopOnReplyToggle on={!!campaign?.stop_on_reply} onToggle={setStopOnReply} />
                     {campaign && !campaign.stop_on_reply && steps.length > 1 && <ReplyStopWarning hasReplyBranch={hasReplyBranch} onEnable={() => setStopOnReply(true)} />}
                 </div>
-                <FlowCanvas
-                    layout={layout}
-                    renderStep={renderStep}
-                    stepTitle={stepTitle}
-                    selectedId={selectedStep}
-                    onSelect={onSelectNode}
-                    onInsert={canEdit && !busy ? (at, anchor) => setPicker((cur) => (cur && JSON.stringify(cur.at) === JSON.stringify(at) ? null : { at, anchor })) : undefined}
-                    onRemoveGoto={
-                        canEdit
-                            ? (from, port) => {
-                                  const s = byId.get(from);
-                                  if (s) void saveBranches(from, routePort(s, port, null).filter((b) => isCond(b) || port !== ELSE_PORT || b.target_step_id !== null));
-                              }
-                            : undefined
-                    }
-                    onPillClick={onPillClick}
-                    onNoteClick={canEdit ? onNoteClick : undefined}
-                    activeEdge={activeEdge}
-                    activeInsert={picker?.at ?? null}
-                    revealId={selectedStep}
-                    cursors={live.cursors}
-                    selections={live.selections}
-                    onCursor={(p) => (p ? live.active && live.pushCursor(p.x, p.y) : live.clearCursor())}
-                />
+                <div className="min-h-0 flex-1">
+                    <FlowCanvas
+                        layout={layout}
+                        renderStep={renderStep}
+                        stepTitle={stepTitle}
+                        selectedId={selectedStep}
+                        onSelect={onSelectNode}
+                        onInsert={canEdit && !busy ? (at, anchor) => setPicker((cur) => (cur && JSON.stringify(cur.at) === JSON.stringify(at) ? null : { at, anchor })) : undefined}
+                        onRemoveGoto={
+                            canEdit
+                                ? (from, port) => {
+                                      const s = byId.get(from);
+                                      if (s) void saveBranches(from, routePort(s, port, null).filter((b) => isCond(b) || port !== ELSE_PORT || b.target_step_id !== null));
+                                  }
+                                : undefined
+                        }
+                        onPillClick={onPillClick}
+                        onNoteClick={canEdit ? onNoteClick : undefined}
+                        activeEdge={activeEdge}
+                        activeInsert={picker?.at ?? null}
+                        revealId={selectedStep}
+                        cursors={live.cursors}
+                        selections={live.selections}
+                        onCursor={(p) => (p ? live.active && live.pushCursor(p.x, p.y) : live.clearCursor())}
+                    />
+                </div>
                 <CursorChat active={live.active} color={selfColor} setChat={live.setChat} />
             </div>
 
             <DirtyContext.Provider value={dirty.report}>
                 <AnimatePresence initial={false}>
                     {selection?.kind === "entry" && (
-                        <FlowPanel key="entry" sticky {...entryView("")} title="Contact enters the campaign" onClose={() => select(null)}>
+                        <FlowPanel key="entry" {...entryView("")} title="Contact enters the campaign" onClose={() => select(null)}>
                             <div className="space-y-2 p-3">
                                 <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Wait before the first email</div>
                                 <EntryDelayPicker value={entryDelay} onCommit={saveEntryDelay} disabled={!canEdit} />
@@ -600,7 +615,7 @@ function StepPanel({
     if (isRouterStep(step)) {
         const conds = (step.conditions?.branches ?? []).filter(isCond);
         return (
-            <FlowPanel sticky icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer}>
+            <FlowPanel icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer}>
                 <div className="space-y-3 p-3">
                     <p className="text-[11.5px] leading-relaxed text-slate-500">
                         Contacts reaching this step take the first path that matches, checked in this order. Anyone else goes on under Otherwise.
@@ -633,7 +648,7 @@ function StepPanel({
         );
     }
     return (
-        <FlowPanel sticky icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer} wide={step.kind === "email"}>
+        <FlowPanel icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer} wide={step.kind === "email"}>
             <div className="p-3">
                 <NodeTypeSwitcher campaignId={campaignId} sequence={step} onChanged={onChanged} />
                 {step.kind === "email" ? (
@@ -684,7 +699,7 @@ function PathPanel({
     const index = branch ? conds.findIndex((b) => b.branch_id === branch.branch_id) : -1;
     const label = port === ELSE_PORT ? "Otherwise" : branch ? conditionText(branch) : "Path";
     return (
-        <FlowPanel sticky icon={<GitBranchIcon />} tone="amber" kicker={`Path from ${title}`} title={label} onClose={onClose}>
+        <FlowPanel icon={<GitBranchIcon />} tone="amber" kicker={`Path from ${title}`} title={label} onClose={onClose}>
             {branch ? (
                 <>
                     {index >= 0 && conds.length > 1 && canEdit && (

@@ -653,7 +653,6 @@ export default function AutomationFlow({
                         activeInsert={picker?.at ?? null}
                         dimmed={dimmed}
                         revealId={selectedId}
-                        fill
                         cursors={live.cursors}
                         selections={live.selections}
                         onCursor={(p) => (p ? live.active && live.pushCursor(p.x, p.y) : live.clearCursor())}

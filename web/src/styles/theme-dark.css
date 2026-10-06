@@ -1199,6 +1199,7 @@
   --wb-edge-violet: #a855f7;
   --wb-edge-violet-soft: #c4b5fd;
   --wb-edge-rose: #f43f5e;
+  --flow-dot: #dde3eb;
 }
 .dark {
   --wb-edge-sky: oklch(72% 0.11 237);
@@ -1207,6 +1208,7 @@
   --wb-edge-violet: oklch(70% 0.14 300);
   --wb-edge-violet-soft: oklch(64% 0.09 295);
   --wb-edge-rose: oklch(68% 0.14 16);
+  --flow-dot: #2a2b30;
 }
 
 .dark .ai-shimmer-text { background-image: linear-gradient(90deg, #8a8f98 30%, oklch(80% 0.1 235) 50%, #8a8f98 70%); }
