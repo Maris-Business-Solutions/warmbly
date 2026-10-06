@@ -14,7 +14,7 @@
 // sensitive file this product produces, and an import rewrites the workspace.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { DownloadIcon, UploadIcon } from "lucide-react";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import { useOrgExports, useOrgImports, useOrgTransferGroups } from "@/lib/api/hooks/app/orgtransfer/useOrgTransfer";

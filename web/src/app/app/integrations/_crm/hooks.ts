@@ -1,7 +1,7 @@
 import React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { useConfirm } from "@/hooks/context/confirm";
 import {

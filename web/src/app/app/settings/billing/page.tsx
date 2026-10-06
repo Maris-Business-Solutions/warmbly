@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { TopbarAction } from "@/components/layout/Page";
 import { useSearchParams } from "@/hooks/useSearchParams";
 import useFeatureAccess from "@/hooks/useFeatureAccess";

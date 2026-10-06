@@ -7,7 +7,7 @@
 
 import React from "react";
 import { CheckIcon, CopyIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import type { IntegrationProvider } from "@/lib/api/models/app/integrations/Integration";
 import { API_URL } from "@/lib/information";

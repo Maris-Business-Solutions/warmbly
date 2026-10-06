@@ -24,11 +24,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Callout, EmptyState, Panel, Segmented, StatusBadge } from "@/components/ui/kit";
 import { cn } from "@/lib/utils";
 import { useAdminPerm } from "@/hooks/useAdminPerm";
 import { AdminPerm } from "@/lib/auth/permissions";
-import { createTester, listTesters, listOrganizationRoles, revokeTester } from "@/lib/api/client/admin/testers";
+import { createTester, listTesters, listOrganizationRoles, revokeTester, seedTesterWorkspace } from "@/lib/api/client/admin/testers";
 import { listOrganizations } from "@/lib/api/client/admin/organizations";
 import { DASHBOARD_URL } from "@/lib/env";
 import type { AdminOrgListItem, CreatedTester } from "@/lib/api/models/admin";
@@ -53,6 +54,7 @@ export default function TestersPage() {
     // Held in state, never refetched: the server returns it once and cannot
     // produce it again.
     const [created, setCreated] = useState<CreatedTester | null>(null);
+    const [sampleTarget, setSampleTarget] = useState<{ organizationID: string; email: string } | null>(null);
 
     const testers = useQuery({
         queryKey: ["admin", "testers"],
@@ -114,6 +116,16 @@ export default function TestersPage() {
         onError: (e: Error) => toast.error(e.message || "Could not revoke the exemption"),
     });
 
+    const seed = useMutation({
+        mutationFn: (orgID: string) => seedTesterWorkspace(orgID),
+        onSuccess: (result) => {
+            qc.invalidateQueries({ queryKey: ["admin", "testers"] });
+            setSampleTarget(null);
+            toast.success(result.created ? "Sample data added. Connect a real test mailbox separately." : "Sample data was already added; nothing was changed.");
+        },
+        onError: (e: Error) => toast.error(e.message || "Could not add sample data"),
+    });
+
     function copy(text: string) {
         navigator.clipboard?.writeText(text).then(
             () => toast.success("Copied"),
@@ -146,6 +158,8 @@ export default function TestersPage() {
                         or joins one that already exists. A new Test workspace includes paid-feature access and 100 test credits until the password expires.
                         An existing workspace keeps its plan and the role you select. Its password stops working on the date you choose, and
                         revoking it ends the password and signs out every session at once.
+                        Use Add sample data on an active dedicated Test workspace to populate contacts, a draft campaign, templates and CRM examples.
+                        Mailboxes must be connected separately.
                     </>
                 }
             />
@@ -266,6 +280,11 @@ export default function TestersPage() {
                                             <div className="truncate text-xs text-muted-foreground">
                                                 {t.reason || "no reason recorded"} · since {fmt(t.granted_at)}
                                             </div>
+                                            {t.test_workspace_id && (
+                                                <div className="text-xs text-muted-foreground">
+                                                    Test workspace{t.sample_data_seeded_at ? ` · Sample data added ${fmt(t.sample_data_seeded_at)}` : " · No sample data added"}
+                                                </div>
+                                            )}
                                         </div>
                                         {t.password_expires_at && (
                                             <StatusBadge
@@ -277,15 +296,28 @@ export default function TestersPage() {
                                             </StatusBadge>
                                         )}
                                         {canManage && (
-                                            <Button
-                                                size="xs"
-                                                variant="ghost"
-                                                className="shrink-0 text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                                                disabled={revoke.isPending}
-                                                onClick={() => revoke.mutate(t.user_id)}
-                                            >
-                                                <TrashIcon className="size-3" /> Revoke
-                                            </Button>
+                                            <>
+                                                {t.test_workspace_id && (
+                                                    <Button
+                                                        size="xs"
+                                                        variant="outline"
+                                                        disabled={expired || !t.password_expires_at || !!t.sample_data_seeded_at || seed.isPending || revoke.isPending}
+                                                        aria-label={`Add sample data for ${t.email}`}
+                                                        onClick={() => setSampleTarget({ organizationID: t.test_workspace_id!, email: t.email })}
+                                                    >
+                                                        {t.sample_data_seeded_at ? "Sample data added" : "Add sample data"}
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    size="xs"
+                                                    variant="ghost"
+                                                    className="shrink-0 text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                                    disabled={revoke.isPending || seed.isPending}
+                                                    onClick={() => revoke.mutate(t.user_id)}
+                                                >
+                                                    <TrashIcon className="size-3" /> Revoke
+                                                </Button>
+                                            </>
                                         )}
                                     </li>
                                 );
@@ -440,6 +472,33 @@ export default function TestersPage() {
                     </Panel>
                 )}
             </div>
+
+            <Dialog open={!!sampleTarget} onOpenChange={(open) => { if (!open && !seed.isPending) setSampleTarget(null); }}>
+                <DialogContent showCloseButton={!seed.isPending}>
+                    <DialogHeader>
+                        <DialogTitle>Add sample data?</DialogTitle>
+                        <DialogDescription>
+                            Populate the dedicated Test workspace for {sampleTarget?.email}. Existing data is left untouched.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                        <li>Six fictional, unsubscribed contacts in a sample contact list</li>
+                        <li>One draft campaign with two connected sequence steps</li>
+                        <li>Two reusable templates</li>
+                        <li>A sample CRM pipeline, two deals, a task and a contact note</li>
+                    </ul>
+                    <Callout>
+                        No mailbox is created and no email is sent. Connect a real test mailbox separately to review OAuth and inbox features.
+                        Sample data is added once; repeating this action does not restore deleted examples or overwrite edits.
+                    </Callout>
+                    <DialogFooter>
+                        <Button variant="outline" disabled={seed.isPending} onClick={() => setSampleTarget(null)}>Cancel</Button>
+                        <Button disabled={seed.isPending || !sampleTarget || !canManage} onClick={() => sampleTarget && seed.mutate(sampleTarget.organizationID)}>
+                            {seed.isPending ? "Adding sample data…" : "Add sample data"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

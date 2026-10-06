@@ -6,7 +6,7 @@
 // until you commit.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2Icon, RotateCcwIcon } from "lucide-react";
 import useCredits from "@/lib/api/hooks/app/subscription/useCredits";

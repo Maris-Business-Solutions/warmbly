@@ -13,7 +13,7 @@ import {
     Loader2Icon,
     LockIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Navigate } from "@tanstack/react-router";
 import useFeatureAccess from "@/hooks/useFeatureAccess";
 import useReferral from "@/lib/api/hooks/app/subscription/useReferral";

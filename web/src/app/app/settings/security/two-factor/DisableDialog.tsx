@@ -2,7 +2,7 @@
 // recovery code) and an explicit button: no auto-submit on the sixth digit.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Loader2Icon, ShieldOffIcon, TriangleAlertIcon } from "lucide-react";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";

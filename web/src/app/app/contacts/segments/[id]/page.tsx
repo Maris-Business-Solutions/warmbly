@@ -4,7 +4,7 @@
 import React from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, CopyIcon, MegaphoneIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import ContactsTable from "@/components/app/contacts/ContactsTable";
 import SegmentEditor from "@/components/app/segments/SegmentEditor";

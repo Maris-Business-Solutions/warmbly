@@ -131,7 +131,7 @@ Reading the tabs needs `view_organizations`; every action needs `manage_organiza
 |---|---|
 | Overview, Live events | none beyond signing in as an admin |
 | Workers, Fleet | `view_workers` |
-| Mailboxes, Sync, Users | `view_users` |
+| Mailboxes, Sync, Users, Testers | `view_users` |
 | Warmup, Warmup content, Seed panel | `view_warmup_pool` (changing seeds or running a test needs `manage_warmup_bans`) |
 | Warmup appeals | `review_appeals` |
 | Campaigns, Sends | `view_campaigns` |
@@ -142,6 +142,8 @@ Reading the tabs needs `view_organizations`; every action needs `manage_organiza
 | Configuration | `manage_settings` |
 
 Detail pages need the same bit as the list they open from. Actions inside a page can need more than the page itself: reading an organization's abuse posture or the Outreach list needs `view_organizations`, while changing a posture or sending outreach needs `manage_organizations`, as [accounts and access](/development/accounts-and-access/#workspace-abuse-posture) lists.
+
+On **Admins > Testers**, `manage_testers` allows creating or revoking reviewer accounts and adding [sample data](/development/accounts-and-access/#adding-sample-data) to active dedicated Test workspaces. The confirmation lists what will be added; a seeded row shows its timestamp. It never creates a mailbox or sends email, and it cannot populate a customer workspace that a tester joined.
 
 ## See also
 

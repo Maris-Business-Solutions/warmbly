@@ -965,6 +965,8 @@ export interface LoginCodeExemption {
     /** When the handed-out password stops working; absent for an account
      *  exempted without one. */
     password_expires_at?: string | null;
+    test_workspace_id?: string | null;
+    sample_data_seeded_at?: string | null;
 }
 
 /** The one time the password is readable. It is not stored in a form anyone

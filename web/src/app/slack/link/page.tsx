@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // /slack/link?code=…: where the Warmbly app in Slack sends a member to link
 // their Slack account. Standalone on the auth screen's sky, like /connect.
 
@@ -5,7 +7,7 @@ import React from "react";
 import { Link, Navigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, ExternalLinkIcon, LinkIcon, Loader2Icon, TriangleAlertIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import BrandMark from "@/components/shared/BrandMark";
 import { Logo } from "@/components/svg";
@@ -115,8 +117,8 @@ function SlackLinkInner() {
                 <div className="sky-base" />
                 <div className="sky-breathe" />
                 <div className="sun-glow" />
-                <img src="/backdrops/cloud-3.webp" alt="" decoding="async" className="cloud-drift cloud-1 absolute select-none" style={{ top: "6%", left: "-10%", width: 360, opacity: 0.55, height: "auto" }} />
-                <img src="/backdrops/cloud-4.webp" alt="" decoding="async" className="cloud-drift cloud-2 absolute select-none" style={{ bottom: "8%", right: "-8%", width: 320, opacity: 0.5, height: "auto" }} />
+                <DashboardImage src="/backdrops/cloud-3.webp" alt="" decoding="async" className="cloud-drift cloud-1 absolute select-none" style={{ top: "6%", left: "-10%", width: 360, opacity: 0.55, height: "auto" }} />
+                <DashboardImage src="/backdrops/cloud-4.webp" alt="" decoding="async" className="cloud-drift cloud-2 absolute select-none" style={{ bottom: "8%", right: "-8%", width: 320, opacity: 0.5, height: "auto" }} />
             </div>
             <div className="relative z-10 w-full max-w-[460px]">
                 <BrandMark className="mb-5 flex w-fit items-center gap-2.5 mx-auto" />
@@ -157,7 +159,7 @@ function Pair({ avatar }: { avatar?: string }) {
     return (
         <div className="flex items-center justify-center">
             <span className="size-14 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center justify-center overflow-hidden">
-                {avatar ? <img src={avatar} alt="" referrerPolicy="no-referrer" className="size-full object-cover" /> : <ProviderGlyph provider="slack" name="Slack" size={10} />}
+                {avatar ? <DashboardImage src={avatar} alt="" referrerPolicy="no-referrer" className="size-full object-cover" /> : <ProviderGlyph provider="slack" name="Slack" size={10} />}
             </span>
             <span className="relative w-16 flex items-center">
                 <span className="w-full border-t border-dashed border-slate-300" />
@@ -187,7 +189,7 @@ function Review({ p, connecting, verifying, onConnect, onVerify }: { p: SlackLin
                 <Account
                     glyph={
                         p.slack_user_avatar ? (
-                            <img src={p.slack_user_avatar} alt="" referrerPolicy="no-referrer" className="size-7 rounded-md object-cover" />
+                            <DashboardImage src={p.slack_user_avatar} alt="" referrerPolicy="no-referrer" className="size-7 rounded-md object-cover" />
                         ) : (
                             <ProviderGlyph provider="slack" name="Slack" size={7} />
                         )

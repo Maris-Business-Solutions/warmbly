@@ -1,7 +1,7 @@
 // Small pieces the import wizard's steps share.
 import React from "react";
 import { AlertTriangleIcon, CheckIcon, CopyIcon, EyeIcon, EyeOffIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { TextInput } from "@/components/ui/field";
 import ProviderLogo from "@/components/app/emails/ProviderLogo";
 import { cn } from "@/lib/utils";

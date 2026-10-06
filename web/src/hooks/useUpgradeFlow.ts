@@ -8,7 +8,7 @@
 //   missing price           → explain that the plan is unavailable
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useSubscription from "@/lib/api/hooks/app/subscription/useSubscription";
 import useCreateCheckoutSession from "@/lib/api/hooks/app/subscription/useCreateCheckoutSession";
 import useChangePlan from "@/lib/api/hooks/app/subscription/useChangePlan";

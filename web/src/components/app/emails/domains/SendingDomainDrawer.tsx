@@ -5,7 +5,7 @@
 // teammate's change lands live.
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     AlertTriangleIcon,
     ArrowRightIcon,

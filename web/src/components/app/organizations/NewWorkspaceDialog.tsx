@@ -8,7 +8,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BriefcaseIcon, Loader2Icon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useCreateOrganization from "@/lib/api/hooks/app/organizations/useCreateOrganization";
 import useSwitchOrganization from "@/lib/api/hooks/app/organizations/useSwitchOrganization";
 import { FieldError, Label, TextInput } from "@/components/ui/field";

@@ -4,7 +4,7 @@
 // never send anything; findings are read-only research material.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     SparklesIcon,
     ExternalLinkIcon,

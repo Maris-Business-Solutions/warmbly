@@ -6,7 +6,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon, Loader2Icon, Trash2Icon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { EmptyBlock } from "@/components/layout/Page";
 import { SearchInput } from "@/components/ui/field";

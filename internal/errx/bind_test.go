@@ -22,10 +22,15 @@ type bindSend struct {
 }
 
 type bindContact struct {
-	Email    string      `json:"email" binding:"required"`
-	Due      *time.Time  `json:"due"`
-	Campaign uuid.UUID   `json:"campaign"`
-	Tags     []uuid.UUID `json:"tags"`
+	Email    string            `json:"email" binding:"required"`
+	Due      *time.Time        `json:"due"`
+	Campaign uuid.UUID         `json:"campaign"`
+	Tags     []uuid.UUID       `json:"tags"`
+	Metadata map[string]string `json:"metadata"`
+}
+
+type bindQuery struct {
+	Search string `form:"q"`
 }
 
 func bindBody(t *testing.T, body string, dst any) error {
@@ -57,6 +62,8 @@ func TestInvalidBody(t *testing.T) {
 		{"slice element validation", `[{"email":"a@b.co"},{}]`, func() any { return &[]bindContact{} }, []string{`"email" is required`}},
 		{"uuid", `{"email":"a@b.co","campaign":"nope"}`, func() any { return &bindContact{} }, []string{"should be a UUID"}},
 		{"time", `{"email":"a@b.co","due":"tomorrow"}`, func() any { return &bindContact{} }, []string{"not RFC 3339", `"tomorrow"`}},
+		{"NUL in text", `{"to":["a"],"subject":"x\u0000y","inner":{"name":"n"}}`, func() any { return &bindSend{} }, []string{`Field "subject" contains a NUL character`}},
+		{"NUL in map key", `{"email":"a@b.co","metadata":{"x\u0000y":"value"}}`, func() any { return &bindContact{} }, []string{`Field "metadata.key" contains a NUL character`}},
 		{"uuid of the wrong JSON type", `{"email":"a@b.co","campaign":5}`, func() any { return &bindContact{} }, []string{`Field "campaign" must be a JSON string, not a JSON number`}},
 	}
 	for _, tc := range cases {
@@ -78,6 +85,22 @@ func TestInvalidBody(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestInvalidQueryRejectsNUL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/?q=%00", nil)
+
+	var query bindQuery
+	err := c.ShouldBindQuery(&query)
+	if err == nil {
+		t.Fatal("binding a NUL query succeeded")
+	}
+	got := InvalidQuery(err)
+	if got.Code != BadRequest || !strings.Contains(got.Message, `Query parameter "q" contains a NUL character`) {
+		t.Fatalf("InvalidQuery() = %#v", got)
 	}
 }
 

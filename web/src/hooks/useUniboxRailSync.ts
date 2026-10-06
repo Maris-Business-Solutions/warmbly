@@ -5,7 +5,7 @@
 // and pane widths are per device and never leave it.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getViewPreferences, updateViewPreferences } from "@/lib/api/client/app/views/views";
 import type { UniboxRailLayout, ViewPreferences } from "@/lib/api/models/app/views/ViewPreferences";

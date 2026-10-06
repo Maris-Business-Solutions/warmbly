@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import toast from 'react-hot-toast'
+import toast from 'react-hot-toast/headless'
 import { useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useSocket } from './context/socket'
 import { useAppStore } from '@/stores'

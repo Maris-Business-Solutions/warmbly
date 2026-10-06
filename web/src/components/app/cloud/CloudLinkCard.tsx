@@ -4,7 +4,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CheckIcon, CloudIcon, CopyIcon, ExternalLinkIcon, FlameIcon, GlobeIcon, InboxIcon, Loader2Icon, LockIcon, ShieldCheckIcon } from "lucide-react";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";

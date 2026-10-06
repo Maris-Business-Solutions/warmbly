@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Loader2Icon, MailCheckIcon, MailIcon, PlayIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Label, SearchInput } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
 import {

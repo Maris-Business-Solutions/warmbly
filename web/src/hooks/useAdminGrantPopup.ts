@@ -5,7 +5,7 @@
 // ours, and useMailboxOAuth ignores both prefixes.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useMutation } from "@tanstack/react-query";
 import { useStoreGrant } from "@/lib/api/hooks/app/emails/useMailboxGrants";
 import { sourceMutationKey } from "@/lib/api/hooks/app/emails/mailboxSourceBusy";

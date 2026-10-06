@@ -4,7 +4,7 @@
 
 import React from "react";
 import { Link } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CloudIcon, Loader2Icon, PauseIcon, PlayIcon } from "lucide-react";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";

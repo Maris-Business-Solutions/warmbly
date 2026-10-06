@@ -34,7 +34,7 @@ import {
     SendIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import sendReply from "@/lib/api/client/app/unibox/sendReply";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import useTemplates from "@/lib/api/hooks/app/templates/useTemplates";
@@ -1107,4 +1107,3 @@ function HeaderRow({
         </div>
     );
 }
-

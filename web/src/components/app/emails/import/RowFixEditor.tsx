@@ -3,7 +3,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDownIcon, Loader2Icon, RotateCcwIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { ImportRow, RowFix, RowFixLeg } from "@/lib/api/models/app/emails/MailboxImport";
 import { defaultImapSecurity, defaultSmtpSecurity, validPort, type MailSecurity } from "@/lib/api/models/app/emails/Service";
 import { useFixMailboxImportRow } from "@/lib/api/hooks/app/emails/useMailboxImportActions";

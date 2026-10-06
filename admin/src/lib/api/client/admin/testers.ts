@@ -34,3 +34,7 @@ export function listOrganizationRoles(orgID: string): Promise<{ data: AdminOrgRo
 export function revokeTester(id: string): Promise<{ revoked: boolean; password_cleared: boolean }> {
     return Request({ method: "DELETE", url: `/admin/testers/${id}`, authorization: true });
 }
+
+export function seedTesterWorkspace(orgID: string): Promise<{ organization_id: string; created: boolean; seeded_at: string }> {
+    return Request({ method: "POST", url: `/admin/organizations/${orgID}/sample-data`, authorization: true });
+}

@@ -6,7 +6,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2Icon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Label, TextInput } from "@/components/ui/field";
 import { useConfirm } from "@/hooks/context/confirm";
 import useRoles from "@/lib/api/hooks/app/organizations/useRoles";

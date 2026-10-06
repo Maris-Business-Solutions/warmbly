@@ -1,7 +1,7 @@
 // Export and import history, with live progress on anything still running.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     AlertTriangleIcon,
     DownloadIcon,

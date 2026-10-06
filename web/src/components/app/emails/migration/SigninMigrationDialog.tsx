@@ -6,7 +6,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useIsMutating } from "@tanstack/react-query";
 import { ArrowLeftIcon, ArrowRightIcon, Building2Icon, CheckCircle2Icon, KeyRoundIcon, Loader2Icon, XIcon } from "lucide-react";
 import ProviderLogo from "@/components/app/emails/ProviderLogo";

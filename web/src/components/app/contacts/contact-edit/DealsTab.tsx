@@ -3,7 +3,7 @@
 
 import React from "react";
 import { Link } from "@tanstack/react-router";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { CheckIcon, ChevronDownIcon, CircleDollarSignIcon, Loader2Icon, MegaphoneIcon, PlusIcon, XIcon } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { NumberInput, TextInput } from "@/components/ui/field";

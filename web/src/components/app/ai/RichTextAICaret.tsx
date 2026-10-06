@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpIcon, CheckIcon, PenLineIcon, RefreshCwIcon, SparklesIcon, Undo2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import useGenerateWrite from "@/lib/api/hooks/app/generation/useGenerateWrite";
 import { usePermission } from "@/hooks/usePermission";
 import useAiMetered from "@/hooks/useAiMetered";

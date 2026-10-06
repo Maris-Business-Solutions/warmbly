@@ -21,7 +21,10 @@ func (h *Handler) ListTemplates(c *gin.Context) {
 	}
 
 	var q models.ListReplyTemplatesQuery
-	_ = c.ShouldBindQuery(&q)
+	if err := c.ShouldBindQuery(&q); err != nil {
+		errx.Handle(c, errx.InvalidQuery(err))
+		return
+	}
 
 	templates, xerr := h.TemplateService.List(c.Request.Context(), *orgID, q.Search)
 	if xerr != nil {

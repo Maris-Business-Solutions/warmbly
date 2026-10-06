@@ -5,7 +5,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Loader2Icon, SendIcon, XIcon } from "lucide-react";
 import { useUserProfile } from "@/hooks/context/user";
 import { useAppStore } from "@/stores";

@@ -355,10 +355,22 @@ func (r *userRepository) SetLoginCodeExempt(ctx context.Context, id uuid.UUID, e
 // likely to have been forgotten is the one that has been there longest.
 func (r *userRepository) ListLoginCodeExempt(ctx context.Context) ([]models.LoginCodeExemption, error) {
 	rows, err := r.DB.Query(ctx, `
-		SELECT id, email, login_code_exempt_reason, login_code_exempt_at, password_expires_at
-		FROM users
-		WHERE login_code_exempt
-		ORDER BY login_code_exempt_at NULLS FIRST`)
+		SELECT u.id, u.email, u.login_code_exempt_reason, u.login_code_exempt_at, u.password_expires_at,
+		       workspace.id, seeded.created_at
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT o.id FROM organizations o
+			WHERE o.owner_user_id = u.id AND o.category = 'test'
+			ORDER BY o.created_at, o.id LIMIT 1
+		) workspace ON true
+		LEFT JOIN LATERAL (
+			SELECT a.created_at FROM admin_audit_logs a
+			WHERE a.target_type = 'organization' AND a.target_id = workspace.id
+			  AND a.action = 'seed_tester_workspace'
+			ORDER BY a.created_at LIMIT 1
+		) seeded ON true
+		WHERE u.login_code_exempt
+		ORDER BY u.login_code_exempt_at NULLS FIRST`)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +379,7 @@ func (r *userRepository) ListLoginCodeExempt(ctx context.Context) ([]models.Logi
 	out := []models.LoginCodeExemption{}
 	for rows.Next() {
 		var e models.LoginCodeExemption
-		if err := rows.Scan(&e.UserID, &e.Email, &e.Reason, &e.GrantedAt, &e.PasswordExpiresAt); err != nil {
+		if err := rows.Scan(&e.UserID, &e.Email, &e.Reason, &e.GrantedAt, &e.PasswordExpiresAt, &e.TestWorkspaceID, &e.SampleDataSeededAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

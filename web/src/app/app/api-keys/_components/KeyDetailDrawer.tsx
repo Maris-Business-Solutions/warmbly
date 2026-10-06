@@ -27,7 +27,7 @@ import {
     TrashIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import type APIKey from "@/lib/api/models/app/apikeys/APIKey";
 import { keyCanAuthenticate, keyStatus } from "@/lib/api/models/app/apikeys/APIKey";

@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // A community app's uploaded logo, or a tinted initial on the same tile the
 // built-in provider marks use, so both kinds of card line up.
 
@@ -22,7 +24,7 @@ export default function CommunityLogo({ name, url, size = 9 }: { name: string; u
     const dim = `${GLYPH_DIMS[size].tile} ${GLYPH_DIMS[size].text}`;
     if (url && !broken) {
         return (
-            <img
+            <DashboardImage
                 src={url}
                 alt=""
                 onError={() => setBrokenUrl(url)}

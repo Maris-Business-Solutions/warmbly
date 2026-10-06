@@ -22,6 +22,14 @@ function toggle() {
     return screen.queryByRole("button", { name: /quoted text/i });
 }
 
+function frameDocument(container: HTMLElement) {
+    const frame = container.querySelector("iframe")!;
+    const doc = frame.contentDocument!;
+    if (!doc.documentElement) doc.appendChild(doc.createElement("html"));
+    fireEvent.load(frame);
+    return doc;
+}
+
 describe("EmailBody quoted history", () => {
     it("offers the toggle for an HTML reply that carries a quote", () => {
         render(<EmailBody html={GMAIL_REPLY} />);
@@ -37,7 +45,7 @@ describe("EmailBody quoted history", () => {
     it("detects a plain-text quote tail and wraps it", () => {
         const { container } = render(<EmailBody plain={PLAIN_REPLY} />);
         expect(toggle()).toBeInTheDocument();
-        const srcDoc = container.querySelector("iframe")!.getAttribute("srcdoc")!;
+        const srcDoc = frameDocument(container).documentElement.outerHTML;
         expect(srcDoc).toContain("Sounds good, Tuesday works.");
         // The tail is inside the wrapper the hide rule targets, the new line is not.
         // lastIndexOf: the attribute also appears in the hide rule up in <head>.
@@ -65,8 +73,7 @@ describe("EmailBody quoted history", () => {
         '<div id="appendonsend"></div>Old reply',
     ])("hides and restores the same HTML history: %s", (quote) => {
         const { container } = render(<EmailBody html={`<p>New reply</p>${quote}`} />);
-        const frame = container.querySelector("iframe")!;
-        const documentBody = () => new DOMParser().parseFromString(frame.getAttribute("srcdoc")!, "text/html").body;
+        const documentBody = () => frameDocument(container).body.cloneNode(true) as HTMLBodyElement;
         const visibleText = () => {
             const doc = documentBody();
             doc.querySelectorAll<HTMLElement>('[style]').forEach((node) => {
@@ -80,7 +87,7 @@ describe("EmailBody quoted history", () => {
         fireEvent.click(toggle()!);
         expect(toggle()).toHaveAttribute("aria-expanded", "true");
         expect(visibleText()).toContain("Old reply");
-        expect(frame.getAttribute("sandbox")).not.toContain("allow-scripts");
+        expect(container.querySelector("iframe")!.getAttribute("sandbox")).not.toContain("allow-scripts");
     });
 
     it("keeps quote-only HTML and inline answers visible", () => {

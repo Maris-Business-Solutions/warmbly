@@ -6,7 +6,7 @@
 import React from "react";
 import { Loader2Icon, XIcon } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Label, NumberInput, TextInput } from "@/components/ui/field";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import useCreateMeeting from "@/lib/api/hooks/app/meetings/useCreateMeeting";

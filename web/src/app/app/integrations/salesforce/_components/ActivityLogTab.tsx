@@ -17,7 +17,7 @@ import {
     XIcon,
     type LucideIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import ScrollStrip from "@/components/ui/scroll-strip";

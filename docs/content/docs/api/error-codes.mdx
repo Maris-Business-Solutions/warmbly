@@ -75,6 +75,7 @@ When the body cannot be read, the `message` says why:
 | is the wrong JSON type at the top level | `The request body must be a JSON array, not a JSON object.` |
 | has a field of the wrong JSON type | `Field "to" must be a JSON array, not a JSON string.` |
 | has a time that is not RFC 3339 | `The request body has a time that is not RFC 3339 (such as 2026-10-01T09:00:00Z): "tomorrow".` |
+| has a text field containing a NUL character | `Field "<name>" contains a NUL character, which is not supported.` |
 | is missing required fields or has values out of range | `The request body is missing or has invalid fields: "to" is required; ...` (up to five fields, then a count of the rest) |
 
 Fields are named by their JSON key, with nested fields as a dotted path (`inner.name`). The `code` is `bad_request` in every case, so branch on `code` and show or log `message`.

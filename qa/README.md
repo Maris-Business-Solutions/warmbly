@@ -161,6 +161,12 @@ Run `QA_FLEET_FIXTURES=1 pnpm proof fleet-telemetry` in `qa/`. Stop the addition
 admin server as well as the stack afterward. This proof does not validate real
 worker sampling, network egress, mail delivery or inbox placement.
 
+## Tester sample data proof
+
+The `tester-sample-data` flow uses the real local tester-provisioning and sample-data endpoints. Start the worktree's lite stack, then serve `admin/` separately against its API. Set `QA_WEB_URL` to that localhost admin origin. Prepare a seeded admin holding `view_users` and `manage_testers`, with a locally MFA-verified session; clear only that user's and session's isolated Redis entries after SQL fixture changes. These authentication fixtures are not proof of real MFA. Run `QA_TESTER_SAMPLE_FIXTURES=1 pnpm proof tester-sample-data`.
+
+The flow creates a disposable dedicated reviewer workspace without displaying its password, confirms the sample-data dialog, checks persisted status and a no-op retry, and revokes the reviewer afterward. It does not connect a mailbox, send email, launch a scan or populate a customer workspace. Stop the additional admin server and the QA stack when finished.
+
 ## Writing a flow
 
 Flows live in `flows/<area>.flow.ts`, one `test` per walkthrough. Extend the

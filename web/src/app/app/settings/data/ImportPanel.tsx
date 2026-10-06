@@ -5,7 +5,7 @@
 // without writing anything, so "apply" is never a leap of faith.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AlertTriangleIcon, FileArchiveIcon, Loader2Icon } from "lucide-react";
 import { TextInput } from "@/components/ui/field";
 import { useConfirm } from "@/hooks/context/confirm";

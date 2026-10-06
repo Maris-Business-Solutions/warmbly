@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Loader2Icon, PauseIcon, PlayIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import PauseLeadDialog from "./PauseLeadDialog";
 import { useResumeLead } from "@/lib/api/hooks/app/campaigns/useLeadHold";
 import { useConfirm } from "@/hooks/context/confirm";

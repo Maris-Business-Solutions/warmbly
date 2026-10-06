@@ -315,6 +315,8 @@ func Run(
 	// (health, signed webhooks, OAuth bouncers, worker enroll, the internal API,
 	// and /admin) are NOT versioned and stay at their bare paths.
 	v1 := r.Group("/v1")
+	v1.POST("/dashboard-image/public", m.PublicIPRateLimitMiddleware(), h.PublicDashboardImage)
+	v1.POST("/dashboard-image", m.AuthMiddleware(), m.RateLimitMiddleware(models.RateLimitRead), h.DashboardImage)
 
 	// Public invitation preview for the /invite landing page. Unauthenticated:
 	// the invite token in the query is the capability. Registered on /v1 (the
@@ -1772,6 +1774,7 @@ func Run(
 		// other user routes can do.
 		adminRoutes.GET("/testers", middleware.RequireAdminPermission(models.AdminPermViewUsers), h.AdminListTesters)
 		adminRoutes.POST("/testers", middleware.RequireAdminPermission(models.AdminPermManageTesters), h.AdminCreateTester)
+		adminRoutes.POST("/organizations/:id/sample-data", middleware.RequireAdminPermission(models.AdminPermManageTesters), h.AdminSeedTesterWorkspace)
 		adminRoutes.DELETE("/testers/:id", middleware.RequireAdminPermission(models.AdminPermManageTesters), h.AdminRevokeTester)
 		adminRoutes.POST("/users/:id/ban", middleware.RequireAdminPermission(models.AdminPermBanUsers), h.AdminBanUser)
 		adminRoutes.POST("/users/:id/unban", middleware.RequireAdminPermission(models.AdminPermBanUsers), h.AdminUnbanUser)

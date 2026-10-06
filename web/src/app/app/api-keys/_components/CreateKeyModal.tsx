@@ -24,7 +24,7 @@ import {
     SlidersIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import useCreateAPIKey from "@/lib/api/hooks/app/api-keys/useCreateAPIKey";
 import useAPIPermissions from "@/lib/api/hooks/app/api-keys/useAPIPermissions";

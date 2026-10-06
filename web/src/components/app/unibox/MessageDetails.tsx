@@ -3,7 +3,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
 import type UniboxEmail from "@/lib/api/models/app/unibox/UniboxEmail";
 import type { UniboxEmailDetail } from "@/lib/api/models/app/unibox/UniboxEmail";

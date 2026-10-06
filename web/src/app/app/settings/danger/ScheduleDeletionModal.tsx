@@ -8,7 +8,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangleIcon, Loader2Icon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import buildError from "@/lib/helper/buildError";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import { TextInput, Label } from "@/components/ui/field";

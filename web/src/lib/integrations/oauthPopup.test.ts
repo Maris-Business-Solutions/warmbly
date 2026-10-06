@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { authorizeInPopup } from "./oauthPopup";
 
-vi.mock("react-hot-toast", () => ({ default: { error: vi.fn() } }));
+vi.mock("react-hot-toast/headless", () => ({ default: { error: vi.fn() } }));
 
 function fakeWindow() {
     return {

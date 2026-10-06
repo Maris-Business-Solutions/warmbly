@@ -56,7 +56,7 @@ import {
     PUSHABLE_PROVIDERS,
     type IntegrationConnection,
 } from "@/lib/api/models/app/integrations/Integration";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import FilterBar from "./filters/FilterBar";

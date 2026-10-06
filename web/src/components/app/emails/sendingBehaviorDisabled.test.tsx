@@ -23,7 +23,7 @@ vi.mock("@/lib/api/client/Request", () => ({
         return new Promise(() => {});
     },
 }));
-vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("react-hot-toast/headless", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 
 import SendingBehaviorTab from "./SendingBehaviorTab";
 

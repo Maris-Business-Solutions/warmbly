@@ -18,7 +18,7 @@ import {
     Share2Icon,
     WrenchIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     DndContext,
     DragOverlay,

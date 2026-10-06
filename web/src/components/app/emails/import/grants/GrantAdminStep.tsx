@@ -1,7 +1,7 @@
 // Admin grant, the first step when the workspace already holds grants for the
 // provider: pick one to connect its mailboxes, check or remove it, or start
 // the guided setup of another (GrantSetupSteps).
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { ChevronRightIcon, MoreHorizontalIcon, PlusIcon, RefreshCwIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import {
     PopoverMenu,

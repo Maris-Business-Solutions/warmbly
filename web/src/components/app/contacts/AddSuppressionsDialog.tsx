@@ -1,7 +1,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BanIcon, GlobeIcon, MailIcon, TriangleAlertIcon, XIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { Label, TextInput } from "@/components/ui/field";
 import { Loading } from "@/components/loader";

@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Link } from "@tanstack/react-router";
 import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
 import { NumberInput } from "@/components/ui/field";

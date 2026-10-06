@@ -7,7 +7,7 @@
 // session through /cloud-link/oauth/finish instead.
 
 import React from "react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { useQueryClient } from "@tanstack/react-query";
 import type Inbox from "@/lib/api/models/app/emails/Inbox";
 import { API_URL, APP_URL } from "@/lib/information";

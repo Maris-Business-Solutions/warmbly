@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import useTeams from "@/lib/api/hooks/app/teams/useTeams";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     Page,

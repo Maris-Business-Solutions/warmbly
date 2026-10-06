@@ -10,7 +10,7 @@ import React from "react";
 import { AnimatePresence } from "framer-motion";
 import { ArrowDownIcon, ArrowUpIcon, FlagIcon, GitBranchIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
 import type { SequenceBranch } from "@/lib/api/models/app/campaigns/sequences/Branching";
 import type { SequenceActionType } from "@/lib/api/models/app/campaigns/sequences/Action";

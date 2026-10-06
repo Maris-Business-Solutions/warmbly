@@ -18,7 +18,7 @@ import {
     PlayIcon,
     XIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import { Label, NumberInput, SearchInput } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { OptionSelect, Toggle } from "@/components/app/campaigns/preferences/components/CampaignPreferenceBoolBox";

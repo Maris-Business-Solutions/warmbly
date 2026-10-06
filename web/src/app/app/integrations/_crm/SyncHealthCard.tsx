@@ -3,7 +3,7 @@
 
 import type { ReactNode } from "react";
 import { AlertTriangleIcon, CheckCircle2Icon, Loader2Icon, RotateCcwIcon, Trash2Icon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 
 import { useConfirm } from "@/hooks/context/confirm";
 import { useDiscardCrmSync, useRetryCrmSync } from "@/lib/api/hooks/app/crm/provider/useCrmSyncActions";

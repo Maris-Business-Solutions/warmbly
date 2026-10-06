@@ -9,7 +9,7 @@
 
 import React from "react";
 import { PaperclipIcon, UploadCloudIcon, Loader2Icon, Trash2Icon, FileIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "react-hot-toast/headless";
 import {
     useCampaignAttachments,
     useUploadAttachment,
