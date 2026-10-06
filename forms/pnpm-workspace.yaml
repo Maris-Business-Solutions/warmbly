@@ -6,3 +6,6 @@ allowBuilds:
   # funding banner, so there is nothing to run.
   core-js: false
   esbuild: true
+
+overrides:
+  dompurify: ^3.4.16
