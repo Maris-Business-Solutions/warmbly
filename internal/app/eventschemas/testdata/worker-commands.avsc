@@ -680,6 +680,24 @@
               "default": "",
               "name": "email_id",
               "type": "string"
+            },
+            {
+              "default": [],
+              "name": "warmup_message_ids",
+              "type": {
+                "items": "string",
+                "type": "array"
+              }
+            },
+            {
+              "default": "",
+              "name": "warmup_placement",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "warmup_folder",
+              "type": "string"
             }
           ],
           "name": "warmbly.events.RemoveWorkerEmail",
@@ -879,6 +897,11 @@
             {
               "default": "",
               "name": "internal_id",
+              "type": "string"
+            },
+            {
+              "default": "",
+              "name": "filing_id",
               "type": "string"
             },
             {

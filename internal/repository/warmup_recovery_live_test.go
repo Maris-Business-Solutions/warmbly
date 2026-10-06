@@ -115,13 +115,24 @@ func TestLiveWarmupFilingRequiresAcknowledgement(t *testing.T) {
 	requireSchemaVersion(t, pool, 265)
 	ctx := context.Background()
 	f := newSharedOrgFixture(t, pool)
-	account := uuid.New()
+	account, waitingAccount, worker := uuid.New(), uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO fleet_nodes (id, role, name) VALUES ($1, 'worker', 'filing-test')`, worker); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM fleet_nodes WHERE id = $1`, worker); err != nil {
+			t.Error(err)
+		}
+	})
+	if _, err := pool.Exec(ctx, `INSERT INTO workers (id) VALUES ($1)`, worker); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := pool.Exec(ctx, `INSERT INTO email_accounts (id, user_id, organization_id, email, name, signature_plain, signature_html, provider, status)
 		VALUES ($1, $2, $3, $4, 'Filing', '', '', 'gmail', 'active')`, account, f.owner, f.org, uuid.NewString()+"@example.test"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if _, err := pool.Exec(ctx, `DELETE FROM email_accounts WHERE id = $1`, account); err != nil {
+		if _, err := pool.Exec(ctx, `DELETE FROM email_accounts WHERE id = ANY($1)`, []uuid.UUID{account, waitingAccount}); err != nil {
 			t.Error(err)
 		}
 	})
@@ -136,12 +147,35 @@ func TestLiveWarmupFilingRequiresAcknowledgement(t *testing.T) {
 	if err != nil || id != duplicate {
 		t.Fatalf("duplicate filing: %v, %v, %v", id, duplicate, err)
 	}
-	claimed, err := repo.ClaimFilings(ctx, 100)
+	if claimed, err := repo.ClaimFilings(ctx, 1); err != nil || len(claimed) != 0 {
+		t.Fatalf("unassigned filing consumed a claim: %+v %v", claimed, err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO email_accounts (id, user_id, organization_id, email, name, signature_plain, signature_html, provider, status)
+		VALUES ($1, $2, $3, $4, 'Waiting', '', '', 'gmail', 'active')`, waitingAccount, f.owner, f.org, uuid.NewString()+"@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	waitingAction := action
+	waitingAction.EmailID = waitingAccount
+	waitingID, err := repo.EnqueueFiling(ctx, waitingAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE warmup_pending_filings SET next_attempt_at = NOW() - INTERVAL '1 hour' WHERE id = $1`, waitingID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE email_accounts SET worker_id = $2 WHERE id = $1`, account, worker); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := repo.ClaimFilings(ctx, 1)
 	if err != nil || len(claimed) != 1 || claimed[0].FilingID != id.String() || len(claimed[0].Actions) != 1 {
 		t.Fatalf("claim: %+v %v", claimed, err)
 	}
 	if claimed, err := repo.ClaimFilings(ctx, 100); err != nil || len(claimed) != 0 {
 		t.Fatalf("lease did not prevent duplicate dispatch: %+v %v", claimed, err)
+	}
+	var waiting bool
+	if err := pool.QueryRow(ctx, `SELECT next_attempt_at < NOW() - INTERVAL '30 minutes' FROM warmup_pending_filings WHERE id = $1`, waitingID).Scan(&waiting); err != nil || !waiting {
+		t.Fatalf("unassigned backlog was leased instead of remaining pending: %v %v", waiting, err)
 	}
 	if err := repo.CompleteFiling(ctx, uuid.New(), id); err != nil {
 		t.Fatal(err)

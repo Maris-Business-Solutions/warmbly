@@ -51,7 +51,6 @@ func (s *JobsService) retryWarmupFilings(ctx context.Context) error {
 			failures = append(failures, s.WarmupRecoveryRepo.CompleteFiling(ctx, action.EmailID, id))
 			continue
 		}
-		s.markSelfMove(ctx, action.EmailID, action.RFCMessageID)
 		if err := s.Publisher.PublishWarmupAction(ctx, *account.WorkerID, &action); err != nil {
 			failures = append(failures, err)
 		}

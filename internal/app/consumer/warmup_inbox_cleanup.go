@@ -62,10 +62,6 @@ func (s *JobsService) fileWarmupOutOfMailbox(ctx context.Context, e *models.JobE
 	if placement == models.WarmupPlacementInbox {
 		return nil
 	}
-	// Marked before publishing, like the live path: the move can land and be
-	// observed before a marker written afterwards would exist, and a mailbox
-	// must not be struck for foldering we asked it to do.
-	s.markSelfMove(ctx, e.Message.EmailID, e.Message.MessageID)
 	action := models.WarmupEmailAction{
 		UserID:             e.UserID,
 		EmailID:            e.Message.EmailID,
@@ -92,6 +88,10 @@ func (s *JobsService) fileWarmupOutOfMailbox(ctx context.Context, e *models.JobE
 		}
 		return fmt.Errorf("warmup filing: mailbox has no assigned worker")
 	}
+	if s.WarmupRecoveryRepo == nil {
+		s.markSelfMove(ctx, e.Message.EmailID, e.Message.MessageID)
+	}
+	// Durable filings use presence verification instead of assuming every attempt moves mail.
 	err := s.Publisher.PublishWarmupAction(ctx, *account.WorkerID, &action)
 	if s.WarmupRecoveryRepo != nil {
 		return nil // The persisted filing survives a failed publish.

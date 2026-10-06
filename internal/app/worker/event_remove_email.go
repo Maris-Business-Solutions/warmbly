@@ -56,9 +56,7 @@ func (w *WorkerService) fileWarmupBeforeDisconnect(ctx context.Context, e *model
 		if ctx.Err() != nil {
 			break
 		}
-		if w.Cache != nil {
-			_ = w.Cache.Set(ctx, "warmup:selfmoved:"+e.EmailID+":"+messageID, "1", 30*time.Minute).Err()
-		}
+		// Provider removals use the normal mailbox-presence verification path.
 		if err := w.HandleWarmupAction(ctx, models.WarmupEmailAction{
 			UserID: userID, EmailID: accountID, RFCMessageID: messageID,
 			Placement: e.WarmupPlacement, TargetFolder: e.WarmupFolder,
