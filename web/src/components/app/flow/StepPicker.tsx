@@ -44,12 +44,15 @@ export default function StepPicker({
     anchor,
     items,
     title = "Add a step",
+    clearance = 0,
     onPick,
     onClose,
 }: {
     anchor: DOMRect;
     items: PickerItem[];
     title?: string;
+    // Horizontal distance from the button to keep clear (half a card).
+    clearance?: number;
     onPick: (item: PickerItem) => void;
     onClose: () => void;
 }) {
@@ -99,14 +102,25 @@ export default function StepPicker({
         }
     };
 
-    // Below the button when it fits, above it otherwise; always inside the window.
+    // Beside the button so the flow around it stays visible; below or above it
+    // when there is no room to the side. Always inside the window.
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const below = anchor.bottom + 8 + MAX_H <= vh - 8 || anchor.top < vh / 2;
-    const left = Math.max(8, Math.min(anchor.left + anchor.width / 2 - W / 2, vw - W - 8));
-    const style: React.CSSProperties = below
-        ? { left, top: Math.min(anchor.bottom + 8, vh - 200), maxHeight: Math.max(200, vh - anchor.bottom - 16) }
-        : { left, bottom: vh - anchor.top + 8, maxHeight: Math.max(200, anchor.top - 16) };
+    // Clear of the cards centred on the button, not just the button itself.
+    const cx = anchor.left + anchor.width / 2;
+    const gap = Math.max(anchor.width / 2, clearance) + 12;
+    const side = cx + gap + W <= vw - 8 ? "right" : cx - gap - W >= 8 ? "left" : null;
+    const below = side !== null || anchor.bottom + 8 + MAX_H <= vh - 8 || anchor.top < vh / 2;
+    const style: React.CSSProperties = side
+        ? {
+              left: side === "right" ? cx + gap : cx - gap - W,
+              top: Math.max(8, Math.min(anchor.top - 12, vh - MAX_H - 8)),
+              maxHeight: Math.min(MAX_H, vh - 16),
+          }
+        : below
+          ? { left: Math.max(8, Math.min(anchor.left + anchor.width / 2 - W / 2, vw - W - 8)), top: Math.min(anchor.bottom + 8, vh - 200), maxHeight: Math.max(200, vh - anchor.bottom - 16) }
+          : { left: Math.max(8, Math.min(anchor.left + anchor.width / 2 - W / 2, vw - W - 8)), bottom: vh - anchor.top + 8, maxHeight: Math.max(200, anchor.top - 16) };
+    const origin = side === "right" ? "left top" : side === "left" ? "right top" : below ? "top center" : "bottom center";
 
     let lastGroup = "";
     let pickIndex = -1;
@@ -116,10 +130,10 @@ export default function StepPicker({
             data-floating
             role="dialog"
             aria-label={page ? (page.childrenTitle ?? page.label) : title}
-            initial={{ opacity: 0, scale: 0.97, y: below ? -4 : 4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.97, x: side === "right" ? -4 : side === "left" ? 4 : 0, y: side ? 0 : below ? -4 : 4 }}
+            animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
             transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-            style={{ ...style, width: W, transformOrigin: below ? "top center" : "bottom center" }}
+            style={{ ...style, width: W, transformOrigin: origin }}
             className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
             onKeyDown={onKey}
             onMouseDown={(e) => e.stopPropagation()}

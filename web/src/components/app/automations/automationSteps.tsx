@@ -116,13 +116,13 @@ export function stepView(n: AutomationNode, ctx: StepContext): StepView {
             icon: <GitBranchIcon />,
             tone: "purple",
             kicker: value ? "Value switch" : "AI switch",
-            title: value ? `Match ${clip(String(cfg.switch_value ?? "").trim() || "a value", 32)}` : clip(instruction) || "AI switch",
+            title: value ? `Match ${clip(String(cfg.switch_value ?? "").trim() || "a value", 32)}` : clip(instruction) || "New AI switch",
             summary: `${plural(cases, "case")}${value ? "" : " · 1 credit"}`,
         };
     }
     if (isAIAction(action)) {
         const mode = AI_MODES[String(cfg.mode ?? "agent")] ?? "Agent";
-        return { icon: <SparklesIcon />, tone: "purple", kicker: "AI step", title: clip(instruction) || "AI step", summary: `${mode} · billed in credits` };
+        return { icon: <SparklesIcon />, tone: "purple", kicker: "AI step", title: clip(instruction) || "New AI step", summary: `${mode} · billed in credits` };
     }
     if (isNativeAction(action)) {
         return { icon: actionIcon(action), tone: actionTone(action), kicker: "Action", title: actionLabel(action), summary: nativeSummary(action, cfg, ctx) };

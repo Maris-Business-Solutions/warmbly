@@ -744,7 +744,7 @@ export default function AutomationFlow({
                 </AnimatePresence>
             </div>
 
-            {picker && <StepPicker anchor={picker.anchor} items={items} title={picker.at.port === "error" ? "Add an error path" : "Add a step"} onPick={pick} onClose={() => setPicker(null)} />}
+            {picker && <StepPicker anchor={picker.anchor} clearance={(STEP_W / 2) * (rfRef.current?.getZoom() ?? 1)} items={items} title={picker.at.port === "error" ? "Add an error path" : "Add a step"} onPick={pick} onClose={() => setPicker(null)} />}
         </div>
     );
 }

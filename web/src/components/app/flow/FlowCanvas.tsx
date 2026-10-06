@@ -226,24 +226,26 @@ function TreeEdge({ data }: EdgeProps) {
                     </div>
                 )}
                 {c.onInsert && e.insert && (
-                    <button
-                        type="button"
-                        aria-label="Insert a step here"
-                        title="Insert a step"
-                        onClick={(ev) => {
-                            ev.stopPropagation();
-                            c.onInsert?.(e.insert!, ev.currentTarget.getBoundingClientRect());
-                        }}
-                        className={cn(
-                            "nodrag nopan pointer-events-auto absolute flex size-5 items-center justify-center rounded-full border shadow-sm transition-[colors,transform] hover:scale-110",
-                            active
-                                ? "scale-110 border-sky-400 bg-sky-50 text-sky-600"
-                                : "border-slate-200 bg-white text-slate-400 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600",
-                        )}
-                        style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${plusY}px)` }}
-                    >
-                        <PlusIcon className="size-3" />
-                    </button>
+                    // The wrapper positions it: a scale on the button would scale this offset too.
+                    <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${plusY}px)` }}>
+                        <button
+                            type="button"
+                            aria-label="Insert a step here"
+                            title="Insert a step"
+                            onClick={(ev) => {
+                                ev.stopPropagation();
+                                c.onInsert?.(e.insert!, ev.currentTarget.getBoundingClientRect());
+                            }}
+                            className={cn(
+                                "flex size-5 items-center justify-center rounded-full border shadow-sm transition-[color,background-color,border-color,scale] hover:scale-110",
+                                active
+                                    ? "scale-110 border-sky-400 bg-sky-50 text-sky-600"
+                                    : "border-slate-200 bg-white text-slate-400 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600",
+                            )}
+                        >
+                            <PlusIcon className="size-3" />
+                        </button>
+                    </div>
                 )}
             </EdgeLabelRenderer>
         </>
@@ -274,8 +276,8 @@ function GotoLink({ layout, target }: { layout: FlowLayout; target: string | nul
     );
 }
 
-// First view: the whole flow when it fits at a readable zoom, otherwise the
-// top of it at a readable zoom.
+// First view: the whole flow from the top when it fits at a readable zoom,
+// otherwise its top at a readable zoom.
 function initialViewport(layout: FlowLayout, w: number, h: number) {
     let minX = Infinity;
     let minY = Infinity;
@@ -294,7 +296,8 @@ function initialViewport(layout: FlowLayout, w: number, h: number) {
     const zoom = Math.max(0.55, Math.min(1, fit));
     const root = layout.nodes[0];
     const cx = bw * zoom <= w - pad * 2 ? (minX + maxX) / 2 : root.x + root.w / 2;
-    const y = bh * zoom <= h - pad * 2 ? (h - bh * zoom) / 2 - minY * zoom : pad - minY * zoom;
+    // Top-anchored: a flow grows downwards as it is built.
+    const y = pad - minY * zoom;
     return { x: w / 2 - cx * zoom, y, zoom };
 }
 

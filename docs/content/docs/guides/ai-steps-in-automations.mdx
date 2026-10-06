@@ -32,7 +32,7 @@ A generate step only writes text into a variable. To use it you connect a later 
 
 ## The AI switch
 
-Routes the event down exactly one of your **cases** (at least two), each its own dot on the node, with the bottom dot as the "otherwise" fallback. Put ordinary action steps on a path to make things happen for events routed down it.
+Routes the event down exactly one of your **cases** (at least two), each its own column under the switch. Put ordinary action steps under a case to make things happen for events routed down it. Steps under **Always** run whichever case is picked; a renamed case keeps the steps under it.
 
 | Decided by | How | Cost |
 |-----------|-----|------|
