@@ -16,3 +16,5 @@ overrides:
   # sharp is not overridden: its 0.35 line breaks the Cloudflare Pages build.
   nanoid: ^3.3.17
   http-cache-semantics: ^4.3.0
+  smol-toml: ^1.9.0
+  source-map-js: ^1.2.2

@@ -62,8 +62,9 @@ export type Player = { stop: () => void; restart: () => void };
 const noop: Player = { stop() {}, restart() {} };
 
 export function playCursor(root: HTMLElement, scene: Scene): Player {
-  const cursor = root.querySelector<HTMLElement>('.demo-cursor');
-  if (!cursor) return noop;
+  const cursorElement = root.querySelector<HTMLElement>('.demo-cursor');
+  if (!cursorElement) return noop;
+  const cursor = cursorElement;
 
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     root.classList.add('is-static');
