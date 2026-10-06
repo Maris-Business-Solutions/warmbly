@@ -13,6 +13,13 @@ import { dashboardCsp, mailPreviewCsp } from "../securityHeaders";
 const directory = process.cwd();
 
 describe("dashboard CSP", () => {
+    it("allows configured images but not arbitrary remote hosts on dashboard routes", () => {
+        const images = dashboardCsp({ images: ["https://api.example.test"] }).split("; ").find((directive) => directive.startsWith("img-src "));
+        expect(images).toBe("img-src 'self' data: blob: https://api.example.test");
+        expect(images).not.toMatch(/(?:^|\s)(?:https?:|\*)\s/);
+        expect(mailPreviewCsp).toContain("script-src 'none'");
+        expect(mailPreviewCsp).toContain("img-src data: https: http:");
+    });
     it("serves final Vite HTML with a matching fresh nonce for concurrent requests", async () => {
         const temporary = mkdtempSync(path.join(tmpdir(), "warmbly-csp-dev-"));
         const server = await createServer({ root: temporary, configFile: false, html: { cspNonce: noncePlaceholder }, plugins: [dashboardCspPlugin({})], server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });

@@ -16,8 +16,7 @@ export function dashboardCsp({ scripts = [], styles = [], nonce = "", connection
         `style-src 'self' ${[...authorization, ...styles].join(" ")}`,
         "style-src-attr 'unsafe-inline'",
         `connect-src 'self' ${[...connections, ...analytics].join(" ")}`,
-        // Users may paste images from any HTTPS host into their own email designs.
-        `img-src 'self' data: blob: https: ${images.join(" ")}`,
+        `img-src 'self' data: blob: ${images.join(" ")}`,
         "font-src 'self'",
         "frame-src 'self' https://challenges.cloudflare.com",
         "worker-src 'self' blob:",

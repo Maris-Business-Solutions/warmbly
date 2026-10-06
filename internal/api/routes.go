@@ -315,6 +315,8 @@ func Run(
 	// (health, signed webhooks, OAuth bouncers, worker enroll, the internal API,
 	// and /admin) are NOT versioned and stay at their bare paths.
 	v1 := r.Group("/v1")
+	v1.POST("/dashboard-image/public", m.PublicIPRateLimitMiddleware(), h.PublicDashboardImage)
+	v1.POST("/dashboard-image", m.AuthMiddleware(), m.RateLimitMiddleware(models.RateLimitRead), h.DashboardImage)
 
 	// Public invitation preview for the /invite landing page. Unauthenticated:
 	// the invite token in the query is the capability. Registered on /v1 (the

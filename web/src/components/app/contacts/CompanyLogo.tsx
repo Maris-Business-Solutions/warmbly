@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 import React from "react";
 import { companyLogosEnabled, companyLogoUrl, markLogoFailed } from "@/lib/companyLogo";
 import useAuthConfig from "@/lib/api/hooks/auth/useAuthConfig";
@@ -27,7 +29,7 @@ export default function CompanyLogo({
     return (
         <span className="relative inline-flex items-center justify-center shrink-0">
             {!loaded && fallback}
-            <img
+            <DashboardImage
                 src={src}
                 alt=""
                 loading="lazy"

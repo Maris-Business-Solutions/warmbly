@@ -1,9 +1,12 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // FormPreview — the builder's live canvas. Renders the draft through the same
 // designCore + form-theme.css pipeline as the hosted page, with selection,
 // drag-reorder (dnd-kit) and quick actions layered on top in build mode, and
 // a full paged/focus preview in design mode.
 
 import React from "react";
+import { useDashboardImage } from "@/hooks/useDashboardImage";
 import { ChevronLeftIcon, ChevronRightIcon, CopyIcon, GripVerticalIcon, Trash2Icon } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, type SortingStrategy } from "@dnd-kit/sortable";
@@ -381,6 +384,8 @@ export default function FormPreview({
     onDuplicate: (id: string) => void;
 }) {
     const r = React.useMemo(() => resolveDesign(design), [design]);
+    const { url: backgroundImage } = useDashboardImage(backgroundUrl);
+    const { url: coverImage } = useDashboardImage(coverUrl);
     React.useEffect(() => ensureFont(r), [r]);
     // Same rule as the served page: no attribution when this deployment
     // configured none, so the preview is what a visitor will actually see.
@@ -404,7 +409,7 @@ export default function FormPreview({
     let breakCount = 0;
     const breakPage = fields.map((f) => (f.type === "page_break" ? ++breakCount + 1 : 0));
 
-    const logo = logoUrl ? <img className="wf-logo" src={logoUrl} alt="" /> : null;
+    const logo = logoUrl ? <DashboardImage className="wf-logo" src={logoUrl} alt="" /> : null;
     // With a header bar the logo belongs to it, not to the body below.
     // The header only claims the logo when it is set to show one; otherwise the
     // logo keeps its own placement and the header carries just the title.
@@ -539,7 +544,7 @@ export default function FormPreview({
                 style={
                     {
                         ...designVars(r),
-                        ...(backgroundUrl ? { "--wf-bg-image": `url(${JSON.stringify(backgroundUrl)})` } : {}),
+                        ...(backgroundImage ? { "--wf-bg-image": `url(${JSON.stringify(backgroundImage)})` } : {}),
                         minHeight: 0,
                     } as React.CSSProperties
                 }
@@ -552,7 +557,7 @@ export default function FormPreview({
                             className="wf-cover"
                             style={{
                                 minHeight: 0,
-                                ...(coverUrl ? { backgroundImage: `url(${JSON.stringify(coverUrl)})` } : {}),
+                                ...(coverImage ? { backgroundImage: `url(${JSON.stringify(coverImage)})` } : {}),
                             }}
                         >
                             {bodyLogo}

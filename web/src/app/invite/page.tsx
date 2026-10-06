@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // Public invitation landing page (/invite?token=...).
 //
 // The token is the capability: anyone holding it can see who invited them
@@ -116,7 +118,7 @@ export default function InviteAcceptPage() {
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="size-10 rounded-lg bg-sky-50 border border-sky-100 text-sky-700 flex items-center justify-center text-[14px] font-semibold overflow-hidden shrink-0">
                                     {preview.data.organization_avatar ? (
-                                        <img src={preview.data.organization_avatar} alt="" className="w-full h-full object-cover" />
+                                        <DashboardImage src={preview.data.organization_avatar} alt="" className="w-full h-full object-cover" />
                                     ) : (
                                         preview.data.organization_name.slice(0, 2).toUpperCase()
                                     )}

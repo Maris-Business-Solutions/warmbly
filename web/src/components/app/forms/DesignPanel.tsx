@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // DesignPanel — the builder's right rail on the Design tab: theme presets,
 // layout/mode, branding images, colors and the button. Everything except the
 // Branding uploads writes into the draft's design object; the canvas
@@ -188,7 +190,7 @@ function ImageRow({
             <div className="flex items-center gap-2">
                 <span className="size-9 rounded-md border border-slate-200 bg-slate-50 shrink-0 overflow-hidden inline-flex items-center justify-center">
                     {url ? (
-                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        <DashboardImage src={url} alt="" className="w-full h-full object-cover" />
                     ) : (
                         <ImageIcon className="w-3.5 h-3.5 text-slate-300" />
                     )}

@@ -13,6 +13,7 @@
 // endpoints — the page wires `onUpload` to the right mutation.
 
 import React from "react";
+import { DashboardImage } from "@/components/ui/dashboard-image";
 import { CameraIcon, ImageIcon, Loader2Icon, TrashIcon } from "lucide-react";
 import toast from "react-hot-toast/headless";
 import {
@@ -118,7 +119,7 @@ export function AvatarUploader({
                 className={`group relative ${dim} ${radius} bg-slate-900 text-white flex items-center justify-center shrink-0 overflow-hidden disabled:opacity-60 transition-shadow hover:ring-2 hover:ring-slate-300 ring-offset-1`}
             >
                 {displayUrl ? (
-                    <img
+                    <DashboardImage
                         src={displayUrl}
                         alt=""
                         className={`absolute inset-0 w-full h-full object-cover ${radius}`}

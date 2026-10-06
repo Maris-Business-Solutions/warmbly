@@ -1,3 +1,5 @@
+import { DashboardImage } from "@/components/ui/dashboard-image";
+
 // app.warmbly.com/connect?code=XXXX-XXXX — a signed-in member approves a
 // self-hosted instance's request to warm its mailboxes in this workspace.
 // Standalone on the auth screen's sky: enter code, review, done.
@@ -112,9 +114,9 @@ function ConnectInner() {
                 <div className="sky-base" />
                 <div className="sky-breathe" />
                 <div className="sun-glow" />
-                <img src="/backdrops/cloud-3.webp" alt="" decoding="async" className="cloud-drift cloud-1 absolute select-none" style={{ top: "6%", left: "-10%", width: 360, opacity: 0.55, height: "auto" }} />
-                <img src="/backdrops/cloud-4.webp" alt="" decoding="async" className="cloud-drift cloud-2 absolute select-none" style={{ bottom: "8%", right: "-8%", width: 320, opacity: 0.5, height: "auto" }} />
-                <img src="/backdrops/cloud-1.webp" alt="" decoding="async" className="cloud-drift cloud-1 absolute select-none" style={{ top: "44%", right: "14%", width: 220, opacity: 0.35, height: "auto" }} />
+                <DashboardImage src="/backdrops/cloud-3.webp" alt="" decoding="async" className="cloud-drift cloud-1 absolute select-none" style={{ top: "6%", left: "-10%", width: 360, opacity: 0.55, height: "auto" }} />
+                <DashboardImage src="/backdrops/cloud-4.webp" alt="" decoding="async" className="cloud-drift cloud-2 absolute select-none" style={{ bottom: "8%", right: "-8%", width: 320, opacity: 0.5, height: "auto" }} />
+                <DashboardImage src="/backdrops/cloud-1.webp" alt="" decoding="async" className="cloud-drift cloud-1 absolute select-none" style={{ top: "44%", right: "14%", width: 220, opacity: 0.35, height: "auto" }} />
             </div>
 
             <div className="relative z-10 w-full max-w-[560px]">
@@ -367,7 +369,7 @@ function ReviewStep({
                                         }`}
                                     >
                                         <span className={`size-8 rounded-md inline-flex items-center justify-center shrink-0 overflow-hidden ${on ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600"}`}>
-                                            {o.avatar ? <img src={o.avatar} alt="" className="size-full object-cover" /> : <BuildingIcon className="w-4 h-4" />}
+                                            {o.avatar ? <DashboardImage src={o.avatar} alt="" className="size-full object-cover" /> : <BuildingIcon className="w-4 h-4" />}
                                         </span>
                                         <span className="min-w-0 flex-1">
                                             <span className="block text-[13.5px] font-medium text-slate-900 truncate">{o.name}</span>

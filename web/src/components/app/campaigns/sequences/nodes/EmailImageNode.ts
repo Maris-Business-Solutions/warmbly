@@ -12,6 +12,8 @@
 
 import { mergeAttributes } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
+import { DOMSerializer } from "@tiptap/pm/model";
+import { acquireDashboardImage } from "@/lib/dashboardImage";
 
 export type ImageAlign = "left" | "center" | "right";
 
@@ -79,6 +81,59 @@ function marginFor(align: ImageAlign): string {
 }
 
 export const EmailImage = Image.extend({
+    addNodeView() {
+        return ({ node }) => {
+            const dom = document.createElement("div");
+            dom.className = "email-image-preview";
+            dom.contentEditable = "false";
+            let current = node;
+            let lease: ReturnType<typeof acquireDashboardImage> | undefined;
+            let source: string | undefined;
+            let preview: string | undefined;
+            let alive = true;
+            const draw = () => {
+                const displayNode = current.type.create({ ...current.attrs, src: null });
+                const { dom: content } = DOMSerializer.renderSpec(document, current.type.spec.toDOM!(displayNode));
+                dom.replaceChildren(content);
+                const image = dom.querySelector("img")!;
+                if (preview) image.src = preview;
+                dom.style.cssText = `width:${current.attrs.width ? `${current.attrs.width}px` : "fit-content"};max-width:100%;${marginFor(current.attrs.align as ImageAlign)}`;
+            };
+            const update = () => {
+                const nextSource = String(current.attrs.src ?? "");
+                if (nextSource !== source) {
+                    dom.removeAttribute("data-image-unavailable");
+                    lease?.release();
+                    source = nextSource;
+                    preview = undefined;
+                    if (source) {
+                        const nextLease = acquireDashboardImage(source);
+                        lease = nextLease;
+                        nextLease.promise.then((url) => {
+                            if (alive && lease === nextLease) { preview = url; draw(); }
+                        }, () => {
+                            if (alive && lease === nextLease) dom.setAttribute("data-image-unavailable", "true");
+                        });
+                    }
+                }
+                draw();
+            };
+            dom.addEventListener("click", (event) => event.preventDefault());
+            update();
+            return {
+                dom,
+                update: (updated) => {
+                    if (updated.type !== current.type) return false;
+                    current = updated;
+                    update();
+                    return true;
+                },
+                ignoreMutation: () => true,
+                destroy: () => { alive = false; lease?.release(); },
+            };
+        };
+    },
+
     addAttributes() {
         return {
             ...this.parent?.(),

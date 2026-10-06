@@ -62,6 +62,7 @@ import RichTextAIEdit from "@/components/app/ai/RichTextAIEdit";
 import RichTextAICaret from "@/components/app/ai/RichTextAICaret";
 import { useForms } from "@/lib/api/hooks/app/forms";
 import { EmailImage } from "./nodes/EmailImageNode";
+import { EmailImagePreviews } from "./nodes/EmailImagePreviews";
 import { EmailButton } from "./nodes/EmailButtonNode";
 import { ImageBubble, ImageMenu } from "./ImageControls";
 import { ButtonBubble, ButtonInsert } from "./ButtonControls";
@@ -180,6 +181,7 @@ export default function RichTextEditor({
             ListItem,
             Link.configure({ openOnClick: false, autolink: true }),
             EmailImage,
+            EmailImagePreviews,
             EmailButton,
             // Real email markup: table layout, <div> containers, colours,
             // fonts and alignment. Without these a pasted design keeps its

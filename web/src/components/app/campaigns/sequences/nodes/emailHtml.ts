@@ -263,6 +263,9 @@ function hasBlockChild(element: HTMLElement): boolean {
 // table is the editor mangling a design. It is also a third producer of the
 // style attribute, which truncates any value holding a colon.
 export const EmailTable = Table.extend({
+    addNodeView() {
+        return null;
+    },
     renderHTML({ HTMLAttributes }) {
         return ["table", mergeAttributes(HTMLAttributes), ["tbody", 0]];
     },
