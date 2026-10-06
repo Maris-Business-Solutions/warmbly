@@ -7,9 +7,9 @@ import CTA from '../components/CTA.astro';
 // ===========================================================================
 // Campaigns page. The centrepiece is a faithful, static recreation of the
 // in-product sequence builder (web/src/components/app/campaigns/sequences):
-// email-step cards with a sky header + "On reply" footer, IF/branch nodes with
-// an "instant" badge, action nodes, stop nodes, and wait pills on the
-// connectors. Numbers are real defaults from the codebase:
+// cards with an icon tile, a kicker, a title and a one-line summary; branch
+// pills heading one column per path; and wait chips on the lines into each
+// step. Numbers are real defaults from the codebase:
 //   internal/config/constants.go      (50/day cap, 600s gap)
 //   internal/scheduler/campaign_scheduler.go
 //   web sequence builder              (wait_after 0..60 days, weight 1..100)
@@ -23,12 +23,12 @@ const stepTypes = [
   {
     icon: 'mail', name: 'Email step', tag: 'sends copy',
     badge: 'bg-sky-100 text-sky-600 ring-sky-200/70',
-    desc: 'Sends one templated email. Holds the subject, the body, any A/B variants, and the wait before whatever comes next.',
+    desc: 'Sends one templated email. Holds the subject, the body, any A/B variants, and the wait before it goes out.',
   },
   {
     icon: 'gitBranch', name: 'Branch', tag: 'routes contacts',
     badge: 'bg-sky-100 text-sky-600 ring-sky-200/70',
-    desc: 'Splits the path on a signal: opened, clicked, replied, or a share at random. Then and else can each point anywhere.',
+    desc: 'Splits the path on a signal: opened, clicked, replied, or a share at random. Each signal gets its own column, and Otherwise takes everyone else.',
   },
   {
     icon: 'shuffle', name: 'Action', tag: 'side effect',
@@ -36,9 +36,9 @@ const stepTypes = [
     desc: 'No email. Add a tag, create a task or deal, move a CRM stage, notify a channel, or unsubscribe the contact.',
   },
   {
-    icon: 'flag', name: 'Stop', tag: 'ends here',
+    icon: 'flag', name: 'End', tag: 'ends a path',
     badge: 'bg-rose-100 text-rose-600 ring-rose-200/70',
-    desc: 'Closes the sequence for that contact. Reached on a break-up step, a met goal, or an else with nowhere left to go.',
+    desc: 'Closes the sequence for that contact. A path with nothing under it ends there, and a condition can end it outright.',
   },
 ];
 
@@ -120,52 +120,45 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
     <!-- Floating fragments that tease the builder. xl and up only. -->
     <div class="hidden xl:block absolute inset-0 z-0 pointer-events-none select-none" aria-hidden="true">
 
-      <!-- TOP-LEFT · a mini email step node, the start -->
+      <!-- TOP-LEFT · a mini first-email card -->
       <div class="hero-float absolute top-[12%] left-[calc(50%_-_484px)] z-30" style="--drift:-10px;animation-duration:7.6s;animation-delay:-1.4s">
-        <div class="rotate-[-2deg] w-[210px] rounded-[12px] bg-white ring-1 ring-slate-900/5 shadow-[0_2px_4px_-2px_rgba(2,32,71,0.25),0_18px_36px_-12px_rgba(2,32,71,0.5)] overflow-hidden">
-          <div class="flex items-center gap-2 border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-white px-2.5 py-1.5">
-            <span class="inline-flex size-5 items-center justify-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200/70"><Icon name="mail" size={11} /></span>
-            <span class="flex-1 truncate text-[12px] font-semibold text-slate-800">First touch</span>
-            <span class="rounded bg-sky-600 px-1.5 py-px text-[8.5px] font-semibold uppercase tracking-[0.12em] text-white">Start</span>
-          </div>
-          <div class="px-2.5 py-1.5">
-            <div class="text-[8.5px] font-semibold uppercase tracking-[0.14em] text-slate-300">Email</div>
-            <div class="mt-0.5 truncate text-[11px] text-slate-500">Quick question, Maya</div>
+        <div class="rotate-[-2deg] w-[230px] flex items-center gap-2 rounded-[12px] bg-white ring-1 ring-slate-900/5 shadow-[0_2px_4px_-2px_rgba(2,32,71,0.25),0_18px_36px_-12px_rgba(2,32,71,0.5)] px-2.5 py-2">
+          <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-sky-50 text-sky-600 ring-1 ring-inset ring-sky-100"><Icon name="mail" size={13} /></span>
+          <div class="min-w-0">
+            <div class="truncate text-[12px] font-medium text-slate-900">First touch</div>
+            <div class="truncate text-[11px] text-slate-400">First email<span class="text-slate-500"> · Quick question, Maya</span></div>
           </div>
         </div>
       </div>
 
-      <!-- TOP-RIGHT · an IF branch chip with instant badge (focal) -->
+      <!-- TOP-RIGHT · a branch pill over its column (focal) -->
       <div class="hero-float absolute top-[14%] right-[calc(50%_-_470px)] z-30" style="--drift:-12px;animation-duration:7.2s;animation-delay:-2.1s">
-        <div class="rotate-[2deg] inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-gradient-to-b from-sky-50 to-white px-2.5 py-1.5 shadow-[0_2px_4px_-2px_rgba(2,32,71,0.25),0_16px_32px_-12px_rgba(2,32,71,0.5)]">
-          <Icon name="gitBranch" size={12} class="text-sky-600" />
-          <span class="text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-500">if</span>
-          <span class="text-[12px] font-medium text-sky-800">opened &ge; 1</span>
-          <span class="inline-flex items-center gap-0.5 rounded bg-violet-50 px-1 py-px text-[8.5px] font-semibold uppercase tracking-[0.1em] text-violet-600 ring-1 ring-violet-200/70"><Icon name="zap" size={8} />instant</span>
+        <div class="rotate-[2deg] inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[12px] font-medium text-emerald-700 shadow-[0_2px_4px_-2px_rgba(2,32,71,0.25),0_16px_32px_-12px_rgba(2,32,71,0.5)]">
+          Opened the email within 2d &middot; instant
         </div>
       </div>
 
-      <!-- MID-RIGHT · a wait pill on a connector -->
+      <!-- MID-RIGHT · a wait chip on a line -->
       <div class="hero-float absolute top-[30%] right-[calc(50%_-_404px)] z-20" style="--drift:-7px;animation-duration:8.2s;animation-delay:-0.7s">
         <div class="rotate-[-2deg] inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-white/95 ring-1 ring-slate-900/5 shadow-[0_8px_20px_-10px_rgba(2,32,71,0.4)]">
           <Icon name="clock" size={12} class="text-slate-400" />
-          <span class="font-mono text-[11px] font-semibold text-slate-700">wait 2 days</span>
+          <span class="text-[11.5px] font-medium text-slate-600">2 days</span>
         </div>
       </div>
 
-      <!-- BOTTOM-LEFT · an action node fragment -->
+      <!-- BOTTOM-LEFT · an action card fragment -->
       <div class="hero-float absolute top-[82%] left-[calc(50%_-_466px)] z-20" style="--drift:-9px;animation-duration:7.9s;animation-delay:-2.6s">
-        <div class="rotate-[2deg] inline-flex items-center gap-2 rounded-[12px] bg-white ring-1 ring-slate-900/5 shadow-[0_2px_3px_-2px_rgba(2,32,71,0.2),0_14px_30px_-14px_rgba(2,32,71,0.45)] px-3 py-2">
-          <span class="inline-flex size-5 items-center justify-center rounded-md bg-slate-100 ring-1 ring-slate-200/70"><Icon name="send" size={11} class="text-sky-600" /></span>
-          <span class="text-[12px] font-semibold text-slate-800">Notify #ae-west</span>
+        <div class="rotate-[2deg] inline-flex items-center gap-2 rounded-[12px] bg-white ring-1 ring-slate-900/5 shadow-[0_2px_3px_-2px_rgba(2,32,71,0.2),0_14px_30px_-14px_rgba(2,32,71,0.45)] px-2.5 py-2">
+          <span class="inline-flex size-6 items-center justify-center rounded-md bg-sky-50 text-sky-600 ring-1 ring-inset ring-sky-100"><Icon name="send" size={11} /></span>
+          <span class="text-[12px] font-semibold text-slate-900">Notify #ae-west</span>
         </div>
       </div>
 
-      <!-- BOTTOM-RIGHT · a stop node fragment -->
+      <!-- BOTTOM-RIGHT · an End terminal -->
       <div class="hero-float absolute top-[85%] right-[calc(50%_-_438px)] z-10" style="--drift:-8px;animation-duration:7.0s;animation-delay:-3.2s">
-        <div class="rotate-[-2deg] inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 shadow-[0_10px_24px_-12px_rgba(2,32,71,0.4)]">
+        <div class="rotate-[-2deg] inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 shadow-[0_10px_24px_-12px_rgba(2,32,71,0.4)]">
           <Icon name="flag" size={11} class="text-rose-500" />
-          <span class="text-[11.5px] font-medium text-rose-600">Ends here</span>
+          <span class="text-[11.5px] font-medium text-slate-600">End</span>
         </div>
       </div>
 
@@ -224,147 +217,80 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
       <!-- Builder frame -->
       <div class="rounded-[16px] bg-white ring-1 ring-[color:var(--border)] overflow-hidden shadow-[0_40px_90px_-30px_rgba(2,32,71,0.32),0_12px_30px_-12px_rgba(15,23,42,0.1)]">
 
-        <!-- Toolbar, mirrors the in-product top panel -->
+        <!-- Toolbar, mirrors the in-product canvas panels -->
         <div class="flex items-center justify-between gap-3 px-3 sm:px-4 py-2.5 border-b border-[color:var(--border)] bg-[color:var(--surface-1)]/70">
-          <div class="flex items-center gap-1.5">
-            <span class="inline-flex h-8 items-center gap-1.5 rounded-md bg-sky-600 px-3 text-[12px] font-medium text-white shadow-sm">
-              <Icon name="zap" size={13} /> Add step
+          <span class="inline-flex items-center gap-2 h-8 rounded-md border border-slate-200 bg-white px-2.5">
+            <span class="text-[11.5px] text-slate-600">Stop on reply</span>
+            <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-sky-600">
+              <span class="inline-block size-4 translate-x-4 rounded-full bg-white shadow-sm"></span>
             </span>
-            <span class="hidden sm:inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700">
-              <Icon name="shuffle" size={13} class="text-slate-400" /> Tidy up
-            </span>
-            <span class="inline-flex items-center gap-2 h-8 rounded-md border border-slate-200 bg-white px-2.5">
-              <span class="text-[11.5px] text-slate-600">Stop on reply</span>
-              <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-sky-600">
-                <span class="inline-block size-4 translate-x-4 rounded-full bg-white shadow-sm"></span>
-              </span>
-            </span>
-          </div>
-          <div class="hidden sm:flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-            <span class="inline-flex size-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-500">&minus;</span>
-            <span class="tabular-nums">100%</span>
-            <span class="inline-flex size-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-500">+</span>
+          </span>
+          <div class="hidden sm:flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5">
+            <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500">&minus;</span>
+            <span class="min-w-11 text-center text-[11.5px] tabular-nums text-slate-600">100%</span>
+            <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500">+</span>
           </div>
         </div>
 
         <!-- Canvas -->
         <div class="builder-canvas relative px-4 sm:px-8 py-10 md:py-14">
-          <div class="relative mx-auto max-w-[720px]">
+          <div class="relative mx-auto max-w-[640px]">
 
-            <!-- A · email step (start) -->
+            <!-- Start -->
             <div class="flow-node mx-auto w-full sm:w-[280px]" style="--i:0">
-              <div class="rounded-xl border border-slate-200 bg-white shadow-sm">
-                <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-white px-3 py-2">
-                  <span class="inline-flex size-6 items-center justify-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200/70"><Icon name="mail" size={13} /></span>
-                  <span class="flex-1 truncate text-[13px] font-semibold text-slate-800">First touch</span>
-                  <span class="rounded bg-sky-600 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.12em] text-white">Start</span>
-                </div>
-                <div class="px-3 py-2">
-                  <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Email</div>
-                  <div class="mt-0.5 truncate text-[12px] text-slate-500">{`Quick question, {{.FirstName}}`}</div>
-                </div>
-                <div class="flex items-center gap-1.5 border-t border-slate-200/70 px-3 py-1.5 text-[10.5px] font-medium text-violet-600">
-                  <Icon name="zap" size={11} /> On reply
-                </div>
+              <div class="flow-card">
+                <span class="flow-tile bg-violet-50 text-violet-600 ring-violet-100"><Icon name="arrowRight" size={15} /></span>
+                <div class="min-w-0"><div class="flow-title">Contact enters the campaign</div><div class="flow-sub"><span class="flow-kicker">Start</span> · First email right away</div></div>
               </div>
             </div>
 
-            <!-- connector + wait -->
             <div class="flow-conn flow-node" style="--i:1">
-              <span class="flow-line"></span>
-              <span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> wait 2 days</span>
-              <span class="flow-line"></span>
+              <span class="flow-line h-8"></span>
             </div>
 
-            <!-- B · branch -->
-            <div class="flow-node flex justify-center" style="--i:2">
-              <div class="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-gradient-to-b from-sky-50 to-white px-2.5 py-1.5 shadow-sm">
-                <Icon name="gitBranch" size={13} class="text-sky-600" />
-                <span class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-sky-500">if</span>
-                <span class="text-[12.5px] font-medium text-sky-800">opened &ge; 1?</span>
-                <span class="inline-flex items-center gap-0.5 rounded bg-violet-50 px-1 py-px text-[8.5px] font-semibold uppercase tracking-[0.1em] text-violet-600 ring-1 ring-violet-200/70"><Icon name="zap" size={8} /> instant</span>
+            <!-- First email -->
+            <div class="flow-node mx-auto w-full sm:w-[280px]" style="--i:2">
+              <div class="flow-card">
+                <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="mail" size={15} /></span>
+                <div class="min-w-0"><div class="flow-title">First touch</div><div class="flow-sub"><span class="flow-kicker">First email</span> · {`Quick question, {{.FirstName}}`}</div></div>
               </div>
             </div>
 
-            <!-- split connector (sm+ flourish) -->
             <div class="flow-node hidden sm:flex justify-center" style="--i:3">
               <span class="flow-line h-5"></span>
             </div>
 
-            <!-- two columns, each headed by its own branch label -->
+            <!-- one column per path, each headed by its pill -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-8">
 
-              <!-- THEN column -->
               <div class="flow-node" style="--i:4">
                 <div class="flex flex-col items-center">
-                  <span class="flow-branch flow-branch-then">then · opened</span>
+                  <span class="flow-branch flow-branch-then">Opened the email within 2d &middot; instant</span>
                   <span class="flow-line h-4"></span>
                 </div>
-                <!-- C · email -->
-                <div class="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-white px-3 py-2">
-                    <span class="inline-flex size-6 items-center justify-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200/70"><Icon name="mail" size={13} /></span>
-                    <span class="flex-1 truncate text-[13px] font-semibold text-slate-800">Case study nudge</span>
-                  </div>
-                  <div class="px-3 py-2">
-                    <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Email</div>
-                    <div class="mt-0.5 truncate text-[12px] text-slate-500">{`Saw {{.Company}} shipped {{.Trigger}}`}</div>
-                  </div>
-                  <div class="flex items-center gap-1.5 border-t border-slate-200/70 px-3 py-1.5 text-[10.5px] font-medium text-violet-600">
-                    <Icon name="zap" size={11} /> On reply
-                  </div>
+                <div class="flow-card">
+                  <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="mail" size={15} /></span>
+                  <div class="min-w-0"><div class="flow-title">Case study nudge</div><div class="flow-sub"><span class="flow-kicker">Reply in thread</span> · {`Quick question, {{.FirstName}}`}</div></div>
                 </div>
-
-                <div class="flow-conn"><span class="flow-line"></span><span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> wait 3 days</span><span class="flow-line"></span></div>
-
-                <!-- E · email -->
-                <div class="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-white px-3 py-2">
-                    <span class="inline-flex size-6 items-center justify-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200/70"><Icon name="mail" size={13} /></span>
-                    <span class="flex-1 truncate text-[13px] font-semibold text-slate-800">Last call</span>
-                  </div>
-                  <div class="px-3 py-2">
-                    <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Email</div>
-                    <div class="mt-0.5 truncate text-[12px] text-slate-500">Should I close this out?</div>
-                  </div>
+                <div class="flow-conn"><span class="flow-line"></span><span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> 3 days</span><span class="flow-line"></span></div>
+                <div class="flow-card">
+                  <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="mail" size={15} /></span>
+                  <div class="min-w-0"><div class="flow-title">Last call</div><div class="flow-sub"><span class="flow-kicker">Email</span> · Should I close this out?</div></div>
                 </div>
-
-                <div class="flow-conn"><span class="flow-line"></span></div>
-
-                <!-- F · stop -->
-                <div class="flex justify-center">
-                  <span class="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11.5px] font-medium text-rose-600">
-                    <Icon name="flag" size={11} /> Ends here
-                  </span>
-                </div>
+                <div class="flow-conn"><span class="flow-line"></span><span class="flow-add">+</span></div>
               </div>
 
-              <!-- ELSE column -->
               <div class="flow-node" style="--i:5">
                 <div class="flex flex-col items-center">
-                  <span class="flow-branch flow-branch-else">else · no open · 4d</span>
+                  <span class="flow-branch flow-branch-else">Otherwise</span>
                   <span class="flow-line h-4"></span>
                 </div>
-                <!-- D · action -->
-                <div class="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-3 py-2">
-                    <span class="inline-flex size-6 items-center justify-center rounded-md bg-slate-100 ring-1 ring-slate-200/70"><Icon name="shuffle" size={12} class="text-sky-600" /></span>
-                    <span class="flex-1 truncate text-[13px] font-semibold text-slate-800">Move deal stage</span>
-                  </div>
-                  <div class="px-3 py-2">
-                    <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Action</div>
-                    <div class="mt-0.5 truncate text-[12px] text-slate-500">HubSpot &middot; to Nurture</div>
-                  </div>
+                <div class="flow-conn"><span class="flow-wait"><Icon name="clock" size={12} class="text-slate-400" /> 4 days</span><span class="flow-line"></span></div>
+                <div class="flow-card">
+                  <span class="flow-tile bg-sky-50 text-sky-600 ring-sky-100"><Icon name="shuffle" size={14} /></span>
+                  <div class="min-w-0"><div class="flow-title">Move deal stage</div><div class="flow-sub"><span class="flow-kicker">Action</span> · Move the deal forward</div></div>
                 </div>
-
-                <div class="flow-conn"><span class="flow-line"></span></div>
-
-                <!-- G · stop -->
-                <div class="flex justify-center">
-                  <span class="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11.5px] font-medium text-rose-600">
-                    <Icon name="flag" size={11} /> Ends here
-                  </span>
-                </div>
+                <div class="flow-conn"><span class="flow-line"></span><span class="flow-add">+</span></div>
               </div>
 
             </div>
@@ -373,8 +299,8 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
 
         <!-- footer strip -->
         <div class="px-4 sm:px-7 py-3 border-t border-[color:var(--border)] bg-[color:var(--surface-1)]/60 flex flex-wrap items-center justify-between gap-2 text-[11.5px] font-mono text-muted-foreground">
-          <span>4 steps &middot; 1 branch &middot; 1 action</span>
-          <span class="hidden sm:inline">Saved as v3 &middot; in-flight contacts stay on the version they started</span>
+          <span>3 emails &middot; 1 condition &middot; 1 action</span>
+          <span class="hidden sm:inline">Saved as you edit &middot; a + on any line adds a step there</span>
         </div>
       </div>
     </div>
@@ -391,7 +317,7 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
           Four kinds of node.
         </h2>
         <p class="mt-4 text-[15px] text-foreground/70 leading-relaxed">
-          Everything on the canvas is one of four nodes. Drop them in, wire them up, and the sequence runs exactly as it reads.
+          Everything on the canvas is one of four kinds of step. Add each from the + on any line, and the sequence runs exactly as it reads.
         </p>
       </div>
 
@@ -768,22 +694,35 @@ const totalCap = senderPool.reduce((a, m) => a + m.cap, 0);
     .flow-conn { display: flex; flex-direction: column; align-items: center; }
     .flow-line { width: 1.5px; height: 1rem; background: var(--border-strong); }
     .flow-wait {
-      display: inline-flex; align-items: center; gap: 0.35rem;
-      height: 1.6rem; padding-inline: 0.6rem; margin-block: 0.15rem;
-      border-radius: 9999px; background: #fff;
-      border: 1px solid var(--border);
-      font-family: ui-monospace, monospace; font-size: 11px; color: #475569;
-      box-shadow: 0 4px 10px -6px rgba(15,23,42,0.25);
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      margin-block: 0.25rem; font-size: 11px; color: #94a3b8;
     }
     .flow-branch {
       display: inline-flex; align-items: center;
-      height: 1.25rem; padding-inline: 0.45rem;
-      border-radius: 0.3rem;
-      font-family: ui-monospace, monospace; font-size: 10px;
-      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 1px 0.5rem; border-radius: 9999px;
+      font-size: 11px; font-weight: 500; line-height: 18px;
     }
-    .flow-branch-then { background: #f0f9ff; color: #0369a1; box-shadow: inset 0 0 0 1px #bae6fd; }
-    .flow-branch-else { background: #f1f5f9; color: #475569; box-shadow: inset 0 0 0 1px #e2e8f0; }
+    .flow-branch-then { background: #ecfdf5; color: #047857; box-shadow: inset 0 0 0 1px rgb(167 243 208 / 0.8); }
+    .flow-branch-else { background: #fff; color: #64748b; box-shadow: inset 0 0 0 1px #e2e8f0; }
+    .flow-card {
+      display: flex; align-items: center; gap: 0.65rem;
+      height: 3.5rem; padding: 0 2rem 0 0.65rem; border-radius: 0.75rem;
+      background: #fff; border: 1px solid rgb(226 232 240 / 0.9);
+      box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    }
+    .flow-tile {
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 2rem; height: 2rem; border-radius: 0.5rem;
+      box-shadow: inset 0 0 0 1px var(--tw-ring-color, #e2e8f0);
+    }
+    .flow-kicker { color: #94a3b8; }
+    .flow-title { font-size: 13px; font-weight: 500; line-height: 1.25rem; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .flow-sub { font-size: 11.5px; line-height: 1rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .flow-add {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 9999px;
+      border: 1px solid #e2e8f0; background: #fff; color: #94a3b8; font-size: 13px; line-height: 1;
+    }
 
     .flow-node { animation: flowReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i, 0) * 90ms); }
     @keyframes flowReveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

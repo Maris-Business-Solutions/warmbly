@@ -19,9 +19,8 @@ export default interface Sequence {
     // subject of its own: a reply carries the conversation's.
     thread_reply: boolean;
 
-    // Persisted canvas coordinates in the sequence builder. 0/0 means "not
-    // placed yet" (the editor auto-arranges until a step is first dragged).
-    // Written only through the layout endpoint, never a content PATCH.
+    // Canvas coordinates set through the layout endpoint. The dashboard lays
+    // steps out from their branches and does not read them.
     x: number;
     y: number;
 

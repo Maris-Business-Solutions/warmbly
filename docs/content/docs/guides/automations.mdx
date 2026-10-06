@@ -19,14 +19,19 @@ flowchart LR
 
 Open the **Automations** tab. Each automation has a name, an on/off toggle, and a canvas. **Off** never fires, even from a campaign step.
 
-- The **Trigger** node sits at the top and cannot be deleted.
-- Drag a node's dot onto another node to connect, or onto empty canvas to pick what comes next (AI step, AI switch, condition, action, or **Stop**) already connected.
-- Click a node to edit it. Click a connection and press `Delete` to remove it.
-- **Add** places a node; **Tidy up** auto-arranges.
-- Card positions save on their own, and the canvas is collaborative: teammates' cursors, live card movement, their selections outlined in their color. Press `/` to chat. See [Collaboration](/guides/collaboration/).
+The canvas lays itself out: the **Trigger** sits at the top and every step runs top to bottom below it. You never draw lines or arrange cards. Scroll with two fingers or drag empty space to move around; pinch, or hold `Ctrl`/`Cmd` and scroll, to zoom. `Shift+1` fits the whole flow and `Cmd/Ctrl+0` returns to 100%.
+
+- Hover any line and press its **+** to insert a step there, or press the **+** at the end of a path to add one after it. The picker is searchable and works from the keyboard (arrows, `Enter`, `Esc`).
+- An **If / else** splits into **Yes** and **No** columns. An **AI switch** gets one column per case. Inserting either one in the middle of a path keeps the steps that were below it on the first branch.
+- **Go to a step** (at the end of a path) continues that path at a step already in the flow, shown as a chip. Hover it to see where it leads. Only steps that cannot loop back are offered.
+- **End here** stops a path explicitly.
+- Click a step to edit it in the side panel. Adding or removing a step moves the rest of the flow into place with a short animation. Its **⋯** menu duplicates it, adds an on-error path, or deletes it. Deleting a step reconnects what was before it to what came after; deleting a branching step also removes the steps only its branches led to, after asking.
+- A step that still needs setup has an amber dot by its name (hover it for what is missing), and the **issues** button in the header lists every one. Save is refused until they are fixed.
+- `Cmd/Ctrl+Z` undoes and `Shift+Cmd+Z` (or `Ctrl+Y`) redoes any edit, `Cmd/Ctrl+S` saves, and `Delete` removes the selected step.
+- The canvas is collaborative: teammates' cursors and their selected steps, outlined in their color. Press `/` to chat. See [Collaboration](/guides/collaboration/).
 
 <Callout type="info" title="Save before it runs">
-Triggers, conditions, and actions only take effect after **Save** (card positions are the exception). **Test** saves first, then dry-runs.
+Triggers, conditions, and actions only take effect after **Save**. **Test** saves first, then dry-runs.
 </Callout>
 
 ## Triggers
@@ -61,7 +66,7 @@ Pick the trigger and **save**, and the editor shows a unique URL. Anything that 
 
 ## IF conditions
 
-An IF node splits into a **yes** path (right dot) and a **no** path (bottom dot). Only the matching branch runs; an unconnected branch just ends, or drag it to a **Stop** node.
+An **If / else** splits into a **Yes** column and a **No** column. Only the matching branch runs; an empty branch just ends.
 
 Pick a **field**, an **operator**, and a **value**. Fields depend on the trigger, so they are always meaningful.
 
@@ -139,7 +144,7 @@ A flow that creates a contact can be the reason a **Contact created** flow runs.
 
 ### The on-error branch
 
-Every action has a red dot on its right edge. Drag from it to handle failures (a rejected Slack message, a CRM timeout).
+Choose **Add an error path** from an action's **⋯** menu to handle failures (a rejected Slack message, a CRM timeout). The action then splits into a **Then** column and an **On error** column.
 
 - **With** an on-error branch connected, a failure follows it and the run is **not** marked failed, like a try/catch. The normal path is skipped.
 - **Without** one, the failure is recorded in History and the run is marked errored, but the flow continues down the normal path best-effort, so one bad step never blocks the rest.
@@ -157,7 +162,7 @@ Unknown tokens render empty rather than failing.
 
 ## Testing and history
 
-**Test** saves the canvas and dry-runs it against sample data: no messages sent, no records changed. It shows the exact path taken and a preview of each action. AI steps are the exception, running for real so you see actual output, which spends one credit per AI step.
+**Test** saves the canvas and dry-runs it against sample data: no messages sent, no records changed. It shows the exact path taken, on the canvas (each step it reached is marked, the rest fade back) and as a list with a preview of each action. AI steps are the exception, running for real so you see actual output, which spends one credit per AI step.
 
 **History** shows recent real runs: success or error, start time, and per-step results (error text on failure, a short summary on success). It updates live as the automation fires.
 

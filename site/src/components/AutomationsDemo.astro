@@ -1,24 +1,27 @@
 ---
 /**
  * Live demo of the Warmbly automation builder (/app/automations/:id),
- * mirrored from web/src/components/app/automations/AutomationFlow.tsx:
+ * mirrored from web/src/components/app/automations/AutomationFlow.tsx and the
+ * shared canvas in web/src/components/app/flow:
  *
  *   - the builder header: back, the name input, the Active switch, then
- *     History / Test / Tidy up / Saved
- *   - the React Flow canvas: dots at 24px, the top-left Add action split
- *     button and Add condition, the bottom-center hint, TriggerNode /
- *     ConditionNode / ActionNode
- *   - the Test run side panel (InsightsPanel in a SidePanel): the dry-run
- *     intro, the editable sample event, the steps to run, the Run test
- *     button, then one NodeResultRow per node the run touched
+ *     Undo / Redo, History, Test and Saved
+ *   - the tree canvas at the zoom it opens at: StepCard nodes laid out top
+ *     down on a dot grid, the If / else splitting into Yes and No columns, a +
+ *     at the end of each path (a line's own + shows on hover), zoom controls
+ *     bottom left
+ *   - the Test panel (InsightsPanel in a bare FlowPanel, 400px beside the
+ *     canvas): the dry-run intro, the sample event, the steps to run, Run
+ *     test, then one NodeResultRow per node the run touched. The finished run
+ *     marks each step it reached and fades the rest back
  *
  * Drawn inside the full app shell so it is the whole dashboard on screen.
  * The builder keeps its 1280px design width, which with the 256px sidebar
  * makes a 1536px window, uniformly scaled to fit.
  *
- * Demo: the cursor presses Test, the panel springs in from the right, Run
- * test runs the dry run, the trace lands, then the panel is closed again.
- * Clicking the real Test button restarts the loop.
+ * Demo: the cursor presses Test, the panel opens beside the canvas, Run test
+ * runs the dry run, the trace lands on the panel and the canvas, then the
+ * panel is closed again. Clicking the real Test button restarts the loop.
  */
 import AppShellMock from './AppShellMock.astro';
 import DemoCursor from './DemoCursor.astro';
@@ -29,16 +32,18 @@ const zapIcon = '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1
 const gitBranchIcon = '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>';
 const briefcaseIcon = '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>';
 const tagIcon = '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>';
-const sendIcon = '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.5.5 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>';
+const checkSquareIcon = '<path d="M21 10.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12.5"/><path d="m9 11 3 3L22 4"/>';
 const historyIcon = '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>';
 const playIcon = '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-11.997 7A2 2 0 0 1 5 19z"/>';
 const checkIcon = '<path d="M20 6 9 17l-5-5"/>';
 const checkCircleIcon = '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>';
 const arrowLeftIcon = '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>';
 const plusIcon = '<path d="M5 12h14"/><path d="M12 5v14"/>';
+const minusIcon = '<path d="M5 12h14"/>';
+const maximizeIcon = '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>';
+const undoIcon = '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>';
+const redoIcon = '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/>';
 const xIcon = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
-const trashIcon = '<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>';
-const chevronIcon = '<path d="m6 9 6 6 6-6"/>';
 const loaderIcon = '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>';
 
 // sampleEventData("campaign.reply_received") from lib/api/models/app/automations/meta.ts.
@@ -56,18 +61,51 @@ const sample = `{
   "snippet": "Sure, let's talk next week."
 }`;
 
-// Every action node on the canvas, in the order the panel lists them.
-const steps = ['Send a Slack message', 'Create a deal', 'Create / update HubSpot contact', 'Add a tag', 'Send a webhook'];
+// The canvas in flow coordinates, as layoutFlow places it: 264x56 cards, a
+// 52px chain gap, 92px under a split, 36px between columns. It opens at 100%,
+// framed from the top and centred on the flow, like the builder.
+const ZOOM = 1;
+const VIEW = { x: 358, y: 56 };
+type Tile = { icon: string; tone: string } | { brand: 'slack' | 'hubspot' };
+type Card = { id: string; left: number; top: number; tile: Tile; kicker: string; title: string; summary: string; reached: boolean; result?: string };
+const cards: Card[] = [
+  { id: 'trigger', left: 150, top: 0, tile: { icon: zapIcon, tone: 'bg-sky-50 text-sky-600 ring-sky-100' }, kicker: 'Trigger', title: 'Prospect replies', summary: 'Starts this automation', reached: true },
+  { id: 'if', left: 150, top: 108, tile: { icon: gitBranchIcon, tone: 'bg-amber-50 text-amber-600 ring-amber-100' }, kicker: 'If / else', title: 'intent is Positive', summary: 'Checks the event', reached: true, result: 'Yes' },
+  { id: 'slack', left: 0, top: 256, tile: { brand: 'slack' }, kicker: 'Slack', title: 'Send a Slack message', summary: 'Slack · #sales', reached: true, result: 'Ran' },
+  { id: 'deal', left: 0, top: 364, tile: { icon: briefcaseIcon, tone: 'bg-sky-50 text-sky-600 ring-sky-100' }, kicker: 'Action', title: 'Create a deal', summary: '{{.company}} deal', reached: true, result: 'Ran' },
+  { id: 'hubspot', left: 0, top: 472, tile: { brand: 'hubspot' }, kicker: 'HubSpot', title: 'Create / update HubSpot contact', summary: 'HubSpot', reached: true, result: 'Ran' },
+  { id: 'label', left: 300, top: 256, tile: { icon: tagIcon, tone: 'bg-emerald-50 text-emerald-600 ring-emerald-100' }, kicker: 'Action', title: 'Add a label', summary: '1 label', reached: false },
+  { id: 'task', left: 300, top: 364, tile: { icon: checkSquareIcon, tone: 'bg-violet-50 text-violet-600 ring-violet-100' }, kicker: 'Action', title: 'Create a task', summary: 'Follow up later', reached: false },
+];
+// Lines: the chain into the condition, the Yes and No branches off one bus,
+// then each column's chain down to its trailing add button.
+const lines = [
+  'M282,56 L282,108',
+  'M282,164 L282,174 Q282,184 272,184 L142,184 Q132,184 132,194 L132,256',
+  'M282,164 L282,174 Q282,184 292,184 L422,184 Q432,184 432,194 L432,256',
+  'M132,312 L132,364',
+  'M132,420 L132,472',
+  'M132,528 L132,554',
+  'M432,312 L432,364',
+  'M432,420 L432,446',
+];
+// The add button at the end of each path; a line's own + only shows on hover.
+const ends = [[132, 565], [432, 457]];
+const pills = [
+  { x: 132, y: 204, label: 'Yes', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200/80' },
+  { x: 432, y: 204, label: 'No', cls: 'bg-white text-slate-500 ring-slate-200' },
+];
+
+// Every action step on the canvas, in tree order, as the panel lists them.
+const steps = cards.filter((c) => c.id !== 'trigger' && c.id !== 'if').map((c) => c.title);
 
 // The dry-run trace, one NodeResultRow each.
-type Row = { label: string; kind: 'condition' | 'action'; status: 'ok' | 'branch_true' | 'skipped'; sub?: string; preview?: [string, string][] };
+type Row = { label: string; kind: 'condition' | 'action'; sub?: string; preview?: [string, string][] };
 const trace: Row[] = [
-  { label: 'IF', kind: 'condition', status: 'branch_true', sub: 'intent is Positive' },
-  { label: 'Send a Slack message', kind: 'action', status: 'ok', preview: [['channel', '#sales'], ['text', 'Reply from jane@example.com: "Sure, let\'s talk next week."']] },
-  { label: 'Create a deal', kind: 'action', status: 'ok', preview: [['name', 'Jane Doe · Example Inc'], ['stage', 'Discovery'], ['value', '4800']] },
-  { label: 'Create / update HubSpot contact', kind: 'action', status: 'ok', preview: [['email', 'jane@example.com'], ['lifecycle_stage', 'opportunity']] },
-  { label: 'Add a tag', kind: 'action', status: 'skipped' },
-  { label: 'Send a webhook', kind: 'action', status: 'skipped' },
+  { label: 'IF', kind: 'condition', sub: 'intent is Positive' },
+  { label: 'Send a Slack message', kind: 'action', preview: [['channel', '#sales'], ['text', 'Reply from jane@example.com: "Sure, let\'s talk next week."']] },
+  { label: 'Create a deal', kind: 'action', preview: [['name', 'Example Inc deal'], ['stage', 'Discovery'], ['value', '4800']] },
+  { label: 'Create / update HubSpot contact', kind: 'action', preview: [['email', 'jane@example.com'], ['lifecycle_stage', 'opportunity']] },
 ];
 ---
 <div class="ad-root round-clip bg-white ring-1 ring-slate-900/[0.07]" style="box-shadow: 0 50px 110px -32px rgba(2,132,199,0.42), 0 14px 36px -16px rgba(15,23,42,0.18);">
@@ -106,179 +144,76 @@ const trace: Row[] = [
           <span class="text-[12px] font-medium text-slate-700">Active</span>
         </span>
         <div class="ml-auto flex items-center gap-1.5">
+          <div class="flex items-center">
+            <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500 opacity-35"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={undoIcon}></svg></span>
+            <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500 opacity-35"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={redoIcon}></svg></span>
+          </div>
           <span class="h-7 px-2.5 rounded-md border border-slate-200 text-slate-700 text-[12px] inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={historyIcon}></svg>History</span>
           <button type="button" class="ad-testbtn h-7 px-2.5 rounded-md border border-slate-200 text-slate-700 text-[12px] inline-flex items-center gap-1.5 transition-colors cursor-pointer select-none [&.is-hover]:border-slate-300 [&.is-hover]:text-slate-900" aria-label="Replay the demo run">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={playIcon}></svg>
             Test
           </button>
-          <span class="h-7 px-2.5 rounded-md border border-slate-200 text-slate-700 text-[12px] inline-flex items-center">Tidy up</span>
           <span class="h-7 px-3 rounded-md text-[12px] font-medium inline-flex items-center gap-1.5 bg-slate-100 text-slate-400"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-300" set:html={checkIcon}></svg>Saved</span>
         </div>
       </div>
 
-      <!-- ── Canvas ────────────────────────────────────────────────── -->
-      <div class="relative flex-1 min-h-[720px] overflow-hidden bg-slate-50/40" style="background-image: radial-gradient(#e9eef5 0.5px, transparent 0.6px); background-size: 24px 24px;">
+      <div class="relative flex min-h-[720px]">
+        <!-- ── Canvas ────────────────────────────────────────────────── -->
+        <div class="relative min-w-0 flex-1 overflow-hidden bg-slate-50/40" style={`background-image: radial-gradient(circle, #dde3eb 1px, transparent 1.2px); background-size: 20px 20px; background-position: ${VIEW.x}px ${VIEW.y}px;`}>
+          <div class="absolute left-0 top-0 origin-top-left" style={`transform: translate(${VIEW.x}px, ${VIEW.y}px) scale(${ZOOM}); width:564px; height:576px;`}>
+            <svg width="564" height="576" viewBox="0 0 564 576" class="absolute inset-0 overflow-visible pointer-events-none" aria-hidden="true">
+              {lines.map((d) => <path d={d} fill="none" stroke="#cbd5e1" stroke-width="1.25" />)}
+            </svg>
 
-        <!-- Panel top-left (15px): Add action split button, Add condition -->
-        <div class="absolute left-[15px] top-[15px] z-20 flex items-center gap-1.5">
-          <div class="relative inline-flex">
-            <span class="inline-flex h-8 items-center gap-1.5 rounded-l-md bg-sky-600 px-2.5 text-[12px] font-medium text-white shadow-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={plusIcon}></svg>Add action</span>
-            <span class="inline-flex h-8 items-center rounded-r-md border-l border-sky-500/60 bg-sky-600 px-1.5 text-white shadow-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={chevronIcon}></svg></span>
+            {pills.map((p) => (
+              <span class={`absolute rounded-full px-2 py-px text-[11px] font-medium leading-[18px] ring-1 ring-inset ${p.cls}`} style={`left:${p.x}px; top:${p.y}px; transform: translate(-50%, -50%);`}>{p.label}</span>
+            ))}
+            {ends.map(([x, y]) => (
+              <span class="absolute flex size-[22px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400" style={`left:${x}px; top:${y}px; transform: translate(-50%, -50%);`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={plusIcon}></svg></span>
+            ))}
+
+            {cards.map((c) => (
+              <div class={`ad-card absolute transition-opacity duration-300 ${c.reached ? '' : 'ad-unreached'}`} style={`left:${c.left}px; top:${c.top}px; width:264px; height:56px;`}>
+                <div class="relative flex h-full w-full items-center gap-2.5 rounded-xl border border-slate-200/90 bg-white pl-2.5 pr-8 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  {'brand' in c.tile ? (
+                    c.tile.brand === 'slack'
+                      ? <div class="w-7 h-7 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 256 256" role="img" aria-label="slack" class="w-4 h-4" set:html={RAW_BRAND_LOGOS.slack.inner}></svg></div>
+                      : <div class="w-7 h-7 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 24 24" role="img" aria-label="hubspot" class="w-4 h-4" fill={BRAND_ICON.hubspot.hex}><path d={BRAND_ICON.hubspot.path}/></svg></div>
+                  ) : (
+                    <span class={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${c.tile.tone}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={c.tile.icon}></svg></span>
+                  )}
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="truncate text-[13px] font-medium leading-5 text-slate-900">{c.title}</span>
+                      {c.result && <span class="ad-result inline-flex h-4 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">{c.result}</span>}
+                    </div>
+                    <div class="truncate text-[11.5px] leading-4 text-slate-400">{c.kicker}<span class="text-slate-500"> · {c.summary}</span></div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          <span class="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 shadow-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={gitBranchIcon}></svg>Add condition</span>
-        </div>
 
-        <!-- Panel bottom-center: the hint -->
-        <div class="absolute bottom-[15px] left-1/2 -translate-x-1/2 z-[5] hidden @md:block rounded-md bg-white/95 px-3 py-1.5 shadow-sm text-[11px] text-slate-500">drag a node's dot to connect &middot; IF block: right dot = yes, bottom dot = no &middot; drag to empty canvas to pick what comes next &middot; click a line then Delete to remove</div>
-
-        <!-- edges -->
-        <svg width="1280" height="720" viewBox="0 0 1280 720" class="absolute inset-0 pointer-events-none" aria-hidden="true">
-          <defs>
-            <marker id="ad-arrow-slate" viewBox="-10 -10 20 20" markerWidth="16" markerHeight="16" refX="0" refY="0" orient="auto-start-reverse" markerUnits="strokeWidth"><polyline stroke-linecap="round" stroke-linejoin="round" points="-5,-4 0,0 -5,4 -5,-4" fill="#94a3b8" stroke="#94a3b8" stroke-width="1"/></marker>
-            <marker id="ad-arrow-light" viewBox="-10 -10 20 20" markerWidth="16" markerHeight="16" refX="0" refY="0" orient="auto-start-reverse" markerUnits="strokeWidth"><polyline stroke-linecap="round" stroke-linejoin="round" points="-5,-4 0,0 -5,4 -5,-4" fill="#cbd5e1" stroke="#cbd5e1" stroke-width="1"/></marker>
-            <marker id="ad-arrow-sky" viewBox="-10 -10 20 20" markerWidth="16" markerHeight="16" refX="0" refY="0" orient="auto-start-reverse" markerUnits="strokeWidth"><polyline stroke-linecap="round" stroke-linejoin="round" points="-5,-4 0,0 -5,4 -5,-4" fill="#0ea5e9" stroke="#0ea5e9" stroke-width="1"/></marker>
-          </defs>
-          <path d="M 444 98 L 444 130" fill="none" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#ad-arrow-light)"/>
-          <path d="M 552 155 C 670 155, 764 168, 764 214" fill="none" stroke="#0ea5e9" stroke-width="1.5" marker-end="url(#ad-arrow-sky)"/>
-          <path d="M 444 176 C 444 215, 220 208, 220 254" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ad-arrow-slate)"/>
-          <path d="M 764 310 L 764 334" fill="none" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#ad-arrow-light)"/>
-          <path d="M 764 430 L 764 454" fill="none" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#ad-arrow-light)"/>
-          <path d="M 220 346 L 220 382" fill="none" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#ad-arrow-light)"/>
-        </svg>
-
-        <!-- edge labels -->
-        <span class="absolute z-10 inline-flex items-center rounded border px-1 py-px text-[10px]" style="left:640px; top:144px; border-color:#0ea5e9; color:#0ea5e9; background:#fff;">yes</span>
-        <span class="absolute z-10 inline-flex items-center rounded border px-1 py-px text-[10px]" style="left:308px; top:194px; border-color:#94a3b8; color:#94a3b8; background:#fff;">no</span>
-
-        <!-- TriggerNode -->
-        <div class="absolute" style="left:320px; top:22px; width:248px;">
-          <div class="relative rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-white px-2.5 py-1.5">
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200/70"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={zapIcon}></svg></span>
-              <span class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-sky-500">When</span>
-              <span class="ml-auto shrink-0 rounded bg-sky-600 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.12em] text-white">Trigger</span>
+          <!-- Panel top-center: the finished test's banner -->
+          <div class="ad-banner absolute left-1/2 top-[15px] z-[5] -translate-x-1/2">
+            <div class="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800 shadow-sm">
+              Showing the path the test took.
+              <span class="font-medium text-sky-700">Clear</span>
             </div>
-            <div class="px-2.5 py-2">
-              <div class="truncate text-[12.5px] font-semibold text-slate-800">Prospect replies</div>
-            </div>
-            <span class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 size-3 rounded-full bg-sky-500 border-2 border-white"></span>
           </div>
-        </div>
 
-        <!-- ConditionNode -->
-        <div class="absolute" style="left:334px; top:140px;">
-          <div class="relative inline-block rounded-lg border border-sky-200 bg-gradient-to-b from-sky-50 to-white px-2 py-1 shadow-sm">
-            <span class="absolute -top-1 left-1/2 -translate-x-1/2 size-2 rounded-full bg-slate-300 border-2 border-white"></span>
-            <div class="flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-sky-600" set:html={gitBranchIcon}></svg>
-              <span class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-sky-500">if</span>
-              <span class="max-w-[150px] truncate text-[11px] font-medium text-sky-800">intent is Positive</span>
-              <span class="inline-flex size-4 items-center justify-center rounded text-sky-400"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={trashIcon}></svg></span>
-            </div>
-            <span class="absolute -right-1 top-1/2 -translate-y-1/2 size-3 rounded-full bg-sky-500 border-2 border-white"></span>
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-3 rounded-full bg-slate-400 border-2 border-white"></span>
+          <!-- Panel bottom-left: zoom controls -->
+          <div class="absolute left-3 bottom-3 z-[5] flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm">
+            <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={minusIcon}></svg></span>
+            <span class="inline-flex h-7 min-w-11 items-center justify-center rounded-md px-1 text-[11.5px] tabular-nums text-slate-600">{Math.round(ZOOM * 100)}%</span>
+            <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={plusIcon}></svg></span>
+            <span class="mx-0.5 h-4 w-px bg-slate-200"></span>
+            <span class="inline-flex size-7 items-center justify-center rounded-md text-slate-500"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={maximizeIcon}></svg></span>
           </div>
         </div>
 
-        <!-- ActionNode: Slack -->
-        <div class="absolute" style="left:640px; top:222px; width:248px;">
-          <div class="relative rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-2.5 py-1.5">
-              <div class="w-7 h-7 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 256 256" role="img" aria-label="slack" class="w-4 h-4" set:html={RAW_BRAND_LOGOS.slack.inner}></svg></div>
-              <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">Send a Slack message</span>
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={trashIcon}></svg></span>
-            </div>
-            <div class="px-2.5 py-2">
-              <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Then</div>
-              <div class="mt-0.5 truncate text-[11.5px] text-slate-500">Slack</div>
-            </div>
-            <span class="absolute -top-1 left-1/2 -translate-x-1/2 size-2 rounded-full bg-slate-300 border-2 border-white"></span>
-            <span class="absolute -right-[5px] top-1/2 -translate-y-1/2 size-2.5 rounded-full bg-rose-500 border-2 border-white"></span>
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-3 rounded-full bg-sky-500 border-2 border-white"></span>
-          </div>
-        </div>
-
-        <!-- ActionNode: Create a deal -->
-        <div class="absolute" style="left:640px; top:342px; width:248px;">
-          <div class="relative rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-2.5 py-1.5">
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200/70"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={zapIcon}></svg></span>
-              <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">Create a deal</span>
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={trashIcon}></svg></span>
-            </div>
-            <div class="px-2.5 py-2">
-              <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Then</div>
-              <div class="mt-0.5 truncate text-[11.5px] text-slate-500">Built-in action</div>
-            </div>
-            <span class="absolute -top-1 left-1/2 -translate-x-1/2 size-2 rounded-full bg-slate-300 border-2 border-white"></span>
-            <span class="absolute -right-[5px] top-1/2 -translate-y-1/2 size-2.5 rounded-full bg-rose-500 border-2 border-white"></span>
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-3 rounded-full bg-sky-500 border-2 border-white"></span>
-          </div>
-        </div>
-
-        <!-- ActionNode: HubSpot -->
-        <div class="absolute" style="left:640px; top:462px; width:248px;">
-          <div class="relative rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-2.5 py-1.5">
-              <div class="w-7 h-7 rounded-md ring-1 ring-slate-200 bg-white inline-flex items-center justify-center shrink-0"><svg viewBox="0 0 24 24" role="img" aria-label="hubspot" class="w-4 h-4" fill={BRAND_ICON.hubspot.hex}><path d={BRAND_ICON.hubspot.path}/></svg></div>
-              <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">Create / update HubSpot contact</span>
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={trashIcon}></svg></span>
-            </div>
-            <div class="px-2.5 py-2">
-              <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Then</div>
-              <div class="mt-0.5 truncate text-[11.5px] text-slate-500">HubSpot</div>
-            </div>
-            <span class="absolute -top-1 left-1/2 -translate-x-1/2 size-2 rounded-full bg-slate-300 border-2 border-white"></span>
-            <span class="absolute -right-[5px] top-1/2 -translate-y-1/2 size-2.5 rounded-full bg-rose-500 border-2 border-white"></span>
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-3 rounded-full bg-sky-500 border-2 border-white"></span>
-          </div>
-        </div>
-
-        <!-- ActionNode: Add a tag (the no branch) -->
-        <div class="absolute" style="left:96px; top:258px; width:248px;">
-          <div class="relative rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-2.5 py-1.5">
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200/70"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={zapIcon}></svg></span>
-              <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">Add a tag</span>
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={trashIcon}></svg></span>
-            </div>
-            <div class="px-2.5 py-2">
-              <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Then</div>
-              <div class="mt-0.5 truncate text-[11.5px] text-slate-500">Built-in action</div>
-            </div>
-            <span class="absolute -top-1 left-1/2 -translate-x-1/2 size-2 rounded-full bg-slate-300 border-2 border-white"></span>
-            <span class="absolute -right-[5px] top-1/2 -translate-y-1/2 size-2.5 rounded-full bg-rose-500 border-2 border-white"></span>
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-3 rounded-full bg-sky-500 border-2 border-white"></span>
-          </div>
-        </div>
-
-        <!-- ActionNode: Webhook (the no branch) -->
-        <div class="absolute" style="left:96px; top:390px; width:248px;">
-          <div class="relative rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-2.5 py-1.5">
-              <div class="w-7 h-7 rounded-md ring-1 ring-sky-100 bg-sky-50 text-sky-700 inline-flex items-center justify-center shrink-0 font-semibold uppercase text-[12px]">w</div>
-              <span class="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">Send a webhook</span>
-              <span class="inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={trashIcon}></svg></span>
-            </div>
-            <div class="px-2.5 py-2">
-              <div class="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">Then</div>
-              <div class="mt-0.5 truncate text-[11.5px] text-slate-500">Webhook</div>
-            </div>
-            <span class="absolute -top-1 left-1/2 -translate-x-1/2 size-2 rounded-full bg-slate-300 border-2 border-white"></span>
-            <span class="absolute -right-[5px] top-1/2 -translate-y-1/2 size-2.5 rounded-full bg-rose-500 border-2 border-white"></span>
-            <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-3 rounded-full bg-sky-500 border-2 border-white"></span>
-          </div>
-        </div>
-
-        <!-- Controls (bottom-left, 15px margin): zoom in, zoom out, fit view -->
-        <div class="absolute left-[15px] bottom-[15px] z-[5] flex flex-col" style="box-shadow: 0 0 2px 1px rgba(0,0,0,.08);">
-          <span class="flex items-center justify-center w-[26px] h-[26px] border-b border-[#eee]" style="background:#fefefe;"><svg width="12" height="12" viewBox="0 0 32 32" fill="#0f172a"><path d="M32 18.133H18.133V32h-4.266V18.133H0v-4.266h13.867V0h4.266v13.867H32z"/></svg></span>
-          <span class="flex items-center justify-center w-[26px] h-[26px] border-b border-[#eee]" style="background:#fefefe;"><svg width="12" height="1.875" viewBox="0 0 32 5" fill="#0f172a"><path d="M0 0h32v4.2H0z"/></svg></span>
-          <span class="flex items-center justify-center w-[26px] h-[26px]" style="background:#fefefe;"><svg width="12" height="11.25" viewBox="0 0 32 30" fill="#0f172a"><path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM27.354 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215H32V4.631A4.624 4.624 0 0027.354 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-23.677.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z"/></svg></span>
-        </div>
-
-        <!-- ── SidePanel > InsightsPanel (mode "test") ─────────────── -->
-        <div class="ad-panel absolute top-0 right-0 h-full w-80 max-w-[1126px] bg-white border-l border-slate-200 shadow-xl flex flex-col z-10" aria-hidden="true">
+        <!-- ── FlowPanel (bare) > InsightsPanel (mode "test") ─────────── -->
+        <div class="ad-panel w-[400px] shrink-0 border-l border-slate-200 bg-white flex-col" aria-hidden="true">
           <div class="h-11 px-3 flex items-center border-b border-slate-200 shrink-0">
             <span class="text-[12.5px] font-medium text-slate-900">Test run</span>
             <span class="ad-close ml-auto h-7 w-7 rounded-md inline-flex items-center justify-center text-slate-400 transition-colors [&.is-hover]:text-slate-700 [&.is-hover]:bg-slate-100"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" set:html={xIcon}></svg></span>
@@ -317,12 +252,9 @@ const trace: Row[] = [
                   {trace.map((r) => (
                     <div class="rounded-md border border-slate-200 px-2.5 py-1.5">
                       <div class="flex items-center gap-1.5">
-                        {r.status === 'skipped'
-                          ? <span class="inline-block w-3.5 h-3.5 rounded-full border border-slate-300" aria-hidden="true"></span>
-                          : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500 shrink-0" set:html={checkCircleIcon}></svg>}
-                        <span class={`text-[11.5px] font-medium ${r.status === 'skipped' ? 'text-slate-400' : 'text-slate-700'}`}>{r.label}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500 shrink-0" set:html={checkCircleIcon}></svg>
+                        <span class="text-[11.5px] font-medium text-slate-700">{r.label}</span>
                         {r.kind === 'condition' && <span class="ml-auto text-[10.5px] font-medium text-slate-400">→ yes</span>}
-                        {r.status === 'skipped' && <span class="ml-auto text-[10.5px] font-medium text-slate-400">skipped</span>}
                       </div>
                       {r.sub && <div class="mt-0.5 text-[11px] text-slate-400">{r.sub}</div>}
                       {r.preview && (
@@ -339,7 +271,6 @@ const trace: Row[] = [
             </div>
           </div>
         </div>
-
       </div>
 
       <DemoCursor />
@@ -349,12 +280,13 @@ const trace: Row[] = [
   </div>
 
   <style>
-    /* Test opens the panel: the button takes its open style, the SidePanel
-       springs in from the right (spring 300/32, about half a second). */
+    /* Test opens the panel beside the canvas, which narrows to make room; the
+       panel fades in over 120ms. */
     .ad-testbtn{transition:background-color .15s,border-color .15s,color .15s;}
     .ad-builder.is-test .ad-testbtn{border-color:#7dd3fc;background:#f0f9ff;color:#0369a1;}
-    .ad-panel{transform:translateX(100%);transition:transform .5s cubic-bezier(.22,1,.36,1);}
-    .ad-builder.is-test .ad-panel{transform:none;}
+    .ad-panel{display:none;}
+    .ad-builder.is-test .ad-panel{display:flex;animation:ad-panel-in .12s ease-out;}
+    @keyframes ad-panel-in{from{opacity:0;}to{opacity:1;}}
     /* Run test: the button and the result area show Running…, then the trace. */
     .ad-run-busy,.ad-res-busy,.ad-res-done{display:none;}
     .ad-builder.is-running .ad-run{opacity:.6;}
@@ -364,11 +296,20 @@ const trace: Row[] = [
     .ad-builder.is-running .ad-res-busy{display:flex;}
     .ad-builder.is-done .ad-res-idle{display:none;}
     .ad-builder.is-done .ad-res-done{display:block;}
+    /* The finished run on the canvas: the banner, a result on each step it
+       reached, everything else faded back. */
+    .ad-result,.ad-banner{display:none;}
+    .ad-builder.is-done.is-test .ad-result{display:inline-flex;}
+    .ad-builder.is-done.is-test .ad-banner{display:block;}
+    .ad-builder.is-done.is-test .ad-unreached{opacity:.4;}
     /* Reduced motion: hold the finished test still. */
-    .ad-builder.is-static .ad-panel{transform:none;}
+    .ad-builder.is-static .ad-panel{display:flex;animation:none;}
     .ad-builder.is-static .ad-testbtn{border-color:#7dd3fc;background:#f0f9ff;color:#0369a1;}
     .ad-builder.is-static .ad-res-idle{display:none;}
     .ad-builder.is-static .ad-res-done{display:block;}
+    .ad-builder.is-static .ad-result{display:inline-flex;}
+    .ad-builder.is-static .ad-banner{display:block;}
+    .ad-builder.is-static .ad-unreached{opacity:.4;}
   </style>
 
   <script>

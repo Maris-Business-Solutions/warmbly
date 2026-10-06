@@ -344,10 +344,10 @@ const faq = [
       <div class="lg:sticky lg:top-24" style="align-self: start;">
         <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground font-mono mb-3">Branching</div>
         <h2 class="text-[28px] md:text-[40px] font-semibold tracking-[-0.025em] leading-[1.06] text-heading">
-          One chip, two paths, full graph.
+          One condition, two columns.
         </h2>
         <p class="mt-4 text-[15px] text-foreground/70 leading-relaxed max-w-md">
-          A condition reads one field off the event and routes it: yes out the right dot, no out the bottom. Chain conditions for AND logic, point both paths anywhere, and converge them back when the playbooks rejoin.
+          A condition reads one field off the event and splits the flow into a Yes column and a No column. Chain conditions for AND logic, and send a path on to a step that already exists when the playbooks rejoin.
         </p>
         <ul class="mt-6 space-y-2.5 text-[14px] text-foreground/85">
           <li class="flex items-start gap-2"><Icon name="check" size={13} class="text-[#0284c7] mt-1 shrink-0" /><span>Fields follow the trigger: intent and confidence on replies, source on meetings, provider and reason on bounces.</span></li>

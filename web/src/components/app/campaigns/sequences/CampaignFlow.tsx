@@ -1,3912 +1,782 @@
-// Visual flow canvas for a campaign's steps (React Flow) — a branching tree
-// where each condition is its own "IF" block.
-//
-// SHAPE
-//   Step ──▶ [ IF opened within 3d ] ──▶ Step …   (the branch's steps flow below
-//   its IF block). An unconditional path is a plain line straight to the step.
-//
-// BUILD
-// - Drag from a STEP's bottom dot → a plain "just go there" connection.
-// - Drag from an IF block's SIDE dots → a new "if" branch from that step
-//   (onto a step, or empty for a new step). Drag the IF block's BOTTOM dot →
-//   change where that if leads.
-// - Click a step → edit its email. Click an IF block → edit its condition.
-// - Nothing connects automatically; a step with no outgoing path ends in STOP.
+// CampaignFlow is the campaign step builder. The contact's way through the
+// campaign is drawn top down from where they enter: each email or action
+// follows the last, a step with conditions splits into one column per path
+// (checked left to right, first match wins) plus Otherwise, and a switch into
+// one column per case. The line into a step carries its wait. A "+" on any
+// line or at the end of a path adds a step there. Every edit is saved as it
+// is made.
 
 import React from "react";
-import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-    ArrowRightLeftIcon,
-    BellOffIcon,
-    AlertTriangleIcon,
-    BracesIcon,
-    CheckIcon,
-    CheckSquareIcon,
-    ChevronDownIcon,
-    ChevronUpIcon,
-    ClockIcon,
-    FlagIcon,
-    GitBranchIcon,
-    HandshakeIcon,
-    InfoIcon,
-    Loader2Icon,
-    MailIcon,
-    PlusIcon,
-    SendIcon,
-    SparklesIcon,
-    SplitIcon,
-    TagIcon,
-    LayersIcon,
-    LogInIcon,
-    TagsIcon,
-    Trash2Icon,
-    UnlinkIcon,
-    XIcon,
-    ZapIcon,
-} from "lucide-react";
-import {
-    ReactFlow,
-    Background,
-    BaseEdge,
-    Controls,
-    EdgeLabelRenderer,
-    Panel,
-    Handle,
-    MarkerType,
-    Position,
-    useNodesState,
-    useEdgesState,
-    useUpdateNodeInternals,
-    type Node,
-    type Edge,
-    type Connection,
-    type NodeProps,
-    type EdgeProps,
-    type ReactFlowInstance,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import dagre from "@dagrejs/dagre";
+import { AnimatePresence } from "framer-motion";
+import { ArrowDownIcon, ArrowUpIcon, FlagIcon, GitBranchIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast/headless";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
-import type { SequenceBranch, BranchCondition, BranchField } from "@/lib/api/models/app/campaigns/sequences/Branching";
-import { BRANCH_FIELD_LABELS, REPLY_INTENTS, isReplyBranchField, isInstantCapableField, replyIntentLabel } from "@/lib/api/models/app/campaigns/sequences/Branching";
+import type { SequenceBranch } from "@/lib/api/models/app/campaigns/sequences/Branching";
+import type { SequenceActionType } from "@/lib/api/models/app/campaigns/sequences/Action";
 import useSequences from "@/lib/api/hooks/app/campaigns/sequences/useSequences";
 import useCreateSequence from "@/lib/api/hooks/app/campaigns/sequences/useCreateSequence";
 import useDeleteSequence from "@/lib/api/hooks/app/campaigns/sequences/useDeleteSequence";
 import updateSequence from "@/lib/api/client/app/campaigns/sequences/updateSequence";
-import updateSequenceLayout from "@/lib/api/client/app/campaigns/sequences/updateSequenceLayout";
+import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
+import useUpdateCampaign from "@/lib/api/hooks/app/campaigns/useUpdateCampaign";
+import { useCampaignABVariants } from "@/lib/api/hooks/app/campaigns/useCampaignABVariants";
 import { cursorColor, useLiveCanvas } from "@/hooks/useLiveCanvas";
-import CanvasCursors from "@/components/app/presence/CanvasCursors";
-import CanvasSelections from "@/components/app/presence/CanvasSelections";
 import CursorChat from "@/components/app/presence/CursorChat";
 import { useSuppressGlobalCursors } from "@/components/app/presence/GlobalCursors";
 import { useResourceViewers } from "@/hooks/PresenceProvider";
 import { useUserProfile } from "@/hooks/context/user";
-import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
-import useUpdateCampaign from "@/lib/api/hooks/app/campaigns/useUpdateCampaign";
 import { useConfirm } from "@/hooks/context/confirm";
-import useClickOutside from "@/hooks/useClickOutside";
-import { usePermission, showPermissionDenied } from "@/hooks/usePermission";
-import { LockIcon } from "lucide-react";
-import { NumberInput, Label, TextInput } from "@/components/ui/field";
-import { SelectMenu, type SelectOption } from "@/components/ui/select-menu";
-import { PopoverMenu, PopoverMenuContent, PopoverMenuTrigger } from "@/components/ui/popover-menu";
+import { usePermission } from "@/hooks/usePermission";
+import { NumberInput } from "@/components/ui/field";
+import { PopoverMenu, PopoverMenuContent } from "@/components/ui/popover-menu";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import EntryDelayPicker from "@/components/app/campaigns/schedule/EntryDelayPicker";
 import { entryDelayLabel } from "@/components/app/campaigns/schedule/entryDelay";
+import FlowCanvas from "@/components/app/flow/FlowCanvas";
+import FlowPanel from "@/components/app/flow/FlowPanel";
+import StepPicker, { type PickerItem } from "@/components/app/flow/StepPicker";
+import { STEP_H, STEP_W, StepBadge, StepCard, TERMINAL_H, TERMINAL_W, TerminalCard, type StepMenuItem } from "@/components/app/flow/StepCard";
+import { DirtyContext, useDirtyRegistry } from "@/components/app/flow/dirty";
+import { layoutFlow, type InsertPoint, type PlacedEdge } from "@/components/app/flow/tree";
+import { cn } from "@/lib/utils";
 import StepEmailArms from "./StepEmailArms";
 import { conversationOpenerFor, conversationSubjectFor } from "./threading";
-import CategoryPicker from "@/components/app/contacts/CategoryPicker";
-import { SegmentMultiPicker } from "@/components/app/segments/SegmentPickers";
-import type { ActionKV, AITagRef, SequenceAction, SequenceActionType } from "@/lib/api/models/app/campaigns/sequences/Action";
-import { useAutomations } from "@/lib/api/hooks/app/automations/useAutomations";
-import { triggerLabel } from "@/lib/api/models/app/automations/meta";
-import TaskTypePicker from "@/components/app/crm/TaskTypePicker";
-import AssigneeTeamPicker, { type AssigneeValue } from "@/components/app/crm/AssigneeTeamPicker";
-import DealStagePicker from "@/components/app/crm/DealStagePicker";
-import { CrmDealNote, CrmTaskNote } from "@/components/app/crm/crmMode";
+import { ActionEditor, NodeTypeSwitcher, PathEditor, ReplyStopWarning, StopOnReplyToggle } from "./CampaignEditors";
+import { defaultActionFor } from "./campaignActions";
+import {
+    DEFAULT_CONDITION,
+    ELSE_PORT,
+    ENTRY_ID,
+    REPLY_CONDITION,
+    draftCondition,
+    insertCondition,
+    branchAt,
+    campaignSource,
+    conditionText,
+    gotoCandidates,
+    isCond,
+    isInstantBranch,
+    isRouterStep,
+    isStopId,
+    isSwitchStep,
+    moveCondition,
+    newBranchId,
+    normalize,
+    planRemoval,
+    reachableSteps,
+    routePort,
+} from "./campaignGraph";
+import { entryView, pickerItems, stepIssue, stepView } from "./campaignSteps";
 
-// Personalization tokens available in templated copy. Mirrors SequenceView's
-// VARIABLES so a deal name can use the same {{.FirstName}}/{{.Company}} tokens
-// every other campaign copy field does.
-const DEAL_NAME_VARIABLES = ["{{.FirstName}}", "{{.LastName}}", "{{.Company}}", "{{.Email}}"];
-
-const STOP_ID = "__stop__";
-// The trigger card at the top of the flow. It is synthetic: no `sequences` row
-// backs it, and what it edits is the CAMPAIGN's entry delay, not a step.
-const ENTRY_ID = "__entry__";
-const IF_PREFIX = "if-";
-const NODE_W = 248;
-const NODE_H = 92;
 const MAX_STEPS = 50;
+const MAX_WAIT_DAYS = 60;
 const SEQ_KEY = (id: string) => ["campaigns", id, "sequences"] as const;
+const POSITIVE_REPLY_FIELDS = ["replied", "reply_positive", "reply_negative", "reply_neutral", "reply_automated"];
 
-const ifNodeId = (branchId: string) => `${IF_PREFIX}${branchId}`;
-const isIfId = (id: string) => id.startsWith(IF_PREFIX);
+// A path with a draft is a new condition not saved yet.
+type Selection = { kind: "entry" } | { kind: "step"; id: string } | { kind: "path"; stepId: string; port: string; draft?: SequenceBranch } | null;
+type Choice = "email" | "router" | SequenceActionType;
 
-function newBranchId(): string {
-    try {
-        return crypto.randomUUID();
-    } catch {
-        return `b_${Math.floor(performance.now())}_${Math.random().toString(36).slice(2, 8)}`;
-    }
+const sizeOf = (id: string) => (isStopId(id) ? { w: TERMINAL_W, h: TERMINAL_H } : { w: STEP_W, h: STEP_H });
+const days = (n: number) => (n === 1 ? "1 day" : `${n} days`);
+const sameSelection = (a: Selection, b: Selection) => JSON.stringify(a) === JSON.stringify(b);
+
+function typingTarget(t: EventTarget | null): boolean {
+    const el = t as HTMLElement | null;
+    return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 }
-
-const isCond = (b: SequenceBranch) => (b.conditions?.length ?? 0) > 0;
-const stepName = (s: Sequence | undefined) => (s?.name?.trim() ? s.name : "Untitled step");
-
-// "Positive" reply fields are the ones that route a contact INTO a reply flow
-// (a human reply, or a classified reply intent). Mirrors the backend's
-// branchHasPositiveReplyCondition. not_replied is excluded — that is the cold
-// sequence's "didn't reply" continuation, not reply handling. Used to decide
-// whether a campaign has any reply handling at all (the stop-on-reply warning).
-const POSITIVE_REPLY_FIELDS: BranchField[] = [
-    "replied",
-    "reply_positive",
-    "reply_negative",
-    "reply_neutral",
-    "reply_automated",
-];
-const isPositiveReplyField = (f: BranchField) => POSITIVE_REPLY_FIELDS.includes(f);
-
-// A branch is "instant" when its condition is an instant-capable signal
-// (reply intent, opened, or clicked) and the per-branch toggle isn't opted out.
-// Such a branch's action chain fires the moment the event lands (reply recorded,
-// or open / click tracked), so the target step's wait_after is irrelevant.
-function isInstantBranch(b: SequenceBranch): boolean {
-    return (b.conditions ?? []).some((c) => isInstantCapableField(c.field)) && b.instant !== false;
-}
-
-// Conditions first-match; unconditional ("just go there") paths are the fallback.
-function ordered(branches: SequenceBranch[]): SequenceBranch[] {
-    return [...branches.filter(isCond), ...branches.filter((b) => !isCond(b))];
-}
-
-// A Switch step: its configured cases render as draggable dots on the node,
-// and an AI prompt or a rendered value decides which case each contact takes.
-function isSwitchStep(s?: Sequence): boolean {
-    return s?.kind === "action" && s.action?.type === "switch";
-}
-
-// Case names are matched to branch labels and handle ids case-insensitively.
-function caseKey(name: string): string {
-    return name.trim().toLowerCase();
-}
-const caseHandleId = (name: string) => `case:${caseKey(name)}`;
-
-function conditionText(b: SequenceBranch): string {
-    return (b.conditions ?? [])
-        .map((c) => {
-            if (c.field === "random") return `${c.value ?? 50}% random`;
-            const f = BRANCH_FIELD_LABELS[c.field] ?? c.field;
-            // Reply-class conditions are "ever" (no day window).
-            if (c.field === "ai_label") return `case: ${c.label ?? "…"}`;
-            if (c.field === "reply_intent") return `intent: ${replyIntentLabel(c.label)}`;
-            if (isReplyBranchField(c.field)) return f;
-            return `${f} within ${c.value ?? 3}d`;
-        })
-        .join(" + ");
-}
-
-function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
-    const g = new dagre.graphlib.Graph();
-    g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: "TB", nodesep: 180, ranksep: 130, marginx: 32, marginy: 32, edgesep: 100 });
-    nodes.forEach((n) => {
-        let w = NODE_W;
-        let h = NODE_H;
-        if (n.id === STOP_ID) {
-            w = 96;
-            h = 40;
-        } else if (isIfId(n.id)) {
-            w = 210;
-            h = 40;
-        } else if (n.type === "switch") {
-            // Case rows grow the card; give dagre the real height so the
-            // fan-out below doesn't overlap it.
-            h = NODE_H + ((n.data as { cases?: string[] }).cases?.length ?? 0) * 24;
-        }
-        g.setNode(n.id, { width: w, height: h });
-    });
-    edges.forEach((e) => {
-        const text = typeof e.label === "string" ? e.label : "";
-        // Keep the if / else-if spine (in / chain / else edges) straight and
-        // aligned; let the "then" steps fan out to the side.
-        const spine = e.id.startsWith("in-") || e.id.startsWith("chain-") || e.id.startsWith("else-");
-        const label = text ? { width: Math.min(160, text.length * 6 + 24), height: 30, labelpos: "c" } : {};
-        g.setEdge(e.source, e.target, { ...label, weight: spine ? 6 : 1 });
-    });
-    dagre.layout(g);
-    return nodes.map((n) => {
-        const p = g.node(n.id);
-        return p ? { ...n, position: { x: p.x - p.width / 2, y: p.y - p.height / 2 } } : n;
-    });
-}
-
-// dagre can pile disconnected pieces on top of each other at the origin, which
-// hides orphaned steps (an upstream step was deleted) so they can't be clicked,
-// deleted, or connected. Split the graph into connected components and stack
-// them in vertical bands — the main flow (with the entry) first, orphans below.
-function stackComponents(nodes: Node[], edges: Edge[]): Node[] {
-    const adj = new Map<string, string[]>();
-    const link = (a: string, b: string) => {
-        const list = adj.get(a) ?? [];
-        list.push(b);
-        adj.set(a, list);
-    };
-    for (const e of edges) {
-        link(e.source, e.target);
-        link(e.target, e.source);
-    }
-    const comp = new Map<string, number>();
-    let count = 0;
-    for (const n of nodes) {
-        if (comp.has(n.id)) continue;
-        const queue = [n.id];
-        comp.set(n.id, count);
-        while (queue.length) {
-            const id = queue.shift()!;
-            for (const m of adj.get(id) ?? []) {
-                if (!comp.has(m)) {
-                    comp.set(m, count);
-                    queue.push(m);
-                }
-            }
-        }
-        count++;
-    }
-    if (count <= 1) return nodes; // a single connected flow needs no banding
-
-    const box = new Map<number, { minX: number; minY: number; maxY: number }>();
-    for (const n of nodes) {
-        const k = comp.get(n.id)!;
-        const h = n.id === STOP_ID ? 40 : NODE_H;
-        const b = box.get(k) ?? { minX: Infinity, minY: Infinity, maxY: -Infinity };
-        b.minX = Math.min(b.minX, n.position.x);
-        b.minY = Math.min(b.minY, n.position.y);
-        b.maxY = Math.max(b.maxY, n.position.y + h);
-        box.set(k, b);
-    }
-    const baseX = Math.min(...[...box.values()].map((b) => b.minX));
-    const GAP = 130;
-    let cursorY = 0;
-    const offset = new Map<number, { dx: number; dy: number }>();
-    for (const k of [...box.keys()].sort((a, b) => a - b)) {
-        const b = box.get(k)!;
-        offset.set(k, { dx: baseX - b.minX, dy: cursorY - b.minY });
-        cursorY += b.maxY - b.minY + GAP;
-    }
-    return nodes.map((n) => {
-        const o = offset.get(comp.get(n.id)!)!;
-        return { ...n, position: { x: n.position.x + o.dx, y: n.position.y + o.dy } };
-    });
-}
-
-// ── Custom nodes ────────────────────────────────────────────────────────────
-type StepNodeData = {
-    label: string;
-    subtitle: string;
-    // The step is sent as a reply on the contact's existing conversation, so
-    // the subtitle is that conversation's subject rather than the step's own.
-    inThread: boolean;
-    isStart: boolean;
-    endsHere: boolean;
-    orphan: boolean;
-    onDelete: () => void;
-    onAddReply: () => void;
-};
-
-function StepNode({ data, selected }: NodeProps) {
-    const d = data as StepNodeData;
-    return (
-        <div
-            className={`w-[248px] rounded-xl border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md ${
-                d.orphan ? "border-dashed border-amber-300" : "border-slate-200"
-            } ${selected ? "border-sky-400 ring-2 ring-sky-100" : ""}`}
-        >
-            <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-2 !border-white !bg-slate-300" />
-            <div className="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-white px-2.5 py-1.5">
-                <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200/70">
-                    <MailIcon className="w-3 h-3" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">
-                    {d.label || "Untitled step"}
-                </span>
-                {d.isStart && (
-                    <span className="shrink-0 rounded bg-sky-600 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
-                        Start
-                    </span>
-                )}
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        d.onDelete();
-                    }}
-                    title="Delete step"
-                    className="nodrag inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                >
-                    <Trash2Icon className="w-3 h-3" />
-                </button>
-            </div>
-            <div className="px-2.5 py-2">
-                <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">
-                    {d.inThread ? "Reply in thread" : "Email"}
-                </div>
-                <div className="mt-0.5 truncate text-[11.5px] text-slate-500">{d.subtitle || "No subject yet"}</div>
-            </div>
-            {d.orphan ? (
-                <div className="flex items-center gap-1 border-t border-amber-200/70 px-2.5 py-1 text-[10.5px] text-amber-600">
-                    <UnlinkIcon className="w-3 h-3" />
-                    Not connected — drag a link in
-                </div>
-            ) : d.endsHere ? (
-                <div
-                    className="flex items-center gap-1 border-t border-slate-200/70 px-2.5 py-1 text-[10.5px] text-slate-400"
-                    title="No outgoing line, so the sequence ends for contacts who reach this step. Drag the bottom dot to continue it."
-                >
-                    <FlagIcon className="w-3 h-3 text-slate-400" />
-                    Ends here
-                </div>
-            ) : null}
-            {/* Explicit, discoverable way to build a reply-triggered step (the
-                reply branch is otherwise only reachable via a connection's
-                condition dropdown). Creates an action step that fires instantly
-                on reply. */}
-            <button
-                type="button"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    d.onAddReply();
-                }}
-                title="Create a step that runs the moment the contact replies"
-                className="nodrag flex w-full items-center gap-1.5 border-t border-slate-200/70 px-2.5 py-1.5 text-[10.5px] font-medium text-violet-600 transition-colors hover:bg-violet-50"
-            >
-                <ZapIcon className="w-3 h-3" />
-                On reply
-            </button>
-            {/* One output dot: drag it out to add the next step, action, or condition. */}
-            <Handle
-                type="source"
-                id="s"
-                position={Position.Bottom}
-                title="What happens next: drag onto a node to connect, or onto empty space to add a step, action, condition, or Stop"
-                className="!h-3 !w-3 pointer-coarse:!h-5 pointer-coarse:!w-5 !border-2 !border-white !bg-sky-500"
-            />
-        </div>
-    );
-}
-
-type IfNodeData = { label: string; instant: boolean; onDelete: () => void };
-
-function IfNode({ data, selected }: NodeProps) {
-    const d = data as IfNodeData;
-    // Instant-capable branches (reply intent, opened, clicked) fire the moment
-    // the event lands, not at the next scheduled step. A violet "instant" badge
-    // distinguishes them from the branches checked at the next step boundary
-    // (negative "didn't" signals, within-N-days windows, random / always). The
-    // whole node carries a tooltip explaining it.
-    return (
-        <div
-            title={
-                d.instant
-                    ? "Runs the moment it happens (reply / open / click), not at the next scheduled step."
-                    : undefined
-            }
-            className={`rounded-lg border bg-gradient-to-b from-sky-50 to-white px-2 py-1 shadow-sm transition-shadow duration-200 hover:shadow-md ${
-                selected ? "border-sky-400 ring-2 ring-sky-100" : d.instant ? "border-violet-200" : "border-sky-200"
-            }`}
-        >
-            <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-2 !border-white !bg-slate-300" />
-            {/* Right dot = the THEN path: where this if leads (drag to change). */}
-            <Handle
-                type="source"
-                id="out"
-                position={Position.Right}
-                title="Then: where contacts matching this condition go"
-                className="!h-3 !w-3 pointer-coarse:!h-5 pointer-coarse:!w-5 !border-2 !border-white !bg-sky-500"
-            />
-            <div className="flex items-center gap-1.5">
-                <GitBranchIcon className="w-3 h-3 shrink-0 text-sky-600" />
-                <span className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-sky-500">if</span>
-                <span className="max-w-[150px] truncate text-[11px] font-medium text-sky-800">{d.label}</span>
-                {d.instant && (
-                    <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-violet-50 px-1 py-px text-[8.5px] font-semibold uppercase tracking-[0.1em] text-violet-600 ring-1 ring-violet-200/70">
-                        <ZapIcon className="w-2.5 h-2.5" />
-                        instant
-                    </span>
-                )}
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        d.onDelete();
-                    }}
-                    title="Delete this branch"
-                    className="nodrag inline-flex size-4 items-center justify-center rounded text-sky-400 hover:bg-rose-50 hover:text-rose-600"
-                >
-                    <Trash2Icon className="w-3 h-3" />
-                </button>
-            </div>
-            {/* Bottom dot = the ELSE path: drag to add the next condition (else-if). */}
-            <Handle
-                type="source"
-                id="else"
-                position={Position.Bottom}
-                title="Else: where contacts NOT matching this condition go"
-                className="!h-3 !w-3 pointer-coarse:!h-5 pointer-coarse:!w-5 !border-2 !border-white !bg-slate-400"
-            />
-        </div>
-    );
-}
-
-// TriggerNode — where every contact enters the flow, and the one place on the
-// canvas that shows (and sets) how long their FIRST email waits after they
-// entered. It edits campaigns.entry_delay_minutes, the same value campaign
-// Settings > First email writes, so the two can never disagree. Self-contained on purpose: it reads
-// the campaign itself rather than taking the delay through node data, which keeps
-// the layout effect from re-running on every save.
-function TriggerNode({ data }: NodeProps) {
-    const { campaignId } = data as { campaignId: string };
-    const { data: campaign } = useCampaign(campaignId);
-    const updateCampaign = useUpdateCampaign(campaignId);
-    const canEdit = usePermission("MANAGE_CAMPAIGNS");
-    const qc = useQueryClient();
-    const minutes = campaign?.entry_delay_minutes ?? 0;
-
-    // Commits are chained rather than fired in parallel: two clicks inside one
-    // request round-trip would otherwise race, and the PATCH has no revision
-    // check, so the older response could land last and win.
-    const inFlight = React.useRef<Promise<unknown>>(Promise.resolve());
-    const save = (next: number) => {
-        if (next === minutes) return;
-        qc.setQueryData(["campaigns", campaignId], (old: unknown) =>
-            old ? { ...(old as object), entry_delay_minutes: next } : old,
-        );
-        inFlight.current = inFlight.current
-            .catch(() => {})
-            .then(() => updateCampaign.mutateAsync({ entry_delay_minutes: next }))
-            .catch(async (err) => {
-                toast.error(buildError(err as AppError));
-                // Put the optimistic value back where the server left it, so a
-                // refused save does not leave the card claiming a delay it never
-                // got. Awaited so the recovery refetch stays INSIDE the chain: a
-                // detached one could land after the next commit's optimistic
-                // write and put the stale value back on the card.
-                await qc.invalidateQueries({ queryKey: ["campaigns", campaignId] });
-            });
-    };
-
-    return (
-        <div className="w-[248px] rounded-xl border border-violet-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 rounded-t-xl border-b border-violet-200/70 bg-gradient-to-r from-violet-50/80 to-white px-2.5 py-1.5">
-                <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-violet-100 text-violet-600 ring-1 ring-violet-200/70">
-                    <LogInIcon className="w-3 h-3" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">
-                    Contact enters
-                </span>
-                <span className="shrink-0 rounded bg-violet-600 px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
-                    Trigger
-                </span>
-            </div>
-            <div className="px-2.5 py-2">
-                <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">
-                    Send the first email
-                </div>
-                <PopoverMenu>
-                    <PopoverMenuTrigger asChild>
-                        <button
-                            type="button"
-                            title="How long to wait before this contact's first email"
-                            className="nodrag mt-0.5 inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 px-1.5 text-[11.5px] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
-                        >
-                            <ClockIcon className="w-3 h-3 text-slate-400" />
-                            {minutes > 0 ? `after ${entryDelayLabel(minutes).toLowerCase()}` : "immediately"}
-                            <ChevronDownIcon className="w-3 h-3 text-slate-400" />
-                        </button>
-                    </PopoverMenuTrigger>
-                    <PopoverMenuContent minWidth={280} className="p-2.5">
-                        <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                            Wait before the first email
-                        </div>
-                        {/* The popover is portaled to <body> but is still a React
-                            child of this node, so its clicks would otherwise bubble
-                            up the React tree into the canvas's node handler. */}
-                        <div onClick={(e) => e.stopPropagation()}>
-                            {/* onCommit, not onChange: this saves at once, so a
-                                typed custom amount must land on blur / Enter
-                                rather than once per keystroke. */}
-                            <EntryDelayPicker value={minutes} onCommit={save} disabled={!canEdit} />
-                        </div>
-                        <p className="mt-2 text-[11px] leading-snug text-slate-400">
-                            Counted from when the contact entered this campaign.
-                        </p>
-                    </PopoverMenuContent>
-                </PopoverMenu>
-            </div>
-            <Handle
-                type="source"
-                position={Position.Bottom}
-                isConnectable={false}
-                className="!h-2 !w-2 !border-2 !border-white !bg-violet-300"
-            />
-        </div>
-    );
-}
-
-function StopNode() {
-    return (
-        <div className="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11.5px] font-medium text-rose-600">
-            <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-rose-300" />
-            <FlagIcon className="w-3 h-3" />
-            Stop
-        </div>
-    );
-}
-
-// Per-type chrome for action nodes (icon + label + accent).
-const ACTION_META: Record<string, { label: string; Icon: typeof ClockIcon; tint: string }> = {
-    add_tag: { label: "Add label", Icon: TagIcon, tint: "text-emerald-600" },
-    remove_tag: { label: "Remove label", Icon: TagIcon, tint: "text-amber-600" },
-    add_to_segment: { label: "Add to segment", Icon: LayersIcon, tint: "text-emerald-600" },
-    remove_from_segment: { label: "Remove from segment", Icon: LayersIcon, tint: "text-amber-600" },
-    label_email: { label: "Label conversation", Icon: TagsIcon, tint: "text-fuchsia-600" },
-    create_task: { label: "Create task", Icon: CheckSquareIcon, tint: "text-violet-600" },
-    create_deal: { label: "Create deal", Icon: HandshakeIcon, tint: "text-emerald-600" },
-    move_deal_stage: { label: "Move deal stage", Icon: ArrowRightLeftIcon, tint: "text-sky-600" },
-    unsubscribe: { label: "Unsubscribe", Icon: BellOffIcon, tint: "text-rose-600" },
-    run_automation: { label: "Run automation", Icon: ZapIcon, tint: "text-indigo-600" },
-    fire_event: { label: "Fire event", Icon: SendIcon, tint: "text-sky-600" },
-    switch: { label: "Switch", Icon: SplitIcon, tint: "text-purple-600" },
-    ai_step: { label: "AI step", Icon: SparklesIcon, tint: "text-purple-600" },
-};
-
-// actionSummary is the one-line subtitle shown on an action node.
-function actionSummary(a?: SequenceAction | null): string {
-    if (!a) return "Not configured";
-    switch (a.type) {
-        case "add_tag":
-            return a.category_id ? "Add a label" : "Pick a label…";
-        case "remove_tag":
-            return a.category_id ? "Remove a label" : "Pick a label…";
-        case "add_to_segment":
-            return a.segment_id ? "Pin into a segment" : "Pick a segment…";
-        case "remove_from_segment":
-            return a.segment_id ? "Pin out of a segment" : "Pick a segment…";
-        case "label_email":
-            return a.label_ids && a.label_ids.length ? "Label the conversation" : "Pick a label…";
-        case "create_deal":
-            return a.deal_pipeline_id && a.deal_stage_id ? "Create a CRM deal" : "Pick a pipeline and stage…";
-        case "move_deal_stage":
-            return a.deal_pipeline_id && a.deal_stage_id ? "Move the deal forward" : "Pick a pipeline and stage…";
-        case "unsubscribe":
-            return "Unsubscribe the contact";
-        case "run_automation":
-            return a.automation_id ? "Launch an automation" : "Pick an automation…";
-        case "fire_event":
-            return a.event_name ? `Fire "${a.event_name}"` : "Name the event…";
-        case "switch": {
-            if (a.switch_on === "value") {
-                const v = a.switch_value?.trim();
-                return v ? `Match ${v}` : "Pick a value to match…";
-            }
-            const t = a.ai_instruction?.trim();
-            if (!t) return "Tell AI how to route…";
-            return t.length > 64 ? `${t.slice(0, 61)}…` : t;
-        }
-        case "ai_step": {
-            const n = a.ai_allowed_actions?.length ?? 0;
-            if (!a.ai_instruction?.trim()) return "Tell the agent what to do…";
-            if (n === 0) return "Pick actions the agent may take…";
-            return `Agent · ${n} action${n === 1 ? "" : "s"}`;
-        }
-        default:
-            return "Action";
-    }
-}
-
-type ActionNodeData = {
-    actionType: string;
-    label: string;
-    subtitle: string;
-    endsHere: boolean;
-    orphan: boolean;
-    onDelete: () => void;
-};
-
-function ActionNode({ data, selected }: NodeProps) {
-    const d = data as ActionNodeData;
-    const meta = ACTION_META[d.actionType] ?? { label: "Action", Icon: ZapIcon, tint: "text-slate-500" };
-    const Icon = meta.Icon;
-    return (
-        <div
-            className={`w-[248px] rounded-xl border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md ${
-                d.orphan ? "border-dashed border-amber-300" : "border-slate-200"
-            } ${selected ? "border-sky-400 ring-2 ring-sky-100" : ""}`}
-        >
-            <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-2 !border-white !bg-slate-300" />
-            <div className="flex items-center gap-2 rounded-t-xl border-b border-slate-200/70 bg-gradient-to-r from-slate-50 to-white px-2.5 py-1.5">
-                <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-slate-100 ring-1 ring-slate-200/70">
-                    <Icon className={`w-3 h-3 ${meta.tint}`} />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">{d.label}</span>
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        d.onDelete();
-                    }}
-                    title="Delete action"
-                    className="nodrag inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                >
-                    <Trash2Icon className="w-3 h-3" />
-                </button>
-            </div>
-            <div className="px-2.5 py-2">
-                <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">{meta.label}</div>
-                <div className="mt-0.5 truncate text-[11.5px] text-slate-500">{d.subtitle}</div>
-            </div>
-            {d.orphan ? (
-                <div className="flex items-center gap-1 border-t border-amber-200/70 px-2.5 py-1 text-[10.5px] text-amber-600">
-                    <UnlinkIcon className="w-3 h-3" />
-                    Not connected — drag a link in
-                </div>
-            ) : d.endsHere ? (
-                <div
-                    className="flex items-center gap-1 border-t border-slate-200/70 px-2.5 py-1 text-[10.5px] text-slate-400"
-                    title="No outgoing line, so the sequence ends for contacts who reach this step. Drag the bottom dot to continue it."
-                >
-                    <FlagIcon className="w-3 h-3 text-slate-400" />
-                    Ends here
-                </div>
-            ) : null}
-            {/* One output dot: drag it out to add the next step, action, or condition. */}
-            <Handle
-                type="source"
-                id="s"
-                position={Position.Bottom}
-                title="What happens next: drag onto a node to connect, or onto empty space to add a step, action, condition, or Stop"
-                className="!h-3 !w-3 pointer-coarse:!h-5 pointer-coarse:!w-5 !border-2 !border-white !bg-sky-500"
-            />
-        </div>
-    );
-}
-
-type ConditionNodeData = { label: string; endsHere: boolean; orphan: boolean; onDelete: () => void };
-
-// A Condition node is a pure router (no email, no action): it just branches.
-// Drag from it to add conditional paths, and chain Condition nodes to build
-// nested decision trees. Persisted as a no-op step (kind "wait").
-function ConditionNode({ data, selected }: NodeProps) {
-    const d = data as ConditionNodeData;
-    return (
-        <div
-            className={`w-[200px] rounded-xl border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md ${
-                d.orphan ? "border-dashed border-amber-300" : "border-amber-200"
-            } ${selected ? "border-sky-400 ring-2 ring-sky-100" : ""}`}
-        >
-            <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-2 !border-white !bg-slate-300" />
-            <div className="flex items-center gap-2 rounded-t-xl border-b border-amber-200/60 bg-gradient-to-r from-amber-50/80 to-white px-2.5 py-1.5">
-                <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-600 ring-1 ring-amber-200/70">
-                    <GitBranchIcon className="w-3 h-3" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">
-                    {d.label || "Condition"}
-                </span>
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        d.onDelete();
-                    }}
-                    title="Delete condition"
-                    className="nodrag inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                >
-                    <Trash2Icon className="w-3 h-3" />
-                </button>
-            </div>
-            <div className="px-2.5 py-1.5 text-[10.5px] text-slate-400">
-                {d.endsHere ? "Drag out to add an if branch" : "Routes by your conditions"}
-            </div>
-            {/* One output dot: drag out to add each conditional path. */}
-            <Handle
-                type="source"
-                id="s"
-                position={Position.Bottom}
-                title="Drag out once per path: each line from here is an if branch"
-                className="!h-3 !w-3 pointer-coarse:!h-5 pointer-coarse:!w-5 !border-2 !border-white !bg-sky-500"
-            />
-        </div>
-    );
-}
-
-type SwitchNodeData = {
-    label: string;
-    subtitle: string;
-    cases: string[];
-    // caseKey -> the case has a connected path already (drawn dot turns solid).
-    connected: Record<string, boolean>;
-    aiMode: boolean;
-    orphan: boolean;
-    onDelete: () => void;
-};
-
-// SwitchNode — a multi-way router. Every configured case is its own row with
-// its own source dot on the right: drag a case's dot to the step that path
-// leads to (as many cases as you need). The bottom dot is the "otherwise"
-// fallback for contacts no case matched. An AI prompt or a rendered value
-// decides the case per contact.
-function SwitchNode({ id, data, selected }: NodeProps) {
-    const d = data as SwitchNodeData;
-    // Handles are added/removed as cases change; tell React Flow to re-measure.
-    const updateInternals = useUpdateNodeInternals();
-    const casesSig = d.cases.join("|");
-    React.useEffect(() => updateInternals(id), [id, casesSig, updateInternals]);
-    return (
-        <div
-            className={`w-[248px] rounded-xl border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md ${
-                d.orphan ? "border-dashed border-amber-300" : "border-purple-200"
-            } ${selected ? "border-purple-400 ring-2 ring-purple-100" : ""}`}
-        >
-            <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-2 !border-white !bg-slate-300" />
-            <div className="flex items-center gap-2 rounded-t-xl border-b border-purple-200/60 bg-gradient-to-r from-purple-50/60 to-white px-2.5 py-1.5">
-                <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-purple-100 text-purple-600 ring-1 ring-purple-200/70">
-                    <SplitIcon className="w-3 h-3" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800">{d.label}</span>
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        d.onDelete();
-                    }}
-                    title="Delete switch"
-                    className="nodrag inline-flex size-5 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                >
-                    <Trash2Icon className="w-3 h-3" />
-                </button>
-            </div>
-            <div className="px-2.5 pt-1.5 pb-1">
-                <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-slate-300">
-                    {d.aiMode ? "AI decides" : "Value match"}
-                </div>
-                <div className="mt-0.5 truncate text-[11.5px] text-slate-500">{d.subtitle}</div>
-            </div>
-            {d.cases.length === 0 ? (
-                <div className="px-2.5 pb-2 text-[10.5px] text-slate-400">Open the step to add cases</div>
-            ) : (
-                <div className="pb-1.5">
-                    {d.cases.map((c) => {
-                        const on = !!d.connected[caseKey(c)];
-                        return (
-                            <div key={caseKey(c)} className="relative flex h-6 items-center pl-2.5 pr-4">
-                                <span
-                                    className={`min-w-0 flex-1 truncate text-[11.5px] ${on ? "text-slate-700" : "text-slate-400"}`}
-                                >
-                                    {c}
-                                </span>
-                                {/* This case's own dot: drag it to the step this path leads to. */}
-                                <Handle
-                                    type="source"
-                                    id={caseHandleId(c)}
-                                    position={Position.Right}
-                                    className={`!absolute !-right-1.5 !top-1/2 !h-3 !w-3 !-translate-y-1/2 pointer-coarse:!h-5 pointer-coarse:!w-5 !border-2 !border-white ${
-                                        on ? "!bg-purple-500" : "!bg-slate-300"
-                                    }`}
-                                />
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-            {d.orphan && (
-                <div className="flex items-center gap-1 border-t border-amber-200/70 px-2.5 py-1 text-[10.5px] text-amber-600">
-                    <UnlinkIcon className="w-3 h-3" />
-                    Not connected — drag a link in
-                </div>
-            )}
-            {/* The "otherwise" fallback gets its own labeled row (same visual
-                language as the cases) instead of an unexplained bottom dot. */}
-            <div
-                className="relative flex h-6 items-center rounded-b-xl border-t border-slate-200/70 bg-slate-50/60 pl-2.5 pr-4"
-                title="Where contacts go when no case matched. Drag the dot to a step, or to empty space to add one (or Stop)."
-            >
-                <span className="min-w-0 flex-1 truncate text-[10.5px] font-medium uppercase tracking-[0.1em] text-slate-400">
-                    Otherwise
-                </span>
-                <Handle
-                    type="source"
-                    id="s"
-                    position={Position.Right}
-                    className="!absolute !-right-1.5 !top-1/2 !h-3 !w-3 !-translate-y-1/2 pointer-coarse:!h-5 pointer-coarse:!w-5 !border-2 !border-white !bg-slate-400"
-                />
-            </div>
-        </div>
-    );
-}
-
-const nodeTypes = { step: StepNode, ifcond: IfNode, stop: StopNode, action: ActionNode, condition: ConditionNode, switch: SwitchNode, trigger: TriggerNode };
-
-// Convergent edge.
-// Several branches can route to the same next step (many in -> one node). They
-// all terminate at the node's single top handle, so by default the curves pile
-// onto one point and the arrowheads stack. This edge fans the incoming lines
-// across the top of the target node by index, so each inbound connection lands
-// at its own point and stays readable. A lone inbound edge renders unchanged.
-//
-// data.conIndex / data.conTotal are filled in by the layout effect once it
-// knows how many edges share a target.
-type ConvergeEdgeData = { conIndex?: number; conTotal?: number };
-
-// Unit outward direction for a handle side (the way an edge leaves/enters).
-function handleDir(pos?: Position): [number, number] {
-    switch (pos) {
-        case Position.Left:
-            return [-1, 0];
-        case Position.Right:
-            return [1, 0];
-        case Position.Top:
-            return [0, -1];
-        default:
-            return [0, 1]; // Bottom
-    }
-}
-
-// A geometry-aware smooth curve. Control lengths scale with the source/target
-// gap but SHRINK when the target sits behind the exit direction (e.g. a
-// right-facing switch dot whose target is below-left), so the curve turns
-// toward the target instead of looping out and back. Vertical bottom->top
-// edges are unchanged (a gentle S), so the natural flow keeps its curve.
-function getNaturalPath(a: {
-    sourceX: number;
-    sourceY: number;
-    sourcePosition?: Position;
-    targetX: number;
-    targetY: number;
-    targetPosition?: Position;
-}): [string, number, number] {
-    const { sourceX, sourceY, targetX, targetY } = a;
-    const [sdx, sdy] = handleDir(a.sourcePosition);
-    const [tdx, tdy] = handleDir(a.targetPosition);
-    const dist = Math.hypot(targetX - sourceX, targetY - sourceY) || 1;
-    const base = Math.max(34, Math.min(dist * 0.5, 160));
-    // How much the target lies along the source's exit direction (-1..1).
-    const sAlong = ((targetX - sourceX) * sdx + (targetY - sourceY) * sdy) / dist;
-    const sLen = base * (0.32 + 0.68 * Math.max(0, sAlong));
-    // How much the source lies along the target's entry direction.
-    const tAlong = ((sourceX - targetX) * tdx + (sourceY - targetY) * tdy) / dist;
-    const tLen = base * (0.32 + 0.68 * Math.max(0, tAlong));
-    const c1x = sourceX + sdx * sLen;
-    const c1y = sourceY + sdy * sLen;
-    const c2x = targetX + tdx * tLen;
-    const c2y = targetY + tdy * tLen;
-    const path = `M${sourceX},${sourceY} C${c1x},${c1y} ${c2x},${c2y} ${targetX},${targetY}`;
-    // Midpoint of the cubic (t=0.5) for the label.
-    const labelX = (sourceX + 3 * c1x + 3 * c2x + targetX) / 8;
-    const labelY = (sourceY + 3 * c1y + 3 * c2y + targetY) / 8;
-    return [path, labelX, labelY];
-}
-
-function ConvergeEdge({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    markerEnd,
-    style,
-    label,
-    labelStyle,
-    labelBgStyle,
-    data,
-}: EdgeProps) {
-    const d = (data ?? {}) as ConvergeEdgeData;
-    const total = d.conTotal ?? 1;
-    const index = d.conIndex ?? 0;
-    // Spread the landing points across ~70% of the node's width, centred on the
-    // handle. One inbound edge keeps dead-centre (offset 0).
-    const span = Math.min(170, NODE_W * 0.7);
-    const offset = total > 1 ? (index - (total - 1) / 2) * (span / Math.max(1, total - 1)) : 0;
-    const [path, labelX, labelY] = getNaturalPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX: targetX + offset,
-        targetY,
-        targetPosition,
-    });
-    return (
-        <>
-            <BaseEdge path={path} markerEnd={markerEnd} style={style} />
-            {label ? (
-                <EdgeLabelRenderer>
-                    <div
-                        className="nodrag nopan pointer-events-none absolute rounded border px-1 py-px text-[10px]"
-                        style={{
-                            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                            borderColor: (labelBgStyle as { stroke?: string } | undefined)?.stroke ?? "light-dark(#e2e8f0, #2e2f34)",
-                            background: (labelBgStyle as { fill?: string } | undefined)?.fill ?? "light-dark(#fff, #1a1b1e)",
-                            color: (labelStyle as { fill?: string } | undefined)?.fill ?? "light-dark(#475569, #b4bac3)",
-                        }}
-                    >
-                        {label}
-                    </div>
-                </EdgeLabelRenderer>
-            ) : null}
-        </>
-    );
-}
-
-const edgeTypes = { converge: ConvergeEdge };
-
-type IfMeta = { sourceId: string; branchId: string };
 
 export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const { data: sequences } = useSequences(campaignId);
+    const steps = React.useMemo(() => sequences ?? [], [sequences]);
     const createSequence = useCreateSequence(campaignId);
     const deleteSequence = useDeleteSequence(campaignId);
     const { data: campaign } = useCampaign(campaignId);
     const updateCampaign = useUpdateCampaign(campaignId);
+    const { data: variants } = useCampaignABVariants(campaignId);
     const confirm = useConfirm();
     const qc = useQueryClient();
+    const canEdit = usePermission("MANAGE_CAMPAIGNS");
 
-    const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-    const [selectedEdge, setSelectedEdge] = React.useState<{ sourceId: string; branchId: string } | null>(null);
-    const [editStepId, setEditStepId] = React.useState<string | null>(null);
-    const [adding, setAdding] = React.useState(false);
-    // When you drag a node's dot out to empty canvas, we open a create menu at
-    // the drop point instead of immediately making an email step.
-    const [dragCreate, setDragCreate] = React.useState<{
-        x: number;
-        y: number;
-        sourceId: string;
-        // The drag started on a Condition node, so the new node becomes a
-        // conditional ("if") path rather than an unconditional one.
-        conditional?: boolean;
-        // The drag started on a Switch case dot: the new node becomes that
-        // case's path (keyed by caseKey).
-        switchCase?: string;
-        ifSource?: { sourceId: string; branchId: string; handle: string };
-    } | null>(null);
-    const connectStartRef = React.useRef<{ nodeId: string | null; handleId: string | null }>({
-        nodeId: null,
-        handleId: null,
-    });
-    // While dragging a node, kill the position transition so the drag is 1:1.
-    const [dragging, setDragging] = React.useState(false);
-    // Editing the sequence flow (add a step, drag a node, draw a branch) needs
-    // the manage-sequences permission. View-only members can pan/zoom/inspect.
-    // Step CRUD is gated server-side on MANAGE_CAMPAIGNS (the JWT/org path), so the
-    // canvas editing affordances must check the same bit — not MANAGE_SEQUENCES,
-    // which only gates the API-key WRITE_CAMPAIGNS path and can diverge for custom roles.
-    const canEditFlow = usePermission("MANAGE_CAMPAIGNS");
-    const ifMetaRef = React.useRef<Record<string, IfMeta>>({});
+    const [selection, setSelection] = React.useState<Selection>(null);
+    const [picker, setPicker] = React.useState<{ at: InsertPoint; anchor: DOMRect } | null>(null);
+    const [waitEdit, setWaitEdit] = React.useState<{ target: string; anchor: { x: number; y: number } } | null>(null);
+    const [busy, setBusy] = React.useState(false);
+    const dirty = useDirtyRegistry();
 
-    // ── Live collaboration (mirrors the automation builder) ────────────────────
-    // Teammates on the same campaign see each other's cursors and watch step
-    // cards move in real time; step positions persist (drag-to-stick). Presence
-    // is already claimed by the campaign layout, so we only read it here. The
-    // page-level cursor layer is silenced in favour of this flow-space one.
-    const resource = `campaign:${campaignId}`;
-    useSuppressGlobalCursors();
-    const hasPeers = useResourceViewers(resource).length > 0;
-    const rfRef = React.useRef<ReactFlowInstance | null>(null);
-    const draggingRef = React.useRef<Set<string>>(new Set());
-    const nodesRef = React.useRef<Node[]>(nodes);
-    nodesRef.current = nodes;
-    const commitTimer = React.useRef<number | null>(null);
-
-    // Persist only real step coordinates (synthetic IF / STOP nodes have no row
-    // and are re-derived from their source step). Silent on the server: no audit,
-    // no updated_at bump.
-    const persistLayout = React.useCallback(() => {
-        const positions = nodesRef.current
-            .filter((n) => !isIfId(n.id) && n.id !== STOP_ID && n.id !== ENTRY_ID)
-            .map((n) => ({ id: n.id, x: Math.round(n.position.x), y: Math.round(n.position.y) }));
-        if (positions.length) void updateSequenceLayout(campaignId, positions);
-    }, [campaignId]);
-
-    const commitLayout = React.useCallback(() => {
-        if (commitTimer.current != null) clearTimeout(commitTimer.current);
-        commitTimer.current = window.setTimeout(() => {
-            commitTimer.current = null;
-            persistLayout();
-        }, 600);
-    }, [persistLayout]);
-
-    React.useEffect(
-        () => () => {
-            if (commitTimer.current != null) {
-                clearTimeout(commitTimer.current);
-                commitTimer.current = null;
-                persistLayout();
+    // Moving away from a panel with unsaved edits asks first.
+    const selectionRef = React.useRef(selection);
+    selectionRef.current = selection;
+    const select = React.useCallback(
+        (next: Selection) => {
+            if (sameSelection(selectionRef.current, next)) return;
+            if (dirty.isDirty()) {
+                confirm.show("Discard your unsaved changes to this step?", async () => {
+                    dirty.clear();
+                    setSelection(next);
+                });
+                return;
             }
+            setSelection(next);
         },
-        [persistLayout],
+        [confirm, dirty],
     );
 
-    // Apply a teammate's drag, unless we're dragging that very node ourselves.
-    const onRemoteNode = React.useCallback(
-        (id: string, x: number, y: number) => {
-            if (draggingRef.current.has(id)) return;
-            setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, position: { x, y } } : n)));
-        },
-        [setNodes],
-    );
-
-    const live = useLiveCanvas(resource, { enabled: hasPeers, onRemoteNode });
-    const { pushSelect } = live;
-    // Broadcast what we have selected so teammates see a colored outline.
-    const onSelectionChange = React.useCallback(
-        ({ nodes: sel }: { nodes: Node[]; edges: Edge[] }) => pushSelect(sel.map((n) => n.id)),
-        [pushSelect],
-    );
-    const { user: selfUser } = useUserProfile();
-    const selfColor = cursorColor(selfUser?.id ?? "");
-
-    const seqById = React.useMemo(() => {
-        const m = new Map<string, Sequence>();
-        for (const s of sequences) m.set(s.id, s);
+    // ── Derived ──────────────────────────────────────────────────────────────
+    const byId = React.useMemo(() => new Map(steps.map((s) => [s.id, s])), [steps]);
+    const indexOf = React.useMemo(() => new Map(steps.map((s, i) => [s.id, i])), [steps]);
+    const emailNumber = React.useMemo(() => {
+        const m = new Map<string, number>();
+        let n = 0;
+        for (const s of steps) if (s.kind === "email") m.set(s.id, ++n);
         return m;
-    }, [sequences]);
+    }, [steps]);
+    const threadSubject = React.useCallback((id: string) => conversationSubjectFor(steps, indexOf.get(id) ?? 0), [steps, indexOf]);
+    const viewOf = React.useCallback(
+        (s: Sequence) => stepView(s, { index: indexOf.get(s.id) ?? 0, emailNumber: emailNumber.get(s.id) ?? 0, threadSubject: threadSubject(s.id) }),
+        [indexOf, emailNumber, threadSubject],
+    );
+    const reachable = React.useMemo(() => reachableSteps(steps), [steps]);
+    const variantCount = React.useMemo(() => {
+        const m = new Map<string, number>();
+        for (const v of variants ?? []) if (v.step_id && !v.is_control) m.set(v.step_id, (m.get(v.step_id) ?? 0) + 1);
+        return m;
+    }, [variants]);
+    const entryDelay = campaign?.entry_delay_minutes ?? 0;
 
-    const invalidate = React.useCallback(() => qc.invalidateQueries({ queryKey: SEQ_KEY(campaignId) }), [qc, campaignId]);
-
-    // Does the campaign handle replies at all? True when any step has a branch
-    // routing on a positive reply signal. Drives the stop-on-reply warning copy.
+    const note = React.useCallback(
+        (from: string, port: string, target: string) => {
+            if (isStopId(target)) return undefined;
+            if (from === ENTRY_ID) return entryDelay > 0 ? entryDelayLabel(entryDelay).toLowerCase() : undefined;
+            const branch = branchAt(byId.get(from), port);
+            if (branch && isInstantBranch(branch)) return undefined;
+            const w = byId.get(target)?.wait_after ?? 0;
+            return w > 0 ? days(w) : undefined;
+        },
+        [byId, entryDelay],
+    );
+    const layout = React.useMemo(() => layoutFlow(campaignSource(steps, sizeOf, note)), [steps, note]);
+    const order = React.useMemo(() => layout.nodes.filter((n) => n.kind === "step").map((n) => n.ref), [layout]);
     const hasReplyBranch = React.useMemo(
-        () =>
-            (sequences ?? []).some((s) =>
-                (s.conditions?.branches ?? []).some((b) =>
-                    (b.conditions ?? []).some((c) => isPositiveReplyField(c.field)),
-                ),
-            ),
-        [sequences],
+        () => steps.some((s) => (s.conditions?.branches ?? []).some((b) => (b.conditions ?? []).some((c) => POSITIVE_REPLY_FIELDS.includes(c.field)))),
+        [steps],
     );
 
-    // Single place that flips stop_on_reply (optimistic + persisted). Shared by
-    // the toolbar toggle and the warning's "turn it on" shortcut.
-    const setStopOnReply = React.useCallback(
-        (next: boolean) => {
-            qc.setQueryData(["campaigns", campaignId], (old: unknown) =>
-                old ? { ...(old as object), stop_on_reply: next } : old,
-            );
-            updateCampaign
-                .mutateAsync({ stop_on_reply: next })
-                .catch((err) => toast.error(buildError(err as AppError)));
-        },
-        [qc, campaignId, updateCampaign],
-    );
-
-    const openCondition = React.useCallback((sourceId: string, branchId: string) => {
-        setSelectedEdge({ sourceId, branchId });
-        setEditStepId(null);
-    }, []);
-    const openEditStep = React.useCallback((id: string) => {
-        setEditStepId(id);
-        setSelectedEdge(null);
-    }, []);
-
-    const reachableFrom = React.useCallback(
-        (rootId: string) => {
-            const set = new Set<string>([rootId]);
-            const queue = [rootId];
-            while (queue.length) {
-                const id = queue.shift()!;
-                for (const b of seqById.get(id)?.conditions?.branches ?? []) {
-                    const t = b.target_step_id;
-                    if (t && !set.has(t)) {
-                        set.add(t);
-                        queue.push(t);
-                    }
-                }
-            }
-            return set;
-        },
-        [seqById],
+    // ── Server writes ────────────────────────────────────────────────────────
+    const invalidate = React.useCallback(() => qc.invalidateQueries({ queryKey: SEQ_KEY(campaignId) }), [qc, campaignId]);
+    const patchCache = React.useCallback(
+        (id: string, patch: Partial<Sequence>) => qc.setQueryData<Sequence[]>(SEQ_KEY(campaignId), (old) => old?.map((s) => (s.id === id ? { ...s, ...patch } : s))),
+        [qc, campaignId],
     );
 
     const saveBranches = React.useCallback(
-        async (sourceId: string, branches: SequenceBranch[]) => {
-            const b = ordered(branches);
-            qc.setQueryData<Sequence[]>(SEQ_KEY(campaignId), (old) =>
-                old?.map((s) => (s.id === sourceId ? { ...s, conditions: { branches: b } } : s)),
-            );
+        async (id: string, branches: SequenceBranch[]) => {
+            const b = normalize(branches);
+            // A refetch still in flight would land on top of this patch and undo it.
+            await qc.cancelQueries({ queryKey: SEQ_KEY(campaignId) });
+            patchCache(id, { conditions: { branches: b } });
             try {
-                await updateSequence(campaignId, sourceId, { conditions: { branches: b } });
-            } catch {
-                toast.error("Couldn't save the connection");
+                await updateSequence(campaignId, id, { conditions: { branches: b } });
+            } catch (err) {
+                toast.error(buildError(err as AppError));
+                throw err;
             } finally {
-                invalidate();
+                void invalidate();
             }
         },
-        [campaignId, qc, invalidate],
+        [campaignId, patchCache, invalidate, qc],
     );
 
     const saveWait = React.useCallback(
-        async (targetId: string, days: number) => {
-            const d = Math.max(0, Math.round(days));
-            qc.setQueryData<Sequence[]>(SEQ_KEY(campaignId), (old) =>
-                old?.map((s) => (s.id === targetId ? { ...s, wait_after: d } : s)),
-            );
+        async (id: string, value: number) => {
+            const d = Math.max(0, Math.min(MAX_WAIT_DAYS, Math.round(value)));
+            await qc.cancelQueries({ queryKey: SEQ_KEY(campaignId) });
+            patchCache(id, { wait_after: d });
             try {
-                await updateSequence(campaignId, targetId, { wait_after: d });
-            } catch {
-                toast.error("Couldn't save the wait");
-            } finally {
-                invalidate();
-            }
-        },
-        [campaignId, qc, invalidate],
-    );
-
-    const addUnconditional = React.useCallback(
-        (sourceId: string, target: string | null) => {
-            const src = seqById.get(sourceId);
-            if (!src) return;
-            saveBranches(sourceId, [
-                ...(src.conditions?.branches ?? []),
-                { branch_id: newBranchId(), target_step_id: target, conditions: [] },
-            ]);
-        },
-        [seqById, saveBranches],
-    );
-    const addIfTo = React.useCallback(
-        (sourceId: string, target: string | null) => {
-            const src = seqById.get(sourceId);
-            if (!src) return;
-            const branch: SequenceBranch = {
-                branch_id: newBranchId(),
-                target_step_id: target,
-                conditions: [{ field: "opened", operator: "within_days", value: 3 }],
-            };
-            // Drop a default ("else") line that already points to the same step
-            // the if routes to — otherwise adding the if looks like it
-            // auto-created a duplicate else to the same step. The else stays
-            // something you add and connect yourself.
-            const existing = (src.conditions?.branches ?? []).filter(
-                (b) => !(!isCond(b) && b.target_step_id === target),
-            );
-            saveBranches(sourceId, [...existing, branch]);
-            openCondition(sourceId, branch.branch_id);
-        },
-        [seqById, saveBranches, openCondition],
-    );
-    // Wire one of a Switch step's case dots to a target: retarget the case's
-    // existing branch, or create it as an ai_label branch carrying the case
-    // name. The case is already named on the node, so no editor needs to open.
-    const connectSwitchCase = React.useCallback(
-        (sourceId: string, key: string, target: string | null) => {
-            const src = seqById.get(sourceId);
-            if (!src) return;
-            const name = (src.action?.switch_cases ?? []).find((c) => caseKey(c) === key)?.trim();
-            if (!name) return;
-            const all = src.conditions?.branches ?? [];
-            const existing = all.find((b) =>
-                (b.conditions ?? []).some((c) => c.field === "ai_label" && caseKey(c.label ?? "") === key),
-            );
-            if (existing) {
-                saveBranches(
-                    sourceId,
-                    all.map((b) => (b.branch_id === existing.branch_id ? { ...b, target_step_id: target } : b)),
-                );
-            } else {
-                saveBranches(sourceId, [
-                    ...all,
-                    {
-                        branch_id: newBranchId(),
-                        target_step_id: target,
-                        conditions: [{ field: "ai_label", operator: "is", label: name }],
-                    },
-                ]);
-            }
-        },
-        [seqById, saveBranches],
-    );
-    const retargetBranch = React.useCallback(
-        (sourceId: string, branchId: string, target: string | null) => {
-            const src = seqById.get(sourceId);
-            if (!src) return;
-            saveBranches(
-                sourceId,
-                (src.conditions?.branches ?? []).map((b) =>
-                    b.branch_id === branchId ? { ...b, target_step_id: target } : b,
-                ),
-            );
-        },
-        [seqById, saveBranches],
-    );
-    const deleteBranch = React.useCallback(
-        (sourceId: string, branchId: string) => {
-            const src = seqById.get(sourceId);
-            if (!src) return;
-            saveBranches(
-                sourceId,
-                (src.conditions?.branches ?? []).filter((b) => b.branch_id !== branchId),
-            );
-            setSelectedEdge((cur) => (cur?.branchId === branchId ? null : cur));
-        },
-        [seqById, saveBranches],
-    );
-    const moveBranch = React.useCallback(
-        (sourceId: string, branchId: string, dir: -1 | 1) => {
-            const src = seqById.get(sourceId);
-            if (!src) return;
-            const all = src.conditions?.branches ?? [];
-            const conds = all.filter(isCond);
-            const i = conds.findIndex((b) => b.branch_id === branchId);
-            const j = i + dir;
-            if (i < 0 || j < 0 || j >= conds.length) return;
-            const next = [...conds];
-            [next[i], next[j]] = [next[j], next[i]];
-            saveBranches(sourceId, [...next, ...all.filter((b) => !isCond(b))]);
-        },
-        [seqById, saveBranches],
-    );
-
-    // Step drops standalone; you connect it by dragging.
-    const addStep = React.useCallback(async () => {
-        if (adding || sequences.length >= MAX_STEPS) return;
-        setAdding(true);
-        try {
-            await toast.promise(createSequence.mutateAsync(), {
-                loading: "Adding step…",
-                success: "Step added — drag a dot to connect it.",
-                error: (err: AppError) => buildError(err),
-            });
-        } finally {
-            setAdding(false);
-        }
-    }, [adding, sequences.length, createSequence]);
-
-    // Add an action node. It drops standalone like a step; you connect it by
-    // dragging, and configure it by clicking it open.
-    const addAction = React.useCallback(
-        async (type: SequenceActionType) => {
-            if (adding || sequences.length >= MAX_STEPS) return;
-            setAdding(true);
-            try {
-                const created = (await createSequence.mutateAsync()) as Sequence;
-                await updateSequence(campaignId, created.id, {
-                    kind: "action",
-                    action: { type },
-                });
-                invalidate();
-                toast.success("Action added — drag a dot to connect it.");
+                await updateSequence(campaignId, id, { wait_after: d });
             } catch (err) {
                 toast.error(buildError(err as AppError));
             } finally {
-                setAdding(false);
+                void invalidate();
             }
         },
-        [adding, sequences.length, createSequence, campaignId, invalidate],
+        [campaignId, patchCache, invalidate, qc],
     );
 
-    // Drag from a step's dot to empty -> new step, plain ("just go there") link.
-    const dragOutStep = React.useCallback(
-        async (sourceId: string) => {
-            if (adding || sequences.length >= MAX_STEPS) return;
-            const src = seqById.get(sourceId);
-            setAdding(true);
-            try {
-                const created = (await createSequence.mutateAsync()) as Sequence;
-                await saveBranches(sourceId, [
-                    ...(src?.conditions?.branches ?? []),
-                    { branch_id: newBranchId(), target_step_id: created.id, conditions: [] },
-                ]);
-            } catch {
-                toast.error("Couldn't add the step");
-            } finally {
-                setAdding(false);
-            }
-        },
-        [adding, sequences.length, seqById, createSequence, saveBranches],
-    );
-    // Drag out -> new action step of the chosen type, connected unconditionally.
-    const dragOutAction = React.useCallback(
-        async (sourceId: string, type: SequenceActionType) => {
-            if (adding || sequences.length >= MAX_STEPS) return;
-            const src = seqById.get(sourceId);
-            setAdding(true);
-            try {
-                const created = (await createSequence.mutateAsync()) as Sequence;
-                await updateSequence(campaignId, created.id, { kind: "action", action: defaultActionFor(type) });
-                await saveBranches(sourceId, [
-                    ...(src?.conditions?.branches ?? []),
-                    { branch_id: newBranchId(), target_step_id: created.id, conditions: [] },
-                ]);
-            } catch {
-                toast.error("Couldn't add the action");
-            } finally {
-                setAdding(false);
-            }
-        },
-        [adding, sequences.length, seqById, createSequence, campaignId, saveBranches],
-    );
-    // Create a step of the chosen type and return its id (used by the menu when
-    // dragging out of an IF block, which then points the branch at the new node).
-    const createTypedStep = React.useCallback(
-        async (choice: Exclude<CreateChoice, "stop">): Promise<string | null> => {
-            if (adding || sequences.length >= MAX_STEPS) return null;
-            setAdding(true);
-            try {
-                const created = (await createSequence.mutateAsync()) as Sequence;
-                if (choice === "condition") {
-                    await updateSequence(campaignId, created.id, { kind: "wait", name: "Condition" });
-                } else if (choice !== "email") {
-                    await updateSequence(campaignId, created.id, { kind: "action", action: defaultActionFor(choice) });
-                }
-                return created.id;
-            } catch {
-                toast.error("Couldn't add the step");
-                return null;
-            } finally {
-                setAdding(false);
-            }
-        },
-        [adding, sequences.length, createSequence, campaignId],
-    );
-    // "On reply" on a step: create a new action step + a reply branch that fires
-    // it the moment the contact replies, then open the branch so you can pick the
-    // reply type (positive/negative/automated) and build the action chain. Reuses
-    // the same instant reply-branch mechanism the backend executes on reply.
-    const addReplyStep = React.useCallback(
-        async (sourceId: string) => {
-            if (adding || sequences.length >= MAX_STEPS) return;
-            const src = seqById.get(sourceId);
-            setAdding(true);
-            try {
-                const created = (await createSequence.mutateAsync()) as Sequence;
-                await updateSequence(campaignId, created.id, {
-                    kind: "action",
-                    action: defaultActionFor("create_task"),
-                });
-                const branch: SequenceBranch = {
-                    branch_id: newBranchId(),
-                    target_step_id: created.id,
-                    conditions: [{ field: "reply_positive", operator: "ever" }],
-                };
-                await saveBranches(sourceId, [...(src?.conditions?.branches ?? []), branch]);
-                invalidate();
-                openCondition(sourceId, branch.branch_id);
-                toast.success("Reply step added. It runs the moment they reply.");
-            } catch {
-                toast.error("Couldn't add the reply step");
-            } finally {
-                setAdding(false);
-            }
-        },
-        [adding, sequences.length, seqById, createSequence, campaignId, saveBranches, openCondition, invalidate],
-    );
-
-
-    const deleteStep = React.useCallback(
-        (id: string) => {
-            const label = stepName(seqById.get(id));
-            const referencing = sequences.filter(
-                (s) => s.id !== id && (s.conditions?.branches ?? []).some((b) => b.target_step_id === id),
-            );
-            const extra = referencing.length
-                ? ` ${referencing.length} connection${referencing.length === 1 ? "" : "s"} into it will be removed too.`
-                : "";
-            confirm.show(`Delete “${label}”? This can't be undone.${extra}`, async () => {
-                try {
-                    await Promise.all(
-                        referencing.map((s) =>
-                            updateSequence(campaignId, s.id, {
-                                conditions: {
-                                    branches: (s.conditions?.branches ?? []).filter((b) => b.target_step_id !== id),
-                                },
-                            }),
-                        ),
-                    );
-                    await deleteSequence.mutateAsync(id);
-                    invalidate();
-                    setEditStepId((cur) => (cur === id ? null : cur));
-                    setSelectedEdge((cur) => (cur?.sourceId === id ? null : cur));
-                    toast.success("Step deleted");
-                } catch {
-                    toast.error("Couldn't delete the step");
-                    throw new Error("delete-failed");
-                }
+    // Entry delay commits are chained: the PATCH has no revision check, so two
+    // in flight could land out of order.
+    const entryChain = React.useRef<Promise<unknown>>(Promise.resolve());
+    const saveEntryDelay = (next: number) => {
+        if (next === entryDelay) return;
+        qc.setQueryData(["campaigns", campaignId], (old: unknown) => (old ? { ...(old as object), entry_delay_minutes: next } : old));
+        entryChain.current = entryChain.current
+            .catch(() => {})
+            .then(() => updateCampaign.mutateAsync({ entry_delay_minutes: next }))
+            .catch(async (err) => {
+                toast.error(buildError(err as AppError));
+                await qc.invalidateQueries({ queryKey: ["campaigns", campaignId] });
             });
-        },
-        [sequences, seqById, confirm, campaignId, deleteSequence, invalidate],
-    );
-
-    // Node-data callbacks via refs so the layout effect deps don't churn.
-    const deleteStepRef = React.useRef(deleteStep);
-    const deleteBranchRef = React.useRef(deleteBranch);
-    const addReplyStepRef = React.useRef(addReplyStep);
-    React.useEffect(() => {
-        deleteStepRef.current = deleteStep;
-        deleteBranchRef.current = deleteBranch;
-        addReplyStepRef.current = addReplyStep;
-    }, [deleteStep, deleteBranch, addReplyStep]);
-
-    React.useEffect(() => {
-        const waitTag = (targetId: string | null) => {
-            if (!targetId) return "";
-            const w = seqById.get(targetId)?.wait_after ?? 0;
-            return w > 0 ? `wait ${w}d` : "";
-        };
-
-        // Steps reachable from the entry (first step). Anything else became an
-        // orphan — e.g. an upstream step was deleted — and is flagged so it can
-        // be spotted and re-linked (it stays fully connectable).
-        const reachable = new Set<string>();
-        if (sequences[0]) {
-            const queue = [sequences[0].id];
-            reachable.add(sequences[0].id);
-            while (queue.length) {
-                const id = queue.shift()!;
-                for (const b of seqById.get(id)?.conditions?.branches ?? []) {
-                    const t = b.target_step_id;
-                    if (t && !reachable.has(t)) {
-                        reachable.add(t);
-                        queue.push(t);
-                    }
-                }
-            }
-        }
-
-        let emailNum = 0;
-        const allNodes: Node[] = sequences.map((s, i) => {
-            const branches = s.conditions?.branches ?? [];
-            const isAction = s.kind !== "email";
-            if (s.kind === "wait") {
-                // Pure router: a Condition node that only branches.
-                return {
-                    id: s.id,
-                    type: "condition",
-                    position: { x: 0, y: 0 },
-                    data: {
-                        label: s.name?.trim() || "Condition",
-                        endsHere: branches.length === 0,
-                        orphan: !reachable.has(s.id),
-                        onDelete: () => deleteStepRef.current(s.id),
-                    } satisfies ConditionNodeData,
-                };
-            }
-            if (isAction) {
-                const at = s.action?.type ?? "add_tag";
-                if (at === "switch") {
-                    const cases = (s.action?.switch_cases ?? []).map((c) => c.trim()).filter(Boolean);
-                    const connected: Record<string, boolean> = {};
-                    for (const b of branches) {
-                        const c0 = (b.conditions ?? []).find((c) => c.field === "ai_label");
-                        if (c0?.label) connected[caseKey(c0.label)] = true;
-                    }
-                    return {
-                        id: s.id,
-                        type: "switch",
-                        position: { x: 0, y: 0 },
-                        data: {
-                            label: s.name?.trim() || "Switch",
-                            subtitle: actionSummary(s.action),
-                            cases,
-                            connected,
-                            aiMode: s.action?.switch_on !== "value",
-                            orphan: !reachable.has(s.id),
-                            onDelete: () => deleteStepRef.current(s.id),
-                        } satisfies SwitchNodeData,
-                    };
-                }
-                const fallback = ACTION_META[at]?.label ?? "Action";
-                return {
-                    id: s.id,
-                    type: "action",
-                    position: { x: 0, y: 0 },
-                    data: {
-                        actionType: at,
-                        label: s.name?.trim() || fallback,
-                        subtitle: actionSummary(s.action),
-                        endsHere: branches.length === 0,
-                        orphan: !reachable.has(s.id),
-                        onDelete: () => deleteStepRef.current(s.id),
-                    } satisfies ActionNodeData,
-                };
-            }
-            emailNum += 1;
-            // A step that replies in the thread carries the conversation's
-            // subject, so showing its own (blank, by design) would read as an
-            // unfinished step.
-            const conv = conversationSubjectFor(sequences, i);
-            const threads = conv !== null && s.thread_reply;
-            return {
-                id: s.id,
-                type: "step",
-                position: { x: 0, y: 0 },
-                data: {
-                    label: s.name?.trim() || `Email ${emailNum}`,
-                    subtitle: threads ? conv || s.subject : s.subject,
-                    inThread: threads,
-                    isStart: i === 0,
-                    endsHere: branches.length === 0,
-                    orphan: !reachable.has(s.id),
-                    onDelete: () => deleteStepRef.current(s.id),
-                    onAddReply: () => addReplyStepRef.current(s.id),
-                } satisfies StepNodeData,
-            };
-        });
-
-        const ifMeta: Record<string, IfMeta> = {};
-        const flowEdges: Edge[] = [];
-        const edgeStyle = (cond: boolean) =>
-            cond ? { stroke: "var(--wb-edge-sky)", strokeWidth: 2 } : { stroke: "var(--wb-edge-muted)" };
-
-        sequences.forEach((s) => {
-            const branches = ordered(s.conditions?.branches ?? []);
-            // A Switch draws its case paths straight from the node's per-case
-            // dots — no IF boxes. Each ai_label branch maps onto its case's
-            // handle; the unconditional branch hangs off the bottom
-            // "otherwise" dot (handled by the shared uncond block below).
-            const caseBranches = isSwitchStep(s)
-                ? branches.filter((b) => (b.conditions ?? []).some((c) => c.field === "ai_label"))
-                : [];
-            for (const b of caseBranches) {
-                const c0 = (b.conditions ?? []).find((c) => c.field === "ai_label");
-                const name = (c0?.label ?? "").trim();
-                if (!name) continue;
-                const wt = waitTag(b.target_step_id);
-                flowEdges.push({
-                    id: `case-${b.branch_id}`,
-                    source: s.id,
-                    sourceHandle: caseHandleId(name),
-                    target: b.target_step_id ?? STOP_ID,
-                    label: wt ? `${name} · ${wt}` : name,
-                    reconnectable: true,
-                    style: { stroke: "var(--wb-edge-violet)", strokeWidth: 2 },
-                    labelStyle: { fill: "light-dark(#7e22ce, #d8b4fe)", fontSize: 10 },
-                    labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e9d5ff, rgb(168 85 247 / 0.4))" },
-                    labelBgPadding: [5, 3],
-                    labelBgBorderRadius: 5,
-                    data: { sourceId: s.id, branchId: b.branch_id },
-                });
-            }
-            const conds = branches.filter(isCond).filter((b) => !caseBranches.includes(b));
-            const uncond = branches.find((b) => !isCond(b));
-
-            conds.forEach((b, i) => {
-                const nid = ifNodeId(b.branch_id);
-                ifMeta[nid] = { sourceId: s.id, branchId: b.branch_id };
-                allNodes.push({
-                    id: nid,
-                    type: "ifcond",
-                    position: { x: 0, y: 0 },
-                    data: {
-                        label: conditionText(b),
-                        // Instant-capable branches (reply intent / opened / clicked)
-                        // run the moment the event lands; flag the node.
-                        instant: isInstantBranch(b),
-                        onDelete: () => deleteBranchRef.current(s.id, b.branch_id),
-                    } satisfies IfNodeData,
-                });
-                // Incoming: from the step (first condition) or the PREVIOUS
-                // condition's ELSE — so conditions chain as if / else-if.
-                if (i === 0) {
-                    flowEdges.push({
-                        id: `in-${b.branch_id}`,
-                        source: s.id,
-                        sourceHandle: "s",
-                        target: nid,
-                        style: edgeStyle(true),
-                        data: { sourceId: s.id, branchId: b.branch_id },
-                    });
-                } else {
-                    flowEdges.push({
-                        id: `chain-${b.branch_id}`,
-                        source: ifNodeId(conds[i - 1].branch_id),
-                        sourceHandle: "else",
-                        target: nid,
-                        label: "else",
-                        style: edgeStyle(false),
-                        labelStyle: { fill: "light-dark(#94a3b8, #62666d)", fontSize: 10 },
-                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e2e8f0, #2e2f34)" },
-                        labelBgPadding: [4, 2],
-                        labelBgBorderRadius: 5,
-                        data: { sourceId: s.id, branchId: b.branch_id },
-                    });
-                }
-                // THEN path -> the condition's target. Engagement branches
-                // (opened/clicked) carry a window the event must land inside; an
-                // instant branch fires the MOMENT it happens BUT only within that
-                // window, so surface it ("instant <=10d") rather than just
-                // "instant" or the target step's (irrelevant) wait_after. Reply
-                // branches have no window.
-                const withinDays = (b.conditions ?? []).find((c) => c.operator === "within_days")?.value;
-                const wt = isInstantBranch(b)
-                    ? withinDays
-                        ? `instant <=${withinDays}d`
-                        : "instant"
-                    : withinDays
-                      ? `within ${withinDays}d`
-                      : waitTag(b.target_step_id);
-                // A condition with no THEN target yet leaves its right dot OPEN to
-                // drag to the next step, rather than auto-wiring it to STOP.
-                if (b.target_step_id) {
-                    flowEdges.push({
-                        id: `then-${b.branch_id}`,
-                        source: nid,
-                        sourceHandle: "out",
-                        target: b.target_step_id,
-                        label: wt || undefined,
-                        reconnectable: true,
-                        style: edgeStyle(true),
-                        labelStyle: { fill: "light-dark(#0369a1, #7dd3fc)", fontSize: 10 },
-                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#bae6fd, rgb(56 189 248 / 0.35))" },
-                        labelBgPadding: [5, 3],
-                        labelBgBorderRadius: 5,
-                        data: { sourceId: s.id, branchId: b.branch_id },
-                    });
-                }
-            });
-
-            if (uncond) {
-                const wt = waitTag(uncond.target_step_id);
-                const target = uncond.target_step_id ?? STOP_ID;
-                if (conds.length > 0) {
-                    // The final ELSE hangs off the LAST condition's else.
-                    flowEdges.push({
-                        id: `else-${uncond.branch_id}`,
-                        source: ifNodeId(conds[conds.length - 1].branch_id),
-                        sourceHandle: "else",
-                        target,
-                        label: wt ? `else · ${wt}` : "else",
-                        reconnectable: true,
-                        style: edgeStyle(false),
-                        labelStyle: { fill: "light-dark(#475569, #b4bac3)", fontSize: 10 },
-                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e2e8f0, #2e2f34)" },
-                        labelBgPadding: [5, 3],
-                        labelBgBorderRadius: 5,
-                        data: { sourceId: s.id, branchId: uncond.branch_id },
-                    });
-                } else {
-                    // No conditions on this step: a plain "just go there" line.
-                    flowEdges.push({
-                        id: `u-${uncond.branch_id}`,
-                        source: s.id,
-                        sourceHandle: "s",
-                        target,
-                        label: wt || undefined,
-                        reconnectable: true,
-                        style: edgeStyle(false),
-                        labelStyle: { fill: "light-dark(#475569, #b4bac3)", fontSize: 10 },
-                        labelBgStyle: { fill: "light-dark(#fff, #1a1b1e)", stroke: "light-dark(#e2e8f0, #2e2f34)" },
-                        labelBgPadding: [5, 3],
-                        labelBgBorderRadius: 5,
-                        data: { sourceId: s.id, branchId: uncond.branch_id },
-                    });
-                }
-            }
-        });
-        ifMetaRef.current = ifMeta;
-
-        // The trigger card: where contacts enter the flow, carrying the
-        // campaign's entry delay. Synthetic (no sequences row), so it is skipped
-        // by layout persistence, selection and click-to-edit, and it cannot be
-        // dragged, deleted or connected from.
-        if (sequences[0]) {
-            allNodes.push({
-                id: ENTRY_ID,
-                type: "trigger",
-                position: { x: 0, y: 0 },
-                data: { campaignId },
-                draggable: false,
-                selectable: false,
-                deletable: false,
-                connectable: false,
-            });
-            flowEdges.push({
-                id: "entry-edge",
-                source: ENTRY_ID,
-                target: sequences[0].id,
-                deletable: false,
-                reconnectable: false,
-                style: { stroke: "var(--wb-edge-violet-soft)", strokeWidth: 2 },
-            });
-        }
-
-        // Show STOP only when an edge actually routes there (a deliberate
-        // "otherwise → end"), never for a condition whose THEN is still open.
-        const anyStop = flowEdges.some((e) => e.target === STOP_ID);
-        if (anyStop) allNodes.push({ id: STOP_ID, type: "stop", position: { x: 0, y: 0 }, data: {} });
-
-        // Convergence: more than one branch can route to the SAME next step, so
-        // a node can have several inbound edges. Count them per target and number
-        // each one, so the custom "converge" edge can fan the lines across the
-        // target's top instead of piling them all onto its single handle. Targets
-        // with one inbound edge stay on the plain bezier (no fan, no overhead).
-        const inboundCount = new Map<string, number>();
-        for (const e of flowEdges) inboundCount.set(e.target, (inboundCount.get(e.target) ?? 0) + 1);
-        const inboundSeen = new Map<string, number>();
-
-        // Flowing curved (bezier) connectors with arrowheads — no boxy right
-        // angles. The arrow takes the edge's own stroke colour.
-        const smoothEdges: Edge[] = flowEdges.map((e) => {
-            const total = inboundCount.get(e.target) ?? 1;
-            const index = inboundSeen.get(e.target) ?? 0;
-            inboundSeen.set(e.target, index + 1);
-            // Always use the converge edge type. With a single inbound edge it
-            // renders identically (offset 0); with several it fans them out. The
-            // point is the type NEVER changes in-session: when a second edge is
-            // added to a target, only conTotal updates (1 -> 2). Flipping an
-            // existing edge's `type` live makes React Flow drop the whole edge
-            // layer until reload. The "lines disappeared after I connected two to
-            // the same step" bug.
-            return {
-                ...e,
-                type: "converge",
-                data: { ...e.data, conIndex: index, conTotal: total },
-                markerEnd: {
-                    type: MarkerType.ArrowClosed,
-                    width: 16,
-                    height: 16,
-                    color: (e.style as { stroke?: string } | undefined)?.stroke ?? "var(--wb-edge-muted)",
-                },
-            };
-        });
-
-        const laid = stackComponents(layoutGraph(allNodes, smoothEdges), smoothEdges);
-        setNodes((cur) => {
-            // Smoothness: never re-arrange the whole canvas on a connect/disconnect.
-            // Keep every existing node exactly where the user left it; only a NEW
-            // node gets a position — dropped just below the node it was dragged
-            // from (or the computed layout position on first load / unknown source).
-            // The "Tidy up" button is the one explicit full re-layout.
-            const pos = new Map(cur.map((n) => [n.id, n.position]));
-            if (pos.size === 0) {
-                // First mount: seed from persisted step positions so a teammate's
-                // arrangement sticks across visits. Synthetic IF / STOP nodes have
-                // no saved position and fall through to the relative placement
-                // below (hung off their source step). With nothing saved yet
-                // (every step at 0/0), use the computed dagre layout.
-                for (const s of sequences) {
-                    if ((s.x ?? 0) !== 0 || (s.y ?? 0) !== 0) pos.set(s.id, { x: s.x, y: s.y });
-                }
-                if (pos.size === 0) return laid;
-            }
-            const sourceOf = new Map<string, { source: string; handle?: string | null }>();
-            smoothEdges.forEach((e) => {
-                if (!sourceOf.has(e.target)) sourceOf.set(e.target, { source: e.source, handle: e.sourceHandle });
-            });
-            const laidPos = new Map(laid.map((n) => [n.id, n.position]));
-            return laid.map((n) => {
-                if (pos.has(n.id)) return { ...n, position: pos.get(n.id)! };
-                // The trigger card has no saved position and nothing routes into
-                // it, so hang it directly above the entry step wherever that sits.
-                if (n.id === ENTRY_ID) {
-                    const first = sequences[0] ? pos.get(sequences[0].id) : undefined;
-                    if (first) return { ...n, position: { x: first.x, y: first.y - 170 } };
-                }
-                const inc = sourceOf.get(n.id);
-                const srcPos = inc ? pos.get(inc.source) : undefined;
-                if (srcPos) {
-                    // A node hung off an IF box's THEN (right "out" dot) gets its
-                    // own space to the RIGHT, so the yes-line flows cleanly
-                    // rightward instead of curving back under the condition. The
-                    // ELSE (bottom dot) keeps flowing straight down.
-                    if (inc && isIfId(inc.source) && inc.handle === "out") {
-                        return { ...n, position: { x: srcPos.x + 300, y: srcPos.y + 36 } };
-                    }
-                    return { ...n, position: { x: srcPos.x, y: srcPos.y + 170 } };
-                }
-                return { ...n, position: laidPos.get(n.id) ?? n.position };
-            });
-        });
-        setEdges(smoothEdges);
-    }, [sequences, seqById, campaignId, setNodes, setEdges]);
-
-    // Subtree highlight: select a step/if → light up what's reachable, dim rest.
-    React.useEffect(() => {
-        let root: string | null = null;
-        if (editStepId) root = editStepId;
-        else if (selectedEdge) {
-            const br = seqById
-                .get(selectedEdge.sourceId)
-                ?.conditions?.branches?.find((b) => b.branch_id === selectedEdge.branchId);
-            root = br?.target_step_id ?? selectedEdge.sourceId;
-        }
-        const hl = root ? reachableFrom(root) : null;
-        const stepIn = (id: string) => {
-            if (!hl) return true;
-            if (id === STOP_ID || id === ENTRY_ID) return true;
-            if (isIfId(id)) {
-                const m = ifMetaRef.current[id];
-                return m ? hl.has(m.sourceId) : true;
-            }
-            return hl.has(id);
-        };
-        setNodes((ns) =>
-            ns.map((n) => ({ ...n, style: { ...n.style, opacity: hl && !stepIn(n.id) ? 0.3 : 1 } })),
-        );
-        setEdges((es) =>
-            es.map((e) => {
-                const sid = (e.data as { sourceId?: string } | undefined)?.sourceId;
-                const on = !hl || (sid ? hl.has(sid) : true);
-                return { ...e, style: { ...e.style, opacity: on ? 1 : 0.15 } };
-            }),
-        );
-    }, [editStepId, selectedEdge, seqById, reachableFrom, setNodes, setEdges]);
-
-    const onConnect = React.useCallback(
-        (c: Connection) => {
-            if (!c.source || !c.target || c.source === c.target || isIfId(c.target)) return;
-            const target = c.target === STOP_ID ? null : c.target;
-            if (isIfId(c.source)) {
-                const m = ifMetaRef.current[c.source];
-                if (!m) return;
-                // "out" = retarget the then-target; "else" (bottom gray dot) =
-                // an unconditional "always / just go there" fallback by default.
-                if (c.sourceHandle === "out") retargetBranch(m.sourceId, m.branchId, target);
-                else addUnconditional(m.sourceId, target);
-            } else if (c.sourceHandle === "if") {
-                addIfTo(c.source, target);
-            } else if (c.sourceHandle?.startsWith("case:")) {
-                // A Switch case dot: this line IS that case's path.
-                connectSwitchCase(c.source, c.sourceHandle.slice("case:".length), target);
-            } else if (seqById.get(c.source)?.kind === "wait") {
-                // A Condition node is a branch point: every path out of it is a
-                // condition ("if X, go here"), chained as if / else-if. The final
-                // catch-all is the else dot on the last IF box.
-                addIfTo(c.source, target);
-            } else {
-                addUnconditional(c.source, target);
-            }
-        },
-        [seqById, retargetBranch, addIfTo, addUnconditional, connectSwitchCase],
-    );
-
-    const selected = React.useMemo(() => {
-        if (!selectedEdge) return null;
-        const src = seqById.get(selectedEdge.sourceId);
-        const br = src?.conditions?.branches?.find((b) => b.branch_id === selectedEdge.branchId);
-        return src && br ? { source: src, branch: br } : null;
-    }, [selectedEdge, seqById]);
-
-    // Touch / coarse-pointer devices: don't let a drag MOVE nodes (so a swipe
-    // pans to navigate instead of "placing a card"), and let page scroll through.
-    const isCoarse = React.useMemo(
-        () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches,
-        [],
-    );
-
-    const editStep = editStepId ? seqById.get(editStepId) : undefined;
-    const editIndex = editStep ? sequences.findIndex((s) => s.id === editStep.id) : -1;
-    const atMax = sequences.length >= MAX_STEPS;
-
-    return (
-        <div
-            className={`campaign-flow relative h-[70dvh] w-full overflow-hidden rounded-md border border-slate-200 bg-slate-50/40 sm:h-[78vh] ${
-                dragging ? "rf-dragging" : ""
-            }`}
-            onPointerMove={(e) => {
-                if (!live.active) return;
-                const inst = rfRef.current;
-                if (!inst) return;
-                const p = inst.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-                live.pushCursor(p.x, p.y);
-            }}
-            onPointerLeave={() => live.clearCursor()}
-        >
-            <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onInit={(inst) => {
-                    rfRef.current = inst;
-                }}
-                onNodesChange={(changes) => {
-                    if (!canEditFlow) {
-                        // Block structural edits (drag-move, delete); keep
-                        // select/dimension so the canvas still renders for viewing.
-                        onNodesChange(
-                            changes.filter((c) => c.type !== "position" && c.type !== "remove"),
-                        );
-                        return;
-                    }
-                    onNodesChange(changes);
-                }}
-                onEdgesChange={(changes) => {
-                    if (!canEditFlow) {
-                        onEdgesChange(changes.filter((c) => c.type !== "remove"));
-                        return;
-                    }
-                    onEdgesChange(changes);
-                }}
-                onNodeDragStart={(_, __, dragged) => {
-                    if (!canEditFlow) {
-                        showPermissionDenied("MANAGE_CAMPAIGNS");
-                        return;
-                    }
-                    setDragging(true);
-                    for (const n of dragged) draggingRef.current.add(n.id);
-                }}
-                onNodeDrag={(_, __, dragged) => {
-                    for (const n of dragged) live.pushNode(n.id, n.position.x, n.position.y, true);
-                }}
-                onNodeDragStop={(_, __, dragged) => {
-                    setDragging(false);
-                    for (const n of dragged) {
-                        draggingRef.current.delete(n.id);
-                        live.pushNode(n.id, n.position.x, n.position.y, false);
-                    }
-                    commitLayout();
-                }}
-                onSelectionDragStart={(_, dragged) => {
-                    for (const n of dragged) draggingRef.current.add(n.id);
-                }}
-                onSelectionDrag={(_, dragged) => {
-                    for (const n of dragged) live.pushNode(n.id, n.position.x, n.position.y, true);
-                }}
-                onSelectionDragStop={(_, dragged) => {
-                    for (const n of dragged) {
-                        draggingRef.current.delete(n.id);
-                        live.pushNode(n.id, n.position.x, n.position.y, false);
-                    }
-                    commitLayout();
-                }}
-                onConnect={(c) => {
-                    if (!canEditFlow) {
-                        showPermissionDenied("MANAGE_CAMPAIGNS");
-                        return;
-                    }
-                    onConnect(c);
-                }}
-                onConnectStart={(_, params) => {
-                    connectStartRef.current = { nodeId: params.nodeId ?? null, handleId: params.handleId ?? null };
-                }}
-                nodesConnectable={canEditFlow}
-                nodesDraggable={!isCoarse}
-                zoomOnScroll={false}
-                panOnScroll={false}
-                preventScrolling={false}
-                minZoom={0.2}
-                maxZoom={1.75}
-                onConnectEnd={(event, state) => {
-                    const fromId = state?.fromNode?.id ?? connectStartRef.current.nodeId;
-                    const fromHandle = state?.fromHandle?.id ?? connectStartRef.current.handleId;
-                    connectStartRef.current = { nodeId: null, handleId: null };
-                    // Only when the line is dropped on EMPTY canvas (the pane). A
-                    // drop on a node/handle is a real connection that onConnect
-                    // already handled. The pane class is the reliable v12 signal.
-                    const onPane = (event.target as Element | null)?.classList?.contains("react-flow__pane");
-                    if (!fromId || !onPane) return;
-                    if (!canEditFlow) {
-                        showPermissionDenied("MANAGE_CAMPAIGNS");
-                        return;
-                    }
-                    const pt =
-                        "changedTouches" in event && event.changedTouches.length
-                            ? event.changedTouches[0]
-                            : (event as MouseEvent);
-                    if (isIfId(fromId)) {
-                        // Dragging out of an IF block: the menu lets the then/else
-                        // path lead to an email, action, or another condition (so
-                        // you can chain IF -> condition -> IF into nested trees).
-                        const m = ifMetaRef.current[fromId];
-                        if (!m) return;
-                        const handle = state?.fromHandle?.id ?? "out";
-                        setDragCreate({
-                            x: pt.clientX,
-                            y: pt.clientY,
-                            sourceId: fromId,
-                            ifSource: { sourceId: m.sourceId, branchId: m.branchId, handle },
-                        });
-                    } else {
-                        setDragCreate({
-                            x: pt.clientX,
-                            y: pt.clientY,
-                            sourceId: fromId,
-                            conditional: seqById.get(fromId)?.kind === "wait",
-                            switchCase: fromHandle?.startsWith("case:")
-                                ? fromHandle.slice("case:".length)
-                                : undefined,
-                        });
-                    }
-                }}
-                onReconnect={(oldEdge, conn) => {
-                    const d = oldEdge.data as { sourceId?: string; branchId?: string } | undefined;
-                    if (!d?.sourceId || !d?.branchId || !conn.target || isIfId(conn.target)) return;
-                    retargetBranch(d.sourceId, d.branchId, conn.target === STOP_ID ? null : conn.target);
-                }}
-                onEdgesDelete={(deleted) =>
-                    deleted.forEach((e) => {
-                        // Cancel a line: removing an edge removes its branch (the
-                        // then/else/“go there” path it represents).
-                        const d = e.data as { sourceId?: string; branchId?: string } | undefined;
-                        if (d?.sourceId && d?.branchId) deleteBranch(d.sourceId, d.branchId);
-                    })
-                }
-                onSelectionChange={onSelectionChange}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                onEdgeClick={(_, edge) => {
-                    const d = edge.data as { sourceId?: string; branchId?: string } | undefined;
-                    if (d?.sourceId && d?.branchId) openCondition(d.sourceId, d.branchId);
-                }}
-                onNodeClick={(_, node) => {
-                    if (node.type === "ifcond") {
-                        const m = ifMetaRef.current[node.id];
-                        if (m) openCondition(m.sourceId, m.branchId);
-                    } else if (node.id !== STOP_ID && node.id !== ENTRY_ID) {
-                        openEditStep(node.id);
-                    }
-                }}
-                fitView
-                proOptions={{ hideAttribution: true }}
-            >
-                <Background color="light-dark(#e9eef5, #25262a)" gap={24} size={1} />
-                <Controls showInteractive={false} />
-                <CanvasSelections selections={live.selections} />
-                <CanvasCursors cursors={live.cursors} />
-
-                <Panel position="top-left">
-                    <div className="flex max-w-[calc(100vw-1.5rem)] flex-col gap-1.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            <AddNodeMenu
-                                onAddEmail={
-                                    canEditFlow ? addStep : () => showPermissionDenied("MANAGE_CAMPAIGNS")
-                                }
-                                onAddAction={
-                                    canEditFlow
-                                        ? addAction
-                                        : () => showPermissionDenied("MANAGE_CAMPAIGNS")
-                                }
-                                disabled={adding || atMax}
-                                busy={adding}
-                                locked={!canEditFlow}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setNodes((ns) => stackComponents(layoutGraph(ns, edges), edges));
-                                    commitLayout();
-                                }}
-                                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:text-slate-900"
-                            >
-                                Tidy up
-                            </button>
-                            <StopOnReplyToggle on={!!campaign?.stop_on_reply} onToggle={setStopOnReply} />
-                        </div>
-                        {campaign && !campaign.stop_on_reply && (sequences?.length ?? 0) > 1 && (
-                            <ReplyStopWarning
-                                hasReplyBranch={hasReplyBranch}
-                                onEnable={() => setStopOnReply(true)}
-                            />
-                        )}
-                    </div>
-                </Panel>
-
-                <Panel position="bottom-center">
-                    {/* Mouse/keyboard-only instructions; hidden on phones where the
-                        narrow auto-width panel would wrap into a tall block over the
-                        canvas (touch users remove edges via the editor's Disconnect). */}
-                    <div className="hidden md:flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-white/95 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm">
-                        <span className="text-slate-400">
-                            drag a node’s bottom dot onto another node to connect, or onto empty space to pick what comes next (email, action, condition, or Stop) · click a line to set its condition · add Condition nodes to branch, and chain them for nested trees · click a line then press Delete to remove it · a step with no outgoing line just ends
-                            {live.active ? " · press / to chat" : ""}
-                        </span>
-                    </div>
-                </Panel>
-            </ReactFlow>
-            <CursorChat active={live.active} color={selfColor} setChat={live.setChat} />
-
-            {dragCreate && (
-                <DragCreateMenu
-                    x={dragCreate.x}
-                    y={dragCreate.y}
-                    onClose={() => setDragCreate(null)}
-                    onPick={async (choice) => {
-                        const dc = dragCreate;
-                        if (choice === "stop") {
-                            // Route this path to the Stop terminal (null target):
-                            // no node is created, the sequence just ends there.
-                            if (dc.ifSource) {
-                                if (dc.ifSource.handle === "out") {
-                                    retargetBranch(dc.ifSource.sourceId, dc.ifSource.branchId, null);
-                                } else {
-                                    addUnconditional(dc.ifSource.sourceId, null);
-                                }
-                            } else if (dc.switchCase) {
-                                connectSwitchCase(dc.sourceId, dc.switchCase, null);
-                            } else if (dc.conditional) {
-                                // From a Condition node: "if X → stop". Opens the
-                                // condition editor so you pick the X.
-                                addIfTo(dc.sourceId, null);
-                            } else {
-                                addUnconditional(dc.sourceId, null);
-                            }
-                            return;
-                        }
-                        if (dc.ifSource) {
-                            // From an IF block: create the node, then point this
-                            // branch's then/else path at it.
-                            const id = await createTypedStep(choice);
-                            if (id) {
-                                if (dc.ifSource.handle === "out") {
-                                    retargetBranch(dc.ifSource.sourceId, dc.ifSource.branchId, id);
-                                } else {
-                                    addUnconditional(dc.ifSource.sourceId, id);
-                                }
-                            }
-                        } else if (dc.switchCase) {
-                            // From a Switch case dot: create the node, then wire
-                            // this case's path straight to it.
-                            const id = await createTypedStep(choice);
-                            if (id) connectSwitchCase(dc.sourceId, dc.switchCase, id);
-                        } else if (dc.conditional) {
-                            // Dragging out of a Condition node: create the node,
-                            // then attach it as a conditional ("if") branch so the
-                            // router actually branches (and open the condition
-                            // editor). Drag again for the next if / else-if.
-                            const id = await createTypedStep(choice);
-                            if (id) addIfTo(dc.sourceId, id);
-                        } else if (choice === "email") {
-                            dragOutStep(dc.sourceId);
-                        } else if (choice === "condition") {
-                            // "Condition" IS the if-branch: add it straight onto
-                            // the source (the IF box has its own then/else), rather
-                            // than a separate router node you'd drag from. Opens the
-                            // condition editor; connect then/else to the next steps.
-                            addIfTo(dc.sourceId, null);
-                        } else {
-                            dragOutAction(dc.sourceId, choice);
-                        }
-                    }}
-                />
-            )}
-
-            {selected && (
-                <ConnectionEditor
-                    source={selected.source}
-                    branch={selected.branch}
-                    steps={sequences}
-                    order={ordered(selected.source.conditions?.branches ?? [])
-                        .filter(isCond)
-                        .findIndex((b) => b.branch_id === selected.branch.branch_id)}
-                    condCount={(selected.source.conditions?.branches ?? []).filter(isCond).length}
-                    onMove={(dir) => moveBranch(selected.source.id, selected.branch.branch_id, dir)}
-                    waitDays={seqById.get(selected.branch.target_step_id ?? "")?.wait_after ?? 0}
-                    onClose={() => setSelectedEdge(null)}
-                    onSetWait={(days) => {
-                        if (selected.branch.target_step_id) saveWait(selected.branch.target_step_id, days);
-                    }}
-                    onSave={(updated) => {
-                        saveBranches(
-                            selected.source.id,
-                            (selected.source.conditions?.branches ?? []).map((b) =>
-                                b.branch_id === updated.branch_id ? updated : b,
-                            ),
-                        );
-                        setSelectedEdge(null);
-                    }}
-                    onDelete={() => {
-                        deleteBranch(selected.source.id, selected.branch.branch_id);
-                        setSelectedEdge(null);
-                    }}
-                />
-            )}
-
-            {editStep && (
-                <div className="fixed inset-0 z-30 w-full overflow-y-auto overflow-x-hidden bg-white md:absolute md:left-auto md:z-10 md:max-w-[760px] md:border-l md:border-slate-200 md:shadow-[0_0_40px_-12px_rgba(15,23,42,0.25)] xl:max-w-[880px]">
-                    <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2">
-                        <span className="truncate text-[12.5px] font-medium text-slate-700">Edit “{stepName(editStep)}”</span>
-                        <div className="flex items-center gap-1">
-                            <button
-                                type="button"
-                                onClick={() => deleteStep(editStep.id)}
-                                className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-                            >
-                                <Trash2Icon className="w-3.5 h-3.5" /> Delete
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setEditStepId(null)}
-                                className="inline-flex size-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-                            >
-                                <XIcon className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
-                    <div className="p-3">
-                        <NodeTypeSwitcher campaignId={campaignId} sequence={editStep} onChanged={invalidate} />
-                        {editStep.kind !== "email" ? (
-                            <ActionEditor campaignId={campaignId} sequence={editStep} onSaved={invalidate} />
-                        ) : (
-                            <StepEmailArms
-                                campaignId={campaignId}
-                                sequence={editStep}
-                                index={editIndex}
-                                conversationSubject={conversationSubjectFor(sequences, editIndex)}
-                                conversationOpener={conversationOpenerFor(sequences, editIndex)}
-                            />
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-// ── Stop-on-reply toggle ────────────────────────────────────────────────────
-const STOP_ON_REPLY_HELP =
-    "When a contact replies, the rest of the sequence stops for them, " +
-    "while the reply branch you connected to the email they answered still " +
-    "runs (it fires instantly). So on reply: that reply flow runs, every other " +
-    "remaining step is cancelled. Auto-replies and out-of-office messages don't " +
-    "count as a reply, so the sequence keeps going.";
-
-function StopOnReplyToggle({ on, onToggle }: { on: boolean; onToggle: (next: boolean) => void }) {
-    return (
-        <div
-            className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm"
-            title={STOP_ON_REPLY_HELP}
-        >
-            <span className="text-[11.5px] text-slate-600">Stop on reply</span>
-            {/* Tooltips never show on touch; surface the same copy on tap. Hidden
-                at md+ where the title attribute keeps desktop pixel-identical. */}
-            <PopoverMenu align="start">
-                <PopoverMenuTrigger asChild>
-                    <button
-                        type="button"
-                        aria-label="What does stop on reply do?"
-                        className="inline-flex size-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 md:hidden"
-                    >
-                        <InfoIcon className="w-3.5 h-3.5" />
-                    </button>
-                </PopoverMenuTrigger>
-                <PopoverMenuContent minWidth={240} className="max-w-[280px] p-2.5">
-                    <p className="text-[11.5px] leading-relaxed text-slate-600">{STOP_ON_REPLY_HELP}</p>
-                </PopoverMenuContent>
-            </PopoverMenu>
-            <button
-                type="button"
-                role="switch"
-                aria-checked={on}
-                aria-label="Stop on reply"
-                onClick={() => onToggle(!on)}
-                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                    on ? "bg-sky-600" : "bg-slate-200"
-                }`}
-            >
-                <span
-                    className={`inline-block size-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                        on ? "translate-x-4" : "translate-x-0.5"
-                    }`}
-                />
-            </button>
-        </div>
-    );
-}
-
-// Shown on the canvas when stop-on-reply is OFF and the sequence keeps sending.
-// Continuing to cold-email a contact who replied is the classic deliverability
-// mistake; turning stop-on-reply on still runs the reply branches (routing is
-// reply-flow aware), so it is strictly safer. Copy adapts to whether the
-// campaign has any reply handling at all.
-function ReplyStopWarning({ hasReplyBranch, onEnable }: { hasReplyBranch: boolean; onEnable: () => void }) {
-    return (
-        <div className="flex max-w-[19rem] items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 shadow-sm">
-            <AlertTriangleIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-            <div className="space-y-1">
-                <p className="leading-snug">
-                    {hasReplyBranch
-                        ? "Stop on reply is off. Replies that don't match a reply branch (say, a reply to an older email) keep getting cold emails. Turning it on still runs your reply branches."
-                        : "No reply handling. With stop on reply off, contacts who reply keep moving through the cold sequence. Turn it on, or add a reply branch."}
-                </p>
-                <button
-                    type="button"
-                    onClick={onEnable}
-                    className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900"
-                >
-                    Turn on stop on reply
-                </button>
-            </div>
-        </div>
-    );
-}
-
-function WaitRow({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
-    const [draft, setDraft] = React.useState(value);
-    React.useEffect(() => setDraft(value), [value]);
-    return (
-        <div className="flex items-center gap-1.5 text-[12px] text-slate-600">
-            <ClockIcon className="w-3.5 h-3.5 text-slate-400" />
-            <span>wait</span>
-            <NumberInput
-                value={draft}
-                onChange={setDraft}
-                onCommit={(v) => onCommit(Math.max(0, Math.round(v)))}
-                min={0}
-                max={60}
-                className="w-16"
-                align="center"
-            />
-            <span>days before it</span>
-        </div>
-    );
-}
-
-// ── Connection editor (optional condition + wait behind a connection) ───────
-const BRANCH_PATH_OPTIONS: SelectOption[] = [
-    { value: "always", label: "always (right after the wait)" },
-    { value: "opened", label: "if opened the email", group: "Engagement" },
-    { value: "clicked", label: "if clicked a link", group: "Engagement" },
-    { value: "replied", label: "if replied", group: "Engagement" },
-    { value: "not_opened", label: "if didn't open", group: "Engagement" },
-    { value: "not_clicked", label: "if didn't click", group: "Engagement" },
-    { value: "not_replied", label: "if didn't reply", group: "Engagement" },
-    { value: "reply_positive", label: "if replied: positive", group: "Reply intent" },
-    { value: "reply_negative", label: "if replied: negative", group: "Reply intent" },
-    { value: "reply_neutral", label: "if replied: neutral", group: "Reply intent" },
-    { value: "reply_automated", label: "if auto-reply / out of office", group: "Reply intent" },
-    { value: "reply_intent", label: "if reply intent is…", group: "Reply intent" },
-    { value: "random", label: "random split" },
-];
-
-function ConnectionEditor({
-    source,
-    branch,
-    steps,
-    order,
-    condCount,
-    onMove,
-    waitDays,
-    onSetWait,
-    onClose,
-    onSave,
-    onDelete,
-}: {
-    source: Sequence;
-    branch: SequenceBranch;
-    steps: Sequence[];
-    order: number;
-    condCount: number;
-    onMove: (dir: -1 | 1) => void;
-    waitDays: number;
-    onSetWait: (days: number) => void;
-    onClose: () => void;
-    onSave: (b: SequenceBranch) => void;
-    onDelete: () => void;
-}) {
-    const c0 = branch.conditions?.[0];
-    const [field, setField] = React.useState<string>(c0?.field ?? "always");
-    const [value, setValue] = React.useState<number>(c0?.value ?? (c0?.field === "random" ? 50 : 3));
-    // The intent a reply_intent path routes on; stored in the condition's label.
-    const [intent, setIntent] = React.useState<string>(c0?.field === "reply_intent" ? (c0.label ?? "agreed") : "agreed");
-    // Instant-capable branches (reply intent, opened, clicked) fire the moment
-    // the event lands by default; this lets the user opt out so the path routes
-    // at the next step boundary instead.
-    const [instant, setInstant] = React.useState<boolean>(branch.instant !== false);
-
-    const isAlways = field === "always";
-    const isRandom = field === "random";
-    // A Switch case path: the case lives on the node (its dot + name), so this
-    // editor only handles the target/wait — the condition itself is fixed.
-    const isCasePath = c0?.field === "ai_label";
-    const caseName = isCasePath ? (c0?.label ?? "").trim() : "";
-    const isReply = isReplyBranchField(field as BranchField);
-    const isIntent = field === "reply_intent";
-    const isInstantCapable = !isCasePath && isInstantCapableField(field as BranchField);
-    const instantVerb = field === "opened" ? "open" : field === "clicked" ? "click" : "reply";
-    const isNegative = field === "not_opened" || field === "not_clicked" || field === "not_replied";
-    const target = steps.find((s) => s.id === branch.target_step_id);
-    const targetLabel = branch.target_step_id === null ? "Stop the sequence" : target ? `“${stepName(target)}”` : "—";
-    const aiSwitch = source.action?.switch_on !== "value";
-
-    const buildConditions = (): BranchCondition[] => {
-        if (isCasePath) return branch.conditions ?? [];
-        if (isAlways) return [];
-        if (isRandom) return [{ field: "random", operator: "chance", value }];
-        // Reply-class conditions are checked once, ever (no day window / value).
-        if (isReply) return [{ field: field as BranchField, operator: "ever" }];
-        if (isIntent) return [{ field: "reply_intent", operator: "is", label: intent }];
-        return [{ field: field as BranchField, operator: "within_days", value }];
     };
-    const save = (target_step_id: string | null) => {
-        onSave({
-            branch_id: branch.branch_id,
-            target_step_id,
-            conditions: buildConditions(),
-            // Persist the instant opt-out for any instant-capable signal (reply
-            // intent, opened, clicked). Other fields can't fire instantly.
-            instant: isInstantCapable ? instant : undefined,
+
+    const setStopOnReply = (next: boolean) => {
+        qc.setQueryData(["campaigns", campaignId], (old: unknown) => (old ? { ...(old as object), stop_on_reply: next } : old));
+        updateCampaign.mutateAsync({ stop_on_reply: next }).catch(async (err) => {
+            toast.error(buildError(err as AppError));
+            await qc.invalidateQueries({ queryKey: ["campaigns", campaignId] });
         });
     };
 
-    return (
-        <div className="absolute right-3 top-3 z-20 w-[300px] max-w-[calc(100vw-1.5rem)] max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-md border border-slate-200 bg-white p-3 shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]">
-            <div className="mb-2 flex items-center justify-between">
-                <span className="truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                    From “{stepName(source)}”
-                </span>
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="inline-flex size-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-                >
-                    <XIcon className="w-3.5 h-3.5" />
-                </button>
-            </div>
-
-            {order >= 0 && condCount > 1 && (
-                <div className="mb-2 flex items-center justify-between rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
-                    <span>When several match, this is checked {order + 1} of {condCount}</span>
-                    <span className="flex items-center gap-0.5">
-                        <button
-                            type="button"
-                            onClick={() => onMove(-1)}
-                            disabled={order === 0}
-                            className="inline-flex size-5 items-center justify-center rounded text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30"
-                        >
-                            <ChevronUpIcon className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onMove(1)}
-                            disabled={order === condCount - 1}
-                            className="inline-flex size-5 items-center justify-center rounded text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30"
-                        >
-                            <ChevronDownIcon className="w-3.5 h-3.5" />
-                        </button>
-                    </span>
-                </div>
-            )}
-
-            <div className="space-y-2 text-[12px] text-slate-600">
-                <div className="flex flex-wrap items-center gap-1.5">
-                    <span>then go to</span>
-                    <span className="font-medium text-slate-800">{targetLabel}</span>
-                    {branch.target_step_id !== null && (
-                        <button
-                            type="button"
-                            onClick={() => save(null)}
-                            className="text-[10.5px] font-medium text-rose-500 hover:underline"
-                        >
-                            set to stop
-                        </button>
-                    )}
-                </div>
-
-                {!isCasePath && (
-                    <div>
-                        <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Take this path</p>
-                        <SelectMenu
-                            className="w-full"
-                            value={field}
-                            options={BRANCH_PATH_OPTIONS}
-                            onChange={(f) => {
-                                setField(f);
-                                if (f === "random") setValue((v) => (v >= 1 && v <= 99 ? v : 50));
-                                else if (f !== "always" && f !== "reply_intent" && !isReplyBranchField(f as BranchField))
-                                    setValue((v) => (v >= 1 && v <= 60 ? v : 3));
-                            }}
-                        />
-                    </div>
-                )}
-
-                {isRandom && (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        <NumberInput value={value} onChange={(v) => setValue(Math.max(1, Math.min(99, Math.round(v) || 1)))} min={1} max={99} className="w-16" align="center" />
-                        <span>% of contacts (chosen at random)</span>
-                    </div>
-                )}
-                {isIntent && (
-                    <div>
-                        <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Reply intent</p>
-                        <SelectMenu className="w-full" value={intent} options={REPLY_INTENTS} onChange={setIntent} />
-                    </div>
-                )}
-                {isCasePath && (
-                    <p className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-200">
-                        The “{caseName}” case of this switch: contacts take this path when{" "}
-                        {aiSwitch ? "the AI picks" : "the value matches"} “{caseName}”. Rename or remove the case on the
-                        step itself; routing happens at the step boundary with no extra credits.
-                    </p>
-                )}
-                {!isAlways && !isRandom && !isReply && !isIntent && !isCasePath && (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        <span>within</span>
-                        <NumberInput value={value} onChange={(v) => setValue(Math.max(1, Math.min(60, Math.round(v) || 1)))} min={1} max={60} className="w-16" align="center" />
-                        <span>days</span>
-                    </div>
-                )}
-                {isInstantCapable && (
-                    <div className="space-y-1">
-                        <div
-                            className={`flex items-center gap-2 rounded-md px-2 py-1.5 ring-1 transition-colors ${
-                                instant ? "bg-violet-50 ring-violet-200" : "bg-slate-50 ring-slate-200"
-                            }`}
-                        >
-                            <ZapIcon
-                                className={`w-3.5 h-3.5 shrink-0 transition-colors ${
-                                    instant ? "text-violet-600" : "text-slate-400"
-                                }`}
-                            />
-                            <span
-                                className={`min-w-0 flex-1 text-[11px] font-medium leading-tight transition-colors ${
-                                    instant ? "text-violet-700" : "text-slate-500"
-                                }`}
-                            >
-                                {instant ? `Instant: runs the moment they ${instantVerb}` : "Routes at the next step"}
-                            </span>
-                            <button
-                                type="button"
-                                role="switch"
-                                aria-checked={instant}
-                                aria-label="Run instantly"
-                                onClick={() => setInstant((v) => !v)}
-                                title="Toggle whether this path fires the moment it happens or waits for the next step"
-                                className={`relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 ${
-                                    instant ? "bg-violet-600" : "bg-slate-300"
-                                }`}
-                            >
-                                <span
-                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                                        instant ? "translate-x-[15px]" : "translate-x-[2px]"
-                                    }`}
-                                />
-                            </button>
-                        </div>
-                        {isReply || isIntent ? (
-                            <>
-                                <p className="text-[10.5px] text-slate-400">
-                                    {isIntent
-                                        ? "Routes when automatic inbox tagging read the contact's reply as this intent, at 70% confidence or more. Needs inbox tagging on; an untagged reply takes the otherwise path."
-                                        : field === "reply_automated"
-                                        ? "Routes when the contact's reply is an auto-reply or out-of-office bounce, not a real human reply. Pair this with action steps (create deal, move stage, notify) to react."
-                                        : "Routes when the contact's reply is classified this way. Chain action steps after it, for example create deal then move stage then notify."}
-                                </p>
-                                <p className="text-[10.5px] text-amber-600">
-                                    A reply triggers the reply path of the specific email it answers (matched by the reply's threading headers): the earlier email, not the latest step, and never both. It falls back to the latest step only when the reply can't be threaded. With stop-on-reply on, the sequence also pauses.
-                                </p>
-                            </>
-                        ) : (
-                            <p className="text-[10.5px] text-slate-400">
-                                {instant
-                                    ? `Runs the moment they ${instantVerb}, as long as they ${instantVerb} within the ${value}-day window above. If they don't ${instantVerb} in that time, this path never runs. Chain action steps after it (create deal, move stage, notify).`
-                                    : `Waits up to ${value} day${value === 1 ? "" : "s"} for them to ${instantVerb}, then checks at the next step. If they don't ${instantVerb} in that window, this path never runs.`}
-                            </p>
-                        )}
-                    </div>
-                )}
-                {isNegative && (
-                    <p className="text-[10.5px] text-slate-400">
-                        We keep checking until {value} day{value === 1 ? "" : "s"} pass, then take this path if it still hasn’t happened.
-                    </p>
-                )}
-
-                {branch.target_step_id !== null && !(isInstantCapable && instant) && (
-                    <WaitRow value={waitDays} onCommit={onSetWait} />
-                )}
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-                <button
-                    type="button"
-                    onClick={onDelete}
-                    title="Remove this line and the branch it represents"
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                >
-                    <Trash2Icon className="w-3.5 h-3.5" />
-                    Disconnect
-                </button>
-                <button
-                    type="button"
-                    onClick={() => save(branch.target_step_id)}
-                    className="ml-auto h-7 rounded-md bg-sky-600 px-3 text-[12px] font-medium text-white hover:bg-sky-700"
-                >
-                    Save
-                </button>
-            </div>
-        </div>
-    );
-}
-
-// ── Add-action menu (Panel) ─────────────────────────────────────────────────
-// Note: there is no "end" action — a path ends simply by leaving a node's
-// bottom dot unconnected (shows "Ends here") or routing a branch to Stop. That
-// keeps the cleaner Stop/"Ends here" visual instead of a configurable end node.
-const ADD_ACTION_OPTIONS: { type: SequenceActionType; label: string }[] = [
-    { type: "add_tag", label: "Add label" },
-    { type: "remove_tag", label: "Remove label" },
-    { type: "add_to_segment", label: "Add to segment" },
-    { type: "remove_from_segment", label: "Remove from segment" },
-    { type: "label_email", label: "Label conversation" },
-    { type: "create_task", label: "Create task" },
-    { type: "create_deal", label: "Create deal" },
-    { type: "move_deal_stage", label: "Move deal stage" },
-    { type: "unsubscribe", label: "Unsubscribe" },
-    { type: "run_automation", label: "Run automation" },
-    { type: "fire_event", label: "Fire event" },
-];
-
-// Switch is a router like Condition, not a side effect — the menus list it in
-// the routing group, so it stays out of ADD_ACTION_OPTIONS.
-const SWITCH_OPTION = { type: "switch" as SequenceActionType, label: "Switch (AI / value)" };
-const AI_STEP_OPTION = { type: "ai_step" as SequenceActionType, label: "AI step (agent)" };
-
-// "stop" is not a node: picking it routes the dragged path to the red Stop
-// terminal (a null branch target), so "in this case, end the sequence" is a
-// first-class choice instead of lore about unconnected dots.
-type CreateChoice = "email" | "condition" | "stop" | SequenceActionType;
-
-// The menu that opens where you drop a dragged connection on empty canvas:
-// pick what the next node is (email, an action, a condition router, or Stop).
-function DragCreateMenu({
-    x,
-    y,
-    onPick,
-    onClose,
-}: {
-    x: number;
-    y: number;
-    onPick: (choice: CreateChoice) => void;
-    onClose: () => void;
-}) {
-    // Animate in/out like the app's other menus. The step is created the moment
-    // a row is clicked; the menu plays its exit independently, and onClose (which
-    // clears the parent state) only fires once that exit finishes.
-    const [open, setOpen] = React.useState(true);
-    const vw = typeof window !== "undefined" ? window.innerWidth : x + 240;
-    const vh = typeof window !== "undefined" ? window.innerHeight : y + 360;
-    const flipX = x > vw - 232;
-    const flipY = y > vh - 360;
-    const left = Math.max(8, Math.min(x, vw - 232));
-    const top = Math.max(8, Math.min(y, vh - 360));
-    const pick = (choice: CreateChoice) => {
-        onPick(choice);
-        setOpen(false);
+    // A new step, typed and pre-wired before anything points at it, so the
+    // canvas never shows it unconnected.
+    const createStep = async (choice: Choice, branches: SequenceBranch[]): Promise<string> => {
+        const created = (await createSequence.mutateAsync()) as Sequence;
+        const patch: Parameters<typeof updateSequence>[2] = {};
+        if (choice === "router") Object.assign(patch, { kind: "wait", name: "Condition" });
+        else if (choice !== "email") Object.assign(patch, { kind: "action", action: defaultActionFor(choice) });
+        if (branches.length) patch.conditions = { branches: normalize(branches) };
+        if (Object.keys(patch).length) {
+            patchCache(created.id, patch as Partial<Sequence>);
+            await updateSequence(campaignId, created.id, patch);
+        }
+        return created.id;
     };
-    return createPortal(
-        <>
-            {open && <div className="fixed inset-0 z-40" onMouseDown={() => setOpen(false)} />}
-            <AnimatePresence onExitComplete={onClose}>
-                {open && (
-                    <motion.div
-                        key="drag-create-menu"
-                        className="fixed z-50 max-h-[340px] w-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl"
-                        style={{
-                            left,
-                            top,
-                            transformOrigin: `${flipY ? "bottom" : "top"} ${flipX ? "right" : "left"}`,
-                            willChange: "transform, opacity",
-                        }}
-                        role="menu"
-                        initial={{ opacity: 0, scale: 0.95, y: flipY ? 4 : -4 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.97, y: flipY ? 2 : -2 }}
-                        transition={{
-                            opacity: { duration: 0.14, ease: [0.16, 1, 0.3, 1] },
-                            scale: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
-                            y: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
-                        }}
-                    >
-                        <div className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Add</div>
-                        <CreateRow icon={<MailIcon className="w-3.5 h-3.5 text-sky-600" />} label="Email step" onClick={() => pick("email")} />
-                        <CreateRow icon={<GitBranchIcon className="w-3.5 h-3.5 text-amber-600" />} label="Condition (branch)" onClick={() => pick("condition")} />
-                        <CreateRow icon={<SplitIcon className="w-3.5 h-3.5 text-purple-600" />} label={SWITCH_OPTION.label} onClick={() => pick("switch")} />
-                        <CreateRow icon={<SparklesIcon className="w-3.5 h-3.5 text-purple-600" />} label={AI_STEP_OPTION.label} onClick={() => pick("ai_step")} />
-                        <div className="my-1 h-px bg-slate-100" />
-                        <div className="px-2 pt-0.5 pb-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Actions</div>
-                        {ADD_ACTION_OPTIONS.map((o) => {
-                            const meta = ACTION_META[o.type];
-                            const Icon = meta?.Icon ?? ZapIcon;
-                            return (
-                                <CreateRow
-                                    key={o.type}
-                                    icon={<Icon className={`w-3.5 h-3.5 ${meta?.tint ?? "text-slate-500"}`} />}
-                                    label={o.label}
-                                    onClick={() => pick(o.type)}
-                                />
-                            );
-                        })}
-                        <div className="my-1 h-px bg-slate-100" />
-                        <CreateRow icon={<FlagIcon className="w-3.5 h-3.5 text-rose-500" />} label="Stop here" onClick={() => pick("stop")} />
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </>,
-        document.body,
-    );
-}
 
-function CreateRow({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12.5px] text-slate-700 transition-colors hover:bg-slate-100"
-        >
-            {icon}
-            {label}
-        </button>
-    );
-}
+    const continueTo = (before: string | null): SequenceBranch[] =>
+        before && !isStopId(before) ? [{ branch_id: newBranchId(), target_step_id: before, conditions: [] }] : [];
 
-function AddNodeMenu({
-    onAddEmail,
-    onAddAction,
-    disabled,
-    busy,
-    locked,
-}: {
-    onAddEmail: () => void;
-    onAddAction: (t: SequenceActionType) => void;
-    disabled: boolean;
-    busy: boolean;
-    locked?: boolean;
-}) {
-    const [open, setOpen] = React.useState(false);
-    const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(open, () => setOpen(false), ref);
-    return (
-        <div ref={ref} className="relative inline-flex">
-            {/* Primary click = add an email step (the default, common case). */}
-            <button
-                type="button"
-                disabled={locked ? false : disabled}
-                onClick={onAddEmail}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-l-md bg-sky-600 px-3 text-[12px] font-medium text-white shadow-sm transition-colors hover:bg-sky-700 disabled:opacity-60 ${locked ? "opacity-60" : ""}`}
-            >
-                {locked ? (
-                    <LockIcon className="w-3.5 h-3.5" />
-                ) : busy ? (
-                    <Loader2Icon className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                    <PlusIcon className="w-3.5 h-3.5" />
-                )}
-                Add step
-            </button>
-            {/* Chevron = the full list of node types (email + actions). */}
-            <button
-                type="button"
-                disabled={disabled}
-                onClick={() => setOpen((o) => !o)}
-                aria-label="More step types"
-                className="inline-flex h-8 items-center rounded-r-md border-l border-sky-500/60 bg-sky-600 px-1.5 text-white shadow-sm transition-colors hover:bg-sky-700 disabled:opacity-60"
-            >
-                <ChevronDownIcon className="w-3.5 h-3.5" />
-            </button>
-            <AnimatePresence>
-                {open && (
-                    <motion.div
-                        key="add-node-menu"
-                        className="absolute left-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]"
-                        style={{ transformOrigin: "top left", willChange: "transform, opacity" }}
-                        initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.97, y: -2 }}
-                        transition={{
-                            opacity: { duration: 0.14, ease: [0.16, 1, 0.3, 1] },
-                            scale: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
-                            y: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
-                        }}
-                    >
-                        <button
-                            type="button"
-                            onClick={() => {
-                                onAddEmail();
-                                setOpen(false);
-                            }}
-                            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] font-medium text-slate-800 transition-colors hover:bg-slate-100"
-                        >
-                            <MailIcon className="w-3.5 h-3.5 text-sky-600" />
-                            Send email
-                            <span className="ml-auto rounded bg-slate-100 px-1 py-px text-[9px] uppercase tracking-[0.1em] text-slate-400">
-                                default
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                onAddAction("switch");
-                                setOpen(false);
-                            }}
-                            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-slate-700 transition-colors hover:bg-slate-100"
-                        >
-                            <SplitIcon className="w-3.5 h-3.5 text-purple-600" />
-                            {SWITCH_OPTION.label}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                onAddAction("ai_step");
-                                setOpen(false);
-                            }}
-                            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-slate-700 transition-colors hover:bg-slate-100"
-                        >
-                            <SparklesIcon className="w-3.5 h-3.5 text-purple-600" />
-                            {AI_STEP_OPTION.label}
-                        </button>
-                        <div className="my-1 border-t border-slate-100" />
-                        {ADD_ACTION_OPTIONS.map((o) => {
-                            const meta = ACTION_META[o.type];
-                            const Icon = meta.Icon;
-                            return (
-                                <button
-                                    key={o.type}
-                                    type="button"
-                                    onClick={() => {
-                                        onAddAction(o.type);
-                                        setOpen(false);
-                                    }}
-                                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-slate-700 transition-colors hover:bg-slate-100"
-                                >
-                                    <Icon className={`w-3.5 h-3.5 ${meta.tint}`} />
-                                    {o.label}
-                                </button>
-                            );
-                        })}
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
-}
+    // Conditions go straight onto a step's own way on; anywhere else they need
+    // a Condition step of their own.
+    // Opening the picker would replace a panel with unsaved edits, so it asks first.
+    const openPicker = (at: InsertPoint, anchor: DOMRect) => {
+        const open = () => setPicker((cur) => (cur && JSON.stringify(cur.at) === JSON.stringify(at) ? null : { at, anchor }));
+        if (!dirty.isDirty()) return open();
+        confirm.show("Discard your unsaved changes to this step?", async () => {
+            dirty.clear();
+            setSelection(null);
+            open();
+        });
+    };
 
-// defaultActionFor returns a fresh action config for a newly-picked type.
-function defaultActionFor(type: SequenceActionType): SequenceAction {
-    if (type === "create_task") {
-        return { type, task_priority: "medium", task_due_offset_days: 1 };
-    }
-    if (type === "create_deal") {
-        return { type, deal_currency: "USD", deal_name: "{{.Company}} ({{.FirstName}})" };
-    }
-    if (type === "move_deal_stage") {
-        return { type };
-    }
-    if (type === "run_automation") {
-        return { type, automation_values: [] };
-    }
-    if (type === "fire_event") {
-        return { type, event_fields: [] };
-    }
-    if (type === "label_email") {
-        return { type, label_ids: [] };
-    }
-    if (type === "switch") {
-        // Two starter cases so the node shows draggable dots immediately.
-        return { type, switch_on: "ai", switch_cases: ["interested", "not interested"] };
-    }
-    if (type === "ai_step") {
-        return { type, ai_instruction: "", ai_allowed_actions: [] };
-    }
-    return { type };
-}
+    const canAttachCondition = (at: InsertPoint) => {
+        const s = byId.get(at.from);
+        return !!s && !isSwitchStep(s) && at.port === ELSE_PORT;
+    };
 
-// ── Node-type switcher (top of the editor drawer) ───────────────────────────
-// One place to switch ANY node between Send email and every action type —
-// mirrors the unified "Add" menu. Switching persists immediately and the drawer
-// body re-renders to the matching editor (SequenceView for email, ActionEditor
-// for actions).
-function NodeTypeSwitcher({
-    campaignId,
-    sequence,
-    onChanged,
-}: {
-    campaignId: string;
-    sequence: Sequence;
-    onChanged: () => void;
-}) {
-    const [busy, setBusy] = React.useState(false);
-    const current: "email" | SequenceActionType =
-        sequence.kind === "email" ? "email" : sequence.action?.type ?? "add_tag";
-
-    const items: { value: "email" | SequenceActionType; label: string; Icon: typeof MailIcon; tint: string }[] = [
-        { value: "email", label: "Send email", Icon: MailIcon, tint: "text-sky-600" },
-        { value: "switch", label: SWITCH_OPTION.label, Icon: SplitIcon, tint: "text-purple-600" },
-        { value: "ai_step", label: AI_STEP_OPTION.label, Icon: SparklesIcon, tint: "text-purple-600" },
-        ...ADD_ACTION_OPTIONS.map((o) => ({
-            value: o.type,
-            label: o.label,
-            Icon: ACTION_META[o.type].Icon,
-            tint: ACTION_META[o.type].tint,
-        })),
-    ];
-
-    const pick = async (value: "email" | SequenceActionType) => {
-        if (busy || value === current) return;
+    const insert = async (at: InsertPoint, item: PickerItem) => {
+        if (busy) return;
+        const from = at.from === ENTRY_ID ? null : byId.get(at.from);
         setBusy(true);
         try {
-            if (value === "email") {
-                await updateSequence(campaignId, sequence.id, { kind: "email" });
-            } else {
-                await updateSequence(campaignId, sequence.id, {
-                    kind: "action",
-                    action: defaultActionFor(value),
-                });
+            if (item.key.startsWith("goto:")) {
+                if (from) await saveBranches(from.id, routePort(from, at.port, item.key.slice("goto:".length)));
+                return;
             }
-            onChanged();
+            if (item.key === "condition" || item.key === "reply") {
+                // A new condition is a draft until it is saved in the path panel, so
+                // nothing routes on a default the user never chose.
+                const draft = draftCondition(item.key === "reply" ? REPLY_CONDITION : DEFAULT_CONDITION);
+                if (from && canAttachCondition(at)) {
+                    setSelection({ kind: "path", stepId: from.id, port: `b:${draft.branch_id}`, draft });
+                    return;
+                }
+                const id = await createStep("router", continueTo(at.before));
+                if (from) await saveBranches(from.id, routePort(from, at.port, id));
+                setSelection({ kind: "path", stepId: id, port: `b:${draft.branch_id}`, draft });
+                return;
+            }
+            const choice: Choice = item.key === "email" ? "email" : (item.key.slice("action:".length) as SequenceActionType);
+            const id = await createStep(choice, continueTo(at.before));
+            if (from) await saveBranches(from.id, routePort(from, at.port, id));
+            setSelection({ kind: "step", id });
         } catch (err) {
             toast.error(buildError(err as AppError));
         } finally {
             setBusy(false);
+            void invalidate();
         }
     };
 
-    return (
-        <div className="mb-4">
-            <Label>Step type</Label>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                {items.map((it) => {
-                    const active = it.value === current;
-                    const Icon = it.Icon;
-                    return (
-                        <button
-                            key={it.value}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => pick(it.value)}
-                            className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-[11.5px] transition-colors disabled:opacity-60 ${
-                                active
-                                    ? "border-sky-300 bg-sky-50 text-sky-700"
-                                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                            }`}
-                        >
-                            <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-sky-600" : it.tint}`} />
-                            <span className="truncate">{it.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
-// ── Action editor (drawer body for non-email nodes) ─────────────────────────
-function ActionEditor({
-    campaignId,
-    sequence,
-    onSaved,
-}: {
-    campaignId: string;
-    sequence: Sequence;
-    onSaved: () => void;
-}) {
-    const [action, setAction] = React.useState<SequenceAction>(sequence.action ?? { type: "add_tag" });
-    const [name, setName] = React.useState(sequence.name ?? "");
-    const [saving, setSaving] = React.useState(false);
-    React.useEffect(() => {
-        setAction(sequence.action ?? { type: "add_tag" });
-        setName(sequence.name ?? "");
-    }, [sequence.id, sequence.action, sequence.kind, sequence.name]);
-
-    const save = async () => {
-        setSaving(true);
-        try {
-            // Switch: drop case paths whose case no longer exists (renamed or
-            // removed in this edit), so no stale case edge lingers with a
-            // handle that is gone.
-            let healed: SequenceBranch[] | null = null;
-            if (action.type === "switch") {
-                const keep = new Set((action.switch_cases ?? []).map((c) => caseKey(c)).filter(Boolean));
-                const all = sequence.conditions?.branches ?? [];
-                const next = all.filter((b) => {
-                    const c0 = (b.conditions ?? []).find((c) => c.field === "ai_label");
-                    return !c0 || keep.has(caseKey(c0.label ?? ""));
-                });
-                if (next.length !== all.length) healed = next;
+    const removeStep = (id: string) => {
+        const s = byId.get(id);
+        if (!s) return;
+        const name = viewOf(s).title;
+        const plan = planRemoval(steps, id);
+        const after = plan.successor
+            ? ` Whatever led to it will continue at “${viewOf(byId.get(plan.successor)!).title}”.`
+            : plan.stranded.length
+              ? ` ${plan.stranded.length === 1 ? "1 step" : `${plan.stranded.length} steps`} after it will be left unconnected and never run until something leads to them again.`
+              : "";
+        const first = indexOf.get(id) === 0 && steps.length > 1 ? " The next step in the order they were added becomes the first email." : "";
+        confirm.show(`Delete “${name}”?${after}${first} This can't be undone.`, async () => {
+            try {
+                for (const r of plan.rewrites) {
+                    patchCache(r.id, { conditions: { branches: r.branches } });
+                    await updateSequence(campaignId, r.id, { conditions: { branches: r.branches } });
+                }
+                await deleteSequence.mutateAsync(id);
+                // Only the panel of the step being deleted loses its unsaved edits.
+                const cur = selectionRef.current;
+                if (cur && cur.kind !== "entry" && (cur.kind === "step" ? cur.id : cur.stepId) === id) {
+                    dirty.clear();
+                    setSelection(null);
+                }
+                toast.success("Step deleted");
+            } catch (err) {
+                toast.error(buildError(err as AppError));
+                throw err;
+            } finally {
+                void invalidate();
             }
-            await updateSequence(campaignId, sequence.id, {
-                name,
-                kind: "action",
-                action,
-                ...(healed ? { conditions: { branches: healed } } : {}),
-            });
-            onSaved();
-            toast.success("Action saved");
-        } catch (err) {
-            toast.error(buildError(err as AppError));
-        } finally {
-            setSaving(false);
-        }
+        });
     };
 
+    const removePath = (stepId: string, port: string) => {
+        const s = byId.get(stepId);
+        const branch = branchAt(s, port);
+        if (!s || !branch) return;
+        const apply = async () => {
+            await saveBranches(stepId, (s.conditions?.branches ?? []).filter((b) => b.branch_id !== branch.branch_id));
+            dirty.clear();
+            setSelection({ kind: "step", id: stepId });
+        };
+        if (branch.target_step_id) {
+            confirm.show("Remove this path? The steps it led to stay, unconnected, until something leads to them again.", apply);
+            return;
+        }
+        void apply();
+    };
+
+    // ── Keyboard ─────────────────────────────────────────────────────────────
+    React.useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (typingTarget(e.target) || document.querySelector("[data-floating], [role='alertdialog']")) return;
+            if ((e.key === "Delete" || e.key === "Backspace") && selection?.kind === "step" && canEdit) {
+                e.preventDefault();
+                removeStep(selection.id);
+            } else if (e.key === "Escape" && selection) {
+                select(null);
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    });
+
+    // ── Live collaboration: cursors and selections ───────────────────────────
+    const resource = `campaign:${campaignId}`;
+    useSuppressGlobalCursors();
+    const hasPeers = useResourceViewers(resource).length > 0;
+    const live = useLiveCanvas(resource, { enabled: hasPeers });
+    const { pushSelect } = live;
+    const selectedStep = selection?.kind === "step" ? selection.id : selection?.kind === "path" ? selection.stepId : selection?.kind === "entry" ? ENTRY_ID : null;
+    React.useEffect(() => pushSelect(selectedStep ? [selectedStep] : []), [pushSelect, selectedStep]);
+    const { user: selfUser } = useUserProfile();
+    const selfColor = cursorColor(selfUser?.id ?? "");
+
+    // The canvas fills the rest of the window, like a design tool's surface.
+    const boxRef = React.useRef<HTMLDivElement>(null);
+    const [boxHeight, setBoxHeight] = React.useState(560);
+    React.useLayoutEffect(() => {
+        const measure = () => {
+            const el = boxRef.current;
+            if (el) setBoxHeight(Math.max(480, Math.round(window.innerHeight - el.getBoundingClientRect().top - 16)));
+        };
+        measure();
+        window.addEventListener("resize", measure);
+        return () => window.removeEventListener("resize", measure);
+    }, []);
+
+    // ── Rendering ────────────────────────────────────────────────────────────
+    const stepTitle = (id: string) => {
+        const s = byId.get(id);
+        return s ? viewOf(s).title : "a step";
+    };
+
+    const renderStep = (id: string, selected: boolean) => {
+        if (id === ENTRY_ID) {
+            const v = entryView(entryDelay > 0 ? `First email after ${entryDelayLabel(entryDelay).toLowerCase()}` : "First email right away");
+            return <StepCard icon={v.icon} tone={v.tone} kicker={v.kicker} title={v.title} summary={v.summary} selected={selected} />;
+        }
+        if (isStopId(id)) return <TerminalCard icon={<FlagIcon />} label="End" selected={selected} />;
+        const s = byId.get(id);
+        if (!s) return null;
+        const v = viewOf(s);
+        const issue = stepIssue(s, threadSubject(id));
+        const variantsHere = variantCount.get(id) ?? 0;
+        const badge = issue ? (
+            <span title={issue} aria-label={`Needs setup: ${issue}`} className="size-1.5 shrink-0 rounded-full bg-amber-400" />
+        ) : variantsHere > 0 ? (
+            <StepBadge tone="muted" title={`A/B test with ${variantsHere + 1} versions`}>
+                A/B
+            </StepBadge>
+        ) : null;
+        const menu: StepMenuItem[] = [];
+        if (canEdit && !isSwitchStep(s)) {
+            menu.push({
+                label: "Add a condition",
+                icon: <GitBranchIcon className="size-3.5" />,
+                onSelect: () => {
+                    const draft = draftCondition(DEFAULT_CONDITION);
+                    select({ kind: "path", stepId: s.id, port: `b:${draft.branch_id}`, draft });
+                },
+            });
+        }
+        if (canEdit) menu.push({ label: "Delete step", icon: <Trash2Icon className="size-3.5" />, onSelect: () => removeStep(id), danger: true });
+        const hint = !reachable.has(id) ? "Not connected: nothing leads here, so contacts never reach this step" : issue ? `Needs setup: ${issue}` : undefined;
+        return <StepCard icon={v.icon} tone={v.tone} kicker={v.kicker} title={v.title} summary={v.summary} badge={badge} hint={hint} selected={selected} detached={!reachable.has(id)} menu={menu} />;
+    };
+
+    const onSelectNode = (id: string | null) => {
+        if (!id || isStopId(id)) return select(null);
+        if (id === ENTRY_ID) return select({ kind: "entry" });
+        select({ kind: "step", id });
+    };
+
+    const pickerAtEnd = !!picker && picker.at.before === null;
+    const items = picker
+        ? pickerItems({
+              atEnd: pickerAtEnd && picker.at.from !== ENTRY_ID,
+              full: steps.length >= MAX_STEPS,
+              canCondition: canAttachCondition(picker.at),
+              gotoCandidates: pickerAtEnd
+                  ? gotoCandidates(steps, picker.at.from)
+                        .filter((s) => branchAt(byId.get(picker.at.from), picker.at.port)?.target_step_id !== s.id)
+                        .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+                        .map((s) => ({ id: s.id, view: viewOf(s) }))
+                  : [],
+          }).filter((i) => picker.at.from !== ENTRY_ID || i.key === "email" || i.key.startsWith("action:"))
+        : [];
+
+    const activeEdge = selection?.kind === "path" ? (layout.edges.find((e) => e.from === selection.stepId && e.port === selection.port)?.key ?? null) : null;
+
+    const onPillClick = (e: PlacedEdge) => select({ kind: "path", stepId: e.from, port: e.port });
+    const onNoteClick = (e: PlacedEdge, r: DOMRect) => {
+        if (!canEdit) return;
+        setWaitEdit({ target: e.from === ENTRY_ID ? ENTRY_ID : (e.target ?? e.to), anchor: { x: r.left, y: r.bottom } });
+    };
+
+    const panelStep = selection?.kind === "step" ? byId.get(selection.id) : undefined;
+    const pathStep = selection?.kind === "path" ? byId.get(selection.stepId) : undefined;
+    const waitStep = waitEdit && waitEdit.target !== ENTRY_ID ? byId.get(waitEdit.target) : undefined;
+
     return (
-        <div className="space-y-5">
-            <div>
-                <Label>Step name</Label>
-                <TextInput
-                    value={name}
-                    onChange={setName}
-                    placeholder={ACTION_META[action.type]?.label ?? "Action"}
-                    className="w-full max-w-[320px]"
-                />
-                <p className="mt-1.5 text-[11px] text-slate-400">Internal label only — shown on the node.</p>
+        <div ref={boxRef} className="relative flex w-full overflow-hidden rounded-md border border-slate-200 bg-white" style={{ height: boxHeight }}>
+            <div className="relative flex min-w-0 flex-1 flex-col bg-slate-50/40">
+                <div className="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 rounded-t-md border-b border-slate-200 bg-white px-3 py-1.5">
+                    <StopOnReplyToggle on={!!campaign?.stop_on_reply} onToggle={setStopOnReply} disabled={!canEdit} />
+                    {campaign && !campaign.stop_on_reply && steps.length > 1 && <ReplyStopWarning hasReplyBranch={hasReplyBranch} onEnable={() => setStopOnReply(true)} />}
+                </div>
+                <div className="min-h-0 flex-1">
+                    <FlowCanvas
+                        layout={layout}
+                        renderStep={renderStep}
+                        stepTitle={stepTitle}
+                        selectedId={selectedStep}
+                        onSelect={onSelectNode}
+                        onInsert={canEdit && !busy ? openPicker : undefined}
+                        onRemoveGoto={
+                            canEdit
+                                ? (from, port) => {
+                                      const s = byId.get(from);
+                                      if (s) void saveBranches(from, routePort(s, port, null).filter((b) => isCond(b) || port !== ELSE_PORT || b.target_step_id !== null));
+                                  }
+                                : undefined
+                        }
+                        onPillClick={onPillClick}
+                        onNoteClick={canEdit ? onNoteClick : undefined}
+                        activeEdge={activeEdge}
+                        activeInsert={picker?.at ?? null}
+                        revealId={selectedStep}
+                        cursors={live.cursors}
+                        selections={live.selections}
+                        onCursor={(p) => (p ? live.active && live.pushCursor(p.x, p.y) : live.clearCursor())}
+                    />
+                </div>
+                <CursorChat active={live.active} color={selfColor} setChat={live.setChat} />
             </div>
 
-            <ActionConfigFields action={action} setAction={setAction} />
-            {action.type === "switch" && <SwitchStepFields action={action} setAction={setAction} />}
-            {action.type === "ai_step" && <AIStepFields action={action} setAction={setAction} />}
-
-            <div className="flex items-center justify-end pt-1">
-                <button
-                    type="button"
-                    onClick={save}
-                    disabled={saving}
-                    className="h-7 rounded-md bg-sky-600 px-3 text-[12px] font-medium text-white transition-colors hover:bg-sky-700 disabled:opacity-60"
-                >
-                    {saving ? "Saving…" : "Save action"}
-                </button>
-            </div>
-        </div>
-    );
-}
-
-// ActionConfigFields renders the per-type configuration for one action config.
-// The "switch" type renders nothing here — SwitchStepFields carries its whole
-// editor.
-function ActionConfigFields({
-    action,
-    setAction,
-}: {
-    action: SequenceAction;
-    setAction: React.Dispatch<React.SetStateAction<SequenceAction>>;
-}) {
-    return (
-        <>
-            {(action.type === "add_tag" || action.type === "remove_tag") && (
-                <div>
-                    <Label>{action.type === "add_tag" ? "Label to add" : "Label to remove"}</Label>
-                    <CategoryPicker
-                        value={action.category_id ? [action.category_id] : []}
-                        onChange={(ids) =>
-                            setAction((a) => ({ ...a, category_id: ids.length ? ids[ids.length - 1] : null }))
-                        }
-                        placeholder="Pick a label…"
-                    />
-                </div>
-            )}
-
-            {(action.type === "add_to_segment" || action.type === "remove_from_segment") && (
-                <div>
-                    <Label>{action.type === "add_to_segment" ? "Segment to add to" : "Segment to remove from"}</Label>
-                    <SegmentMultiPicker
-                        value={action.segment_id ? [action.segment_id] : []}
-                        onChange={(ids) =>
-                            setAction((a) => ({ ...a, segment_id: ids.length ? ids[ids.length - 1] : null }))
-                        }
-                    />
-                    <p className="mt-1.5 text-[11px] text-slate-400">
-                        {action.type === "add_to_segment"
-                            ? "The contact stays in the segment whatever its conditions say."
-                            : "The contact stays out of the segment even while its conditions match."}
-                    </p>
-                </div>
-            )}
-
-            {action.type === "label_email" && (
-                <div>
-                    <Label>Labels to apply</Label>
-                    <CategoryPicker
-                        value={action.label_ids ?? []}
-                        onChange={(ids) => setAction((a) => ({ ...a, label_ids: ids }))}
-                        placeholder="Pick one or more labels…"
-                    />
-                    <p className="mt-1.5 rounded-md border border-fuchsia-200 bg-fuchsia-50/60 px-2.5 py-2 text-[11px] leading-relaxed text-fuchsia-700">
-                        Labels the conversation in your inbox (the same labels you set by hand in the unibox). Place this
-                        on a reply branch — it runs once the contact has replied, so there is a thread to label, and is a
-                        no-op otherwise.
-                    </p>
-                </div>
-            )}
-
-            {action.type === "unsubscribe" && (
-                <p className="rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[11.5px] leading-relaxed text-slate-600">
-                    Suppresses this contact across your workspace — they won't receive further campaign emails, and a{" "}
-                    <code className="font-mono">campaign.unsubscribed</code> event fires to your integrations.
-                </p>
-            )}
-
-            {action.type === "create_task" && (
-                <div className="space-y-4">
-                    <CrmTaskNote className="max-w-[420px]" />
-                    <div>
-                        <Label>Task title</Label>
-                        <TextInput
-                            value={action.task_title ?? ""}
-                            onChange={(v) => setAction((a) => ({ ...a, task_title: v }))}
-                            placeholder="e.g. Call this lead"
-                            className="w-full max-w-[320px]"
-                        />
-                        <p className="mt-1.5 text-[11px] text-slate-400">
-                            Left blank, it defaults to “Follow up: {"{contact}"}”.
-                        </p>
-                    </div>
-                    <div>
-                        <Label>Task type</Label>
-                        <TaskTypePicker
-                            value={action.task_type ?? ""}
-                            onChange={(name) => setAction((a) => ({ ...a, task_type: name }))}
-                            className="max-w-[280px]"
-                        />
-                    </div>
-                    <div className="flex flex-wrap items-end gap-4">
-                        <div>
-                            <Label>Priority</Label>
-                            <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5">
-                                {(["low", "medium", "high", "urgent"] as const).map((p) => (
-                                    <button
-                                        key={p}
-                                        type="button"
-                                        onClick={() => setAction((a) => ({ ...a, task_priority: p }))}
-                                        className={`h-7 px-2.5 rounded text-[11px] font-medium capitalize transition-colors ${
-                                            (action.task_priority ?? "medium") === p
-                                                ? "bg-sky-600 text-white shadow-sm"
-                                                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                        }`}
-                                    >
-                                        {p}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                            <Label>Due in (days)</Label>
-                            <NumberInput
-                                value={action.task_due_offset_days ?? 1}
-                                onChange={(n) => setAction((a) => ({ ...a, task_due_offset_days: n }))}
-                                min={0}
-                                max={365}
-                                className="w-28"
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <Label>Assign to</Label>
-                        <AssigneeTeamPicker
-                            className="w-full max-w-[320px]"
-                            fallbackLabel="Campaign owner"
-                            value={{ userId: action.task_assigned_to ?? null, teamId: action.task_assigned_team_id ?? null }}
-                            onChange={(v: AssigneeValue) =>
-                                setAction((a) => ({ ...a, task_assigned_to: v.userId ?? null, task_assigned_team_id: v.teamId ?? null }))
-                            }
-                        />
-                        <p className="mt-1.5 text-[11px] text-slate-400">Assign to a teammate or a whole team. Unassigned falls back to the campaign owner.</p>
-                    </div>
-                </div>
-            )}
-
-            {(action.type === "create_deal" || action.type === "move_deal_stage") && (
-                <div className="space-y-4">
-                    <CrmDealNote className="max-w-[420px]" creates={action.type === "create_deal"} />
-                    <div>
-                        <Label>{action.type === "create_deal" ? "Create the deal in" : "Move the deal to"}</Label>
-                        <DealStagePicker
-                            pipelineId={action.deal_pipeline_id}
-                            stageId={action.deal_stage_id}
-                            onChange={({ pipelineId, stageId }) =>
-                                setAction((a) => ({ ...a, deal_pipeline_id: pipelineId, deal_stage_id: stageId }))
-                            }
-                        />
-                        {action.type === "move_deal_stage" && (
-                            <p className="mt-1.5 text-[11px] text-slate-400">
-                                Moves the contact's most recent open deal in this pipeline to this stage. If they have no
-                                open deal here, nothing happens.
-                            </p>
-                        )}
-                    </div>
-
-                    {action.type === "create_deal" && (
-                        <>
-                            <div>
-                                <div className="mb-1.5 flex items-center justify-between gap-2">
-                                    <Label className="mb-0">Deal name</Label>
-                                    <DealNameVariableMenu
-                                        onPick={(token) =>
-                                            setAction((a) => ({ ...a, deal_name: (a.deal_name ?? "") + token }))
-                                        }
-                                    />
-                                </div>
-                                <TextInput
-                                    value={action.deal_name ?? ""}
-                                    onChange={(v) => setAction((a) => ({ ...a, deal_name: v }))}
-                                    placeholder="{{.Company}} ({{.FirstName}})"
-                                    className="w-full max-w-[320px]"
-                                />
-                                <p className="mt-1.5 text-[11px] text-slate-400">
-                                    Supports the same {"{{.FirstName}}"} / {"{{.Company}}"} variables as your email copy.
+            <DirtyContext.Provider value={dirty.report}>
+                <AnimatePresence initial={false}>
+                    {selection?.kind === "entry" && (
+                        <FlowPanel key="entry" readOnly={!canEdit} {...entryView("")} title="Contact enters the campaign" onClose={() => select(null)}>
+                            <div className="space-y-2 p-3">
+                                <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Wait before the first email</div>
+                                <EntryDelayPicker value={entryDelay} onCommit={saveEntryDelay} disabled={!canEdit} />
+                                <p className="text-[11.5px] leading-relaxed text-slate-400">
+                                    Counted from when the contact entered this campaign. Later steps wait the time shown on the line into them.
                                 </p>
                             </div>
-                            <div className="flex flex-wrap items-end gap-4">
-                                <div>
-                                    <Label>Value (optional)</Label>
-                                    <NumberInput
-                                        value={action.deal_value ?? 0}
-                                        onChange={(n) =>
-                                            setAction((a) => ({ ...a, deal_value: n > 0 ? n : undefined }))
-                                        }
-                                        min={0}
-                                        max={1_000_000_000}
-                                        className="w-36"
-                                    />
-                                </div>
-                                <div>
-                                    <Label>Currency</Label>
-                                    <CurrencyPicker
-                                        value={action.deal_currency ?? "USD"}
-                                        onChange={(c) => setAction((a) => ({ ...a, deal_currency: c }))}
-                                    />
-                                </div>
-                            </div>
-                        </>
+                        </FlowPanel>
+                    )}
+                    {panelStep && (
+                        <StepPanel
+                            key={panelStep.id}
+                            campaignId={campaignId}
+                            step={panelStep}
+                            steps={steps}
+                            index={indexOf.get(panelStep.id) ?? 0}
+                            view={viewOf(panelStep)}
+                            canEdit={canEdit}
+                            onClose={() => select(null)}
+                            onChanged={() => void invalidate()}
+                            onDelete={() => removeStep(panelStep.id)}
+                            onSelectPath={(port) => select({ kind: "path", stepId: panelStep.id, port })}
+                            onAddCondition={() => {
+                                const draft = draftCondition(DEFAULT_CONDITION);
+                                select({ kind: "path", stepId: panelStep.id, port: `b:${draft.branch_id}`, draft });
+                            }}
+                        />
+                    )}
+                    {pathStep && selection?.kind === "path" && (
+                        <PathPanel
+                            key={`${pathStep.id}:${selection.port}`}
+                            step={pathStep}
+                            steps={steps}
+                            port={selection.port}
+                            draft={selection.draft}
+                            title={viewOf(pathStep).title}
+                            canEdit={canEdit}
+                            onClose={() => select(null)}
+                            onSave={async (updated) => {
+                                const all = pathStep.conditions?.branches ?? [];
+                                // A step has one Otherwise; a second unconditional path would replace it.
+                                if (!isCond(updated) && all.some((b) => !isCond(b) && b.branch_id !== updated.branch_id)) {
+                                    toast.error("This step already has an Otherwise path. Keep a condition here, or remove that path first.");
+                                    return;
+                                }
+                                const exists = all.some((b) => b.branch_id === updated.branch_id);
+                                await saveBranches(pathStep.id, exists ? all.map((b) => (b.branch_id === updated.branch_id ? updated : b)) : insertCondition(pathStep, updated));
+                                dirty.clear();
+                                if (!exists) setSelection({ kind: "path", stepId: pathStep.id, port: `b:${updated.branch_id}` });
+                                toast.success("Path saved");
+                            }}
+                            onMove={(branchId, dir) => void saveBranches(pathStep.id, moveCondition(pathStep, branchId, dir))}
+                            onRemove={() => (selection.draft ? select(null) : removePath(pathStep.id, selection.port))}
+                            waitDays={byId.get(branchAt(pathStep, selection.port)?.target_step_id ?? "")?.wait_after ?? 0}
+                            onSetWait={(d) => {
+                                const t = branchAt(pathStep, selection.port)?.target_step_id;
+                                if (t) void saveWait(t, d);
+                            }}
+                        />
+                    )}
+                </AnimatePresence>
+            </DirtyContext.Provider>
+
+            {picker && (
+                <StepPicker
+                    anchor={picker.anchor}
+                    clearance={STEP_W / 2}
+                    items={items}
+                    title="Add a step"
+                    onPick={(item) => {
+                        const at = picker.at;
+                        setPicker(null);
+                        void insert(at, item);
+                    }}
+                    onClose={() => setPicker(null)}
+                />
+            )}
+
+            <PopoverMenu open={!!waitEdit} onOpenChange={(o) => !o && setWaitEdit(null)} anchorPoint={waitEdit?.anchor ?? null}>
+                <PopoverMenuContent minWidth={260} className="p-3">
+                    {waitEdit?.target === ENTRY_ID ? (
+                        <div onClick={(e) => e.stopPropagation()} className="space-y-2">
+                            <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Wait before the first email</div>
+                            <EntryDelayPicker value={entryDelay} onCommit={saveEntryDelay} disabled={!canEdit} />
+                        </div>
+                    ) : waitStep ? (
+                        <WaitEditor key={waitStep.id} value={waitStep.wait_after ?? 0} name={viewOf(waitStep).title} onCommit={(d) => void saveWait(waitStep.id, d)} />
+                    ) : null}
+                </PopoverMenuContent>
+            </PopoverMenu>
+        </div>
+    );
+}
+
+function WaitEditor({ value, name, onCommit }: { value: number; name: string; onCommit: (days: number) => void }) {
+    const [draft, setDraft] = React.useState(value);
+    return (
+        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+            <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Wait before “{name}”</div>
+            <div className="flex items-center gap-2 text-[12px] text-slate-600">
+                <NumberInput value={draft} onChange={setDraft} onCommit={(v) => onCommit(v)} min={0} max={MAX_WAIT_DAYS} className="w-20" align="center" />
+                <span>{draft === 1 ? "day" : "days"} after the step before it</span>
+            </div>
+            <p className="text-[11px] leading-snug text-slate-400">Applies to every path into this step. Paths that run instantly skip it.</p>
+        </div>
+    );
+}
+
+// StepPanel edits one step: its type, then the email or the action. A Condition
+// step lists its paths instead.
+function StepPanel({
+    campaignId,
+    step,
+    steps,
+    index,
+    view,
+    canEdit,
+    onClose,
+    onChanged,
+    onDelete,
+    onSelectPath,
+    onAddCondition,
+}: {
+    campaignId: string;
+    step: Sequence;
+    steps: Sequence[];
+    index: number;
+    view: { icon: React.ReactNode; tone: Parameters<typeof StepCard>[0]["tone"]; kicker: string; title: string };
+    canEdit: boolean;
+    onClose: () => void;
+    onChanged: () => void;
+    onDelete: () => void;
+    onSelectPath: (port: string) => void;
+    onAddCondition: () => void;
+}) {
+    const footer = canEdit ? (
+        <button type="button" onClick={onDelete} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-rose-600 transition-colors hover:bg-rose-50">
+            <Trash2Icon className="h-3.5 w-3.5" />
+            Delete step
+        </button>
+    ) : undefined;
+    if (isRouterStep(step)) {
+        const conds = (step.conditions?.branches ?? []).filter(isCond);
+        return (
+            <FlowPanel readOnly={!canEdit} icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer}>
+                <div className="space-y-3 p-3">
+                    <p className="text-[11.5px] leading-relaxed text-slate-500">
+                        Contacts reaching this step take the first path that matches, checked in this order. Anyone else goes on under Otherwise.
+                    </p>
+                    <div className="space-y-1">
+                        {conds.map((b, i) => (
+                            <button
+                                key={b.branch_id}
+                                type="button"
+                                onClick={() => onSelectPath(`b:${b.branch_id}`)}
+                                className="flex w-full items-center gap-2 rounded-md border border-slate-200 px-2.5 py-2 text-left text-[12px] text-slate-700 transition-colors hover:border-slate-300"
+                            >
+                                <span className="text-[10.5px] tabular-nums text-slate-400">{i + 1}</span>
+                                <span className="min-w-0 flex-1 truncate">{conditionText(b)}</span>
+                            </button>
+                        ))}
+                    </div>
+                    {canEdit && (
+                        <button
+                            type="button"
+                            onClick={onAddCondition}
+                            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
+                        >
+                            <PlusIcon className="h-3.5 w-3.5" />
+                            Add a condition
+                        </button>
                     )}
                 </div>
-            )}
-
-            {action.type === "run_automation" && <RunAutomationFields action={action} setAction={setAction} />}
-            {action.type === "fire_event" && <FireEventStepFields action={action} setAction={setAction} />}
-        </>
-    );
-}
-
-// RunAutomationFields — pick an automation to launch + the templated key/value
-// inputs passed to it as event data (values render against the contact).
-function RunAutomationFields({
-    action,
-    setAction,
-}: {
-    action: SequenceAction;
-    setAction: React.Dispatch<React.SetStateAction<SequenceAction>>;
-}) {
-    const { data } = useAutomations();
-    const automations = data?.automations ?? [];
-    const options: SelectOption[] = automations.map((a) => ({
-        value: a.id,
-        label: (a.name || "Untitled automation") + (a.enabled ? "" : " · disabled"),
-    }));
-    const selected = automations.find((a) => a.id === action.automation_id);
-    const values = action.automation_values ?? [];
-    const setValues = (next: ActionKV[]) => setAction((a) => ({ ...a, automation_values: next }));
-    const updateRow = (i: number, patch: Partial<ActionKV>) =>
-        setValues(values.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-    const addRow = () => setValues([...values, { key: "", value: "" }]);
-    const removeRow = (i: number) => setValues(values.filter((_, idx) => idx !== i));
-
+            </FlowPanel>
+        );
+    }
     return (
-        <div className="space-y-4">
-            <div>
-                <Label>Automation to run</Label>
-                <SelectMenu
-                    value={action.automation_id ?? ""}
-                    onChange={(id) => setAction((a) => ({ ...a, automation_id: id }))}
-                    options={options}
-                    placeholder={options.length ? "Choose an automation…" : "No automations yet"}
-                    className="w-full max-w-[320px]"
-                    fullWidth
-                />
-                <p className="mt-1.5 text-[11px] text-slate-400">
-                    Launches the automation's flow for this contact when they reach this step. The automation receives{" "}
-                    <span className="font-mono text-slate-500">contact_email</span>,{" "}
-                    <span className="font-mono text-slate-500">first_name</span>,{" "}
-                    <span className="font-mono text-slate-500">last_name</span>,{" "}
-                    <span className="font-mono text-slate-500">company</span>,{" "}
-                    <span className="font-mono text-slate-500">campaign_name</span> plus your values below. Reference them as{" "}
-                    <span className="font-mono text-slate-500">{"{{.key}}"}</span> in the automation's actions.
-                </p>
-                {selected && !selected.enabled && (
-                    <p className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-700">
-                        This automation is disabled, so this step will be skipped (and logged) until you enable it.
-                    </p>
-                )}
-                {selected && selected.enabled && selected.trigger_event !== "campaign.action" && (
-                    <p className="mt-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] leading-relaxed text-sky-700">
-                        Built for the "{triggerLabel(selected.trigger_event)}" trigger. It still runs here, but only contact and
-                        campaign variables are filled in. Its trigger-specific variables (like{" "}
-                        <span className="font-mono">{"{{.invitee_name}}"}</span>) will be empty.
-                    </p>
-                )}
-            </div>
-
-            <div>
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <Label className="mb-0">Pass values (optional)</Label>
-                    <button
-                        type="button"
-                        onClick={addRow}
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11.5px] font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
-                    >
-                        <PlusIcon className="w-3 h-3" /> Add value
-                    </button>
-                </div>
-                {values.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">
-                        Add key/value pairs to pass into the automation. Values support {"{{.FirstName}}"} / {"{{.Company}}"}.
-                    </p>
+        <FlowPanel readOnly={!canEdit} icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer} wide={step.kind === "email"}>
+            <div className="p-3">
+                <NodeTypeSwitcher campaignId={campaignId} sequence={step} onChanged={onChanged} />
+                {step.kind === "email" ? (
+                    <StepEmailArms
+                        campaignId={campaignId}
+                        sequence={step}
+                        index={index}
+                        conversationSubject={conversationSubjectFor(steps, index)}
+                        conversationOpener={conversationOpenerFor(steps, index)}
+                    />
                 ) : (
-                    <div className="space-y-1.5">
-                        {values.map((row, i) => (
-                            <div key={i} className="flex items-center gap-1.5">
-                                <TextInput
-                                    value={row.key}
-                                    onChange={(v) => updateRow(i, { key: v })}
-                                    placeholder="key"
-                                    className="w-28 shrink-0"
-                                />
-                                <span className="text-slate-300">=</span>
-                                <TextInput
-                                    value={row.value}
-                                    onChange={(v) => updateRow(i, { value: v })}
-                                    placeholder="{{.FirstName}}"
-                                    className="flex-1 min-w-0"
-                                />
-                                <DealNameVariableMenu onPick={(token) => updateRow(i, { value: (row.value ?? "") + token })} />
-                                <button
-                                    type="button"
-                                    onClick={() => removeRow(i)}
-                                    title="Remove"
-                                    className="inline-flex size-6 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                                >
-                                    <Trash2Icon className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+                    <ActionEditor campaignId={campaignId} sequence={step} onSaved={onChanged} />
                 )}
             </div>
-        </div>
+        </FlowPanel>
     );
 }
 
-// FireEventStepFields — publish a custom event to the realtime gateway when the
-// lead reaches this step. The developer's app subscribes over the API websocket
-// (API key + REALTIME_SUBSCRIBE) and receives { name, payload } — no public URL.
-function FireEventStepFields({
-    action,
-    setAction,
+// PathPanel edits one path out of a step: its condition, where it sits in the
+// order, and the wait into the step it leads to.
+function PathPanel({
+    step,
+    steps,
+    port,
+    draft,
+    title,
+    canEdit,
+    onClose,
+    onSave,
+    onMove,
+    onRemove,
+    waitDays,
+    onSetWait,
 }: {
-    action: SequenceAction;
-    setAction: React.Dispatch<React.SetStateAction<SequenceAction>>;
+    step: Sequence;
+    steps: Sequence[];
+    port: string;
+    // A new condition not saved yet.
+    draft?: SequenceBranch;
+    title: string;
+    canEdit: boolean;
+    onClose: () => void;
+    onSave: (b: SequenceBranch) => Promise<void>;
+    onMove: (branchId: string, dir: -1 | 1) => void;
+    onRemove: () => void;
+    waitDays: number;
+    onSetWait: (days: number) => void;
 }) {
-    const fields = action.event_fields ?? [];
-    const setFields = (next: ActionKV[]) => setAction((a) => ({ ...a, event_fields: next }));
-    const updateRow = (i: number, patch: Partial<ActionKV>) => setFields(fields.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-    const addRow = () => setFields([...fields, { key: "", value: "" }]);
-    const removeRow = (i: number) => setFields(fields.filter((_, idx) => idx !== i));
-
+    const branch = branchAt(step, port) ?? draft;
+    const conds = (step.conditions?.branches ?? []).filter(isCond);
+    const index = branch ? conds.findIndex((b) => b.branch_id === branch.branch_id) : -1;
+    const label = port === ELSE_PORT ? "Otherwise" : branch ? conditionText(branch) : "Path";
     return (
-        <div className="space-y-3">
-            <div>
-                <Label>Event name</Label>
-                <TextInput
-                    value={action.event_name ?? ""}
-                    onChange={(v) => setAction((a) => ({ ...a, event_name: v }))}
-                    placeholder="lead.reached_step"
-                    className="w-full font-mono"
-                />
-                <p className="mt-1 text-[11px] text-slate-400">What your app subscribes to over the realtime websocket.</p>
-            </div>
-            <div>
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <Label className="mb-0">Payload (optional)</Label>
-                    <button
-                        type="button"
-                        onClick={addRow}
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11.5px] font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
-                    >
-                        <PlusIcon className="w-3 h-3" /> Add field
-                    </button>
-                </div>
-                {fields.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">Add key/value fields. Values support {"{{.FirstName}}"} / {"{{.Company}}"}.</p>
-                ) : (
-                    <div className="space-y-1.5">
-                        {fields.map((row, i) => (
-                            <div key={i} className="flex items-center gap-1.5">
-                                <TextInput value={row.key} onChange={(v) => updateRow(i, { key: v })} placeholder="field" className="w-28 shrink-0 font-mono" />
-                                <span className="text-slate-300">=</span>
-                                <TextInput value={row.value} onChange={(v) => updateRow(i, { value: v })} placeholder="{{.Email}}" className="flex-1 min-w-0 font-mono" />
-                                <button
-                                    type="button"
-                                    onClick={() => removeRow(i)}
-                                    title="Remove"
-                                    className="inline-flex size-6 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                                >
-                                    <XIcon className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-// The guarded set of reversible actions a campaign AI agent step may call.
-// Mirrors the backend isCampaignAgentAction allowlist; never a send/reply.
-const CAMPAIGN_AI_ALLOWLIST: SequenceActionType[] = [
-    "add_tag",
-    "remove_tag",
-    "label_email",
-    "unsubscribe",
-    "create_task",
-    "create_deal",
-    "move_deal_stage",
-];
-
-// Actions the agent fully drives from the instruction (no pinned config): it
-// writes the task title / deal name and picks a pipeline/stage itself.
-const CAMPAIGN_AI_NO_CONFIG: SequenceActionType[] = [
-    "unsubscribe",
-    "create_task",
-    "create_deal",
-    "move_deal_stage",
-];
-
-// Which optional tag/label pool an action configures (add_tag/remove_tag/label).
-const CAMPAIGN_AI_POOL_KEY: Partial<Record<SequenceActionType, "ai_add_tags" | "ai_remove_tags" | "ai_labels">> = {
-    add_tag: "ai_add_tags",
-    remove_tag: "ai_remove_tags",
-    label_email: "ai_labels",
-};
-
-// TagPoolField — a multi-select pool of tags the agent may add/remove. The
-// display name is stored alongside the id so the backend can offer the tag to
-// the model and resolve its pick without a category lookup.
-function TagPoolField({
-    label,
-    value,
-    onChange,
-}: {
-    label: string;
-    value: AITagRef[];
-    onChange: (refs: AITagRef[]) => void;
-}) {
-    const { user } = useUserProfile();
-    const titleById = React.useMemo(() => {
-        const m = new Map<string, string>();
-        for (const c of user.categories ?? []) m.set(c.id, c.title);
-        return m;
-    }, [user.categories]);
-    const knownName = React.useMemo(() => new Map(value.map((r) => [r.id, r.name])), [value]);
-    return (
-        <div>
-            <Label>{label}</Label>
-            <CategoryPicker
-                value={value.map((r) => r.id)}
-                onChange={(ids) => onChange(ids.map((id) => ({ id, name: titleById.get(id) ?? knownName.get(id) ?? id })))}
-                placeholder="Any — leave empty to let the agent choose"
-            />
-            <p className="mt-1.5 text-[11px] text-slate-400">
-                {value.length
-                    ? "The agent chooses among these for each contact."
-                    : "Empty, so the agent may use any of your labels for each contact."}
-            </p>
-        </div>
-    );
-}
-
-// AIStepFields — the campaign AI agent step. An instruction plus the reversible
-// actions the model may call; the agent decides which to run per contact. When
-// an enabled action needs a target (which tag, which pipeline), that config
-// sits inline under its row (one accent rule, not a nested card) so the editor
-// stays flat.
-function AIStepFields({
-    action,
-    setAction,
-}: {
-    action: SequenceAction;
-    setAction: React.Dispatch<React.SetStateAction<SequenceAction>>;
-}) {
-    const enabled = action.ai_allowed_actions ?? [];
-    const toggle = (id: string) =>
-        setAction((a) => {
-            const cur = a.ai_allowed_actions ?? [];
-            return { ...a, ai_allowed_actions: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
-        });
-    // Whether any enabled tag/label capability has an empty pool (agent may use
-    // any tag) — only then does the "create new tags" opt-in matter.
-    const anyOpenPool = (["add_tag", "remove_tag", "label_email"] as SequenceActionType[]).some(
-        (id) => enabled.includes(id) && !((action[CAMPAIGN_AI_POOL_KEY[id]!] ?? []).length),
-    );
-    return (
-        <div className="space-y-4">
-            <div>
-                <Label>Instruction</Label>
-                <textarea
-                    value={action.ai_instruction ?? ""}
-                    onChange={(e) => setAction((a) => ({ ...a, ai_instruction: e.target.value }))}
-                    rows={3}
-                    placeholder="Read the reply. If they ask about pricing, label them 'pricing' and create a follow-up task."
-                    className="w-full resize-y rounded-md border border-slate-200 px-2.5 py-1.5 text-[12.5px] text-slate-700 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
-                />
-            </div>
-            <div>
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Actions the agent can take
-                </div>
-                <div className="divide-y divide-slate-100">
-                    {CAMPAIGN_AI_ALLOWLIST.map((id) => {
-                        const on = enabled.includes(id);
-                        const Icon = ACTION_META[id]?.Icon ?? SparklesIcon;
-                        const hasConfig = !CAMPAIGN_AI_NO_CONFIG.includes(id);
-                        return (
-                            <div key={id} className="py-1">
-                                <button
-                                    type="button"
-                                    onClick={() => toggle(id)}
-                                    className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left text-[12.5px] text-slate-700 transition-colors hover:bg-slate-50"
-                                >
-                                    <span
-                                        className={`inline-flex size-4 shrink-0 items-center justify-center rounded border ${
-                                            on ? "border-sky-500 bg-sky-500 text-white" : "border-slate-300 bg-white"
-                                        }`}
-                                    >
-                                        {on && <CheckIcon className="w-3 h-3" />}
-                                    </span>
-                                    <Icon className={`w-3.5 h-3.5 ${ACTION_META[id]?.tint ?? "text-slate-400"}`} />
-                                    <span className={on ? "font-medium text-slate-800" : ""}>
-                                        {ACTION_META[id]?.label ?? id}
-                                    </span>
-                                </button>
-                                {on && hasConfig && CAMPAIGN_AI_POOL_KEY[id] && (
-                                    <div className="ml-[1.35rem] mt-1 space-y-3 border-l border-slate-200 pl-3 pb-1.5">
-                                        <TagPoolField
-                                            label={
-                                                id === "add_tag"
-                                                    ? "Labels the agent can add"
-                                                    : id === "remove_tag"
-                                                      ? "Labels the agent can remove"
-                                                      : "Conversation labels the agent can apply"
-                                            }
-                                            value={action[CAMPAIGN_AI_POOL_KEY[id]!] ?? []}
-                                            onChange={(refs) =>
-                                                setAction((a) => ({ ...a, [CAMPAIGN_AI_POOL_KEY[id]!]: refs }))
-                                            }
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-                {anyOpenPool && (
-                    <button
-                        type="button"
-                        onClick={() => setAction((a) => ({ ...a, ai_allow_create_tags: !a.ai_allow_create_tags }))}
-                        className="mt-2 flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left text-[12px] text-slate-600 transition-colors hover:bg-slate-50"
-                    >
-                        <span
-                            className={`inline-flex size-4 shrink-0 items-center justify-center rounded border ${
-                                action.ai_allow_create_tags ? "border-sky-500 bg-sky-500 text-white" : "border-slate-300 bg-white"
-                            }`}
-                        >
-                            {action.ai_allow_create_tags && <CheckIcon className="w-3 h-3" />}
-                        </span>
-                        Let the agent create a new label when none fits
-                    </button>
-                )}
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-                    The agent decides which of these to use for each contact, writes any task or deal details itself, and
-                    can chain several. It only takes the actions you enable, never sending or replying. Billed 1 credit
-                    per step it takes.
-                </p>
-            </div>
-        </div>
-    );
-}
-
-// SwitchStepFields — the multi-way router. Configure the case names (each one
-// becomes its own drag dot on the node) and the decider: an AI prompt over the
-// contact's data, or a template value matched against the case names.
-function SwitchStepFields({
-    action,
-    setAction,
-}: {
-    action: SequenceAction;
-    setAction: React.Dispatch<React.SetStateAction<SequenceAction>>;
-}) {
-    const aiMode = action.switch_on !== "value";
-    const cases = action.switch_cases ?? [];
-    const setCases = (next: string[]) => setAction((a) => ({ ...a, switch_cases: next }));
-    return (
-        <div className="space-y-4">
-            <div>
-                <Label>Decided by</Label>
-                <div className="grid grid-cols-2 gap-1.5">
-                    {(
-                        [
-                            {
-                                mode: true,
-                                Icon: SparklesIcon,
-                                title: "AI prompt",
-                                detail: "A model reads the contact and picks a case. 1 credit per contact.",
-                            },
-                            {
-                                mode: false,
-                                Icon: BracesIcon,
-                                title: "Value",
-                                detail: "A field or template is matched to the cases. Free, deterministic.",
-                            },
-                        ] as const
-                    ).map(({ mode, Icon, title, detail }) => {
-                        const active = aiMode === mode;
-                        return (
+        <FlowPanel readOnly={!canEdit} icon={<GitBranchIcon />} tone="amber" kicker={draft ? `New path from ${title}` : `Path from ${title}`} title={label} onClose={onClose}>
+            {branch ? (
+                <>
+                    {index >= 0 && conds.length > 1 && canEdit && (
+                        <div className="flex items-center gap-1 px-3 pt-3">
                             <button
-                                key={title}
                                 type="button"
-                                onClick={() => setAction((a) => ({ ...a, switch_on: mode ? "ai" : "value" }))}
-                                className={`flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-left transition-colors ${
-                                    active
-                                        ? "border-purple-300 bg-purple-50"
-                                        : "border-slate-200 bg-white hover:border-slate-300"
-                                }`}
+                                disabled={index === 0}
+                                onClick={() => onMove(branch.branch_id, -1)}
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[11.5px] text-slate-600 transition-colors hover:border-slate-300 disabled:opacity-40"
                             >
-                                <Icon className={`mt-0.5 w-3.5 h-3.5 shrink-0 ${active ? "text-purple-600" : "text-slate-400"}`} />
-                                <span className="min-w-0">
-                                    <span className={`block text-[11.5px] font-medium ${active ? "text-purple-700" : "text-slate-700"}`}>
-                                        {title}
-                                    </span>
-                                    <span className="block text-[10.5px] leading-snug text-slate-400">{detail}</span>
-                                </span>
+                                <ArrowUpIcon className="h-3 w-3" />
+                                Check earlier
                             </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {aiMode ? (
-                <div>
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <Label className="mb-0">Tell AI how to route</Label>
-                        <DealNameVariableMenu
-                            onPick={(token) => setAction((a) => ({ ...a, ai_instruction: (a.ai_instruction ?? "") + token }))}
-                        />
-                    </div>
-                    <textarea
-                        value={action.ai_instruction ?? ""}
-                        onChange={(e) => setAction((a) => ({ ...a, ai_instruction: e.target.value }))}
-                        rows={4}
-                        maxLength={4000}
-                        placeholder={
-                            "Read this contact's reply and company details. Decide whether they're interested, not ready yet, or the wrong person."
-                        }
-                        className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-[12.5px] text-slate-900 placeholder:text-slate-400 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 resize-y leading-relaxed"
-                    />
-                    <p className="mt-1 text-[11px] text-slate-400">
-                        One model call per contact reaching this step picks exactly one case. Supports the same{" "}
-                        {"{{.FirstName}}"} / {"{{.Company}}"} variables as your email copy. Costs 1 credit per contact
-                        plus usage on long calls.
-                    </p>
-                    <div className="mt-3">
-                        <Label>Capabilities</Label>
-                        <div className="space-y-1">
-                            <AIContextToggle
-                                label="Web search"
-                                detail="Looks up the contact's company on the web before deciding. +1 credit when results are found"
-                                on={!!action.ai_web_search}
-                                onToggle={() => setAction((a) => ({ ...a, ai_web_search: !a.ai_web_search || undefined }))}
-                            />
-                            <AIContextToggle
-                                label="Extended thinking"
-                                detail="Uses the stronger model with a bigger reasoning budget. Costs more through usage metering"
-                                on={!!action.ai_thinking}
-                                onToggle={() => setAction((a) => ({ ...a, ai_thinking: !a.ai_thinking || undefined }))}
-                            />
+                            <button
+                                type="button"
+                                disabled={index === conds.length - 1}
+                                onClick={() => onMove(branch.branch_id, 1)}
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[11.5px] text-slate-600 transition-colors hover:border-slate-300 disabled:opacity-40"
+                            >
+                                <ArrowDownIcon className="h-3 w-3" />
+                                Check later
+                            </button>
                         </div>
-                    </div>
-                </div>
-            ) : (
-                <div>
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <Label className="mb-0">Value to match</Label>
-                        <DealNameVariableMenu
-                            onPick={(token) => setAction((a) => ({ ...a, switch_value: (a.switch_value ?? "") + token }))}
-                        />
-                    </div>
-                    <TextInput
-                        value={action.switch_value ?? ""}
-                        onChange={(v) => setAction((a) => ({ ...a, switch_value: v.slice(0, 500) }))}
-                        placeholder="e.g. {{.Industry}}"
-                        className="w-full font-mono"
+                    )}
+                    <PathEditor
+                        key={JSON.stringify(branch)}
+                        source={step}
+                        branch={branch}
+                        steps={steps}
+                        order={index}
+                        condCount={conds.length}
+                        onMove={(dir) => onMove(branch.branch_id, dir)}
+                        waitDays={waitDays}
+                        onSetWait={onSetWait}
+                        onSave={(b) => void onSave(b)}
+                        onDelete={onRemove}
                     />
-                    <p className="mt-1 text-[11px] text-slate-400">
-                        Rendered per contact and matched to the case names. Matching ignores casing and extra spaces
-                        (“ VIP  Customer” matches the case “vip customer”); wrap a case in slashes for a regex, e.g.{" "}
-                        <code className="font-mono">/^(vip|enterprise)/</code>. First matching case wins. No model call,
-                        no credits.
-                    </p>
-                </div>
+                </>
+            ) : (
+                <p className={cn("p-3 text-[12px] leading-relaxed text-slate-500")}>
+                    {isSwitchStep(step)
+                        ? "Contacts sent down this case go here. Press + under it to add the first step."
+                        : "Contacts that match none of the paths beside it go here. Press + under it to add the first step, or leave it empty to end the sequence for them."}
+                </p>
             )}
-
-            <div>
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <Label className="mb-0">Cases</Label>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (cases.length >= 20) return;
-                            setCases([...cases, ""]);
-                        }}
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11.5px] font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
-                    >
-                        <PlusIcon className="w-3 h-3" /> Add case
-                    </button>
-                </div>
-                {cases.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">
-                        Each case becomes its own dot on the node — drag it to the step that path leads to.
-                    </p>
-                ) : (
-                    <div className="space-y-1.5">
-                        {cases.map((row, i) => (
-                            <div key={i} className="flex items-center gap-1.5">
-                                <TextInput
-                                    value={row}
-                                    onChange={(v) => setCases(cases.map((x, idx) => (idx === i ? v.slice(0, 80) : x)))}
-                                    placeholder="e.g. interested"
-                                    className="flex-1 min-w-0"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setCases(cases.filter((_, idx) => idx !== i))}
-                                    title="Remove case"
-                                    className="inline-flex size-6 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                                >
-                                    <XIcon className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {aiMode && (
-                <div>
-                    <Label>What AI can see</Label>
-                    <div className="space-y-1">
-                        <AIContextToggle
-                            label="Campaign history"
-                            detail="Which steps ran, opens, clicks, replies, and earlier outcomes"
-                            on={!action.ai_no_engagement}
-                            onToggle={() => setAction((a) => ({ ...a, ai_no_engagement: !a.ai_no_engagement || undefined }))}
-                        />
-                        <AIContextToggle
-                            label="Incoming email"
-                            detail="The newest email received from the contact (subject + preview)"
-                            on={!action.ai_no_replies}
-                            onToggle={() => setAction((a) => ({ ...a, ai_no_replies: !a.ai_no_replies || undefined }))}
-                        />
-                    </div>
-                    <p className="mt-1 text-[11px] text-slate-400">Contact fields are always included.</p>
-                </div>
-            )}
-
-            <p className="rounded-md bg-slate-50 px-2.5 py-2 text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-200">
-                Every case gets its own dot on the node — drag each dot to the step that path leads to, and the bottom
-                dot is the “otherwise” fallback for contacts no case matched. Put normal action steps (label, deal, task…)
-                on a path to make things happen for the contacts routed down it.
-            </p>
-        </div>
-    );
-}
-
-// AIContextToggle — one row of the switch step's "what AI can see" section.
-function AIContextToggle({
-    label,
-    detail,
-    on,
-    onToggle,
-}: {
-    label: string;
-    detail: string;
-    on: boolean;
-    onToggle: () => void;
-}) {
-    return (
-        <div
-            className={`flex items-center gap-2 rounded-md px-2 py-1.5 ring-1 transition-colors ${
-                on ? "bg-purple-50 ring-purple-200" : "bg-slate-50 ring-slate-200"
-            }`}
-        >
-            <div className="min-w-0 flex-1">
-                <div className={`text-[11.5px] font-medium ${on ? "text-purple-700" : "text-slate-500"}`}>{label}</div>
-                <div className="text-[10.5px] text-slate-400">{detail}</div>
-            </div>
-            <button
-                type="button"
-                role="switch"
-                aria-checked={on}
-                aria-label={label}
-                onClick={onToggle}
-                className={`relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-300 ${
-                    on ? "bg-purple-600" : "bg-slate-300"
-                }`}
-            >
-                <span
-                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                        on ? "translate-x-[15px]" : "translate-x-[2px]"
-                    }`}
-                />
-            </button>
-        </div>
-    );
-}
-
-// DealNameVariableMenu — a compact "insert variable" trigger for the deal-name
-// field, mirroring the VariableMenu affordance the email subject/body use.
-// Appends a {{.Token}} into the deal name so it can personalize per contact.
-function DealNameVariableMenu({ onPick }: { onPick: (token: string) => void }) {
-    const [open, setOpen] = React.useState(false);
-    const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(open, () => setOpen(false), ref);
-    return (
-        <div ref={ref} className="relative">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                title="Insert a personalization variable"
-                className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-            >
-                <BracesIcon className="w-3.5 h-3.5" />
-                <ChevronDownIcon className="w-3 h-3" />
-            </button>
-            {open && (
-                <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]">
-                    {DEAL_NAME_VARIABLES.map((v) => (
-                        <button
-                            key={v}
-                            type="button"
-                            onClick={() => {
-                                onPick(v);
-                                setOpen(false);
-                            }}
-                            className="flex w-full items-center px-2.5 py-1.5 text-left font-mono text-[11.5px] text-slate-700 transition-colors hover:bg-slate-100"
-                        >
-                            {v}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
-// CurrencyPicker — a small themed dropdown for the deal currency (ISO code).
-// Defaults to USD; the value persisted is the bare ISO code (e.g. "USD").
-const DEAL_CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "SEK", "INR", "BRL"];
-
-function CurrencyPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
-    const [open, setOpen] = React.useState(false);
-    const ref = React.useRef<HTMLDivElement>(null);
-    useClickOutside(open, () => setOpen(false), ref);
-    return (
-        <div ref={ref} className="relative inline-flex">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="inline-flex h-7 w-24 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
-            >
-                <span className="flex-1 truncate text-left">{value || "USD"}</span>
-                <ChevronDownIcon className="w-3 h-3 text-slate-400" />
-            </button>
-            {open && (
-                <div className="absolute left-0 top-full z-30 mt-1 max-h-56 w-24 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-[0_12px_32px_-8px_rgba(15,23,42,0.18)]">
-                    {DEAL_CURRENCIES.map((c) => (
-                        <button
-                            key={c}
-                            type="button"
-                            onClick={() => {
-                                onChange(c);
-                                setOpen(false);
-                            }}
-                            className={`flex w-full items-center px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-100 ${
-                                c === value ? "font-medium text-slate-900" : "text-slate-700"
-                            }`}
-                        >
-                            {c}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
+        </FlowPanel>
     );
 }
