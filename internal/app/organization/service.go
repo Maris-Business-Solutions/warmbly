@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
@@ -49,6 +50,7 @@ type OperatorNotifier interface {
 // OrganizationService defines the interface for organization management
 type OrganizationService interface {
 	CreateTesterWorkspace(ctx context.Context, userID, adminID uuid.UUID, name, reason string, until time.Time) (*models.Organization, *errx.Error)
+	SeedTesterWorkspace(ctx context.Context, orgID, adminID uuid.UUID, ip, userAgent string) (*models.TesterSampleData, *errx.Error)
 	// WireAuthPolicy attaches the deployment auth policy after construction.
 	WireAuthPolicy(p *config.AuthPolicy)
 
@@ -413,6 +415,18 @@ func (s *organizationService) CreateTesterWorkspace(ctx context.Context, userID,
 	}
 	org.Category = models.OrganizationCategoryTest
 	return org, nil
+}
+
+func (s *organizationService) SeedTesterWorkspace(ctx context.Context, orgID, adminID uuid.UUID, ip, userAgent string) (*models.TesterSampleData, *errx.Error) {
+	result, err := s.orgRepo.SeedTesterWorkspace(ctx, orgID, adminID, ip, userAgent)
+	if errors.Is(err, repository.ErrTesterWorkspaceInactive) {
+		return nil, errx.New(errx.BadRequest, "sample data requires an active dedicated Test workspace")
+	}
+	if err != nil {
+		errs.CaptureException(err)
+		return nil, errx.New(errx.Internal, "could not add sample data; retrying is safe")
+	}
+	return result, nil
 }
 
 // Get retrieves an organization by ID

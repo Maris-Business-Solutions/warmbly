@@ -237,6 +237,29 @@ func (h *Handler) AdminListTesters(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": list})
 }
 
+func (h *Handler) AdminSeedTesterWorkspace(c *gin.Context) {
+	adminID := middleware.GetAdminUserID(c)
+	if adminID == nil {
+		errx.JSON(c, errx.ErrUnauthorized)
+		return
+	}
+	orgID, err := uuid.Parse(c.Param("id"))
+	if err != nil || orgID == uuid.Nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "that is not a workspace id"))
+		return
+	}
+	if h.OrganizationService == nil {
+		errx.JSON(c, errx.New(errx.ServiceUnavailable, "sample data is not available on this instance"))
+		return
+	}
+	result, xerr := h.OrganizationService.SeedTesterWorkspace(c.Request.Context(), orgID, *adminID, c.ClientIP(), c.Request.UserAgent())
+	if xerr != nil {
+		errx.JSON(c, xerr)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 // AdminRevokeTester drops the exemption, the handed-out password and every
 // session the account holds. The account stays, so anything it created is
 // still attributable.

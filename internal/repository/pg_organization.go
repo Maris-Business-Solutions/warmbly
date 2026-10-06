@@ -15,6 +15,7 @@ import (
 // OrganizationRepository defines the interface for organization data access
 type OrganizationRepository interface {
 	ProvisionTesterWorkspace(ctx context.Context, orgID, ownerID, adminID uuid.UUID, reason string, until time.Time) error
+	SeedTesterWorkspace(ctx context.Context, orgID, adminID uuid.UUID, ip, userAgent string) (*models.TesterSampleData, error)
 	// Organization CRUD
 	Create(ctx context.Context, org *models.Organization) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Organization, error)

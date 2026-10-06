@@ -123,6 +123,23 @@ Its own is the default and the safer one. The reviewer connects their own mailbo
 
 The managed plan expires when the handed-out password expires, and revoking the tester ends that grant immediately. Credits do not bypass feature gating after the grant ends. Existing dedicated reviewer workspaces recorded by tester creation are categorized on upgrade; still-active reviewers receive the grant and credits unless the workspace already has a Stripe subscription or an operator-managed plan. Legacy admin-created reviewers without a password expiry get the default 30-day lifetime measured from their original creation, not from the upgrade. Expired or revoked reviewers receive no renewed access. Existing memberships and data are not deleted.
 
+### Adding sample data
+
+In **Admins > Testers**, select **Add sample data** beside an active tester who owns a dedicated **Test** workspace, then confirm. This works for both newly created workspaces and existing dedicated Test workspaces after upgrading. Nothing is added automatically during deployment or account creation. The action requires the platform `manage_testers` permission and an MFA-verified admin session. The backend checks the Test category, the owner's current exemption and password expiry, and an unexpired managed Test grant. Testers attached to ordinary customer workspaces cannot use it.
+
+The dataset contains:
+
+- Six fictional, unsubscribed contacts with non-deliverable `@review.invalid` addresses, in one sample contact list.
+- One **draft** campaign with two connected email sequence steps, no sender mailbox and open/link tracking off.
+- Two reusable reply templates.
+- One native CRM pipeline with three stages, two open example deals, one unscheduled task and one contact note.
+
+Names clearly identify the examples as samples. The reviewer can open **Contacts**, **Campaigns**, **Templates** and **CRM** to inspect or edit them. Existing workspace records and the Test credit balance stay unchanged. The action adds everything in one transaction and records `seed_tester_workspace` in the admin audit log. Repeating it, including simultaneous requests, returns the original seed timestamp without duplicating data, overwriting edits or restoring deleted examples. The tester list shows when the sample data was added.
+
+No mailbox, provider credentials, inbox history, warmup activity, delivery events or sending tasks are created. No email is sent and no external integration is called. Connect a dedicated test mailbox manually for OAuth and inbox review; real inbox content must come from that mailbox. An empty mailbox or an unconnected one remains empty. Sample data does not isolate the backend or guarantee complete security-scan coverage.
+
+The examples are ordinary workspace records and follow the selected export groups. The one-time admin audit marker belongs to this instance and is not part of a workspace archive. Imported workspaces do not acquire a new managed Test grant automatically.
+
 Connecting Gmail still needs configured `BOX_GOOGLE_CLIENT_ID` and `BOX_GOOGLE_CLIENT_SECRET`, and the backend and frontend mailbox OAuth flags must permit new connections. A Test plan does not supply provider credentials or change those flags. Dashboard Google sign-in uses the separate `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` configuration. See [configuration](/development/configuration/).
 
 Joining an existing workspace is for a review judged on the app doing real work, where an empty workspace shows none of it. The tester becomes an ordinary member of that workspace and gets none of its own, so signing in lands straight in it: the dashboard skips its workspace picker only when someone belongs to exactly one. Two things follow from that, and both are the point rather than a side effect:
