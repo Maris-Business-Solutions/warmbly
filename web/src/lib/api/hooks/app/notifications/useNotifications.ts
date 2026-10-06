@@ -32,10 +32,10 @@ export function useUpdateNotificationPreferences() {
     });
 }
 
-export function useNotifications() {
+export function useNotifications(unreadOnly = false) {
     return useQuery({
-        queryKey: FEED_KEY,
-        queryFn: () => listNotifications(false, 50),
+        queryKey: [...FEED_KEY, { unreadOnly }],
+        queryFn: () => listNotifications(unreadOnly, 50),
         staleTime: 15_000,
     });
 }

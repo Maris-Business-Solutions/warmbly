@@ -236,6 +236,9 @@ func (s *service) notifyOne(ctx context.Context, userID uuid.UUID, orgID *uuid.U
 	if !cat.Enabled {
 		return false // category off — no channel fires
 	}
+	if !s.canNotifyMessage(ctx, category, uniboxEmailID) {
+		return false
+	}
 
 	emailOn := cat.Channels.Email && s.email != nil && s.users != nil
 	if cat.Channels.InApp || emailOn {
@@ -259,7 +262,7 @@ func (s *service) notifyOne(ctx context.Context, userID uuid.UUID, orgID *uuid.U
 			n.EmailDueAt = &due
 		}
 		created, cerr := s.repo.Create(ctx, n)
-		if errors.Is(cerr, repository.ErrNotificationMessageGone) {
+		if errors.Is(cerr, repository.ErrNotificationMessageGone) || errors.Is(cerr, repository.ErrNotificationMessageAutomated) {
 			return false // the message left the unibox first; nothing to announce
 		}
 		if cerr == nil && created != nil && created.MessageSeen {
@@ -280,6 +283,9 @@ func (s *service) notifyOne(ctx context.Context, userID uuid.UUID, orgID *uuid.U
 		go func(parent context.Context) {
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 8*time.Second)
 			defer cancel()
+			if !s.canNotifyMessage(ctx, category, uniboxEmailID) {
+				return
+			}
 			if postOrg {
 				if err := s.slack.NotifyOrg(ctx, org, notice); err != nil {
 					log.Printf("notification: slack channel post failed (org=%s category=%s): %v", org, category, err)
@@ -293,9 +299,21 @@ func (s *service) notifyOne(ctx context.Context, userID uuid.UUID, orgID *uuid.U
 
 	// Push: immediate on a quiet window, digest-batched inside one (detached).
 	if cat.Channels.Push && s.push != nil && s.deviceTokens != nil && s.pushRedis != nil {
-		go s.deliverPush(userID, category, title, body, link)
+		go s.deliverPush(userID, category, pendingPush{Title: title, Body: body, Link: link, MessageID: uniboxEmailID})
 	}
 	return slackFired
+}
+
+func (s *service) canNotifyMessage(ctx context.Context, category models.NotificationCategory, messageID *uuid.UUID) bool {
+	allowed, err := s.messageEligibility(ctx, category, messageID)
+	return err == nil && allowed
+}
+
+func (s *service) messageEligibility(ctx context.Context, category models.NotificationCategory, messageID *uuid.UUID) (bool, error) {
+	if messageID == nil || (category != models.NotifInboundReply && category != models.NotifInboundOOO) {
+		return true, nil
+	}
+	return s.repo.CanNotifyAboutMessage(ctx, *messageID, category)
 }
 
 // slackNotice copies meta so the detached delivery never shares the caller's map.

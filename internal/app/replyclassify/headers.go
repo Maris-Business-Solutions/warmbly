@@ -1,6 +1,7 @@
 package replyclassify
 
 import (
+	"mime"
 	"strings"
 
 	"github.com/warmbly/warmbly/internal/pkg/dsn"
@@ -21,6 +22,9 @@ import (
 func classifyHeaders(in Input) (Result, bool) {
 	h := newHeaderLookup(in.Headers)
 	subject := strings.ToLower(strings.TrimSpace(in.Subject))
+	if IsSystemReport(in) {
+		return Result{Class: ClassAutoReply, Confidence: 0.99, Source: SourceHeader}, true
+	}
 
 	// --- Delivery failures, before anything else ---
 	// A bounce also carries Auto-Submitted: auto-replied, which on its own
@@ -89,6 +93,22 @@ func classifyHeaders(in Input) (Result, bool) {
 	}
 
 	return Result{}, false
+}
+
+// IsSystemReport recognizes machine reports, not human discussion of those reports.
+func IsSystemReport(in Input) bool {
+	subject := strings.ToLower(strings.TrimSpace(in.Subject))
+	if strings.HasPrefix(subject, "report domain:") &&
+		strings.Contains(subject, " submitter:") && strings.Contains(subject, " report-id:") {
+		return true
+	}
+	mediaType, params, err := mime.ParseMediaType(newHeaderLookup(in.Headers).first("Content-Type"))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(mediaType, "application/tlsrpt+json") ||
+		strings.EqualFold(mediaType, "application/tlsrpt+gzip") ||
+		(strings.EqualFold(mediaType, "multipart/report") && strings.EqualFold(params["report-type"], "tlsrpt"))
 }
 
 // IsDeliveryFailure reports a bounce or delivery-status notice.

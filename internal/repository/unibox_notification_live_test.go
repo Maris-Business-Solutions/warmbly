@@ -11,6 +11,172 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
+func TestLiveUniboxNotificationExcludesMachineMail(t *testing.T) {
+	for _, tc := range []struct {
+		kind               string
+		automated          bool
+		confidence         float64
+		review             string
+		wantReply, wantOOO bool
+	}{
+		{"notification", true, 0.95, "", false, false},
+		{"notification", false, 0.95, "", false, false},
+		{"bounce_hard", true, 0.95, "", false, false},
+		{"bounce_soft", true, 0.95, "", false, false},
+		{"auto_reply_ooo", true, 0.95, "", false, true},
+		{"auto_reply_ticket", true, 0.95, "", false, true},
+		{"human_reply", false, 0.95, "", true, true},
+		{"notification", false, 0.3, "kind", true, true},
+		{"notification", false, 0.95, "kind", true, true},
+	} {
+		t.Run(tc.kind+tc.review+map[bool]string{true: "-automated", false: "-inbox"}[tc.automated], func(t *testing.T) {
+			handle := liveUniboxFolderDB(t)
+			f := newUniboxFolderFixture(t, handle.Pool)
+			ctx := context.Background()
+			notifs := NewNotificationRepository(handle.Pool)
+			thread := "thread-" + uuid.NewString()
+			id := f.scopedMessage(t, NewUniboxRepository(handle), thread, "abuse@seznam.cz", models.FolderInbox, time.Now())
+			due := time.Now().Add(-time.Minute)
+			categories := []models.NotificationCategory{models.NotifInboundReply, models.NotifInboundOOO, models.NotifInboxActionRequired, models.NotifDomainAuth, models.NotifHealthBounce}
+			for _, category := range categories {
+				if _, err := notifs.Create(ctx, &models.Notification{UserID: f.user, OrganizationID: &f.org, UniboxEmailID: &id, Category: category, Title: "Alert", EmailState: "pending", EmailDueAt: &due}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := NewInboxTagRepository(handle.Pool).Save(ctx, &InboxTagResult{
+				OrganizationID: f.org, EmailAccountID: f.mailbox, MessageID: "<" + id.String() + "@test.local>", ThreadID: thread,
+				Kind: tc.kind, KindConfidence: tc.confidence, KindSource: "model", ReviewReason: tc.review, Priority: "whenever", Automated: tc.automated,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			wantCount := 3
+			if tc.wantReply {
+				wantCount++
+			}
+			if tc.wantOOO {
+				wantCount++
+			}
+			for _, unread := range []bool{false, true} {
+				rows, err := notifs.List(ctx, f.user, 50, unread)
+				if err != nil || len(rows) != wantCount {
+					t.Fatalf("List(unread=%v)=%d (%v), want %d", unread, len(rows), err, wantCount)
+				}
+			}
+			if count, err := notifs.CountUnread(ctx, f.user); err != nil || count != wantCount {
+				t.Fatalf("CountUnread=%d (%v), want %d", count, err, wantCount)
+			}
+			for _, category := range categories {
+				want := category != models.NotifInboundReply && category != models.NotifInboundOOO || category == models.NotifInboundReply && tc.wantReply || category == models.NotifInboundOOO && tc.wantOOO
+				allowed, err := notifs.CanNotifyAboutMessage(ctx, id, category)
+				if err != nil || allowed != want {
+					t.Fatalf("CanNotifyAboutMessage(%s)=%v (%v), want %v", category, allowed, err, want)
+				}
+				_, err = notifs.Create(ctx, &models.Notification{UserID: f.user, OrganizationID: &f.org, UniboxEmailID: &id, Category: category, Title: "New alert", PreRead: true})
+				if want && err != nil || !want && !errors.Is(err, ErrNotificationMessageAutomated) {
+					t.Fatalf("Create(%s)=%v, allowed=%v", category, err, want)
+				}
+			}
+			claimed, err := notifs.ClaimDueEmails(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mine := 0
+			for _, row := range claimed {
+				if row.UserID == f.user {
+					if row.UniboxEmailID == nil || *row.UniboxEmailID != id {
+						t.Fatalf("claimed row lost its source message: %v", row.UniboxEmailID)
+					}
+					mine++
+				}
+			}
+			if mine != wantCount {
+				t.Fatalf("ClaimDueEmails claimed %d, want %d", mine, wantCount)
+			}
+		})
+	}
+}
+
+func TestLiveUniboxNotificationSweepPreservesActiveEmailClaims(t *testing.T) {
+	handle := liveUniboxFolderDB(t)
+	f := newUniboxFolderFixture(t, handle.Pool)
+	ctx := context.Background()
+	notifs := NewNotificationRepository(handle.Pool)
+	thread := "thread-" + uuid.NewString()
+	id := f.scopedMessage(t, NewUniboxRepository(handle), thread, "report@example.test", models.FolderInbox, time.Now())
+	due := time.Now().Add(-time.Minute)
+	create := func() uuid.UUID {
+		n, err := notifs.Create(ctx, &models.Notification{UserID: f.user, OrganizationID: &f.org, UniboxEmailID: &id, Category: models.NotifInboundReply, Title: "Reply", EmailState: "pending", EmailDueAt: &due})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.ID
+	}
+	active, stale := create(), create()
+	if _, err := notifs.ClaimDueEmails(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handle.Pool.Exec(ctx, `UPDATE notifications SET email_due_at = now() - interval '11 minutes' WHERE id = $1`, stale); err != nil {
+		t.Fatal(err)
+	}
+	pending := create()
+	f.judge(t, handle.Pool, id, thread, true)
+	assertState := func(id uuid.UUID, want string) {
+		var state string
+		if err := handle.Pool.QueryRow(ctx, `SELECT email_state FROM notifications WHERE id = $1`, id).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state != want {
+			t.Fatalf("email_state = %q, want %q", state, want)
+		}
+	}
+	for tick := range 2 {
+		rows, err := notifs.ClaimDueEmails(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			if row.UserID == f.user {
+				t.Fatal("automated notification was reclaimed")
+			}
+		}
+		assertState(active, "sending")
+		assertState(pending, "skipped")
+		if tick == 0 {
+			assertState(stale, "pending")
+		} else {
+			assertState(stale, "skipped")
+		}
+	}
+	if err := notifs.MarkEmailed(ctx, []uuid.UUID{active}); err != nil {
+		t.Fatal(err)
+	}
+	assertState(active, "sent")
+}
+
+func TestLiveUniboxNotificationLegacyReportIsMailboxScoped(t *testing.T) {
+	handle := liveUniboxFolderDB(t)
+	f := newUniboxFolderFixture(t, handle.Pool)
+	ctx := context.Background()
+	repo := NewUniboxRepository(handle)
+	notifs := NewNotificationRepository(handle.Pool)
+	thread := "legacy-report"
+	id := f.scopedMessage(t, repo, thread, "abuse@seznam.cz", models.FolderInbox, time.Now())
+	for _, mailbox := range []string{f.mailbox.String(), uuid.NewString(), "invalid-uuid"} {
+		if _, err := notifs.Create(ctx, &models.Notification{UserID: f.user, OrganizationID: &f.org, Category: models.NotifInboundReply, Title: "Legacy reply", Metadata: map[string]any{"email_account_id": mailbox, "thread_id": thread}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.judge(t, handle.Pool, id, thread, true)
+	if count, err := notifs.CountUnread(ctx, f.user); err != nil || count != 2 {
+		t.Fatalf("legacy count=%d (%v), want 2 unmatched mailbox rows", count, err)
+	}
+	human := f.scopedMessage(t, repo, thread, "person@example.test", models.FolderInbox, time.Now())
+	f.judge(t, handle.Pool, human, thread, false)
+	if count, err := notifs.CountUnread(ctx, f.user); err != nil || count != 3 {
+		t.Fatalf("mixed legacy count=%d (%v), want all 3", count, err)
+	}
+}
+
 // The unread badge and a reply notification both point at the Inbox. Each has
 // to agree with what the Inbox lists, or a click lands on nothing (#659):
 //

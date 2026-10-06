@@ -193,7 +193,7 @@ func (s *Service) Classify(ctx context.Context, m Message) (Decision, error) {
 	// 3. Check deterministic subject, sender, and any supplied header signals
 	// before spending a model call.
 	ws := s.workspace(ctx, m.OrganizationID)
-	facts := Facts{DeterministicKind: deterministicKind(m, ws.languages)}
+	facts := Facts{DeterministicKind: DeterministicKind(m, ws.languages)}
 
 	state := BuildState(m.Subject, m.BodyText, m.PreviousMessage, m.Campaign, ws.languages...)
 	var custom []models.InboxTagQuestion
@@ -297,10 +297,8 @@ func (s *Service) isOwn(ctx context.Context, m Message) bool {
 	return own
 }
 
-// deterministicKind maps the offline classifier's verdict onto this taxonomy.
-// Only the classes headers decide definitively are mapped; everything else
-// falls through to the model.
-func deterministicKind(m Message, langs []string) string {
+// DeterministicKind maps definite offline machine signals onto the inbox taxonomy.
+func DeterministicKind(m Message, langs []string) string {
 	headers := m.Headers
 	if len(headers["From"]) == 0 && m.FromAddr != "" {
 		headers = make(map[string][]string, len(m.Headers)+1)
@@ -314,6 +312,9 @@ func deterministicKind(m Message, langs []string) string {
 		Subject:   m.Subject,
 		BodyText:  m.BodyText,
 		Languages: langs,
+	}
+	if replyclassify.IsSystemReport(in) {
+		return KindNotification
 	}
 	if replyclassify.IsDeliveryFailure(in) {
 		if dsn.IsTransientNotice(m.Subject, m.BodyText) {

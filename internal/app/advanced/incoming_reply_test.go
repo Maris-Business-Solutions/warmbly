@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/app/inboxtag"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
@@ -16,11 +18,115 @@ type incomingReplyAdvancedRepo struct {
 	marked    int
 	intents   int
 	intentOff bool
+	holdOff   bool
+}
+
+type incomingReplyNotifier struct {
+	Notifier
+	categories chan models.NotificationCategory
+}
+
+func (n *incomingReplyNotifier) NotifyAboutMessage(_ context.Context, _ uuid.UUID, _ *uuid.UUID, _ uuid.UUID, category models.NotificationCategory, _, _, _ string, _ map[string]any) {
+	n.categories <- category
+}
+
+func TestProcessIncomingReplyHonorsMachineVerdicts(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		kind       string
+		confidence float64
+		review     string
+		subject    string
+		sender     string
+		flags      []string
+		want       models.NotificationCategory
+	}{
+		{name: "DMARC without tagging", subject: "Report Domain: example.test Submitter: seznam.cz Report-ID: abc"},
+		{name: "system sender without tagging", sender: "no-reply@accounts.example.test", subject: "Security alert"},
+		{name: "delivery failure without tagging", subject: "Delivery Status Notification (Failure)", flags: []string{"Content-Type:multipart/report; report-type=delivery-status"}},
+		{name: "human discussing DMARC", subject: "Re: Report Domain: example.test Submitter: seznam.cz Report-ID: abc", want: models.NotifInboundReply},
+		{name: "system notice", kind: inboxtag.KindNotification, confidence: 0.95},
+		{name: "hard bounce", kind: inboxtag.KindBounceHard, confidence: 0.95},
+		{name: "soft bounce", kind: inboxtag.KindBounceSoft, confidence: 0.95},
+		{name: "out of office without recognizable subject", kind: inboxtag.KindAutoReplyOOO, confidence: 0.95, want: models.NotifInboundOOO},
+		{name: "ticket acknowledgement without recognizable subject", kind: inboxtag.KindAutoReplyTicket, confidence: 0.95, want: models.NotifInboundOOO},
+		{name: "human reply", kind: inboxtag.KindHumanReply, confidence: 0.95, want: models.NotifInboundReply},
+		{name: "uncertain kind", kind: inboxtag.KindNotification, confidence: 0.3, review: "kind", want: models.NotifInboundReply},
+		{name: "kind awaiting review", kind: inboxtag.KindNotification, confidence: 0.95, review: "kind", want: models.NotifInboundReply},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			orgID, accountID, contactID := uuid.New(), uuid.New(), uuid.New()
+			account := &models.Email{ID: accountID, OrganizationID: &orgID, UserID: uuid.NewString(), Email: "sender@example.test"}
+			s, progress := newIncomingReplyService(account, nil, contactID)
+			s.taskRepo = incomingReplyTaskRepo{}
+			s.contactRepo = incomingReplyContactRepo{}
+			n := &incomingReplyNotifier{categories: make(chan models.NotificationCategory, 1)}
+			s.notifier = n
+			if tc.kind != "" {
+				s.inboxTags = verdictStore{res: &repository.InboxTagResult{
+					Kind: tc.kind, KindConfidence: tc.confidence, ReviewReason: tc.review,
+				}}
+			}
+			msg := &models.EmailMessageStoreData{
+				ID: uuid.New(), EmailID: accountID, MessageID: "<report@example.test>",
+				Folder: models.FolderInbox, FromAddr: []string{"them@example.test"}, ToAddr: []string{account.Email},
+				Subject: tc.subject, Snippet: "Received, thank you.", Flags: tc.flags,
+			}
+			if tc.sender != "" {
+				msg.FromAddr = []string{tc.sender}
+			}
+			if err := s.ProcessIncomingReply(context.Background(), accountID, msg); err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == "" {
+				if progress.claims != 0 || progress.replied != 0 || progress.advanced.intents != 0 {
+					t.Fatalf("system mail entered reply processing: %+v", progress)
+				}
+				select {
+				case category := <-n.categories:
+					t.Fatalf("system mail raised %s", category)
+				case <-time.After(20 * time.Millisecond):
+				}
+				return
+			}
+			select {
+			case category := <-n.categories:
+				if category != tc.want {
+					t.Fatalf("notification = %s, want %s", category, tc.want)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("reply notification not raised")
+			}
+		})
+	}
+}
+
+func TestProcessIncomingReplyStoredAutorespondersNeverCountAsHumanReplies(t *testing.T) {
+	for _, kind := range []string{inboxtag.KindAutoReplyOOO, inboxtag.KindAutoReplyTicket} {
+		t.Run(kind, func(t *testing.T) {
+			orgID, accountID, contactID := uuid.New(), uuid.New(), uuid.New()
+			account := &models.Email{ID: accountID, OrganizationID: &orgID, Email: "sender@example.test"}
+			s, progress := newIncomingReplyService(account, &models.Contact{ID: contactID, Email: "recipient@example.test"}, contactID)
+			progress.advanced.holdOff = true
+			s.inboxTags = verdictStore{res: &repository.InboxTagResult{Kind: kind, KindConfidence: 0.95}}
+			if err := s.ProcessIncomingReply(context.Background(), accountID, &models.EmailMessageStoreData{
+				ID: uuid.New(), EmailID: accountID, MessageID: "<reply@example.test>", Folder: models.FolderInbox,
+				FromAddr: []string{"recipient@example.test"}, ToAddr: []string{account.Email}, InReplyTo: []string{"<opener@example.test>"},
+				Subject: "Re: Hello", Snippet: "Received, thank you.",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if progress.replied != 0 || progress.advanced.marked != 0 || progress.classified != 1 {
+				t.Fatalf("autoresponder changed human engagement: replied=%d marked=%d classified=%d", progress.replied, progress.advanced.marked, progress.classified)
+			}
+		})
+	}
 }
 
 func (r *incomingReplyAdvancedRepo) GetOutreachSettings(context.Context, uuid.UUID) (*models.AdvancedOutreachSettings, error) {
 	settings := models.DefaultAdvancedOutreachSettings()
 	settings.ReplyIntent.Enabled = !r.intentOff
+	settings.ReplyIntent.HoldOnOutOfOffice = !r.holdOff
 	return &settings, nil
 }
 

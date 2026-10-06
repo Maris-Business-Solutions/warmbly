@@ -87,11 +87,11 @@ function relTime(iso: string | Date): string {
 }
 
 export function NotificationBell() {
-    const { data, isLoading } = useNotifications();
+    const [filter, setFilter] = React.useState<"all" | "unread">("unread");
+    const { data, isLoading } = useNotifications(filter === "unread");
     const markAll = useMarkAllNotificationsRead();
     const markOne = useMarkNotificationRead();
     const [open, setOpen] = React.useState(false);
-    const [filter, setFilter] = React.useState<"all" | "unread">("all");
     const ref = React.useRef<HTMLDivElement>(null);
     const close = React.useCallback(() => setOpen(false), []);
     useClickOutside(open, close, ref);
@@ -175,7 +175,10 @@ export function NotificationBell() {
         <div ref={ref} className="relative">
             <button
                 type="button"
-                onClick={() => setOpen((o) => !o)}
+                onClick={() => {
+                    if (!open) setFilter("unread");
+                    setOpen(!open);
+                }}
                 aria-label="Notifications"
                 className="relative w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition-colors"
             >
@@ -204,6 +207,7 @@ export function NotificationBell() {
                                         key={f}
                                         type="button"
                                         onClick={() => setFilter(f)}
+                                        aria-pressed={filter === f}
                                         className={`h-5 px-1.5 rounded text-[10.5px] font-medium transition-colors ${
                                             filter === f
                                                 ? "bg-white text-slate-900 shadow-sm"

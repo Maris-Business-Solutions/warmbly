@@ -2,6 +2,36 @@ package replyclassify
 
 import "testing"
 
+func TestClassifySystemReports(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   Input
+		want bool
+	}{
+		{"dmarc without headers", Input{Subject: "Report Domain: example.test Submitter: seznam.cz Report-ID: 123"}, true},
+		{"case insensitive", Input{Subject: "  report domain: example.test submitter: google.com report-id: abc"}, true},
+		{"report before autoresponder header", Input{Subject: "Report Domain: example.test Submitter: google.com Report-ID: abc", Headers: map[string][]string{"Auto-Submitted": {"auto-replied"}}}, true},
+		{"tls json", Input{Headers: map[string][]string{"content-type": {"application/tlsrpt+json"}}}, true},
+		{"tls multipart", Input{Headers: map[string][]string{"Content-Type": {`multipart/report; report-type="tlsrpt"; boundary=123`}}}, true},
+		{"human discussing a report", Input{Subject: "Re: Report Domain: example.test Submitter: google.com Report-ID: abc", BodyText: "Sure, happy to chat."}, false},
+		{"ordinary dmarc question", Input{Subject: "Can you help with our DMARC report?", BodyText: "Sure, happy to chat."}, false},
+		{"incomplete subject", Input{Subject: "Report Domain: example.test"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsSystemReport(tc.in); got != tc.want {
+				t.Fatalf("IsSystemReport = %v, want %v", got, tc.want)
+			}
+			got := ClassifyOffline(tc.in)
+			if tc.want && (got.Class != ClassAutoReply || got.Source != SourceHeader) {
+				t.Fatalf("report classified as %+v", got)
+			}
+			if !tc.want && IsAutomated(got.Class) {
+				t.Fatalf("human mail classified as %+v", got)
+			}
+		})
+	}
+}
+
 // Layer 1 decides "automated" for the whole pipeline, and an automated verdict
 // means replied_at is never stamped. Both directions therefore matter, and the
 // second is the dangerous one: a provider's away-message subject has to be

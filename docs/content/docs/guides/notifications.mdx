@@ -3,7 +3,7 @@ title: "Notifications"
 description: "In-app notification feed and per-category preferences."
 ---
 
-The bell in the dashboard chrome shows your unread count and opens a feed of recent notifications, newest first. Each has a title, optional detail, and a link to the thing it is about. Reading one clears it from the count.
+The bell in the dashboard chrome shows your unread count. Every time you open it, it starts on **Unread**, showing only notifications you have not read, newest first. If there is nothing new, it shows "You're all caught up." Switch to **All** to see recent history, including items already read. Each notification has a title, optional detail, and a link to the thing it is about. Reading one clears it from **Unread** and the count.
 
 **Feeds are per user**, not shared across the workspace, so two teammates see different things depending on what they own and what they enabled.
 
@@ -41,6 +41,7 @@ A **Reply received**, **Out-of-office detected** or **Mail that needs action** n
 - **Clicking it opens that conversation**, not the inbox in general.
 - **Reading the message reads the notification**, wherever you read it: in the Unibox, through the API, or in Gmail or Outlook, which Warmbly picks up on the next sync. A notification read this way is not emailed later either.
 - **Removing the message removes the notification.** Deleted mail, and mail later confirmed to be [warmup](/guides/warmup/), takes its notification out of the feed and the bell count. Warmup never raises one in the first place; this covers anything identified after it arrived. A push or Slack message already delivered cannot be recalled.
+- **Routine automated mail is not a reply.** DMARC aggregate reports, delivery failures and other system notices do not raise **Reply received** or **Out-of-office detected** alerts. If a message is identified as routine automated mail later, its false reply alert disappears from the feed and bell count, and its pending email is cancelled. Genuine out-of-office and automatic replies still use **Out-of-office detected** when enabled. Automated mail that needs your action keeps its separate **Mail that needs action** alert, and bounce and domain-authentication health alerts are unchanged.
 
 <Callout type="info" title="Where to read replies">
 Even with reply notifications off you never miss anything: every reply still lands in the [Unibox](/guides/unibox/). The notification is only an optional ping.
