@@ -25,3 +25,7 @@
   ! Referrer-Policy
   Referrer-Policy: no-referrer
   Cache-Control: no-store
+
+# config.js is the runtime configuration and must never outlive a change to it; same rule as the nginx image.
+/config.js
+  Cache-Control: no-store

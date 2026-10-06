@@ -11,6 +11,7 @@ interface RawMembership {
     organization?: {
         id: string;
         name: string;
+        category?: Organization["category"];
         slug?: string;
         avatar?: string;
         avatar_url?: string | null;
@@ -36,6 +37,7 @@ export default async function getOrganizations(): Promise<Organization[]> {
         .map<Organization>((r) => ({
             id: r.organization!.id,
             name: r.organization!.name,
+            category: r.organization!.category,
             avatar: r.organization!.avatar,
             avatar_url: r.organization!.avatar_url ?? null,
             plan: r.organization!.plan,

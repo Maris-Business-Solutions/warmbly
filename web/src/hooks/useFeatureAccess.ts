@@ -26,6 +26,7 @@ import { useAppStore } from "@/stores";
 import { PERMISSION_BITS, hasPermission } from "@/lib/permissions";
 import {
     WARMUP_PLAN_ID,
+    TEST_PLAN_ID,
     getPlan,
     isAtLeast,
     type PlanID,
@@ -106,7 +107,10 @@ export default function useFeatureAccess(): FeatureAccess {
         };
     }
 
-    const planId = sub.data?.plan?.id === WARMUP_PLAN_ID
+    const testGrant = sub.data?.managed === true && sub.data.plan?.id === TEST_PLAN_ID;
+    const planId = testGrant
+        ? "business"
+        : sub.data?.plan?.id === WARMUP_PLAN_ID
         ? "warmup"
         : ((sub.data?.plan?.name ?? currentOrg?.plan ?? "free").toLowerCase()) as PlanID;
     const plan = getPlan(planId).id;

@@ -271,7 +271,7 @@ func (s *tasksService) renderPlacementBase(ctx context.Context, test *models.Pla
 		// No contact: clicking it can never suppress anyone.
 		unsubscribeURL = s.mintUnsubscribeLink(ctx, resolveOptOutOrigin(account, campaign), orgID, campaign.ID, uuid.Nil)
 	}
-	extra := map[string]string{UnsubscribeLinkVar: unsubscribeURL}
+	extra := templateContext(account, unsubscribeURL)
 	subject := expandSpintax(RenderTemplateWith(rawSubject, contact, extra))
 	bodyHTML := expandSpintax(RenderTemplateWith(rawHTML, contact, extra))
 	bodyPlain := expandSpintax(RenderTemplateWith(rawPlain, contact, extra))

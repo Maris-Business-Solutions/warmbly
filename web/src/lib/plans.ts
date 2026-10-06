@@ -11,6 +11,8 @@
 
 export type PlanID = "free" | "warmup" | "starter" | "grow" | "business" | "enterprise";
 
+export const TEST_PLAN_ID = "00000000-0000-0000-0000-0000000000e1";
+
 export interface PlanDef {
     id: PlanID;
     label: string;

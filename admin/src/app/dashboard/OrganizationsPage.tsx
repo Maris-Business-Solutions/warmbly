@@ -76,6 +76,7 @@ const columns: Column<AdminOrgListItem>[] = [
                 >
                     {o.name}
                 </Link>
+                {o.category === "test" && <StatusBadge tone="info" className="ml-2">Test</StatusBadge>}
                 {o.slug && <div className="mt-0.5 font-mono text-[11px] text-subtle-foreground">{o.slug}</div>}
             </div>
         ),

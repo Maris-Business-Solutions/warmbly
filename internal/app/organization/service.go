@@ -48,6 +48,7 @@ type OperatorNotifier interface {
 
 // OrganizationService defines the interface for organization management
 type OrganizationService interface {
+	CreateTesterWorkspace(ctx context.Context, userID, adminID uuid.UUID, name, reason string, until time.Time) (*models.Organization, *errx.Error)
 	// WireAuthPolicy attaches the deployment auth policy after construction.
 	WireAuthPolicy(p *config.AuthPolicy)
 
@@ -324,6 +325,7 @@ func (s *organizationService) Create(ctx context.Context, userID uuid.UUID, name
 	}
 
 	org := &models.Organization{
+		Category:    models.OrganizationCategoryStandard,
 		ID:          uuid.New(),
 		Name:        name,
 		OwnerUserID: userID,
@@ -390,6 +392,26 @@ func (s *organizationService) Create(ctx context.Context, userID uuid.UUID, name
 		},
 	)
 
+	return org, nil
+}
+
+func (s *organizationService) CreateTesterWorkspace(ctx context.Context, userID, adminID uuid.UUID, name, reason string, until time.Time) (*models.Organization, *errx.Error) {
+	if !until.After(time.Now()) || strings.TrimSpace(reason) == "" {
+		return nil, errx.New(errx.BadRequest, "test access needs a reason and a future expiry")
+	}
+	org, xerr := s.Create(ctx, userID, name, "")
+	if xerr != nil {
+		return nil, xerr
+	}
+	if err := s.orgRepo.ProvisionTesterWorkspace(ctx, org.ID, userID, adminID, reason, until); err != nil {
+		errs.CaptureException(err)
+		if derr := s.orgRepo.Delete(ctx, org.ID); derr != nil {
+			errs.CaptureException(derr)
+			return nil, errx.New(errx.Internal, "could not provision or remove the test workspace; review it in the admin panel")
+		}
+		return nil, errx.New(errx.Internal, "could not provision the test workspace")
+	}
+	org.Category = models.OrganizationCategoryTest
 	return org, nil
 }
 

@@ -173,17 +173,12 @@ func (h *Handler) AdminCreateTester(c *gin.Context) {
 		if orgName == "" {
 			orgName = "Tester workspace"
 		}
-		org, oerr := h.OrganizationService.Create(c.Request.Context(), created.ID, orgName, "")
+		org, oerr := h.OrganizationService.CreateTesterWorkspace(c.Request.Context(), created.ID, *adminID, orgName, reason, passwordExpiresAt)
 		if oerr != nil {
 			h.undoHalfMadeTester(c, created.ID, oerr)
 			return
 		}
 		orgID = org.ID
-		if h.TrialService != nil {
-			// Best effort: without it the workspace has no subscription row and
-			// reads as unpaid, which is recoverable from the admin panel.
-			_ = h.TrialService.StartFreeTrialWithOrg(c.Request.Context(), created.ID, org.ID)
-		}
 	}
 
 	entry := map[string]any{

@@ -324,7 +324,7 @@ export default function RichTextEditor({
                     )}
                 </div>
                 {/* Type `{{` → variable type-ahead at the caret. */}
-                <EditorSuggest editor={editor} links={links} />
+                <EditorSuggest editor={editor} variables={variables} links={links} />
             </div>
         );
     }
@@ -361,7 +361,7 @@ export default function RichTextEditor({
                     {/* Collapsed caret → sparkle companion + ⌘J to write with AI. */}
                     <RichTextAICaret editor={editor} />
                     {/* Type `{{` → variable type-ahead at the caret. */}
-                    <EditorSuggest editor={editor} links={links} />
+                    <EditorSuggest editor={editor} variables={variables} links={links} />
                 </>
             )}
         </div>
@@ -741,17 +741,20 @@ export function VariableMenu({
                         <div className="px-3 py-2 border-b border-slate-100">
                             <p className="text-[12px] font-medium text-slate-800">Personalization</p>
                             <p className="text-[10.5px] text-slate-400 mt-0.5">
-                                Replaced per contact on send · click to insert · hover for what each does
+                                Replaced on send · click to insert · hover for what each does
                             </p>
                         </div>
 
-                        {/* Contact fields — compact 2-column grid (description on hover). */}
-                        <div className="px-2 pt-2">
+                        {[
+                            { label: "Contact fields", tokens: variables.filter((v) => !v.includes(".Sender.")) },
+                            { label: "Sender fields", tokens: variables.filter((v) => v.includes(".Sender.")) },
+                        ].filter((group) => group.tokens.length > 0).map((group) => (
+                        <div key={group.label} className="px-2 pt-2">
                             <div className="px-1 pb-1 text-[10px] uppercase tracking-[0.14em] text-slate-400">
-                                Contact fields
+                                {group.label}
                             </div>
                             <div className="grid grid-cols-2 gap-1">
-                                {variables.map((v) => {
+                                {group.tokens.map((v) => {
                                     const meta = TOKEN_META[v];
                                     return (
                                         <button
@@ -776,6 +779,7 @@ export function VariableMenu({
                                 })}
                             </div>
                         </div>
+                        ))}
 
                         {links.length > 0 && (
                             <div className="px-2 pt-2">

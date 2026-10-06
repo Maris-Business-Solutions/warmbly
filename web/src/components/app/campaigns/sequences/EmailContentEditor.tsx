@@ -40,8 +40,8 @@ import useCreateTemplate from "@/lib/api/hooks/app/templates/useCreateTemplate";
 import { useConfirm } from "@/hooks/context/confirm";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
-import { VARIABLES, htmlToPlain, linkifyUnsubscribe, promptToHtml, renderPreview, templateIssue } from "./emailPreview";
-import { LINK_VARIABLES, UNSUBSCRIBE_TOKEN } from "@/lib/templateVars";
+import { htmlToPlain, linkifyUnsubscribe, promptToHtml, renderPreview, templateIssue } from "./emailPreview";
+import { EMAIL_VARIABLES, LINK_VARIABLES, UNSUBSCRIBE_TOKEN } from "@/lib/templateVars";
 import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
 import { isDocumentBody } from "@/lib/email/pastedEmail";
 import type { ArmSubject } from "./threading";
@@ -281,7 +281,7 @@ export default function EmailContentEditor({
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                     <Label className="mb-0">Subject</Label>
                     {!subjectLocked && (
-                        <VariableMenu variables={VARIABLES} onPick={(v) => onSubjectChange(subject + v)} />
+                        <VariableMenu variables={EMAIL_VARIABLES} onPick={(v) => onSubjectChange(subject + v)} />
                     )}
                 </div>
                 {subjectLocked ? (
@@ -336,7 +336,7 @@ export default function EmailContentEditor({
                             onChange={(html) => onBodyChange(html, code ? "" : htmlToPlain(html))}
                             code={code}
                             onCodeChange={setCode}
-                            variables={VARIABLES}
+                            variables={EMAIL_VARIABLES}
                             links={LINK_VARIABLES}
                             placeholder={bodyPlaceholder}
                         />

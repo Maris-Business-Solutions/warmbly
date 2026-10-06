@@ -6,15 +6,23 @@ import (
 	"github.com/google/uuid"
 )
 
+type OrganizationCategory string
+
+const (
+	OrganizationCategoryStandard OrganizationCategory = "standard"
+	OrganizationCategoryTest     OrganizationCategory = "test"
+)
+
 // Organization represents a multi-user organization/workspace
 type Organization struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Slug        *string   `json:"slug,omitempty"`
-	AvatarURL   *string   `json:"avatar_url,omitempty"`
-	OwnerUserID uuid.UUID `json:"owner_user_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Category    OrganizationCategory `json:"category"`
+	ID          uuid.UUID            `json:"id"`
+	Name        string               `json:"name"`
+	Slug        *string              `json:"slug,omitempty"`
+	AvatarURL   *string              `json:"avatar_url,omitempty"`
+	OwnerUserID uuid.UUID            `json:"owner_user_id"`
+	CreatedAt   time.Time            `json:"created_at"`
+	UpdatedAt   time.Time            `json:"updated_at"`
 
 	// Soft-delete window. When DeletionScheduledFor is non-nil the
 	// organization is "pending deletion" and will be hard-deleted at
