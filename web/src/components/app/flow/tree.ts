@@ -16,6 +16,8 @@ export interface FlowPort {
     targets: string[];
     // Draw the column (with an add button) even while nothing is connected.
     showEmpty?: boolean;
+    // No insert button on this port's lines (an insert the data cannot express).
+    noInsert?: boolean;
 }
 
 export interface FlowSource {
@@ -26,6 +28,8 @@ export interface FlowSource {
     // The port a trailing add button appends to, or null for a node that ends
     // its path (a stop).
     appendPort: (id: string) => string | null;
+    // A short label drawn on the line into `target` (a wait before it).
+    note?: (from: string, port: string, target: string) => string | undefined;
 }
 
 export type PlacedKind = "step" | "goto" | "add";
@@ -70,6 +74,8 @@ export interface PlacedEdge {
     // Where the inline add button on this edge inserts; null when the child is
     // itself an add button.
     insert: InsertPoint | null;
+    port: string;
+    note?: string;
 }
 
 export interface FlowLayout {
@@ -85,6 +91,7 @@ export const ADD_W = 28;
 export const ADD_H = 28;
 const CHAIN_GAP = 60;
 const BRANCH_GAP = 120;
+const NOTE_GAP = 28;
 const BUS_DROP = 26;
 const COL_GAP = 40;
 const FOREST_GAP = 120;
@@ -94,6 +101,8 @@ interface Branch {
     label?: string;
     tone?: BranchTone;
     child: Item;
+    note?: string;
+    noInsert?: boolean;
 }
 
 type Item =
@@ -131,7 +140,7 @@ export function layoutFlow(src: FlowSource): FlowLayout {
                     parentOf.set(t, { from: id, port: p.port });
                     child = build(t);
                 }
-                branches.push({ port: p.port, label: p.label, tone: p.tone, child });
+                branches.push({ port: p.port, label: p.label, tone: p.tone, child, note: src.note?.(id, p.port, t), noInsert: p.noInsert });
             });
         }
         if (branches.length === 0) {
@@ -184,14 +193,14 @@ export function layoutFlow(src: FlowSource): FlowLayout {
         const sy = y + it.h;
         if (it.chain) {
             const b = it.branches[0];
-            const ty = sy + (b.child.kind === "add" ? CHAIN_GAP / 2 : CHAIN_GAP);
+            const ty = sy + (b.child.kind === "add" ? CHAIN_GAP / 2 : CHAIN_GAP) + (b.note ? NOTE_GAP : 0);
             edges.push(edgeFor(it.id, b, cx, sy, cx, ty, null));
             place(b.child, cx, ty);
             return;
         }
         const total = it.branches.reduce((s, b) => s + b.child.width, 0) + COL_GAP * Math.max(0, it.branches.length - 1);
         let left = cx - total / 2;
-        const ty = sy + BRANCH_GAP;
+        const ty = sy + BRANCH_GAP + (it.branches.some((b) => b.note) ? NOTE_GAP : 0);
         for (const b of it.branches) {
             const ccx = left + b.child.width / 2;
             edges.push(edgeFor(it.id, b, cx, sy, ccx, ty, sy + BUS_DROP));
@@ -211,7 +220,9 @@ export function layoutFlow(src: FlowSource): FlowLayout {
         busY,
         label: b.label,
         tone: b.tone,
-        insert: b.child.kind === "add" ? null : { from, port: b.port, before: b.child.kind === "step" ? b.child.id : b.child.target },
+        insert: b.child.kind === "add" || b.noInsert ? null : { from, port: b.port, before: b.child.kind === "step" ? b.child.id : b.child.target },
+        port: b.port,
+        note: b.note,
     });
 
     let left = 0;

@@ -116,3 +116,32 @@ describe("reachableFrom", () => {
         expect([...reachableFrom({ ports: (id) => g[id] ?? [] }, "a")].sort()).toEqual(["a", "b", "c", "d"]);
     });
 });
+
+describe("notes and insert control", () => {
+    it("makes room for a note on a line and carries it on the edge", () => {
+        const g: Record<string, FlowPort[]> = { t: [{ port: "", targets: ["a"] }], a: [] };
+        const plain = layoutFlow(source(g));
+        const noted = layoutFlow({ ...source(g), note: (_f, _p, t) => (t === "a" ? "Wait 2 days" : undefined) });
+        const ya = (l: typeof plain) => l.nodes.find((n) => n.key === "a")!.y;
+        expect(ya(noted)).toBeGreaterThan(ya(plain));
+        expect(noted.edges.find((e) => e.to === "a")!.note).toBe("Wait 2 days");
+    });
+
+    it("keeps columns level when only one branch has a note", () => {
+        const g: Record<string, FlowPort[]> = {
+            t: [
+                { port: "x", label: "X", targets: ["a"] },
+                { port: "y", label: "Y", targets: ["b"] },
+            ],
+            a: [],
+            b: [],
+        };
+        const l = layoutFlow({ ...source(g), note: (_f, _p, t) => (t === "a" ? "Wait 1 day" : undefined) });
+        expect(l.nodes.find((n) => n.key === "a")!.y).toBe(l.nodes.find((n) => n.key === "b")!.y);
+    });
+
+    it("drops the insert button on a no-insert port", () => {
+        const l = layoutFlow(source({ t: [{ port: "", targets: ["a"], noInsert: true }], a: [] }));
+        expect(l.edges.find((e) => e.to === "a")!.insert).toBeNull();
+    });
+});

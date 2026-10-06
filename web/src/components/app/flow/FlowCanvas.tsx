@@ -25,7 +25,7 @@ import {
     type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { CornerDownRightIcon, MaximizeIcon, MinusIcon, PlusIcon, XIcon } from "lucide-react";
+import { ClockIcon, CornerDownRightIcon, MaximizeIcon, MinusIcon, PlusIcon, XIcon } from "lucide-react";
 import type { BranchTone, FlowLayout, InsertPoint, PlacedEdge, PlacedNode } from "./tree";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,12 @@ export interface FlowCanvasProps {
     // Omit to make the canvas read-only (no add buttons).
     onInsert?: (at: InsertPoint, anchor: DOMRect) => void;
     onRemoveGoto?: (from: string, port: string, target: string) => void;
+    // A branch pill was pressed (edit that path).
+    onPillClick?: (edge: PlacedEdge) => void;
+    // A note chip on a line was pressed (edit the wait it shows).
+    onNoteClick?: (edge: PlacedEdge, anchor: DOMRect) => void;
+    // The edge whose pill is being edited, drawn ringed.
+    activeEdge?: string | null;
     // The add button whose picker is open, drawn pressed.
     activeInsert?: InsertPoint | null;
     // Steps to fade back (a test run that did not reach them).
@@ -55,6 +61,9 @@ interface CanvasCtx {
     onSelect: FlowCanvasProps["onSelect"];
     onInsert?: FlowCanvasProps["onInsert"];
     onRemoveGoto?: FlowCanvasProps["onRemoveGoto"];
+    onPillClick?: FlowCanvasProps["onPillClick"];
+    onNoteClick?: FlowCanvasProps["onNoteClick"];
+    activeEdge?: string | null;
     activeInsert?: InsertPoint | null;
     dimmed?: Set<string> | null;
     selectedId: string | null;
@@ -207,7 +216,8 @@ function TreeEdge({ data }: EdgeProps) {
     const stroke = tone === "error" ? "var(--wb-edge-rose)" : "var(--wb-edge-faint)";
     const branch = e.busY !== null;
     const pillY = branch ? e.busY! + 26 : null;
-    const plusY = branch ? e.ty - 20 : (e.sy + e.ty) / 2;
+    const noteGap = e.note ? 28 : 0;
+    const plusY = branch ? e.ty - noteGap - 20 : (e.sy + e.ty - noteGap) / 2;
     const active = samePoint(c.activeInsert, e.insert);
     return (
         <>
@@ -215,14 +225,53 @@ function TreeEdge({ data }: EdgeProps) {
             <EdgeLabelRenderer>
                 {e.label && pillY !== null && (
                     <div
-                        className={cn(
-                            "nodrag nopan pointer-events-none absolute max-w-[180px] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4",
-                            PILL[tone],
-                        )}
+                        className="nodrag nopan pointer-events-auto absolute"
                         style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${pillY}px)` }}
-                        title={e.label}
                     >
-                        {e.label}
+                        {c.onPillClick ? (
+                            <button
+                                type="button"
+                                title={`${e.label}. Click to edit this path`}
+                                onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    c.onPillClick?.(e);
+                                }}
+                                className={cn(
+                                    "block max-w-[200px] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 transition-shadow hover:shadow-sm",
+                                    PILL[tone],
+                                    c.activeEdge === e.key && "ring-2 ring-sky-300 ring-offset-1",
+                                )}
+                            >
+                                {e.label}
+                            </button>
+                        ) : (
+                            <div className={cn("pointer-events-none max-w-[200px] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4", PILL[tone])} title={e.label}>
+                                {e.label}
+                            </div>
+                        )}
+                    </div>
+                )}
+                {e.note && (
+                    <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${e.ty - 16}px)` }}>
+                        {c.onNoteClick ? (
+                            <button
+                                type="button"
+                                title="Change the wait"
+                                onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    c.onNoteClick?.(e, ev.currentTarget.getBoundingClientRect());
+                                }}
+                                className="inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 bg-white px-2 text-[10.5px] font-medium text-slate-500 shadow-sm transition-colors hover:border-sky-300 hover:text-sky-700"
+                            >
+                                <ClockIcon className="size-3" />
+                                {e.note}
+                            </button>
+                        ) : (
+                            <span className="inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 bg-white px-2 text-[10.5px] font-medium text-slate-500">
+                                <ClockIcon className="size-3" />
+                                {e.note}
+                            </span>
+                        )}
                     </div>
                 )}
                 {c.onInsert && e.insert && (
@@ -385,6 +434,9 @@ export default function FlowCanvas({
     onSelect,
     onInsert,
     onRemoveGoto,
+    onPillClick,
+    onNoteClick,
+    activeEdge,
     activeInsert,
     dimmed,
     revealId,
@@ -437,6 +489,9 @@ export default function FlowCanvas({
         onSelect,
         onInsert,
         onRemoveGoto,
+        onPillClick,
+        onNoteClick,
+        activeEdge,
         activeInsert,
         dimmed,
         selectedId,
