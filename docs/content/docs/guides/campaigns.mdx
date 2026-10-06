@@ -13,7 +13,7 @@ You need at least one active mailbox and a contact list. Warm new mailboxes befo
 
 ## Shared workspace access
 
-Campaigns belong to the workspace. Members with **View campaigns** can read campaign details, steps and activity logs regardless of who created them. **Manage campaigns** allows members to edit settings, create or edit steps, arrange the step canvas and delete steps. Campaign overview metrics require **View analytics**. See [Team and roles](/guides/team-roles/) for permission details.
+Campaigns belong to the workspace. Members with **View campaigns** can read campaign details, steps and activity logs regardless of who created them. **Manage campaigns** allows members to edit settings, create or edit steps and delete steps. Campaign overview metrics require **View analytics**. See [Team and roles](/guides/team-roles/) for permission details.
 
 Select the workspace that owns the campaign before opening it. Creating a campaign does not grant access to it from a different workspace.
 
@@ -276,7 +276,7 @@ When nothing is due (every lead is inside a step's wait, for example), the campa
 
 ### Delay before the first email
 
-By default a contact's first email is due the moment they enter the campaign. The campaign's **Settings** > **First email** holds it back instead: choose **After a wait**, then pick a preset (`1 hour`, `4 hours`, `1 day`, `2 days`, `3 days`, `1 week`) or a custom amount in minutes, hours or days, up to `90` days. The same control sits on the **Trigger** card at the top of the Steps canvas, and both write one setting.
+By default a contact's first email is due the moment they enter the campaign. The campaign's **Settings** > **First email** holds it back instead: choose **After a wait**, then pick a preset (`1 hour`, `4 hours`, `1 day`, `2 days`, `3 days`, `1 week`) or a custom amount in minutes, hours or days, up to `90` days. The same control is on the **Start** card at the top of the Steps canvas and on the line under it, and all of them write one setting.
 
 The delay counts from when that contact entered the campaign, not from when the campaign started. A contact who joins a [linked segment](/guides/segments/#linking-a-segment-to-a-campaign) three weeks after launch still gets the full delay from their own arrival, which is what makes it useful for a campaign that keeps enrolling people. Once the delay elapses the email goes out in the first sending window that has mailbox capacity, exactly like any other step, so a `2 days` delay on a Friday afternoon lands on Monday morning if you only send on weekdays.
 

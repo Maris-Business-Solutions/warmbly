@@ -294,7 +294,7 @@ These frames are deliberately lightweight:
 - only human (JWT) members exchange them. API-key connections neither send nor receive live frames.
 - they are exempt from the per-minute client-event budget below (which they would exhaust instantly). Each socket is bounded by a small in-process burst limit instead, and clients should throttle pointer and drag frames to roughly 20 to 30 per second.
 
-Card positions are also persisted separately over REST, so an arrangement sticks across visits even with nobody else watching. The live stream is only the moment-to-moment motion.
+Warmbly's own builder canvases lay themselves out from the flow's structure, so they send no `live:node` frames and store no positions. The frame and the layout endpoints remain for clients that arrange cards themselves.
 
 ## Rate limits and connection caps
 
