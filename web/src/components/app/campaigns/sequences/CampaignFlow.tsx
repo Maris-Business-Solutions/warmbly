@@ -65,6 +65,7 @@ import {
     isStopId,
     isSwitchStep,
     moveCondition,
+    newBranchId,
     normalize,
     planRemoval,
     reachableSteps,
@@ -108,19 +109,19 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const dirty = useDirtyRegistry();
 
     // Moving away from a panel with unsaved edits asks first.
+    const selectionRef = React.useRef(selection);
+    selectionRef.current = selection;
     const select = React.useCallback(
         (next: Selection) => {
-            setSelection((cur) => {
-                if (sameSelection(cur, next)) return cur;
-                if (dirty.isDirty()) {
-                    confirm.show("Discard your unsaved changes to this step?", async () => {
-                        dirty.clear();
-                        setSelection(next);
-                    });
-                    return cur;
-                }
-                return next;
-            });
+            if (sameSelection(selectionRef.current, next)) return;
+            if (dirty.isDirty()) {
+                confirm.show("Discard your unsaved changes to this step?", async () => {
+                    dirty.clear();
+                    setSelection(next);
+                });
+                return;
+            }
+            setSelection(next);
         },
         [confirm, dirty],
     );
@@ -239,7 +240,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     };
 
     const continueTo = (before: string | null): SequenceBranch[] =>
-        before && !isStopId(before) ? [{ branch_id: crypto.randomUUID(), target_step_id: before, conditions: [] }] : [];
+        before && !isStopId(before) ? [{ branch_id: newBranchId(), target_step_id: before, conditions: [] }] : [];
 
     // Conditions go straight onto a step's own way on; anywhere else they need
     // a Condition step of their own.
@@ -265,7 +266,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                     setSelection({ kind: "path", stepId: from.id, port: `b:${branch.branch_id}` });
                     return;
                 }
-                const condBranch: SequenceBranch = { branch_id: crypto.randomUUID(), target_step_id: null, conditions: [cond] };
+                const condBranch: SequenceBranch = { branch_id: newBranchId(), target_step_id: null, conditions: [cond] };
                 const id = await createStep("router", [condBranch, ...continueTo(at.before)]);
                 if (from) await saveBranches(from.id, routePort(from, at.port, id));
                 setSelection({ kind: "path", stepId: id, port: `b:${condBranch.branch_id}` });
