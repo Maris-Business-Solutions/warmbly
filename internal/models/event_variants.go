@@ -61,4 +61,5 @@ var JobEventBodies = map[JobEventType]any{
 	JobEventTypeWorkerHealth:     WorkerHealthSample{},
 
 	JobEventTypeWarmupRemovalChecked: (*JobEventWarmupRemovalChecked)(nil),
+	JobEventTypeWarmupFiled:          (*JobEventWarmupFiled)(nil),
 }

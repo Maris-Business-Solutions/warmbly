@@ -353,6 +353,8 @@ Start, pause, resume, or stop from the mailbox's **Warmup** tab, or for several 
 
 The same tab decides where warmup mail lands **in your own mail client**: its own folder (`Warmbly` by default), left in the inbox, or archived. It covers both directions, the warmup this mailbox receives and the copy of what it sends, so neither Inbox nor Sent fills with it. See [keeping warmup out of your inbox](/guides/warmup/#keeping-warmup-out-of-your-inbox).
 
+Warmbly retries filing until the worker confirms success, including after a worker restart or reassignment. Reconnecting also files recognized warmup mail left behind while access was unavailable, using your current placement setting. Choosing **Inbox** deliberately leaves it in place.
+
 Keep warmup running after campaigns begin rather than switching it off once a mailbox looks ready. See [Warmup](/guides/warmup/).
 
 A mailbox marked as a [placement seed inbox](/guides/placement-tests/#your-own-seed-inboxes) is the exception: it never warms up (starting warmup on it is refused until it is unmarked) and never sends campaign mail, because a test inbox has to stay a stranger to your senders.
@@ -380,6 +382,8 @@ It keeps its worker assignment while off, so switching it back on puts it back o
 A mailbox belongs to the workspace, not to the member who connected it. Anyone with the **Manage mailboxes** permission can switch any of the workspace's mailboxes off, change its warmup, or disconnect it, including ones a teammate added and ones whose owner has since left. That is the same permission the list itself is behind, so a mailbox you can see is a mailbox you can act on.
 
 Everything belonging to that mailbox goes with it: its imported mail in the unibox, its warmup history and pool membership, its credentials, its sender links, and any send still scheduled for it. A campaign that was using it keeps running on its remaining senders, and the leads it had been writing to move onto them at their next step. Export the workspace first if you want a copy. Disable the mailbox instead when you only want it to stop.
+
+Before the worker closes a connected mailbox, it attempts to file up to 200 recent known warmup messages, with a 20-second time limit. Disconnect still completes if provider access has already stopped working. Warmbly retains only hashed recognition identifiers for up to 90 days from the warmup message or token being recorded, scoped to the mailbox address and workspace, so removing and adding the same address again can recover warmup mail during the normal history import. These identifiers contain no message content or credentials and disappear when the workspace is deleted. Mail whose identifiers were already erased before this recovery was introduced cannot always be identified safely; Warmbly does not hide mail just because its sender or subject resembles warmup.
 
 ### What disconnecting erases
 

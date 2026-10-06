@@ -68,6 +68,7 @@ const (
 
 	// JobEventTypeWarmupRemovalChecked answers a verify_removal warmup action.
 	JobEventTypeWarmupRemovalChecked JobEventType = "WARMUP_REMOVAL_CHECKED"
+	JobEventTypeWarmupFiled          JobEventType = "WARMUP_FILED"
 )
 
 type JobEvent struct {

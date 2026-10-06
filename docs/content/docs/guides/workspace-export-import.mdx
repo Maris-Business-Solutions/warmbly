@@ -23,7 +23,7 @@ The data is split into groups. Every export includes **Workspace**; the rest are
 | CRM | Pipelines, deals, tasks, and meeting bookings |
 | Automations | Automations, connected integrations, lead sync sources, and the workspace's CRM mode: whether it runs on [HubSpot](/guides/hubspot/), its setup choices, the owner matches, and which Warmbly record is which HubSpot record |
 | Assistant | Remie sessions and messages (including conversations held in [Slack](/guides/slack/)), skills, MCP servers, and AI settings |
-| Warmup | Warmup participation, routing rules, statistics and inbox placement history, appeals, and the standing of every penalised address, current or removed, so a move is not a way past a block |
+| Warmup | Warmup participation, routing rules, statistics and inbox placement history, appeals, expiring reconnect-recognition fingerprints, and the standing of every penalised address, current or removed, so a move is not a way past a block |
 | Inbox | Unified inbox threads, message bodies, conversation labels, mailbox sync state, and completed automatic-tagging verdicts with their raw probabilities |
 | Send history | Queued and completed send tasks with their payloads |
 | Delivery events | Bounces, complaints, opens, clicks, [placement tests](/guides/placement-tests/) and batches with where each copy landed, and website page views with the browser records that tie them to contacts |
@@ -32,6 +32,8 @@ The data is split into groups. Every export includes **Workspace**; the rest are
 | Billing history | Subscription, credit ledger, and referral records |
 
 Inbox, send history, delivery events, and logs are the ones that grow without limit. Turn them off and you get a small archive that still rebuilds a working workspace; leave them on for a faithful copy.
+
+The pending warmup-filing queue stays on its source instance. The destination resyncs mail and files recognized warmup messages using its own workers and the mailbox's placement setting.
 
 [Test workspace samples](/development/accounts-and-access/#adding-sample-data) move as ordinary contacts, campaigns and CRM records in their corresponding groups; reply templates are in **Assistant**. Their instance-wide admin audit marker does not travel, and import does not grant managed Test access.
 

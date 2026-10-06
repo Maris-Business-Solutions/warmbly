@@ -527,6 +527,7 @@ func main() {
 		CloudLink:                   cloudlink.NewService(repository.NewCloudLinkRepository(primaryDB.Pool, credEncrypter), emailRepo, nil),
 		WarmupContentRepo:           repository.NewWarmupContentRepository(primaryDB.Pool),
 		WarmupEngagementRepo:        repository.NewWarmupEngagementRepository(primaryDB.Pool),
+		WarmupRecoveryRepo:          repository.NewWarmupRecoveryRepository(primaryDB.Pool),
 		WarmupPlacementRepo:         repository.NewWarmupPlacementRepository(primaryDB),
 		PlacementRepo:               repository.NewPlacementRepository(primaryDB),
 		WarmupService:               warmupService,
@@ -584,6 +585,7 @@ func main() {
 	// effective dwell close to the requested value.
 	go jobsService.StartWarmupEngagementPoller(ctx, 30*time.Second)
 	go jobsService.StartWarmupInboxCleanup(ctx)
+	go jobsService.StartWarmupFilingRecovery(ctx)
 	// Deletes warmup mail past its retention window from the mailbox itself
 	// and prunes the per-message warmup records after theirs.
 	go jobsService.StartWarmupMailRetention(ctx)

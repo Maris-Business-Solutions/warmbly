@@ -126,6 +126,12 @@ Mail whose warmup verification is temporarily unavailable waits in the `unibox_p
 
 A [tracking comparison](/guides/placement-tests/#tracking) renders each seed's copy once and sends it from both halves, so while it runs it keeps that rendered copy, with merge fields and AI blocks filled in for the chosen contact, in the `placement_renders` Postgres table, sealed with the workspace's data key. The placement poller deletes it once neither half of the comparison is running. It is included in instance backups and excluded from workspace exports.
 
+### Warmup reconnect recovery
+
+`warmup_recovery_identifiers` holds SHA-256 fingerprints of a mailbox address and exact warmup message IDs or verification tokens, scoped to a workspace. They survive removing a mailbox so adding the same address again can recognize recent warmup mail without retaining its content or credentials. Each expires 90 days after its source record, expired identifiers are swept every minute in bounded batches, and deleting the workspace removes them immediately. They travel in the Warmup group of a [workspace export](/guides/workspace-export-import/).
+
+`warmup_pending_filings` holds message locators awaiting provider filing and worker acknowledgement. Failed or unassigned attempts retry after five minutes without replaying engagement signals. An acknowledgement or mailbox deletion removes the row. This instance-local queue does not travel in workspace exports; the destination resyncs the mailbox and files recognized warmup messages.
+
 ### Mailbox import files
 
 A [mailbox import](/guides/mailbox-import/) keeps each row's credentials in `mailbox_import_rows`, sealed with the workspace's own data key, until the row is connected. The credentials of rows that did not connect are kept for 7 days after the import finishes, so a failed row can be fixed and retried, and are then deleted. A finished import and its rows (address, status, cause, and the uploaded cells that are not passwords, which feed the failed-rows download) are deleted 30 days after it finished. Both windows are fixed rather than settings, and the sweep that applies them runs every minute. A connected mailbox's credentials are stored like any other mailbox's.

@@ -35,21 +35,12 @@ func (s *JobsService) StartWarmupInboxCleanup(ctx context.Context) {
 	})
 }
 
-// fileWarmupOutOfMailbox moves one warmup message the live path did not
-// engage with out of the customer's own mailbox: a leak the sweep found, or a
-// reply typed by hand in a warmup thread.
-//
-// Only the filing action is sent. The engagement legs (read, important, star)
-// are how fresh warmup mail earns its reputation signal, and replaying them on
-// months-old mail, or spending them on a reply nobody verified, would be
-// activity no real reader produces.
-//
-// A mailbox that is gone, disconnected or unassigned is skipped, because there
-// is nothing to file into; the sweep's job is the Unibox row. A failure to
-// look the mailbox up or to publish is returned instead, so the row survives
-// for the next pass rather than being deleted with the leak still in place.
+// fileWarmupOutOfMailbox persists filing separately from best-effort engagement.
 func (s *JobsService) fileWarmupOutOfMailbox(ctx context.Context, e *models.JobEventNewEmail) error {
 	if s.Publisher == nil || s.EmailRepository == nil || e.Message == nil {
+		return nil
+	}
+	if models.NormalizeFolder(e.Message.Folder, e.Message.Flags) == models.FolderTrash || e.Message.ProviderFolder == models.FolderTrash {
 		return nil
 	}
 	account, xerr := s.EmailRepository.GetByID(ctx, e.Message.EmailID)
@@ -57,13 +48,17 @@ func (s *JobsService) fileWarmupOutOfMailbox(ctx context.Context, e *models.JobE
 		if xerr.Code == errx.NotFound {
 			return nil
 		}
-		return fmt.Errorf("historical warmup leak: mailbox lookup: %w", xerr)
+		return fmt.Errorf("%w: warmup mailbox lookup: %w", errWarmupVerification, xerr)
 	}
-	if account == nil || account.WorkerID == nil {
+	if account == nil {
 		return nil
 	}
+	if s.WarmupRecoveryRepo != nil {
+		if err := s.WarmupRecoveryRepo.RememberMessage(ctx, e.Message.EmailID, e.Message.MessageID, e.Message.InternalDate); err != nil {
+			return fmt.Errorf("%w: remember warmup message: %w", errWarmupVerification, err)
+		}
+	}
 	placement, folder := account.WarmupFiling()
-	// The owner asked for warmup to stay in the inbox, so this is not a leak.
 	if placement == models.WarmupPlacementInbox {
 		return nil
 	}
@@ -71,7 +66,7 @@ func (s *JobsService) fileWarmupOutOfMailbox(ctx context.Context, e *models.JobE
 	// observed before a marker written afterwards would exist, and a mailbox
 	// must not be struck for foldering we asked it to do.
 	s.markSelfMove(ctx, e.Message.EmailID, e.Message.MessageID)
-	return s.Publisher.PublishWarmupAction(ctx, *account.WorkerID, &models.WarmupEmailAction{
+	action := models.WarmupEmailAction{
 		UserID:             e.UserID,
 		EmailID:            e.Message.EmailID,
 		GmailID:            e.Message.GmailID,
@@ -79,10 +74,32 @@ func (s *JobsService) fileWarmupOutOfMailbox(ctx context.Context, e *models.JobE
 		MailboxUIDValidity: e.Message.Mailbox,
 		MailboxFolder:      e.Message.FolderPath,
 		RFCMessageID:       e.Message.MessageID,
+		InternalID:         e.Message.ID.String(),
 		Actions:            []string{models.WarmupActionFile},
 		Placement:          placement,
 		TargetFolder:       folder,
-	})
+	}
+	if s.WarmupRecoveryRepo != nil {
+		id, err := s.WarmupRecoveryRepo.EnqueueFiling(ctx, action)
+		if err != nil {
+			return fmt.Errorf("%w: persist warmup filing: %w", errWarmupVerification, err)
+		}
+		action.FilingID = id.String()
+	}
+	if account.WorkerID == nil {
+		if s.WarmupRecoveryRepo != nil {
+			return nil
+		}
+		return fmt.Errorf("warmup filing: mailbox has no assigned worker")
+	}
+	err := s.Publisher.PublishWarmupAction(ctx, *account.WorkerID, &action)
+	if s.WarmupRecoveryRepo != nil {
+		return nil // The persisted filing survives a failed publish.
+	}
+	if err != nil {
+		return fmt.Errorf("%w: warmup file: %w", errWarmupVerification, err)
+	}
+	return nil
 }
 
 // StartPendingWarmupVerification drains arrivals held during verification outages.

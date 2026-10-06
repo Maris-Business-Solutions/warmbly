@@ -53,31 +53,23 @@ func (s *JobsService) ingestNewEmail(ctx context.Context, e *models.JobEventNewE
 			return fmt.Errorf("%w: %w", errWarmupVerification, err)
 		}
 		if handled {
-			s.fileWarmupSentCopy(ctx, e)
-			return nil
+			return s.fileWarmupOutOfMailbox(ctx, e)
 		}
 	}
 	if handled, err := s.handleUnmarkedWarmupEmail(ctx, e); err != nil {
 		return fmt.Errorf("%w: %w", errWarmupVerification, err)
 	} else if handled {
-		return nil
+		return s.fileWarmupOutOfMailbox(ctx, e)
 	}
 	if warmup, err := s.isKnownWarmupEmail(ctx, e); err != nil {
 		return fmt.Errorf("%w: %w", errWarmupVerification, err)
 	} else if warmup {
-		s.fileWarmupSentCopy(ctx, e)
-		return nil
+		return s.fileWarmupOutOfMailbox(ctx, e)
 	}
 	if reply, err := s.isWarmupThreadReply(ctx, e); err != nil {
 		return fmt.Errorf("%w: %w", errWarmupVerification, err)
 	} else if reply {
-		// Filed wherever it landed: a reply arrives in the inbox, and the
-		// copy of one typed here sits in Sent. Best effort, like the sent copy
-		// above; the unibox never sees it either way.
-		if ferr := s.fileWarmupOutOfMailbox(ctx, e); ferr != nil {
-			log.Warn().Err(ferr).Str("email_id", e.Message.EmailID.String()).Msg("warmup thread reply left in place")
-		}
-		return nil
+		return s.fileWarmupOutOfMailbox(ctx, e)
 	}
 	if report, err := s.isWarmupReport(ctx, e); err != nil {
 		return fmt.Errorf("%w: %w", errWarmupVerification, err)
@@ -329,6 +321,12 @@ func (s *JobsService) isWarmupReport(ctx context.Context, e *models.JobEventNewE
 
 // isKnownWarmupEmail separates inbox visibility from single-use recipient engagement.
 func (s *JobsService) isKnownWarmupEmail(ctx context.Context, e *models.JobEventNewEmail) (bool, error) {
+	if s.WarmupRecoveryRepo != nil {
+		known, err := s.WarmupRecoveryRepo.IsKnown(ctx, e.Message.EmailID, warmupTokenFromMessage(e.Message), []string{e.Message.MessageID})
+		if err != nil || known {
+			return known, err
+		}
+	}
 	token, tokenErr := uuid.Parse(warmupTokenFromMessage(e.Message))
 	sender := firstSenderAddress(e.Message.FromAddr)
 	if s.WarmupRepo != nil {
@@ -391,6 +389,20 @@ func (s *JobsService) isWarmupThreadReply(ctx context.Context, e *models.JobEven
 	parents := parentMessageIDs(e.Message.InReplyTo)
 	if len(parents) == 0 {
 		return false, nil
+	}
+	if s.WarmupRecoveryRepo != nil {
+		known, err := s.WarmupRecoveryRepo.IsKnown(ctx, e.Message.EmailID, "", parents)
+		if err != nil {
+			return false, err
+		}
+		if known {
+			if s.WarmupRepo != nil {
+				if err := s.WarmupRepo.RecordWarmupThreadMessage(ctx, e.Message.EmailID, e.Message.MessageID); err != nil {
+					return false, err
+				}
+			}
+			return true, nil
+		}
 	}
 	if s.WarmupRepo != nil {
 		known, err := s.WarmupRepo.IsWarmupThreadReply(ctx, e.Message.EmailID, parents)
@@ -560,7 +572,7 @@ func (s *JobsService) performWarmupActions(ctx context.Context, e *models.JobEve
 	// A mailbox whose owner wants warmup left in the inbox is not foldered.
 	// Spam-rescue still runs: that is the reputation signal warmup exists for,
 	// and it moves the mail to where this placement says it belongs anyway.
-	if base.Placement == models.WarmupPlacementInbox {
+	if base.Placement == models.WarmupPlacementInbox || s.WarmupRecoveryRepo != nil {
 		actions = slices.DeleteFunc(actions, func(a string) bool { return a == models.WarmupActionFile })
 	}
 	immediate, delayed := splitEngagementLegs(actions)
@@ -620,52 +632,6 @@ func (s *JobsService) performWarmupActions(ctx context.Context, e *models.JobEve
 		s.Publisher.PublishWarmupAction(ctx, *workerID, &act)
 	}
 	return rescueQueued
-}
-
-// fileWarmupSentCopy files a mailbox's own copy of a warmup message it SENT.
-//
-// Warmup stays out of the unibox on its own, but the copy the provider filed in
-// the customer's Sent folder is theirs to see, and a mailbox warming at forty a
-// day buries its real sent mail inside a week. The arrival of that copy is the
-// only event that says it exists, so this runs on every path that recognises
-// warmup mail and does nothing unless the message is in the sent folder.
-//
-// Only the filing action is published: read state, importance and stars are
-// recipient-side engagement signals, and there is no reputation to earn by
-// flagging your own outbound mail.
-func (s *JobsService) fileWarmupSentCopy(ctx context.Context, e *models.JobEventNewEmail) {
-	if s.Publisher == nil || s.EmailRepository == nil || e == nil || e.Message == nil {
-		return
-	}
-	if !sentFolderCopy(e.Message) {
-		return
-	}
-	account, err := s.EmailRepository.GetByID(ctx, e.Message.EmailID)
-	if err != nil || account == nil {
-		return
-	}
-	placement, folder := account.WarmupFiling()
-	if placement == models.WarmupPlacementInbox {
-		return
-	}
-	if account.WorkerID == nil {
-		log.Warn().
-			Str("email_id", e.Message.EmailID.String()).
-			Msg("Warmup sent copy left in place: mailbox has no assigned worker")
-		return
-	}
-	s.Publisher.PublishWarmupAction(ctx, *account.WorkerID, &models.WarmupEmailAction{
-		UserID:             e.UserID,
-		EmailID:            e.Message.EmailID,
-		GmailID:            e.Message.GmailID,
-		UID:                e.Message.UID,
-		MailboxUIDValidity: e.Message.Mailbox,
-		MailboxFolder:      e.Message.FolderPath,
-		RFCMessageID:       e.Message.MessageID,
-		Actions:            []string{models.WarmupActionFile},
-		Placement:          placement,
-		TargetFolder:       folder,
-	})
 }
 
 // sentFolderCopy reports whether this arrival is the mailbox's own copy of
