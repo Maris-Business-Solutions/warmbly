@@ -61,3 +61,56 @@ func TestQueryValidationPreservesValidQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestQueryValidationProtectsLegacyInvitationLookup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	token := strings.Repeat("a", 64)
+	for _, tc := range []struct {
+		query string
+		valid bool
+	}{
+		{"token=" + token, true},
+		{"token=" + token + "&ref=%E4%BD%A0%E5%A5%BD", true},
+		{"token=%00", false},
+		{"token=%FF", false},
+		{"token=%ZZ", false},
+		{"%00=value", false},
+		{"token=" + token + "&unused=%00", false},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			rateLimiterCalled, handlerCalled := false, false
+			r := gin.New()
+			r.Use(SecurityHeaders(), RequestIDMiddleware())
+			r.GET("/invitations/lookup", QueryValidation(), func(c *gin.Context) {
+				rateLimiterCalled = true
+				c.Next()
+			}, func(c *gin.Context) {
+				handlerCalled = true
+				if c.Query("token") != token || c.Request.URL.RawQuery != tc.query {
+					t.Error("valid invitation query was changed")
+				}
+				c.Status(http.StatusOK)
+			})
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/invitations/lookup?"+tc.query, nil)
+			req.Header.Set("Origin", "https://dashboard.example.com")
+			r.ServeHTTP(w, req)
+			wantStatus := http.StatusBadRequest
+			if tc.valid {
+				wantStatus = http.StatusOK
+			}
+			if w.Code != wantStatus || rateLimiterCalled != tc.valid || handlerCalled != tc.valid {
+				t.Fatalf("status = %d, limiter = %t, handler = %t; want %d, %t, %t", w.Code, rateLimiterCalled, handlerCalled, wantStatus, tc.valid, tc.valid)
+			}
+			if !tc.valid && (!strings.Contains(w.Body.String(), `"code":"bad_request"`) || !strings.Contains(w.Body.String(), `"request_id":"`)) {
+				t.Errorf("missing structured validation error: %s", w.Body.String())
+			}
+			if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("X-Request-Id") == "" {
+				t.Error("invitation responses must retain cache protection and request IDs")
+			}
+			if w.Header().Get("Access-Control-Allow-Origin") != "" {
+				t.Error("legacy invitation validation must not change CORS behavior")
+			}
+		})
+	}
+}
