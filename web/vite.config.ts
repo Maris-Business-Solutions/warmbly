@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import tailwindcss from "@tailwindcss/vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
+import { dashboardSecurityHeaders } from "./securityHeaders";
 
 // A Cloudflare Pages build sets no release, so its events are tagged with the commit it built.
 if (!process.env.VITE_SENTRY_RELEASE && process.env.CF_PAGES_COMMIT_SHA) process.env.VITE_SENTRY_RELEASE = process.env.CF_PAGES_COMMIT_SHA;
@@ -96,6 +97,7 @@ export default defineConfig({
         ],
     },
     server: {
+        headers: dashboardSecurityHeaders,
         // Permit Tailscale MagicDNS names (and any extra hosts via
         // VITE_ALLOWED_HOSTS) when the server is exposed with --host. Vite
         // always allows IPs + localhost; this only adds named hosts, so it's
@@ -112,5 +114,8 @@ export default defineConfig({
                 "./src/app/app/**/layout.tsx",
             ],
         },
+    },
+    preview: {
+        headers: dashboardSecurityHeaders,
     },
 });

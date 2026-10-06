@@ -22,6 +22,105 @@ func init() {
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
 		v.RegisterTagNameFunc(jsonFieldName)
 	}
+	binding.Validator = rejectingTextValidator{delegate: binding.Validator}
+}
+
+type rejectingTextValidator struct {
+	delegate binding.StructValidator
+}
+
+func (v rejectingTextValidator) ValidateStruct(value any) error {
+	if err := v.delegate.ValidateStruct(value); err != nil {
+		return err
+	}
+	return unsupportedText(reflect.ValueOf(value), "")
+}
+
+func (v rejectingTextValidator) Engine() any {
+	return v.delegate.Engine()
+}
+
+type unsupportedTextError struct {
+	field string
+}
+
+func (e *unsupportedTextError) Error() string {
+	return fmt.Sprintf("field %q contains a NUL character", e.field)
+}
+
+func unsupportedText(value reflect.Value, path string) error {
+	if !value.IsValid() {
+		return nil
+	}
+	for value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return nil
+		}
+		value = value.Elem()
+	}
+
+	switch value.Kind() {
+	case reflect.String:
+		if strings.ContainsRune(value.String(), '\x00') {
+			if path == "" {
+				path = "value"
+			}
+			return &unsupportedTextError{field: path}
+		}
+	case reflect.Struct:
+		typeOf := value.Type()
+		for i := 0; i < value.NumField(); i++ {
+			field := typeOf.Field(i)
+			if field.PkgPath != "" {
+				continue
+			}
+			name := boundFieldName(field)
+			if name == "" {
+				continue
+			}
+			if err := unsupportedText(value.Field(i), joinFieldPath(path, name)); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < value.Len(); i++ {
+			if err := unsupportedText(value.Index(i), fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iter := value.MapRange()
+		for iter.Next() {
+			if err := unsupportedText(iter.Key(), joinFieldPath(path, "key")); err != nil {
+				return err
+			}
+			key := fmt.Sprint(iter.Key().Interface())
+			if err := unsupportedText(iter.Value(), joinFieldPath(path, key)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func boundFieldName(field reflect.StructField) string {
+	for _, tag := range []string{"json", "form"} {
+		name, _, _ := strings.Cut(field.Tag.Get(tag), ",")
+		if name == "-" {
+			return ""
+		}
+		if name != "" {
+			return name
+		}
+	}
+	return field.Name
+}
+
+func joinFieldPath(parent, field string) string {
+	if parent == "" {
+		return field
+	}
+	return parent + "." + field
 }
 
 func jsonFieldName(f reflect.StructField) string {
@@ -40,6 +139,7 @@ func InvalidBody(err error) *Error {
 		typeErr   *json.UnmarshalTypeError
 		sizeErr   *http.MaxBytesError
 		timeErr   *time.ParseError
+		textErr   *unsupportedTextError
 	)
 	switch {
 	case err == nil:
@@ -56,6 +156,8 @@ func InvalidBody(err error) *Error {
 		return typeMismatch(typeErr)
 	case errors.As(err, &timeErr):
 		return New(BadRequest, fmt.Sprintf("The request body has a time that is not RFC 3339 (such as 2026-10-01T09:00:00Z): %q.", strings.Trim(timeErr.Value, `"`)))
+	case errors.As(err, &textErr):
+		return New(BadRequest, fmt.Sprintf("Field %q contains a NUL character, which is not supported.", textErr.field))
 	case strings.HasPrefix(err.Error(), "invalid UUID"):
 		return New(BadRequest, "The request body has a value that should be a UUID and is not one.")
 	}
@@ -63,6 +165,15 @@ func InvalidBody(err error) *Error {
 		return fieldProblems(fes)
 	}
 	return New(BadRequest, "The request body could not be read in the shape this endpoint expects. Check it against the API reference.")
+}
+
+// InvalidQuery is the 400 for query parameters that failed to bind.
+func InvalidQuery(err error) *Error {
+	var textErr *unsupportedTextError
+	if errors.As(err, &textErr) {
+		return New(BadRequest, fmt.Sprintf("Query parameter %q contains a NUL character, which is not supported.", textErr.field))
+	}
+	return New(BadRequest, "The query parameters are invalid. Check them against the API reference.")
 }
 
 func typeMismatch(e *json.UnmarshalTypeError) *Error {
