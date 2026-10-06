@@ -6,13 +6,40 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { build } from "vite";
+import { build, createServer } from "vite";
 import { configuredSources, dashboardCspPlugin, inlineHashes, noncePlaceholder, origin } from "../csp";
 import { dashboardCsp, mailPreviewCsp } from "../securityHeaders";
 
 const directory = process.cwd();
 
 describe("dashboard CSP", () => {
+    it("serves final Vite HTML with a matching fresh nonce for concurrent requests", async () => {
+        const temporary = mkdtempSync(path.join(tmpdir(), "warmbly-csp-dev-"));
+        const server = await createServer({ root: temporary, configFile: false, html: { cspNonce: noncePlaceholder }, plugins: [dashboardCspPlugin({})], server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });
+        try {
+            writeFileSync(path.join(temporary, "index.html"), '<html><head><script>window.theme="dark";</script><style>body { margin: 0; }</style></head><body></body></html>');
+            await server.listen();
+            const address = server.httpServer!.address();
+            if (!address || typeof address === "string") throw new Error("Expected local HTTP port");
+            const results = await Promise.all([1, 2].map(async () => {
+                const response = await fetch(`http://127.0.0.1:${address.port}/app/contacts`);
+                expect(response.status).toBe(200);
+                const nonce = response.headers.get("Content-Security-Policy")?.match(/'nonce-([^']+)'/)?.[1];
+                const html = await response.text();
+                expect(nonce).toBeTruthy();
+                expect(html).not.toContain(noncePlaceholder);
+                const nonces = [...html.matchAll(/nonce="([^"]+)"/g)].map((match) => match[1]);
+                expect(nonces.length).toBeGreaterThanOrEqual(3);
+                expect(new Set(nonces)).toEqual(new Set([nonce]));
+                return nonce;
+            }));
+            expect(results[0]).not.toBe(results[1]);
+        } finally {
+            await server.close();
+            rmSync(temporary, { recursive: true, force: true });
+        }
+    });
+
     it("generates hashes from Vite's final HTML asset", async () => {
         const temporary = mkdtempSync(path.join(tmpdir(), "warmbly-csp-build-"));
         try {

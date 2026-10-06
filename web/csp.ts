@@ -40,6 +40,13 @@ export function dashboardCspPlugin(env: Record<string, string>): Plugin {
     return {
         name: "warmbly:dashboard-csp",
         configureServer(server) {
+            const transformHtml = server.transformIndexHtml.bind(server);
+            server.transformIndexHtml = async (...args) => {
+                const request = requests.getStore();
+                const html = await transformHtml(...args);
+                // Vite adds nonce attributes after user HTML hooks have finished.
+                return request ? html.replaceAll(noncePlaceholder, request.nonce) : html;
+            };
             server.middlewares.use((request, response, next) => {
                 const nonce = randomBytes(24).toString("base64");
                 const preview = request.url?.split("?")[0] === "/mail-preview.html";
@@ -48,14 +55,6 @@ export function dashboardCspPlugin(env: Record<string, string>): Plugin {
                 if (preview) response.setHeader("X-Frame-Options", "SAMEORIGIN");
                 requests.run({ nonce }, next);
             });
-        },
-        transformIndexHtml: {
-            order: "post",
-            handler(html) {
-                const request = requests.getStore();
-                if (!request) return html;
-                return html.replaceAll(noncePlaceholder, request.nonce);
-            },
         },
         generateBundle: { order: "post", handler(_options, bundle) {
             const index = bundle["index.html"];
