@@ -8,8 +8,6 @@
 "use client";
 
 import React from "react";
-import type { ReactFlowInstance } from "@xyflow/react";
-import { Panel } from "@xyflow/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     AlertTriangleIcon,
@@ -44,8 +42,6 @@ import {
 } from "@/lib/api/models/app/automations/meta";
 import { useAutomations } from "@/lib/api/hooks/app/automations/useAutomations";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
-import CanvasCursors from "@/components/app/presence/CanvasCursors";
-import CanvasSelections from "@/components/app/presence/CanvasSelections";
 import CursorChat from "@/components/app/presence/CursorChat";
 import { useSuppressGlobalCursors } from "@/components/app/presence/GlobalCursors";
 import { usePresenceResource, useResourceViewers } from "@/hooks/PresenceProvider";
@@ -53,7 +49,7 @@ import { useUserProfile } from "@/hooks/context/user";
 import { cursorColor, useLiveCanvas } from "@/hooks/useLiveCanvas";
 import { isSelfMutation } from "@/lib/realtime/selfActivity";
 import { cn } from "@/lib/utils";
-import FlowCanvas from "@/components/app/flow/FlowCanvas";
+import FlowCanvas, { FlowOverlay } from "@/components/app/flow/FlowCanvas";
 import FlowPanel from "@/components/app/flow/FlowPanel";
 import StepPicker, { type PickerItem } from "@/components/app/flow/StepPicker";
 import { STEP_H, STEP_W, StepBadge, StepCard, TERMINAL_H, TERMINAL_W, TerminalCard, type StepMenuItem } from "@/components/app/flow/StepCard";
@@ -319,7 +315,7 @@ export default function AutomationFlow({
     }, []);
 
     const openPickerFromCard = (at: InsertPoint, id: string) => {
-        const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+        const el = document.querySelector(`[data-flow-step="${CSS.escape(id)}"]`);
         const r = el?.getBoundingClientRect() ?? new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0);
         setPicker({ at, anchor: new DOMRect(r.left, r.top, r.width, r.height) });
     };
@@ -459,7 +455,6 @@ export default function AutomationFlow({
 
     // ── Live collaboration: cursors and selections ───────────────────────────
     const hasPeers = useResourceViewers(resource).length > 0;
-    const rfRef = React.useRef<ReactFlowInstance | null>(null);
     const live = useLiveCanvas(resource, { enabled: hasPeers });
     const { pushSelect } = live;
     React.useEffect(() => pushSelect(selectedId ? [selectedId] : []), [pushSelect, selectedId]);
@@ -646,15 +641,7 @@ export default function AutomationFlow({
             </header>
 
             <div className="relative flex min-h-0 flex-1">
-                <div
-                    className="relative min-w-0 flex-1 bg-slate-50/40"
-                    onPointerMove={(e) => {
-                        if (!live.active || !rfRef.current) return;
-                        const p = rfRef.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-                        live.pushCursor(p.x, p.y);
-                    }}
-                    onPointerLeave={() => live.clearCursor()}
-                >
+                <div className="relative min-w-0 flex-1 bg-slate-50/40">
                     <FlowCanvas
                         layout={layout}
                         renderStep={renderStep}
@@ -666,14 +653,13 @@ export default function AutomationFlow({
                         activeInsert={picker?.at ?? null}
                         dimmed={dimmed}
                         revealId={selectedId}
-                        onInit={(inst) => {
-                            rfRef.current = inst;
-                        }}
+                        fill
+                        cursors={live.cursors}
+                        selections={live.selections}
+                        onCursor={(p) => (p ? live.active && live.pushCursor(p.x, p.y) : live.clearCursor())}
                     >
-                        <CanvasSelections selections={live.selections} />
-                        <CanvasCursors cursors={live.cursors} />
                         {remoteUpdate && (
-                            <Panel position="top-center">
+                            <FlowOverlay position="top-center">
                                 <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 shadow-sm">
                                     <span className="text-[12px] font-medium text-amber-800">A teammate changed this automation.</span>
                                     <button
@@ -690,17 +676,17 @@ export default function AutomationFlow({
                                         Keep mine
                                     </button>
                                 </div>
-                            </Panel>
+                            </FlowOverlay>
                         )}
                         {showTrace && (
-                            <Panel position="top-center">
+                            <FlowOverlay position="top-center">
                                 <div className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800 shadow-sm">
                                     Showing the path the test took.
                                     <button type="button" onClick={() => setTestResult(null)} className="font-medium text-sky-700 underline-offset-2 hover:underline">
                                         Clear
                                     </button>
                                 </div>
-                            </Panel>
+                            </FlowOverlay>
                         )}
                     </FlowCanvas>
                     <CursorChat active={live.active} color={selfColor} setChat={live.setChat} />
@@ -742,7 +728,7 @@ export default function AutomationFlow({
                 </AnimatePresence>
             </div>
 
-            {picker && <StepPicker anchor={picker.anchor} clearance={(STEP_W / 2) * (rfRef.current?.getZoom() ?? 1)} items={items} title={picker.at.port === "error" ? "Add an error path" : "Add a step"} onPick={pick} onClose={() => setPicker(null)} />}
+            {picker && <StepPicker anchor={picker.anchor} clearance={STEP_W / 2} items={items} title={picker.at.port === "error" ? "Add an error path" : "Add a step"} onPick={pick} onClose={() => setPicker(null)} />}
         </div>
     );
 }

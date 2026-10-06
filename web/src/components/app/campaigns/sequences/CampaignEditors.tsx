@@ -49,7 +49,7 @@ const stepName = (s: Sequence | undefined) => (s?.name?.trim() ? s.name : "Untit
 export function StopOnReplyToggle({ on, onToggle }: { on: boolean; onToggle: (next: boolean) => void }) {
     return (
         <div
-            className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm"
+            className="flex items-center gap-2"
             title={STOP_ON_REPLY_HELP}
         >
             <span className="text-[11.5px] text-slate-600">Stop on reply</span>
@@ -95,23 +95,16 @@ export function StopOnReplyToggle({ on, onToggle }: { on: boolean; onToggle: (ne
 // reply-flow aware), so it is strictly safer. Copy adapts to whether the
 // campaign has any reply handling at all.
 export function ReplyStopWarning({ hasReplyBranch, onEnable }: { hasReplyBranch: boolean; onEnable: () => void }) {
+    const text = hasReplyBranch
+        ? "Off: replies outside a reply path still get follow-ups."
+        : "Off: people who reply keep getting follow-ups.";
     return (
-        <div className="flex max-w-[19rem] items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 shadow-sm">
-            <AlertTriangleIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-            <div className="space-y-1">
-                <p className="leading-snug">
-                    {hasReplyBranch
-                        ? "Stop on reply is off. Replies that don't match a reply branch (say, a reply to an older email) keep getting cold emails. Turning it on still runs your reply branches."
-                        : "No reply handling. With stop on reply off, contacts who reply keep moving through the cold sequence. Turn it on, or add a reply branch."}
-                </p>
-                <button
-                    type="button"
-                    onClick={onEnable}
-                    className="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900"
-                >
-                    Turn on stop on reply
-                </button>
-            </div>
+        <div className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-amber-700" title={STOP_ON_REPLY_HELP}>
+            <AlertTriangleIcon className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <span className="truncate">{text}</span>
+            <button type="button" onClick={onEnable} className="shrink-0 font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900">
+                Turn it on
+            </button>
         </div>
     );
 }

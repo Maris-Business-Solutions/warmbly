@@ -7,8 +7,6 @@
 // is made.
 
 import React from "react";
-import type { ReactFlowInstance } from "@xyflow/react";
-import { Panel } from "@xyflow/react";
 import { AnimatePresence } from "framer-motion";
 import { ArrowDownIcon, ArrowUpIcon, FlagIcon, GitBranchIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,8 +22,6 @@ import useCampaign from "@/lib/api/hooks/app/campaigns/useCampaign";
 import useUpdateCampaign from "@/lib/api/hooks/app/campaigns/useUpdateCampaign";
 import { useCampaignABVariants } from "@/lib/api/hooks/app/campaigns/useCampaignABVariants";
 import { cursorColor, useLiveCanvas } from "@/hooks/useLiveCanvas";
-import CanvasCursors from "@/components/app/presence/CanvasCursors";
-import CanvasSelections from "@/components/app/presence/CanvasSelections";
 import CursorChat from "@/components/app/presence/CursorChat";
 import { useSuppressGlobalCursors } from "@/components/app/presence/GlobalCursors";
 import { useResourceViewers } from "@/hooks/PresenceProvider";
@@ -349,7 +345,6 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const resource = `campaign:${campaignId}`;
     useSuppressGlobalCursors();
     const hasPeers = useResourceViewers(resource).length > 0;
-    const rfRef = React.useRef<ReactFlowInstance | null>(null);
     const live = useLiveCanvas(resource, { enabled: hasPeers });
     const { pushSelect } = live;
     const selectedStep = selection?.kind === "step" ? selection.id : selection?.kind === "path" ? selection.stepId : selection?.kind === "entry" ? ENTRY_ID : null;
@@ -432,16 +427,12 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const waitStep = waitEdit && waitEdit.target !== ENTRY_ID ? byId.get(waitEdit.target) : undefined;
 
     return (
-        <div className="relative flex h-[70dvh] w-full overflow-hidden rounded-md border border-slate-200 bg-white sm:h-[78vh]">
-            <div
-                className="relative min-w-0 flex-1 bg-slate-50/40"
-                onPointerMove={(e) => {
-                    if (!live.active || !rfRef.current) return;
-                    const p = rfRef.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-                    live.pushCursor(p.x, p.y);
-                }}
-                onPointerLeave={() => live.clearCursor()}
-            >
+        <div className="relative flex min-h-[420px] w-full rounded-md border border-slate-200 bg-white">
+            <div className="relative flex min-w-0 flex-1 flex-col rounded-md bg-slate-50/40">
+                <div className="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 rounded-t-md border-b border-slate-200 bg-white px-3 py-1.5">
+                    <StopOnReplyToggle on={!!campaign?.stop_on_reply} onToggle={setStopOnReply} />
+                    {campaign && !campaign.stop_on_reply && steps.length > 1 && <ReplyStopWarning hasReplyBranch={hasReplyBranch} onEnable={() => setStopOnReply(true)} />}
+                </div>
                 <FlowCanvas
                     layout={layout}
                     renderStep={renderStep}
@@ -462,26 +453,17 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
                     activeEdge={activeEdge}
                     activeInsert={picker?.at ?? null}
                     revealId={selectedStep}
-                    onInit={(inst) => {
-                        rfRef.current = inst;
-                    }}
-                >
-                    <CanvasSelections selections={live.selections} />
-                    <CanvasCursors cursors={live.cursors} />
-                    <Panel position="top-left">
-                        <div className="flex max-w-[calc(100vw-1.5rem)] flex-col gap-1.5">
-                            <StopOnReplyToggle on={!!campaign?.stop_on_reply} onToggle={setStopOnReply} />
-                            {campaign && !campaign.stop_on_reply && steps.length > 1 && <ReplyStopWarning hasReplyBranch={hasReplyBranch} onEnable={() => setStopOnReply(true)} />}
-                        </div>
-                    </Panel>
-                </FlowCanvas>
+                    cursors={live.cursors}
+                    selections={live.selections}
+                    onCursor={(p) => (p ? live.active && live.pushCursor(p.x, p.y) : live.clearCursor())}
+                />
                 <CursorChat active={live.active} color={selfColor} setChat={live.setChat} />
             </div>
 
             <DirtyContext.Provider value={dirty.report}>
                 <AnimatePresence initial={false}>
                     {selection?.kind === "entry" && (
-                        <FlowPanel key="entry" {...entryView("")} title="Contact enters the campaign" onClose={() => select(null)}>
+                        <FlowPanel key="entry" sticky {...entryView("")} title="Contact enters the campaign" onClose={() => select(null)}>
                             <div className="space-y-2 p-3">
                                 <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">Wait before the first email</div>
                                 <EntryDelayPicker value={entryDelay} onCommit={saveEntryDelay} disabled={!canEdit} />
@@ -540,7 +522,7 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
             {picker && (
                 <StepPicker
                     anchor={picker.anchor}
-                    clearance={(STEP_W / 2) * (rfRef.current?.getZoom() ?? 1)}
+                    clearance={STEP_W / 2}
                     items={items}
                     title="Add a step"
                     onPick={(item) => {
@@ -618,7 +600,7 @@ function StepPanel({
     if (isRouterStep(step)) {
         const conds = (step.conditions?.branches ?? []).filter(isCond);
         return (
-            <FlowPanel icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer}>
+            <FlowPanel sticky icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer}>
                 <div className="space-y-3 p-3">
                     <p className="text-[11.5px] leading-relaxed text-slate-500">
                         Contacts reaching this step take the first path that matches, checked in this order. Anyone else goes on under Otherwise.
@@ -651,7 +633,7 @@ function StepPanel({
         );
     }
     return (
-        <FlowPanel icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer} wide={step.kind === "email"}>
+        <FlowPanel sticky icon={view.icon} tone={view.tone} kicker={view.kicker} title={view.title} onClose={onClose} footer={footer} wide={step.kind === "email"}>
             <div className="p-3">
                 <NodeTypeSwitcher campaignId={campaignId} sequence={step} onChanged={onChanged} />
                 {step.kind === "email" ? (
@@ -702,7 +684,7 @@ function PathPanel({
     const index = branch ? conds.findIndex((b) => b.branch_id === branch.branch_id) : -1;
     const label = port === ELSE_PORT ? "Otherwise" : branch ? conditionText(branch) : "Path";
     return (
-        <FlowPanel icon={<GitBranchIcon />} tone="amber" kicker={`Path from ${title}`} title={label} onClose={onClose}>
+        <FlowPanel sticky icon={<GitBranchIcon />} tone="amber" kicker={`Path from ${title}`} title={label} onClose={onClose}>
             {branch ? (
                 <>
                     {index >= 0 && conds.length > 1 && canEdit && (

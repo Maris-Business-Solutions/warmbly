@@ -1097,29 +1097,6 @@
   transition: none !important;
 }
 
-/* React Flow canvases (campaign sequence, automations). */
-.dark .react-flow {
-  --xy-edge-stroke: #44464c;
-  --xy-connectionline-stroke: #62666d;
-  --xy-attribution-background-color: transparent;
-  --xy-minimap-background-color: #16171a;
-  --xy-minimap-mask-background-color: rgb(0 0 0 / 0.5);
-  --xy-minimap-node-background-color: #2e2f34;
-  --xy-node-color: #f7f8f8;
-  --xy-node-border: 1px solid #2e2f34;
-  --xy-node-background-color: #1a1b1e;
-  --xy-handle-background-color: #62666d;
-  --xy-handle-border-color: #111214;
-  --xy-selection-background-color: oklch(74.6% 0.16 232.661 / 0.08);
-  --xy-selection-border: 1px dotted oklch(74.6% 0.16 232.661 / 0.6);
-  --xy-controls-button-background-color: #1a1b1e;
-  --xy-controls-button-background-color-hover: #25262a;
-  --xy-controls-button-color: #b4bac3;
-  --xy-controls-button-color-hover: #f7f8f8;
-  --xy-controls-button-border-color: #2e2f34;
-  --xy-controls-box-shadow: 0 0 0 1px #26272b, 0 6px 16px rgb(0 0 0 / 0.4);
-}
-
 /* The sky scenes (sign-in, upgrade, locked screens) turn to a night sky. */
 .dark .sky-base {
   background: radial-gradient(ellipse 140% 130% at 60% 18%,
@@ -1214,7 +1191,7 @@
 .dark [class~="bg-[#0369a1]"] { background-color: oklch(62% 0.11 237); }
 .dark [class~="bg-[#38bdf8]"] { background-color: oklch(80% 0.07 230); }
 
-/* Flow canvas edges. Variables rather than light-dark(), because React Flow builds arrowhead ids from the colour string. */
+/* Flow builder line colours. */
 :root {
   --wb-edge-sky: #0ea5e9;
   --wb-edge-muted: #94a3b8;

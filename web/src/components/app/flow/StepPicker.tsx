@@ -130,9 +130,9 @@ export default function StepPicker({
             data-floating
             role="dialog"
             aria-label={page ? (page.childrenTitle ?? page.label) : title}
-            initial={{ opacity: 0, scale: 0.97, x: side === "right" ? -4 : side === "left" ? 4 : 0, y: side ? 0 : below ? -4 : 4 }}
-            animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
-            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.1, ease: "easeOut" }}
             style={{ ...style, width: W, transformOrigin: origin }}
             className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
             onKeyDown={onKey}

@@ -18,7 +18,6 @@
     "sourcemaps:maybe": "sh -c 'if [ -n \"$POSTHOG_CLI_PROJECT_ID\" ] && [ -n \"$POSTHOG_CLI_API_KEY\" ]; then pnpm sourcemaps:posthog; else echo \"no PostHog CLI credentials; skipping the source map upload\"; fi'"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.1.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -76,7 +75,6 @@
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@types/papaparse": "^5.5.2",
-    "@xyflow/react": "^12.11.6",
     "@zxcvbn-ts/core": "^3.0.4",
     "@zxcvbn-ts/language-common": "^3.0.4",
     "@zxcvbn-ts/language-en": "^3.0.2",

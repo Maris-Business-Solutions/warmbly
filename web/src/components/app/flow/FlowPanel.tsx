@@ -19,6 +19,7 @@ export default function FlowPanel({
     footer,
     wide,
     bare,
+    sticky,
     children,
 }: {
     icon?: React.ReactNode;
@@ -32,16 +33,20 @@ export default function FlowPanel({
     wide?: boolean;
     // Children bring their own header and scrolling.
     bare?: boolean;
+    // Stay in view while the page scrolls (a flow that grows with the page).
+    sticky?: boolean;
     children: React.ReactNode;
 }) {
     return (
         <motion.aside
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 24 }}
-            transition={{ type: "spring", stiffness: 420, damping: 38 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             className={cn(
-                "absolute inset-0 z-20 flex min-h-0 flex-col bg-white md:static md:inset-auto md:z-auto md:shrink-0 md:border-l md:border-slate-200",
+                sticky
+                    ? "fixed inset-0 z-40 flex min-h-0 flex-col bg-white md:sticky md:inset-auto md:top-3 md:z-auto md:h-[calc(100dvh-1.5rem)] md:shrink-0 md:self-start md:rounded-r-md md:border-l md:border-slate-200"
+                    : "absolute inset-0 z-20 flex min-h-0 flex-col bg-white md:static md:inset-auto md:z-auto md:shrink-0 md:border-l md:border-slate-200",
                 wide ? "md:w-[min(760px,62vw)]" : "md:w-[400px]",
             )}
         >
