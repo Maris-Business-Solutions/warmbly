@@ -131,7 +131,7 @@ export function stepView(n: AutomationNode, ctx: StepContext): StepView {
     const channel = String(cfg.channel ?? "").trim();
     return {
         icon: actionIcon(action),
-        tile: provider ? <ProviderGlyph provider={provider} name={provider} size={9} /> : undefined,
+        tile: provider ? <ProviderGlyph provider={provider} name={provider} size={7} /> : undefined,
         tone: actionTone(action),
         kicker: PROVIDER_LABELS[provider as keyof typeof PROVIDER_LABELS] ?? "Integration",
         title: actionLabel(action),

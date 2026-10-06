@@ -483,11 +483,8 @@ export default function AutomationFlow({
             <StepBadge tone={status === "error" ? "error" : status === "skipped" ? "muted" : status === "branch_false" ? "muted" : "ok"}>
                 {status === "error" ? "Failed" : status === "skipped" ? "Skipped" : status === "branch_true" ? "Yes" : status === "branch_false" ? "No" : "Ran"}
             </StepBadge>
-        ) : issue ? (
-            <StepBadge tone={issue.blocking ? "warn" : "muted"} title={issue.message}>
-                <AlertTriangleIcon />
-                {issue.blocking ? "Needs setup" : "Not connected"}
-            </StepBadge>
+        ) : issue?.blocking ? (
+            <span title={issue.message} aria-label={`Needs setup: ${issue.message}`} className="size-1.5 shrink-0 rounded-full bg-amber-400" />
         ) : null;
         const menu: StepMenuItem[] = [];
         if (canEdit && n.type === "action") {
@@ -508,6 +505,7 @@ export default function AutomationFlow({
                 badge={badge}
                 selected={selected}
                 detached={detached}
+                hint={issue ? `${issue.blocking ? "Needs setup" : "Not connected"}: ${issue.message}` : undefined}
                 menu={menu}
             />
         );

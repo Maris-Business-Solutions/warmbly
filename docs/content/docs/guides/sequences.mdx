@@ -9,13 +9,13 @@ A campaign sends a sequence of steps to each contact: the first email, then foll
 
 The canvas lays itself out from where a contact enters, top to bottom. The **Start** card, `Contact enters the campaign`, sits at the top and carries how long their first email waits after they entered (the same setting as the campaign's **Settings** > **First email**; see [the campaign guide](/guides/campaigns/#delay-before-the-first-email)). Below it comes the first email, then whatever follows it. You never draw lines or arrange cards.
 
-- Press **+** on a line to insert a step there, or at the end of a path to add one after it. The picker is searchable and works from the keyboard. The first email is the first step created, so nothing can be inserted above it.
-- The line into each step shows its wait (`Wait 3 days`, `No wait`). Click it to change it.
+- Hover a line and press its **+** to insert a step there, or press the **+** at the end of a path to add one after it. The picker is searchable and works from the keyboard. The first email is the first step created, so nothing can be inserted above it.
+- The line into each step shows its wait (`3 days`) when it has one. Click it to change it, or set it in the step's path panel.
 - A step with conditions splits into one column per condition plus **Otherwise**. A Switch splits into one column per case. Click a column's label to edit that path.
 - **Go to a step** (at the end of a path) continues the path at a step already in the flow, shown as a chip. A path that ends with nothing under it ends the sequence; a conditional path routed nowhere shows `End`.
 - Click a card to edit the step in the side panel. Edits save as you make them; the email and action editors have their own **Save**, and closing the panel with unsaved changes asks first.
-- Deleting a step reconnects whatever led to it to the step it led to, when there is exactly one. Otherwise the steps after it are left unconnected rather than deleted. A card nothing leads to is marked `Not connected` and never sends; connect it with **Go to a step**.
-- A card that still needs something (a subject, a label to add) is marked `Needs setup`. Up to 50 steps per sequence.
+- Deleting a step reconnects whatever led to it to the step it led to, when there is exactly one. Otherwise the steps after it are left unconnected rather than deleted. A card nothing leads to is faded with a dashed border and never sends; connect it with **Go to a step**.
+- A card that still needs something (a subject, a label to add) has an amber dot by its name; hover the card for what is missing. Up to 50 steps per sequence.
 - The canvas is collaborative: you see teammates' cursors and their selected steps, outlined in their color. Press `/` to chat from your cursor. See [Collaboration](/guides/collaboration/).
 
 The campaign wizard connects the follow-ups written there in order, with their waits set.
@@ -154,7 +154,7 @@ Switch steps always run on the normal schedule, so an instant reply branch leadi
 
 ## Wait and spacing
 
-Spacing belongs to the **target** step, not a separate node, so there is no wait block on the canvas. The line into a step shows its wait (`Wait 3 days`); click it to set the days before that step (0 to 60). The one delay that is not a step's own is the wait before the *first* email, on the line under the Start card.
+Spacing belongs to the **target** step, not a separate node, so there is no wait block on the canvas. The line into a step shows its wait (`3 days`); click it to set the days before that step (0 to 60). A step with no wait shows nothing on its line. The one delay that is not a step's own is the wait before the *first* email, on the line under the Start card.
 
 Because the wait belongs to the target, every path into that step uses the same wait. Spacing follow-ups out keeps your sending pattern natural; see [Deliverability](/guides/deliverability/).
 

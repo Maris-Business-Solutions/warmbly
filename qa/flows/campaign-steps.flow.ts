@@ -14,7 +14,7 @@ test("build a campaign's steps where each one goes", async ({ page, proof }) => 
   await proof.shot("campaign-step-picker", { caption: "Emails, conditions, switches, AI steps and actions in one picker" });
   await picker.getByRole("button", { name: /^Go to a step/ }).click();
   await page.getByRole("dialog", { name: "Go to" }).getByRole("button", { name: /^Step 2 - bump/ }).click();
-  const wait = page.getByRole("button", { name: /^(Wait \d+ days?|No wait)$/ }).first();
+  const wait = page.getByRole("button", { name: /^\d+ days?$/ }).first();
   await expect(wait).toBeVisible();
   await proof.shot("connected", { caption: "Connected: the follow-up hangs under the first email with its wait on the line" });
 

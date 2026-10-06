@@ -118,12 +118,12 @@ describe("reachableFrom", () => {
 });
 
 describe("notes and insert control", () => {
-    it("makes room for a note on a line and carries it on the edge", () => {
+    it("carries a note on the edge without moving anything", () => {
         const g: Record<string, FlowPort[]> = { t: [{ port: "", targets: ["a"] }], a: [] };
         const plain = layoutFlow(source(g));
         const noted = layoutFlow({ ...source(g), note: (_f, _p, t) => (t === "a" ? "Wait 2 days" : undefined) });
         const ya = (l: typeof plain) => l.nodes.find((n) => n.key === "a")!.y;
-        expect(ya(noted)).toBeGreaterThan(ya(plain));
+        expect(ya(noted)).toBe(ya(plain));
         expect(noted.edges.find((e) => e.to === "a")!.note).toBe("Wait 2 days");
     });
 
@@ -143,5 +143,20 @@ describe("notes and insert control", () => {
     it("drops the insert button on a no-insert port", () => {
         const l = layoutFlow(source({ t: [{ port: "", targets: ["a"], noInsert: true }], a: [] }));
         expect(l.edges.find((e) => e.to === "a")!.insert).toBeNull();
+    });
+});
+
+describe("column width", () => {
+    it("keeps long branch labels from overlapping over narrow columns", () => {
+        const l = layoutFlow(
+            source({
+                t: [
+                    { port: "a", label: "Replied: positive · instant", targets: [], showEmpty: true },
+                    { port: "b", label: "Otherwise", targets: [], showEmpty: true },
+                ],
+            }),
+        );
+        const [a, b] = l.edges.filter((e) => e.from === "t");
+        expect(b.tx - a.tx).toBeGreaterThanOrEqual(("Replied: positive · instant".length * 6.4 + 20) / 2 + ("Otherwise".length * 6.4 + 20) / 2);
     });
 });

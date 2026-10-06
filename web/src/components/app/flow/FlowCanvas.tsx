@@ -168,16 +168,16 @@ function AddNode({ data }: NodeProps) {
                         c.onInsert?.(at, e.currentTarget.getBoundingClientRect());
                     }}
                     className={cn(
-                        "nodrag nopan flex h-full w-full items-center justify-center rounded-full border border-dashed transition-colors",
+                        "nodrag nopan flex h-full w-full items-center justify-center rounded-full border transition-colors",
                         active
                             ? "border-sky-400 bg-sky-50 text-sky-600"
-                            : "border-slate-300 bg-white text-slate-400 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600",
+                            : "border-slate-200 bg-white text-slate-400 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600",
                     )}
                 >
-                    <PlusIcon className="size-3.5" />
+                    <PlusIcon className="size-3" />
                 </button>
             ) : (
-                <span className="mx-auto mt-2.5 block size-2 rounded-full bg-slate-300" aria-label="End of path" />
+                <span className="mx-auto mt-2 block size-1.5 rounded-full bg-slate-300" aria-label="End of path" />
             )}
         </div>
     );
@@ -186,12 +186,12 @@ function AddNode({ data }: NodeProps) {
 const nodeTypes = { step: StepNode, goto: GotoNode, add: AddNode };
 
 const PILL: Record<BranchTone, string> = {
-    neutral: "border-slate-200 bg-white text-slate-600",
-    yes: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    no: "border-slate-200 bg-slate-50 text-slate-600",
-    case: "border-violet-200 bg-violet-50 text-violet-700",
-    error: "border-rose-200 bg-rose-50 text-rose-700",
-    warn: "border-amber-200 bg-amber-50 text-amber-700",
+    neutral: "bg-white text-slate-500 ring-slate-200",
+    yes: "bg-emerald-50 text-emerald-700 ring-emerald-200/80",
+    no: "bg-white text-slate-500 ring-slate-200",
+    case: "bg-violet-50 text-violet-700 ring-violet-200/80",
+    error: "bg-rose-50 text-rose-700 ring-rose-200/80",
+    warn: "bg-amber-50 text-amber-700 ring-amber-200/80",
 };
 
 function edgePath(e: PlacedEdge): string {
@@ -215,68 +215,61 @@ function TreeEdge({ data }: EdgeProps) {
     const tone = e.tone ?? "neutral";
     const stroke = tone === "error" ? "var(--wb-edge-rose)" : "var(--wb-edge-faint)";
     const branch = e.busY !== null;
-    const pillY = branch ? e.busY! + 26 : null;
-    const noteGap = e.note ? 28 : 0;
-    const plusY = branch ? e.ty - noteGap - 20 : (e.sy + e.ty - noteGap) / 2;
+    const pillY = branch ? e.busY! + 20 : null;
+    // The free stretch of line the + and the wait share: below the pill on a
+    // branch, the whole gap on a chain.
+    const top = pillY !== null ? pillY + 12 : e.sy;
+    const midY = (top + e.ty) / 2;
     const active = samePoint(c.activeInsert, e.insert);
     return (
         <>
-            <BaseEdge path={edgePath(e)} style={{ stroke, strokeWidth: 1.5 }} />
+            <BaseEdge path={edgePath(e)} style={{ stroke, strokeWidth: 1.25 }} />
             <EdgeLabelRenderer>
                 {e.label && pillY !== null && (
-                    <div
-                        className="nodrag nopan pointer-events-auto absolute"
-                        style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${pillY}px)` }}
-                    >
-                        {c.onPillClick ? (
-                            <button
-                                type="button"
-                                title={`${e.label}. Click to edit this path`}
-                                onClick={(ev) => {
-                                    ev.stopPropagation();
-                                    c.onPillClick?.(e);
-                                }}
-                                className={cn(
-                                    "block max-w-[200px] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 transition-shadow hover:shadow-sm",
-                                    PILL[tone],
-                                    c.activeEdge === e.key && "ring-2 ring-sky-300 ring-offset-1",
-                                )}
-                            >
-                                {e.label}
-                            </button>
-                        ) : (
-                            <div className={cn("pointer-events-none max-w-[200px] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4", PILL[tone])} title={e.label}>
-                                {e.label}
-                            </div>
-                        )}
+                    <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${pillY}px)` }}>
+                        <button
+                            type="button"
+                            disabled={!c.onPillClick}
+                            title={c.onPillClick ? `${e.label}. Click to edit this path` : e.label}
+                            onClick={(ev) => {
+                                ev.stopPropagation();
+                                c.onPillClick?.(e);
+                            }}
+                            className={cn(
+                                "block max-w-[200px] truncate rounded-full px-2 py-px text-[11px] font-medium leading-[18px] ring-1 ring-inset transition-shadow disabled:cursor-default",
+                                PILL[tone],
+                                c.onPillClick && "hover:shadow-sm",
+                                c.activeEdge === e.key && "ring-2 ring-sky-400",
+                            )}
+                        >
+                            {e.label}
+                        </button>
                     </div>
                 )}
                 {e.note && (
-                    <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${e.ty - 16}px)` }}>
-                        {c.onNoteClick ? (
-                            <button
-                                type="button"
-                                title="Change the wait"
-                                onClick={(ev) => {
-                                    ev.stopPropagation();
-                                    c.onNoteClick?.(e, ev.currentTarget.getBoundingClientRect());
-                                }}
-                                className="inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 bg-white px-2 text-[10.5px] font-medium text-slate-500 shadow-sm transition-colors hover:border-sky-300 hover:text-sky-700"
-                            >
-                                <ClockIcon className="size-3" />
-                                {e.note}
-                            </button>
-                        ) : (
-                            <span className="inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 bg-white px-2 text-[10.5px] font-medium text-slate-500">
-                                <ClockIcon className="size-3" />
-                                {e.note}
-                            </span>
-                        )}
+                    <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(14px, -50%) translate(${e.tx}px, ${midY}px)` }}>
+                        <button
+                            type="button"
+                            disabled={!c.onNoteClick}
+                            title={c.onNoteClick ? "Change the wait" : undefined}
+                            onClick={(ev) => {
+                                ev.stopPropagation();
+                                c.onNoteClick?.(e, ev.currentTarget.getBoundingClientRect());
+                            }}
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded px-1 text-[11px] text-slate-400 transition-colors enabled:hover:bg-slate-100 enabled:hover:text-slate-700 disabled:cursor-default"
+                        >
+                            <ClockIcon className="size-3" />
+                            {e.note}
+                        </button>
                     </div>
                 )}
                 {c.onInsert && e.insert && (
+                    // A hover zone over the line: the + shows only there (always on touch).
                     // The wrapper positions it: a scale on the button would scale this offset too.
-                    <div className="nodrag nopan pointer-events-auto absolute" style={{ transform: `translate(-50%, -50%) translate(${e.tx}px, ${plusY}px)` }}>
+                    <div
+                        className="group/ins nodrag nopan pointer-events-auto absolute flex w-8 items-center justify-center"
+                        style={{ height: Math.max(20, e.ty - top - 8), transform: `translate(-50%, -50%) translate(${e.tx}px, ${midY}px)` }}
+                    >
                         <button
                             type="button"
                             aria-label="Insert a step here"
@@ -286,10 +279,10 @@ function TreeEdge({ data }: EdgeProps) {
                                 c.onInsert?.(e.insert!, ev.currentTarget.getBoundingClientRect());
                             }}
                             className={cn(
-                                "flex size-5 items-center justify-center rounded-full border shadow-sm transition-[color,background-color,border-color,scale] hover:scale-110",
+                                "flex size-5 items-center justify-center rounded-full border bg-white shadow-sm transition-[opacity,color,background-color,border-color,scale] focus-visible:opacity-100",
                                 active
-                                    ? "scale-110 border-sky-400 bg-sky-50 text-sky-600"
-                                    : "border-slate-200 bg-white text-slate-400 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600",
+                                    ? "scale-110 border-sky-400 bg-sky-50 text-sky-600 opacity-100"
+                                    : "border-slate-200 text-slate-400 opacity-100 hover:scale-110 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600 pointer-fine:opacity-0 pointer-fine:group-hover/ins:opacity-100",
                             )}
                         >
                             <PlusIcon className="size-3" />

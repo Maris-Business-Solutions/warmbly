@@ -21,12 +21,12 @@ Open the **Automations** tab. Each automation has a name, an on/off toggle, and 
 
 The canvas lays itself out: the **Trigger** sits at the top and every step runs top to bottom below it. You never draw lines or arrange cards.
 
-- Press **+** on any line to insert a step there, or at the end of a path to add one after it. The picker is searchable and works from the keyboard (arrows, `Enter`, `Esc`).
+- Hover any line and press its **+** to insert a step there, or press the **+** at the end of a path to add one after it. The picker is searchable and works from the keyboard (arrows, `Enter`, `Esc`).
 - An **If / else** splits into **Yes** and **No** columns. An **AI switch** gets one column per case. Inserting either one in the middle of a path keeps the steps that were below it on the first branch.
 - **Go to a step** (at the end of a path) continues that path at a step already in the flow, shown as a chip. Hover it to see where it leads. Only steps that cannot loop back are offered.
 - **End here** stops a path explicitly.
 - Click a step to edit it in the side panel. Its **⋯** menu duplicates it, adds an on-error path, or deletes it. Deleting a step reconnects what was before it to what came after; deleting a branching step also removes the steps only its branches led to, after asking.
-- A step that still needs setup shows **Needs setup**, and the **issues** button in the header lists every one. Save is refused until they are fixed.
+- A step that still needs setup has an amber dot by its name (hover it for what is missing), and the **issues** button in the header lists every one. Save is refused until they are fixed.
 - `Cmd/Ctrl+Z` undoes and `Shift+Cmd+Z` (or `Ctrl+Y`) redoes any edit, `Cmd/Ctrl+S` saves, and `Delete` removes the selected step.
 - The canvas is collaborative: teammates' cursors and their selected steps, outlined in their color. Press `/` to chat. See [Collaboration](/guides/collaboration/).
 

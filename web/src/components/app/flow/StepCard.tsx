@@ -7,10 +7,10 @@ import { MoreHorizontalIcon } from "lucide-react";
 import { PopoverMenu, PopoverMenuContent, PopoverMenuItem, PopoverMenuSeparator, PopoverMenuTrigger } from "@/components/ui/popover-menu";
 import { cn } from "@/lib/utils";
 
-export const STEP_W = 280;
-export const STEP_H = 78;
-export const TERMINAL_W = 140;
-export const TERMINAL_H = 34;
+export const STEP_W = 264;
+export const STEP_H = 56;
+export const TERMINAL_W = 72;
+export const TERMINAL_H = 24;
 
 export type StepTone = "sky" | "amber" | "purple" | "violet" | "emerald" | "rose" | "indigo" | "fuchsia" | "orange" | "slate";
 
@@ -32,7 +32,7 @@ export function StepTile({ tone, children, size = "md" }: { tone: StepTone; chil
         <span
             className={cn(
                 "inline-flex shrink-0 items-center justify-center rounded-lg ring-1 ring-inset [&_svg]:size-4",
-                size === "md" ? "size-9" : "size-7 rounded-md [&_svg]:size-3.5",
+                size === "md" ? "size-8" : "size-7 rounded-md [&_svg]:size-3.5",
                 TILE[tone],
             )}
         >
@@ -78,6 +78,7 @@ export function StepCard({
     title,
     summary,
     badge,
+    hint,
     selected,
     detached,
     menu,
@@ -90,6 +91,8 @@ export function StepCard({
     title: string;
     summary?: string;
     badge?: React.ReactNode;
+    // Tooltip for the whole card.
+    hint?: string;
     selected?: boolean;
     detached?: boolean;
     menu?: StepMenuItem[];
@@ -99,23 +102,28 @@ export function StepCard({
     const danger = items.filter((m) => m.danger);
     return (
         <div
+            title={hint}
             className={cn(
-                "group relative flex h-full w-full cursor-pointer items-start gap-2.5 rounded-xl border bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow] duration-150",
-                selected ? "border-sky-400 ring-[3px] ring-sky-100" : "border-slate-200 hover:border-slate-300 hover:shadow-[0_2px_6px_rgba(15,23,42,0.07)]",
-                detached && !selected && "border-dashed",
+                "group relative flex h-full w-full cursor-pointer items-center gap-2.5 rounded-xl border bg-white pl-2.5 pr-8 transition-[border-color,box-shadow,opacity] duration-150",
+                selected
+                    ? "border-sky-400 ring-[3px] ring-sky-100"
+                    : "border-slate-200/90 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-slate-300 hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)]",
+                detached && !selected && "border-dashed opacity-60 hover:opacity-100",
             )}
         >
             {tile ?? <StepTile tone={tone}>{icon}</StepTile>}
             <div className="min-w-0 flex-1">
-                <div className="flex h-4 items-center gap-1.5">
-                    <span className="truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">{kicker}</span>
-                    <span className="ml-auto flex items-center gap-1 pr-5">{badge}</span>
+                <div className="flex items-center gap-1.5">
+                    <span className="truncate text-[13px] font-medium leading-5 text-slate-900">{title}</span>
+                    {badge}
                 </div>
-                <div className="mt-0.5 truncate text-[13px] font-semibold leading-5 text-slate-900">{title}</div>
-                <div className="truncate text-[11.5px] leading-4 text-slate-500">{summary || " "}</div>
+                <div className="truncate text-[11.5px] leading-4 text-slate-400">
+                    {kicker}
+                    {summary ? <span className="text-slate-500"> · {summary}</span> : null}
+                </div>
             </div>
             {items.length > 0 && (
-                <div className="nodrag nopan absolute right-1.5 top-1.5" onClick={(e) => e.stopPropagation()}>
+                <div className="nodrag nopan absolute right-1.5 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
                     <PopoverMenu align="end">
                         <PopoverMenuTrigger asChild>
                             <button
@@ -149,16 +157,16 @@ export function StepCard({
     );
 }
 
-// A small rounded terminal for the end of a path (an explicit stop).
+// The quiet marker where a path ends on purpose.
 export function TerminalCard({ icon, label, selected, onRemove }: { icon: React.ReactNode; label: string; selected?: boolean; onRemove?: () => void }) {
     return (
         <div
             className={cn(
-                "group flex h-full w-full cursor-pointer items-center justify-center gap-1.5 rounded-full border bg-white px-3 text-[12px] font-medium text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
-                selected ? "border-sky-400 ring-[3px] ring-sky-100" : "border-slate-200 hover:border-slate-300",
+                "group flex h-full w-full cursor-pointer items-center justify-center gap-1 rounded-full text-[11.5px] font-medium text-slate-400 transition-colors hover:text-slate-600",
+                selected && "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
             )}
         >
-            <span className="text-rose-500 [&_svg]:size-3.5">{icon}</span>
+            <span className="[&_svg]:size-3">{icon}</span>
             {label}
             {onRemove && (
                 <button
@@ -168,7 +176,7 @@ export function TerminalCard({ icon, label, selected, onRemove }: { icon: React.
                         e.stopPropagation();
                         onRemove();
                     }}
-                    className="nodrag nopan -mr-1 ml-0.5 inline-flex size-5 items-center justify-center rounded-full text-slate-300 opacity-100 transition-opacity hover:bg-rose-50 hover:text-rose-600 md:opacity-0 md:group-hover:opacity-100"
+                    className="nodrag nopan ml-0.5 inline-flex size-4 items-center justify-center rounded-full text-slate-300 opacity-100 transition-opacity hover:bg-rose-50 hover:text-rose-600 md:opacity-0 md:group-hover:opacity-100"
                 >
                     ×
                 </button>

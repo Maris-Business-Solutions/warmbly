@@ -10,7 +10,7 @@ import React from "react";
 import type { ReactFlowInstance } from "@xyflow/react";
 import { Panel } from "@xyflow/react";
 import { AnimatePresence } from "framer-motion";
-import { AlertTriangleIcon, ArrowDownIcon, ArrowUpIcon, FlagIcon, GitBranchIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, FlagIcon, GitBranchIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import type Sequence from "@/lib/api/models/app/campaigns/sequences/Sequence";
@@ -151,11 +151,11 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
     const note = React.useCallback(
         (from: string, port: string, target: string) => {
             if (isStopId(target)) return undefined;
-            if (from === ENTRY_ID) return entryDelay > 0 ? `After ${entryDelayLabel(entryDelay).toLowerCase()}` : "Right away";
+            if (from === ENTRY_ID) return entryDelay > 0 ? entryDelayLabel(entryDelay).toLowerCase() : undefined;
             const branch = branchAt(byId.get(from), port);
             if (branch && isInstantBranch(branch)) return undefined;
             const w = byId.get(target)?.wait_after ?? 0;
-            return w > 0 ? `Wait ${days(w)}` : "No wait";
+            return w > 0 ? days(w) : undefined;
         },
         [byId, entryDelay],
     );
@@ -374,18 +374,11 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
         const v = viewOf(s);
         const issue = stepIssue(s, threadSubject(id));
         const variantsHere = variantCount.get(id) ?? 0;
-        const badge = !reachable.has(id) ? (
-            <StepBadge tone="muted" title="Nothing leads here, so contacts never reach this step">
-                Not connected
-            </StepBadge>
-        ) : issue ? (
-            <StepBadge tone="warn" title={issue}>
-                <AlertTriangleIcon />
-                Needs setup
-            </StepBadge>
+        const badge = issue ? (
+            <span title={issue} aria-label={`Needs setup: ${issue}`} className="size-1.5 shrink-0 rounded-full bg-amber-400" />
         ) : variantsHere > 0 ? (
-            <StepBadge tone="info" title="This email is A/B tested">
-                A/B · {variantsHere + 1}
+            <StepBadge tone="muted" title={`A/B test with ${variantsHere + 1} versions`}>
+                A/B
             </StepBadge>
         ) : null;
         const menu: StepMenuItem[] = [];
@@ -401,7 +394,8 @@ export default function CampaignFlow({ campaignId }: { campaignId: string }) {
             });
         }
         if (canEdit) menu.push({ label: "Delete step", icon: <Trash2Icon className="size-3.5" />, onSelect: () => removeStep(id), danger: true });
-        return <StepCard icon={v.icon} tone={v.tone} kicker={v.kicker} title={v.title} summary={v.summary} badge={badge} selected={selected} detached={!reachable.has(id)} menu={menu} />;
+        const hint = !reachable.has(id) ? "Not connected: nothing leads here, so contacts never reach this step" : issue ? `Needs setup: ${issue}` : undefined;
+        return <StepCard icon={v.icon} tone={v.tone} kicker={v.kicker} title={v.title} summary={v.summary} badge={badge} hint={hint} selected={selected} detached={!reachable.has(id)} menu={menu} />;
     };
 
     const onSelectNode = (id: string | null) => {

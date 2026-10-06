@@ -28,7 +28,7 @@ export interface FlowSource {
     // The port a trailing add button appends to, or null for a node that ends
     // its path (a stop).
     appendPort: (id: string) => string | null;
-    // A short label drawn on the line into `target` (a wait before it).
+    // A short label drawn beside the line into `target` (a wait before it).
     note?: (from: string, port: string, target: string) => string | undefined;
 }
 
@@ -85,16 +85,15 @@ export interface FlowLayout {
     parentOf: Map<string, { from: string; port: string }>;
 }
 
-export const GOTO_W = 196;
-export const GOTO_H = 30;
-export const ADD_W = 28;
-export const ADD_H = 28;
-const CHAIN_GAP = 60;
-const BRANCH_GAP = 120;
-const NOTE_GAP = 28;
-const BUS_DROP = 26;
-const COL_GAP = 40;
-const FOREST_GAP = 120;
+export const GOTO_W = 184;
+export const GOTO_H = 26;
+export const ADD_W = 22;
+export const ADD_H = 22;
+const CHAIN_GAP = 52;
+const BRANCH_GAP = 92;
+const BUS_DROP = 20;
+const COL_GAP = 36;
+const FOREST_GAP = 96;
 
 interface Branch {
     port: string;
@@ -109,6 +108,10 @@ type Item =
     | { kind: "step"; id: string; w: number; h: number; branches: Branch[]; chain: boolean; width: number; detached?: boolean }
     | { kind: "goto"; key: string; target: string; from: string; port: string; w: number; h: number; width: number }
     | { kind: "add"; key: string; from: string; port: string; w: number; h: number; width: number };
+
+// A column is never narrower than the pill naming it (about 6.4px a character
+// at 11px, capped like the pill itself), so neighbouring pills never overlap.
+const colWidth = (b: Branch) => Math.max(b.child.width, b.label ? Math.min(200, b.label.length * 6.4 + 20) : 0);
 
 export function layoutFlow(src: FlowSource): FlowLayout {
     const known = new Set(src.nodeIds);
@@ -159,7 +162,7 @@ export function layoutFlow(src: FlowSource): FlowLayout {
         const chain = branches.length === 1 && !branches[0].label;
         const width = chain
             ? Math.max(w, branches[0].child.width)
-            : Math.max(w, branches.reduce((s, b) => s + b.child.width, 0) + COL_GAP * Math.max(0, branches.length - 1));
+            : Math.max(w, branches.reduce((s, b) => s + colWidth(b), 0) + COL_GAP * Math.max(0, branches.length - 1));
         return { kind: "step", id, w, h, branches, chain, width, detached };
     };
 
@@ -193,19 +196,19 @@ export function layoutFlow(src: FlowSource): FlowLayout {
         const sy = y + it.h;
         if (it.chain) {
             const b = it.branches[0];
-            const ty = sy + (b.child.kind === "add" ? CHAIN_GAP / 2 : CHAIN_GAP) + (b.note ? NOTE_GAP : 0);
+            const ty = sy + (b.child.kind === "add" ? CHAIN_GAP / 2 : CHAIN_GAP);
             edges.push(edgeFor(it.id, b, cx, sy, cx, ty, null));
             place(b.child, cx, ty);
             return;
         }
-        const total = it.branches.reduce((s, b) => s + b.child.width, 0) + COL_GAP * Math.max(0, it.branches.length - 1);
+        const total = it.branches.reduce((s, b) => s + colWidth(b), 0) + COL_GAP * Math.max(0, it.branches.length - 1);
         let left = cx - total / 2;
-        const ty = sy + BRANCH_GAP + (it.branches.some((b) => b.note) ? NOTE_GAP : 0);
+        const ty = sy + BRANCH_GAP;
         for (const b of it.branches) {
-            const ccx = left + b.child.width / 2;
+            const ccx = left + colWidth(b) / 2;
             edges.push(edgeFor(it.id, b, cx, sy, ccx, ty, sy + BUS_DROP));
             place(b.child, ccx, ty);
-            left += b.child.width + COL_GAP;
+            left += colWidth(b) + COL_GAP;
         }
     };
 
