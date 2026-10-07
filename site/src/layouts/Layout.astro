@@ -223,11 +223,16 @@ const websiteJsonLd = {
             var isNoise = function (v) {
               return typeof v === 'string' && (noise.indexOf(v.trim()) !== -1 || v.indexOf(scanner) !== -1);
             };
+            var isSdkTimeout = function (type, value) {
+              return type === 'AbortError' && typeof value === 'string' && value.indexOf('PostHog request timed out') === 0;
+            };
             var exceptions = event.properties && event.properties.$exception_list;
             if (Array.isArray(exceptions)) {
               for (var i = 0; i < exceptions.length; i++) {
                 var value = exceptions[i] && (exceptions[i].value || exceptions[i].$exception_value);
                 if (isNoise(value)) return null;
+                var type = exceptions[i] && (exceptions[i].type || exceptions[i].$exception_type);
+                if (isSdkTimeout(type, value)) return null;
               }
             }
             var message = event.properties && event.properties.$exception_message;
@@ -235,9 +240,11 @@ const websiteJsonLd = {
             // Keep accepting flattened payloads while cached SDK chunks are
             // still in browsers during a rolling release.
             var values = event.properties && event.properties.$exception_values;
+            var types = event.properties && event.properties.$exception_types;
             if (!Array.isArray(values)) return event;
             for (var i = 0; i < values.length; i++) {
               if (isNoise(values[i])) return null;
+              if (Array.isArray(types) && isSdkTimeout(types[i], values[i])) return null;
             }
             return event;
           },

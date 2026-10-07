@@ -57,8 +57,17 @@ for app in web admin; do
   # Vite copies public/ to the build root, so this is what lands beside
   # index.html. Without it every deep link 404s on a static host.
   [ -f "$app/public/_redirects" ] || fail "$app/public/_redirects is missing; deep links would 404 on a static host"
-  grep -qE '^/\*[[:space:]]+/index\.html[[:space:]]+200' "$app/public/_redirects" \
-    || fail "$app/public/_redirects has no SPA rule serving index.html with 200"
+  if [ "$app" = web ]; then
+    [ -f "$app/public/404.html" ] || fail "web needs a 404.html to disable Pages' implicit SPA fallback for assets"
+    grep -qE '^/app/\*[[:space:]]+/index\.html[[:space:]]+200' "$app/public/_redirects" \
+      || fail "web has no dashboard deep-link rewrite"
+    if grep -qE '^/\*[[:space:]]+/index\.html' "$app/public/_redirects"; then
+      fail "web rewrites missing assets to HTML"
+    fi
+  else
+    grep -qE '^/\*[[:space:]]+/index\.html[[:space:]]+200' "$app/public/_redirects" \
+      || fail "$app/public/_redirects has no SPA rule serving index.html with 200"
+  fi
 
   # The build a static host runs has to exist and has to render the config.
   grep -q '"build:pages"' "$app/package.json" \
@@ -68,6 +77,10 @@ for app in web admin; do
 
   ok "$app renders config.js, has the SPA rule, and keeps the container default"
 done
+
+if command -v node >/dev/null 2>&1; then
+  node web/scripts/check-pages-routing.mjs || fail "web Pages route/asset separation failed"
+fi
 
 if ! command -v node >/dev/null 2>&1; then
   skip "node not installed; skipped the JavaScript syntax check"

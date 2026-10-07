@@ -697,6 +697,7 @@
                 "backfill_completed_at": null,
                 "backfill_cursor": {
                   "folders": {},
+                  "google_recovery": null,
                   "page_token": ""
                 },
                 "backfill_since": null,
@@ -721,6 +722,7 @@
                   {
                     "default": {
                       "folders": {},
+                      "google_recovery": null,
                       "page_token": ""
                     },
                     "name": "backfill_cursor",
@@ -758,6 +760,47 @@
                               "type": "record"
                             }
                           }
+                        },
+                        {
+                          "default": null,
+                          "name": "google_recovery",
+                          "type": [
+                            "null",
+                            {
+                              "fields": [
+                                {
+                                  "default": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+                                  "name": "history_id",
+                                  "type": "warmbly.events.uint64"
+                                },
+                                {
+                                  "default": 0,
+                                  "name": "since",
+                                  "type": {
+                                    "logicalType": "timestamp-millis",
+                                    "type": "long"
+                                  }
+                                },
+                                {
+                                  "default": "",
+                                  "name": "page_token",
+                                  "type": "string"
+                                },
+                                {
+                                  "default": false,
+                                  "name": "messages_done",
+                                  "type": "boolean"
+                                },
+                                {
+                                  "default": "",
+                                  "name": "stored_after",
+                                  "type": "string"
+                                }
+                              ],
+                              "name": "warmbly.events.GoogleHistoryRecovery",
+                              "type": "record"
+                            }
+                          ]
                         }
                       ],
                       "name": "warmbly.events.SyncCursor",

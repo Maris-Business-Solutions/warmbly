@@ -47,6 +47,11 @@ func (s *emailService) Get(ctx context.Context, orgID, emailAccountID string) (*
 }
 
 func (s *emailService) Update(ctx context.Context, orgID, userID, emailAccountID string, udata *models.UpdateEmail) (*models.Email, *errx.Error) {
+	tags, xerr := validate.Uuids(udata.Tags)
+	if xerr != nil {
+		return nil, xerr
+	}
+	udata.Tags = tags
 	// A send-as address is checked against what the provider last reported
 	// before it is stored: an alias the provider will not accept produces a
 	// refusal on every send, days later, naming nothing a customer could fix.

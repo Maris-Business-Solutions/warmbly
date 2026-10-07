@@ -319,6 +319,7 @@ Stops and removes the containers and leaves every byte of data where it is. Addi
 | `Could not pull the release images` | The tag does not exist, or this host cannot reach `ghcr.io`. Check [releases](https://github.com/warmbly/warmbly/releases) |
 | `The registry refused to serve the release images` | The images are not readable without an account, which is never how a release is meant to ship. Please [report it](https://github.com/warmbly/warmbly/issues). If you passed `--registry`, check it for a typo first: a namespace that does not exist is refused the same way. To get past it, point `--registry` at a mirror you can read, or `docker login ghcr.io` as someone who already has access to the packages. Logging in does not by itself grant it |
 | The API never answers | The first boot applies every migration. `docker compose -p warmbly logs -f backend` |
+| The consumer waits for backend migrations | Consumers wait up to two minutes for the database version required by their image to be clean, then verify that required warmup tables are visible. Update the backend first, check its migration logs and confirm both services use the same database and search path. A dirty migration needs investigation; do not force its version to make the consumer start. |
 | No claim link printed | The database already has accounts, so there is nothing to claim. See [first run](/development/first-run/) |
 
 More in [troubleshooting](/development/troubleshooting/) and [instance health](/development/instance-health/).

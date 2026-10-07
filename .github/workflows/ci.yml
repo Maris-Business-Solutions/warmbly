@@ -283,6 +283,9 @@ jobs:
           working-directory: site
           node-version: "22"
 
+      - name: Exception filtering regressions
+        run: pnpm test
+
       - name: Build
         # Astro project; build catches type errors, broken imports,
         # missing assets. No separate lint/typecheck script is wired

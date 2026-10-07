@@ -848,6 +848,10 @@ func (r *campaignRepository) Search(ctx context.Context, orgID, query string, cu
 		}
 		campaigns = append(campaigns, campaign)
 	}
+	if err := rows.Err(); err != nil {
+		db.CaptureError(err, sql, params, "rows")
+		return nil, err
+	}
 
 	var total *int64
 	var nextCursor *string

@@ -101,6 +101,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := db.WaitForSchema(ctx, primaryDB); err != nil {
+		log.Fatal(err)
+	}
 
 	// Redis
 	primaryRedis, err := cfg.LoadPrimaryRedisEndpoint(ctx)

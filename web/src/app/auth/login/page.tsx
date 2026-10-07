@@ -46,6 +46,7 @@ import {
     safariNeedsExplicitPasskeyGesture,
     cancelPasskeyCeremony,
     PasskeyCancelled,
+    PasskeyAutofillUnavailable,
     SUGGEST_PASSKEY_FLAG,
     type PasskeyLoginChallenge,
 } from "@/lib/passkey";
@@ -293,6 +294,7 @@ export default function LoginPage() {
     const [passkeyStatus, setPasskeyStatus] = useState<PasskeyStatus>("preparing");
     const explicitPasskeyChallengeRef = useRef<PasskeyLoginChallenge | null>(null);
     const explicitPasskeyChallengePendingRef = useRef(false);
+    const passkeyAutofillUnavailableRef = useRef(false);
 
     const completeSession = useCallback(async (token: Token) => {
         saveTokens(token as unknown as Record<string, unknown>);
@@ -324,6 +326,7 @@ export default function LoginPage() {
     // (or it's aborted). Cancellation is silent by design. Extracted so it can
     // be re-armed after an explicit-button ceremony settles.
     const runConditionalPasskey = useCallback(async (signal?: AbortSignal) => {
+        if (passkeyAutofillUnavailableRef.current) return;
         if (safariNeedsExplicitPasskeyGesture()) return;
         if (!passkeySupported() || !(await passkeyAutofillSupported())) return;
         try {
@@ -331,6 +334,10 @@ export default function LoginPage() {
             toast.success("Welcome back!");
             await completeSession(token);
         } catch (e) {
+            if (e instanceof PasskeyAutofillUnavailable) {
+                passkeyAutofillUnavailableRef.current = true;
+                return;
+            }
             // Cancel / no-passkey is expected here; report only real failures.
             if (e instanceof PasskeyCancelled || passkeyChallengeUnavailable(e)) return;
             captureException(e);

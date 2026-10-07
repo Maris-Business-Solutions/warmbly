@@ -3,6 +3,8 @@ package goog
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/warmbly/warmbly/internal/models"
 	"google.golang.org/api/googleapi"
@@ -11,6 +13,10 @@ import (
 // ErrStop is returned by a callback to end the walk now; FetchHistory then
 // returns the checkpoint reached so far and a nil error.
 var ErrStop = errors.New("goog: stop")
+
+var ErrHistoryExpired = errors.New("goog: history expired; resynchronization required")
+
+var ErrRecoveryPageExpired = errors.New("goog: recovery page token expired")
 
 // historyPagesPerPass bounds one walk. A mailbox that has fallen far behind
 // (or is held by fair use, so the checkpoint cannot advance) is caught up
@@ -30,11 +36,7 @@ const historyPagesPerPass = 10
 // the deferred ones are re-offered next tick.
 func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64, error) {
 	if lastHistoryID == 0 {
-		profile, err := c.srv.Users.GetProfile("me").Context(ctx).Do()
-		if err != nil {
-			return 0, HandleError(err)
-		}
-		return profile.HistoryId, nil
+		return c.HistoryBaseline(ctx)
 	}
 
 	call := c.srv.Users.History.List("me").MaxResults(500).StartHistoryId(lastHistoryID) // It does not include the record that has that exact HistoryID
@@ -45,7 +47,11 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 	for page := 0; page < historyPagesPerPass; page++ {
 		resp, err := call.Context(ctx).Do()
 		if err != nil {
-			return checkpoint, HandleError(err)
+			var apiErr *googleapi.Error
+			if errors.As(err, &apiErr) && apiErr.Code == 404 {
+				return checkpoint, ErrHistoryExpired
+			}
+			return checkpoint, fmt.Errorf("gmail history.list: %w", HandleError(err))
 		}
 
 		for _, h := range resp.History {
@@ -97,6 +103,17 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 	}
 
 	return checkpoint, nil
+}
+
+func (c *Client) HistoryBaseline(ctx context.Context) (uint64, error) {
+	profile, err := c.srv.Users.GetProfile("me").Context(ctx).Do()
+	if err != nil {
+		return 0, fmt.Errorf("gmail profile.get: %w", HandleError(err))
+	}
+	if profile.HistoryId == 0 {
+		return 0, errors.New("goog: profile returned an empty history baseline")
+	}
+	return profile.HistoryId, nil
 }
 
 // GetMessage hydrates one message in full. Returns nil, nil when Gmail no
@@ -153,13 +170,25 @@ func (c *Client) ListLabelMessages(ctx context.Context, labelID, q, pageToken st
 // ListMessages is one page of the backfill: message ids matching q, newest
 // first, and the token for the next page ("" when the query is exhausted).
 func (c *Client) ListMessages(ctx context.Context, q, pageToken string, max int64) ([]string, string, error) {
-	call := c.srv.Users.Messages.List("me").Q(q).MaxResults(max).Context(ctx)
+	return c.listMessages(ctx, q, pageToken, max, false)
+}
+
+func (c *Client) ListRecoveryMessages(ctx context.Context, q, pageToken string, max int64) ([]string, string, error) {
+	return c.listMessages(ctx, q, pageToken, max, true)
+}
+
+func (c *Client) listMessages(ctx context.Context, q, pageToken string, max int64, includeSpamTrash bool) ([]string, string, error) {
+	call := c.srv.Users.Messages.List("me").Q(q).IncludeSpamTrash(includeSpamTrash).MaxResults(max).Context(ctx)
 	if pageToken != "" {
 		call = call.PageToken(pageToken)
 	}
 	resp, err := call.Do()
 	if err != nil {
-		return nil, "", HandleError(err)
+		var apiErr *googleapi.Error
+		if includeSpamTrash && pageToken != "" && errors.As(err, &apiErr) && apiErr.Code == 400 && strings.Contains(strings.ReplaceAll(strings.ToLower(apiErr.Message), " ", ""), "invalidpagetoken") {
+			return nil, "", ErrRecoveryPageExpired
+		}
+		return nil, "", fmt.Errorf("gmail messages.list: %w", HandleError(err))
 	}
 	ids := make([]string, 0, len(resp.Messages))
 	for _, m := range resp.Messages {
