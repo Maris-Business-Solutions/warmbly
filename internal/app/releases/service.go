@@ -25,9 +25,11 @@ import (
 
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/repository"
+	"github.com/warmbly/warmbly/internal/version"
 )
 
 type Config struct {
+	BackendVersion  string
 	Enabled         bool   // RELEASES_ENABLED (default false)
 	GithubRepo      string // "owner/repo", e.g. "warmbly/warmbly"
 	WorkerImageRepo string // "ghcr.io/warmbly/warmbly/worker"
@@ -126,6 +128,15 @@ func (s *Service) CheckGitHub(ctx context.Context) (*models.FleetReleaseState, e
 		// an operator can see what they are declining.
 		return current, nil
 	}
+	if s.cfg.BackendVersion != "" {
+		compatible := make([]Release, 0, len(releases))
+		for _, release := range releases {
+			if version.CheckFleetTarget(s.cfg.BackendVersion, release.TagName) == nil {
+				compatible = append(compatible, release)
+			}
+		}
+		stable, dev = PickChannelHeads(compatible)
+	}
 
 	var head *Release
 	switch current.Channel {
@@ -194,6 +205,11 @@ func (s *Service) SetChannel(ctx context.Context, channel string) (*models.Fleet
 func (s *Service) SetTag(ctx context.Context, tag string) (*models.FleetReleaseState, error) {
 	if strings.TrimSpace(tag) == "" {
 		return nil, errors.New("tag required")
+	}
+	if s.cfg.BackendVersion != "" {
+		if err := version.CheckFleetTarget(s.cfg.BackendVersion, tag); err != nil {
+			return nil, err
+		}
 	}
 	next := &models.FleetReleaseState{
 		Channel:    models.FleetChannelPinned,

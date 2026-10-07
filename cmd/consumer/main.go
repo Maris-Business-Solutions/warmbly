@@ -101,6 +101,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println("Waiting for backend database migrations...")
+	migrationCtx, migrationCancel := context.WithTimeout(ctx, 2*time.Minute)
+	err = db.WaitForMigrations(migrationCtx, primaryDB.Pool)
+	migrationCancel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Database schema ready")
 
 	// Redis
 	primaryRedis, err := cfg.LoadPrimaryRedisEndpoint(ctx)

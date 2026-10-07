@@ -1206,6 +1206,10 @@ func (r *emailRepository) Search(ctx context.Context, orgID, search string, curs
 		}
 		inboxes = append(inboxes, i)
 	}
+	if err := rows.Err(); err != nil {
+		db.CaptureError(err, query, params, "rows")
+		return nil, errx.InternalError()
+	}
 
 	var total *int64
 	var nextCursor *string

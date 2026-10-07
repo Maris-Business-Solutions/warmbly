@@ -128,6 +128,10 @@ func (h *Handler) AuthConfig(c *gin.Context) {
 	providers := h.AuthService.FederatedProviders()
 
 	registration := h.AuthService.RegistrationMode(c.Request.Context())
+	websocketURL := config.NormalizeWebsocketURL(h.WebsocketURI)
+	if websocketURL == "" {
+		websocketURL = config.WebsocketURL()
+	}
 
 	c.JSON(http.StatusOK, DeploymentAuthConfig{
 		Captcha:           config.CaptchaProvider() != "none",
@@ -145,7 +149,7 @@ func (h *Handler) AuthConfig(c *gin.Context) {
 		SetupRequired:     h.BootstrapService != nil && h.BootstrapService.Required(c.Request.Context()),
 		InvitesRequired:   registration == config.RegistrationInviteOnly,
 		DocsURL:           accountsDocsURL,
-		WebsocketURL:      config.WebsocketURL(),
+		WebsocketURL:      websocketURL,
 		AppURL:            config.AppBaseURL(),
 		APIURL:            publicAPIBaseURL(c),
 		Brand:             deploymentBrand(),
