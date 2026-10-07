@@ -67,7 +67,7 @@ type WarmupDailyStats struct {
 	TargetVolume   int    `json:"target_volume"`
 	// Active is whether the mailbox had a warmup plan that day. A day with
 	// arrivals but no plan still lists, but does not count as a day active.
-	Active bool `json:"-"`
+	Active bool `json:"active"`
 }
 
 // Campaign Analytics

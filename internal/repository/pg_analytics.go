@@ -16,6 +16,7 @@ import (
 type AnalyticsRepository interface {
 	// Warmup analytics
 	GetWarmupStats(ctx context.Context, orgID uuid.UUID, emailAccountID *uuid.UUID, from, to time.Time) ([]models.WarmupDailyStats, *errx.Error)
+	GetWarmupStatsForAccounts(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID, from, to time.Time) ([]models.WarmupDailyStats, *errx.Error)
 
 	// Campaign analytics. A nil period is the campaign's whole history; a
 	// period scopes the performance figures to the sends inside it.
@@ -67,6 +68,10 @@ func NewAnalyticsRepository(db *db.DB) AnalyticsRepository {
 }
 
 func (r *analyticsRepository) GetWarmupStats(ctx context.Context, orgID uuid.UUID, emailAccountID *uuid.UUID, from, to time.Time) ([]models.WarmupDailyStats, *errx.Error) {
+	return r.GetWarmupStatsForAccounts(ctx, orgID, singleWarmupAccount(emailAccountID), from, to)
+}
+
+func (r *analyticsRepository) GetWarmupStatsForAccounts(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID, from, to time.Time) ([]models.WarmupDailyStats, *errx.Error) {
 	// Sends come from the daily plan rows, arrivals from the verified receipts,
 	// joined both ways so a day the mailbox was written to but did not send
 	// still shows what came in. Receipts are bucketed on the UTC day, which is
@@ -84,7 +89,7 @@ func (r *analyticsRepository) GetWarmupStats(ctx context.Context, orgID uuid.UUI
 			WHERE ea.organization_id = $1
 			  AND ws.date >= $2
 			  AND ws.date <= $3
-			  AND ($4::uuid IS NULL OR ws.email_account_id = $4)
+			  AND ($4::uuid[] IS NULL OR ws.email_account_id = ANY($4))
 			GROUP BY ws.date
 		),
 		received AS (
@@ -96,7 +101,7 @@ func (r *analyticsRepository) GetWarmupStats(ctx context.Context, orgID uuid.UUI
 			WHERE ea.organization_id = $1
 			  AND wr.created_at >= $2::timestamptz
 			  AND wr.created_at < ($3::timestamptz + interval '1 day')
-			  AND ($4::uuid IS NULL OR wr.email_account_id = $4)
+			  AND ($4::uuid[] IS NULL OR wr.email_account_id = ANY($4))
 			GROUP BY 1
 		)
 		SELECT
@@ -111,7 +116,7 @@ func (r *analyticsRepository) GetWarmupStats(ctx context.Context, orgID uuid.UUI
 		ORDER BY 1 ASC
 	`
 
-	params := []any{orgID, from, to, emailAccountID}
+	params := []any{orgID, from, to, emailIDs}
 
 	rows, err := r.DB.Query(ctx, query, params...)
 	if err != nil {

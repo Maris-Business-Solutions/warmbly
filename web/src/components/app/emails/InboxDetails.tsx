@@ -520,7 +520,7 @@ function Detail({ mailbox, onClose, initialTab = "overview", canWarmup = true }:
             <div className="flex-1 min-h-0 overflow-y-auto">
                 {tab === "overview" && <OverviewTab status={status.data} loading={status.isPending} mailbox={mailbox} />}
                 {tab === "deliverability" && <MailboxPlacementTab mailboxId={mailbox.id} poolHealth={status.data?.warmup_health} />}
-                {tab === "analytics" && <AnalyticsTab warmup={warmup.data} loading={warmup.isPending} />}
+                {tab === "analytics" && <AnalyticsTab warmup={warmup.data} loading={warmup.isPending} failed={warmup.isError} retry={() => void warmup.refetch()} />}
                 {tab === "warmup" && <WarmupTab form={form} update={update} status={status.data} mailbox={mailbox} canWarmup={canWarmup} />}
                 {tab === "sending" && <SendingBehaviorTab mailboxId={mailbox.id} />}
                 {tab === "settings" && <SettingsTab form={form} update={update} mailbox={mailbox} onDisconnected={onClose} />}
@@ -854,11 +854,22 @@ function OverviewTab({ status, loading, mailbox }: { status?: import("@/lib/api/
 
 /* ── Analytics ─────────────────────── */
 
-function AnalyticsTab({ warmup, loading }: { warmup?: import("@/lib/api/models/app/analytics/WarmupAnalytics").default; loading: boolean }) {
+function AnalyticsTab({ warmup, loading, failed, retry }: { warmup?: import("@/lib/api/models/app/analytics/WarmupAnalytics").default; loading: boolean; failed: boolean; retry: () => void }) {
     // Tap affordance for touch devices, where the native title tooltip never fires.
     const [selectedDay, setSelectedDay] = useState<string | null>(null);
     if (loading) {
         return <div className="py-20 flex items-center justify-center"><Loading className="w-5 h-5 text-sky-500" /></div>;
+    }
+    if (failed) {
+        return (
+            <div className="px-5 py-16 text-center">
+                <p className="text-[12.5px] text-slate-700 font-medium">Couldn't load warmup analytics</p>
+                <p className="text-[11.5px] text-slate-400 mt-1">If this mailbox warms in Cloud, check the Cloud connection and try again.</p>
+                <button type="button" onClick={retry} className="mt-3 h-7 px-3 rounded-md border border-slate-200 hover:border-slate-300 text-[12px] text-slate-700">
+                    Retry
+                </button>
+            </div>
+        );
     }
     if (!warmup || warmup.daily_stats.length === 0) {
         return (

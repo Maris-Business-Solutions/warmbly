@@ -28,6 +28,9 @@ func (h *Handler) GetWarmupAnalytics(c *gin.Context) {
 	if emailIDStr := c.Query("email_id"); emailIDStr != "" {
 		if id, err := uuid.Parse(emailIDStr); err == nil {
 			emailAccountID = &id
+		} else {
+			errx.Handle(c, errx.New(errx.BadRequest, "email_id must be a UUID"))
+			return
 		}
 	}
 
@@ -49,6 +52,10 @@ func (h *Handler) GetWarmupAnalytics(c *gin.Context) {
 	to, err := time.Parse("2006-01-02", toStr)
 	if err != nil {
 		errx.Handle(c, errx.New(errx.BadRequest, "Invalid to date format (expected YYYY-MM-DD)"))
+		return
+	}
+	if to.Before(from) {
+		errx.Handle(c, errx.New(errx.BadRequest, "from must be on or before to"))
 		return
 	}
 

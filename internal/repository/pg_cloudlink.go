@@ -29,6 +29,7 @@ type CloudLinkRepository interface {
 	UnenrollAll(ctx context.Context) error
 	GetByAccount(ctx context.Context, accountID uuid.UUID) (*models.CloudLinkMailbox, error)
 	List(ctx context.Context) ([]models.CloudLinkMailbox, error)
+	ListForOrg(ctx context.Context, orgID uuid.UUID, accountID *uuid.UUID) ([]models.CloudLinkMailbox, error)
 	// IsEnrolled is the hot-path check the warmup task and reconciler use.
 	IsEnrolled(ctx context.Context, accountID uuid.UUID) (bool, error)
 

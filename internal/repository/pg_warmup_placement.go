@@ -12,34 +12,13 @@ import (
 )
 
 // WarmupPlacementDayRow is one sender's placement at one recipient group on one UTC day.
-type WarmupPlacementDayRow struct {
-	SenderID uuid.UUID
-	Email    string
-	Date     string
-	Group    string
-	Inbox    int
-	Tabs     int
-	Spam     int
-	Rescued  int
-}
+type WarmupPlacementDayRow = models.WarmupPlacementDayRow
 
 // WarmupPlacementHostRow is the window's placement at one mail host.
-type WarmupPlacementHostRow struct {
-	Group   string
-	Host    string
-	Inbox   int
-	Tabs    int
-	Spam    int
-	Rescued int
-}
+type WarmupPlacementHostRow = models.WarmupPlacementHostRow
 
 // WarmupSenderDayCount is a per-sender, per-UTC-day count.
-type WarmupSenderDayCount struct {
-	SenderID uuid.UUID
-	Email    string
-	Date     string
-	Count    int
-}
+type WarmupSenderDayCount = models.WarmupSenderDayCount
 
 // WarmupPlacementSender is the sending mailbox a counted placement belongs to.
 type WarmupPlacementSender struct {
@@ -67,6 +46,7 @@ type WarmupPlacementRepository interface {
 	Unconfirmed(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, from, to, cutoff time.Time) ([]WarmupSenderDayCount, error)
 	// Rates is each sender's trailing-window placement since the given day.
 	Rates(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, since time.Time) (map[uuid.UUID]models.WarmupPlacementWindow, error)
+	ForAccounts(ctx context.Context, orgID uuid.UUID, senderIDs []uuid.UUID, from, to time.Time) (*models.WarmupPlacementData, error)
 }
 
 type warmupPlacementRepository struct {
@@ -172,6 +152,10 @@ func (r *warmupPlacementRepository) SweepUnplaced(ctx context.Context, cutoff ti
 }
 
 func (r *warmupPlacementRepository) Daily(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, from, to time.Time) ([]WarmupPlacementDayRow, error) {
+	return r.daily(ctx, orgID, singleWarmupAccount(senderID), from, to)
+}
+
+func (r *warmupPlacementRepository) daily(ctx context.Context, orgID uuid.UUID, senderIDs []uuid.UUID, from, to time.Time) ([]WarmupPlacementDayRow, error) {
 	const query = `
 		SELECT p.sender_account_id, ea.email, p.date::text, p.recipient_group,
 			SUM(p.inbox)::int, SUM(p.tabs)::int, SUM(p.spam)::int, SUM(p.rescued)::int
@@ -179,10 +163,10 @@ func (r *warmupPlacementRepository) Daily(ctx context.Context, orgID uuid.UUID, 
 		JOIN email_accounts ea ON ea.id = p.sender_account_id
 		WHERE ea.organization_id = $1
 		  AND p.date >= $2 AND p.date <= $3
-		  AND ($4::uuid IS NULL OR p.sender_account_id = $4)
+		  AND ($4::uuid[] IS NULL OR p.sender_account_id = ANY($4))
 		GROUP BY 1, 2, 3, 4
 	`
-	params := []any{orgID, from, to, senderID}
+	params := []any{orgID, from, to, senderIDs}
 	rows, err := r.db.Query(ctx, query, params...)
 	if err != nil {
 		db.CaptureError(err, query, params, "query")
@@ -201,6 +185,10 @@ func (r *warmupPlacementRepository) Daily(ctx context.Context, orgID uuid.UUID, 
 }
 
 func (r *warmupPlacementRepository) Hosts(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, from, to time.Time) ([]WarmupPlacementHostRow, error) {
+	return r.hosts(ctx, orgID, singleWarmupAccount(senderID), from, to)
+}
+
+func (r *warmupPlacementRepository) hosts(ctx context.Context, orgID uuid.UUID, senderIDs []uuid.UUID, from, to time.Time) ([]WarmupPlacementHostRow, error) {
 	const query = `
 		SELECT p.recipient_group, p.recipient_host,
 			SUM(p.inbox)::int, SUM(p.tabs)::int, SUM(p.spam)::int, SUM(p.rescued)::int
@@ -208,10 +196,10 @@ func (r *warmupPlacementRepository) Hosts(ctx context.Context, orgID uuid.UUID, 
 		JOIN email_accounts ea ON ea.id = p.sender_account_id
 		WHERE ea.organization_id = $1
 		  AND p.date >= $2 AND p.date <= $3
-		  AND ($4::uuid IS NULL OR p.sender_account_id = $4)
+		  AND ($4::uuid[] IS NULL OR p.sender_account_id = ANY($4))
 		GROUP BY 1, 2
 	`
-	params := []any{orgID, from, to, senderID}
+	params := []any{orgID, from, to, senderIDs}
 	rows, err := r.db.Query(ctx, query, params...)
 	if err != nil {
 		db.CaptureError(err, query, params, "query")
@@ -230,19 +218,27 @@ func (r *warmupPlacementRepository) Hosts(ctx context.Context, orgID uuid.UUID, 
 }
 
 func (r *warmupPlacementRepository) Sent(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, from, to time.Time) ([]WarmupSenderDayCount, error) {
+	return r.sent(ctx, orgID, singleWarmupAccount(senderID), from, to)
+}
+
+func (r *warmupPlacementRepository) sent(ctx context.Context, orgID uuid.UUID, senderIDs []uuid.UUID, from, to time.Time) ([]WarmupSenderDayCount, error) {
 	const query = `
 		SELECT ws.email_account_id, ea.email, ws.date::text, SUM(ws.emails_sent)::int
 		FROM warmup_statistics ws
 		JOIN email_accounts ea ON ea.id = ws.email_account_id
 		WHERE ea.organization_id = $1
 		  AND ws.date >= $2 AND ws.date <= $3
-		  AND ($4::uuid IS NULL OR ws.email_account_id = $4)
+		  AND ($4::uuid[] IS NULL OR ws.email_account_id = ANY($4))
 		GROUP BY 1, 2, 3
 	`
-	return r.senderDayCounts(ctx, query, []any{orgID, from, to, senderID})
+	return r.senderDayCounts(ctx, query, []any{orgID, from, to, senderIDs})
 }
 
 func (r *warmupPlacementRepository) Unconfirmed(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, from, to, cutoff time.Time) ([]WarmupSenderDayCount, error) {
+	return r.unconfirmed(ctx, orgID, singleWarmupAccount(senderID), from, to, cutoff)
+}
+
+func (r *warmupPlacementRepository) unconfirmed(ctx context.Context, orgID uuid.UUID, senderIDs []uuid.UUID, from, to, cutoff time.Time) ([]WarmupSenderDayCount, error) {
 	// A token is written before the send, so only completed sends count.
 	const query = `
 		SELECT wt.sender_account_id, ea.email, (wt.created_at AT TIME ZONE 'UTC')::date::text, COUNT(*)::int
@@ -254,10 +250,10 @@ func (r *warmupPlacementRepository) Unconfirmed(ctx context.Context, orgID uuid.
 		  AND wt.created_at < ($3::timestamptz + interval '1 day')
 		  AND wt.created_at < $5
 		  AND wt.consumed_at IS NULL
-		  AND ($4::uuid IS NULL OR wt.sender_account_id = $4)
+		  AND ($4::uuid[] IS NULL OR wt.sender_account_id = ANY($4))
 		GROUP BY 1, 2, 3
 	`
-	return r.senderDayCounts(ctx, query, []any{orgID, from, to, senderID, cutoff})
+	return r.senderDayCounts(ctx, query, []any{orgID, from, to, senderIDs, cutoff})
 }
 
 func (r *warmupPlacementRepository) senderDayCounts(ctx context.Context, query string, params []any) ([]WarmupSenderDayCount, error) {
@@ -279,6 +275,10 @@ func (r *warmupPlacementRepository) senderDayCounts(ctx context.Context, query s
 }
 
 func (r *warmupPlacementRepository) Rates(ctx context.Context, orgID uuid.UUID, senderID *uuid.UUID, since time.Time) (map[uuid.UUID]models.WarmupPlacementWindow, error) {
+	return r.rates(ctx, orgID, singleWarmupAccount(senderID), since)
+}
+
+func (r *warmupPlacementRepository) rates(ctx context.Context, orgID uuid.UUID, senderIDs []uuid.UUID, since time.Time) (map[uuid.UUID]models.WarmupPlacementWindow, error) {
 	const query = `
 		SELECT p.sender_account_id,
 			SUM(p.inbox) FILTER (WHERE p.recipient_group <> 'other')::int,
@@ -289,10 +289,10 @@ func (r *warmupPlacementRepository) Rates(ctx context.Context, orgID uuid.UUID, 
 		JOIN email_accounts ea ON ea.id = p.sender_account_id
 		WHERE ea.organization_id = $1
 		  AND p.date >= $2
-		  AND ($3::uuid IS NULL OR p.sender_account_id = $3)
+		  AND ($3::uuid[] IS NULL OR p.sender_account_id = ANY($3))
 		GROUP BY 1
 	`
-	params := []any{orgID, since, senderID}
+	params := []any{orgID, since, senderIDs}
 	rows, err := r.db.Query(ctx, query, params...)
 	if err != nil {
 		db.CaptureError(err, query, params, "query")

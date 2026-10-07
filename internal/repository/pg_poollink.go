@@ -36,6 +36,7 @@ type PoolLinkRepository interface {
 	GetMailboxByRemote(ctx context.Context, instanceID, remoteID uuid.UUID) (*models.PoolLinkMailbox, error)
 	GetMailboxByAccount(ctx context.Context, accountID uuid.UUID) (*models.PoolLinkMailbox, error)
 	ListMailboxes(ctx context.Context, instanceID uuid.UUID) ([]models.PoolLinkMailbox, error)
+	ListReportMailboxes(ctx context.Context, instanceID uuid.UUID, remoteIDs []uuid.UUID) ([]models.PoolLinkMailbox, error)
 	// ListStanding is every enrolled mailbox's warmup standing in one read.
 	ListStanding(ctx context.Context, instanceID uuid.UUID) ([]models.PoolLinkMailboxStanding, error)
 	DeleteMailbox(ctx context.Context, instanceID, remoteID uuid.UUID) error
