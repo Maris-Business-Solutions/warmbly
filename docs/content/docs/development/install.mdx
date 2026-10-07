@@ -292,6 +292,12 @@ Put your own compose changes in a `docker-compose.override.yml`, which compose m
 
 ## Updating
 
+Upgrade the backend first and confirm its database migrations complete before upgrading consumers. Consumers wait up to two minutes for the clean migration version required by their embedded code before starting database-dependent work. If the backend is still old or a migration failed, the consumer exits with an actionable schema-readiness error and can retry through the container restart policy. It does not run migrations or ignore missing tables.
+
+Fleet auto-updates select releases no newer than the running backend. Existing fleet and node pins are checked again when answering heartbeats, so an incompatible stored target is not sent to nodes; new incompatible pins are rejected. Newly joined machines fall back to the backend's exact release, not the moving `prod` tag. Main builds use their published commit-SHA image tag. Unstamped custom builds must set `WARMBLY_VERSION` to their published image tag; unknown versions cannot be ordered safely. Upgrade the backend before moving the fleet to a newer release. This protection only takes effect after installing the compatibility release; it cannot change the behavior of an older backend already running.
+
+The dashboard discovers a separate realtime origin from the backend's existing public configuration at container startup or static build time. Bring the backend up first; if discovery warns that it is unavailable, restart the dashboard after backend readiness or rebuild the static deployment. See [configuration](/development/configuration/).
+
 The version pill in the admin panel, then **Update and restart**. On an install created this way the updater runs in image mode: it writes the new tag into `.env`, pulls, and recreates the containers whose image changed. Nothing is built. See [updates](/development/updates/).
 
 By hand, from the install directory:

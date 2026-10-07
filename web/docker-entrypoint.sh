@@ -59,7 +59,8 @@ if [ -f "$CSP_DIR/csp-template.txt" ]; then
         printf '%s://%s' "$scheme" "$authority"
     }
     defaults() { if [ -f "$CSP_DIR/csp-origins.txt" ]; then sed -n "${1}p" "$CSP_DIR/csp-origins.txt"; fi; }
-    api=$(origin "${WARMBLY_API_URL:-${VITE_API_URL:-$(defaults 1)}}")
+    api_url=${WARMBLY_API_URL:-${VITE_API_URL:-$(defaults 1)}}
+    api=$(origin "$api_url")
     sentry=$(origin "${WARMBLY_SENTRY_DSN:-${VITE_SENTRY_DSN:-$(defaults 2)}}")
     analytics_url=${WARMBLY_POSTHOG_HOST:-${VITE_POSTHOG_HOST:-$(defaults 3)}}
     analytics=$(origin "${analytics_url:-https://us.i.posthog.com}")
@@ -67,6 +68,31 @@ if [ -f "$CSP_DIR/csp-template.txt" ]; then
     for resource in ${WARMBLY_CSP_CONNECT_ORIGINS:-${VITE_CSP_CONNECT_ORIGINS:-$(defaults 4)}}; do
         connections="$connections $(origin "$resource")"
     done
+    # Discover deployment configuration before serving an immutable CSP header.
+    realtime=${WEBSOCKET_URL:-}
+    if [ -z "$realtime" ] && [ -n "$api" ]; then
+        config_url="${api_url%/}"
+        config_url="${config_url%/v1}/v1/auth/config"
+        if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 &&
+            deployment=$(curl --fail --silent --proto '=http,https' --connect-timeout 2 --max-time 4 --max-filesize 65536 --retry 2 --retry-connrefused --retry-delay 1 --retry-max-time 10 "$config_url") &&
+            realtime=$(printf '%s' "$deployment" | jq -er 'if .websocket_url == null then "" elif (.websocket_url | type) == "string" then .websocket_url else error("invalid websocket_url") end'); then
+            :
+        else
+            realtime=""
+            printf 'Realtime CSP discovery unavailable; using explicit CSP origins. Restart the dashboard after the backend is ready, or set WARMBLY_CSP_CONNECT_ORIGINS for offline deployments.\n' >&2
+        fi
+    fi
+    if [ -n "$realtime" ]; then
+        if realtime_origin=$(origin "$realtime") && [ -n "$realtime_origin" ]; then
+            api_websocket=$(printf '%s' "$api" | sed 's/^http/ws/')
+            case " $api $api_websocket $connections " in
+                *" $realtime_origin "*) ;;
+                *) connections="$connections $realtime_origin" ;;
+            esac
+        else
+            printf 'Ignoring invalid discovered realtime origin; CSP remains restricted.\n' >&2
+        fi
+    fi
     assets=$(printf '%s' "$analytics" | sed -e 's#://us\.i\.posthog\.com$#://us-assets.i.posthog.com#' -e 's#://eu\.i\.posthog\.com$#://eu-assets.i.posthog.com#')
     websocket=$(printf '%s' "$api" | sed 's/^http/ws/')
     policy=$(sed -e "s#__API_SOURCES__#$api $websocket#g" -e "s#__API_IMAGE_SOURCE__#$api#g" -e "s#__SENTRY_SOURCE__#$sentry#g" -e "s#__ANALYTICS_SOURCES__#$analytics $assets#g" -e "s#__CONNECT_SOURCES__#$connections#g" "$CSP_DIR/csp-template.txt")

@@ -77,6 +77,7 @@ func TestImageVariant(t *testing.T) {
 }
 
 func TestWithVariant(t *testing.T) {
+	t.Setenv("WARMBLY_VERSION", "v1.2.3")
 	s := &Service{variant: "-kafka"}
 	cases := []struct{ in, want string }{
 		{"v0.4.5", "v0.4.5-kafka"},
@@ -101,6 +102,7 @@ func TestWithVariant(t *testing.T) {
 // A pin is the sharp edge: an operator canarying a node types "v0.4.4", and
 // that has to reach the machine as the image the machine can actually run.
 func TestDesiredVersionAppliesVariantToPinsAndFleetTarget(t *testing.T) {
+	t.Setenv("WARMBLY_VERSION", "v1.2.3")
 	id := uuid.New()
 	settings := stubSettings{release: "v0.4.5"}
 
@@ -127,6 +129,7 @@ func TestDesiredVersionAppliesVariantToPinsAndFleetTarget(t *testing.T) {
 // can act on. It used to fall through to join.sh's `latest`, which this
 // project has never published, so the machine died on the image pull.
 func TestJoinVersionFallsBackToAPublishedTag(t *testing.T) {
+	t.Setenv("WARMBLY_VERSION", "v1.2.3")
 	id := uuid.New()
 
 	unresolved := &Service{
@@ -134,16 +137,16 @@ func TestJoinVersionFallsBackToAPublishedTag(t *testing.T) {
 		settings: stubSettings{release: ""},
 		variant:  "-kafka",
 	}
-	if got := unresolved.JoinVersion(context.Background(), id); got != "prod-kafka" {
-		t.Errorf("unresolved release: got %q, want prod-kafka", got)
+	if got := unresolved.JoinVersion(context.Background(), id); got != "v1.2.3-kafka" {
+		t.Errorf("unresolved release: got %q, want v1.2.3-kafka", got)
 	}
 
 	plain := &Service{
 		nodes:    stubNodes{node: &models.FleetNode{ID: id}},
 		settings: stubSettings{release: ""},
 	}
-	if got := plain.JoinVersion(context.Background(), id); got != "prod" {
-		t.Errorf("unresolved release, no variant: got %q, want prod", got)
+	if got := plain.JoinVersion(context.Background(), id); got != "v1.2.3" {
+		t.Errorf("unresolved release, no variant: got %q, want v1.2.3", got)
 	}
 
 	// A resolved release still wins; the fallback is only for having nothing.
@@ -182,11 +185,54 @@ func TestHeartbeatKeepsNoOpinionEmpty(t *testing.T) {
 	}
 }
 
+func TestStoredTargetsCannotUpgradeAheadOfBackend(t *testing.T) {
+	t.Setenv("WARMBLY_VERSION", "v0.6.31")
+	id := uuid.New()
+	for _, pin := range []string{"", "v0.6.32", "v0.6.32-kafka"} {
+		s := &Service{
+			nodes:    stubNodes{node: &models.FleetNode{ID: id, PinnedVersion: pin}},
+			settings: stubSettings{release: "v0.6.32"}, variant: "-kafka",
+		}
+		if got := s.desiredVersion(context.Background(), id); got != "" {
+			t.Fatalf("pin %q instructs incompatible upgrade %q", pin, got)
+		}
+		if got := s.JoinVersion(context.Background(), id); got != "v0.6.31-kafka" {
+			t.Fatalf("join must use backend release, got %q", got)
+		}
+	}
+}
+
+func TestUnstampedBackendCannotChooseFloatingJoinImage(t *testing.T) {
+	t.Setenv("WARMBLY_VERSION", "")
+	id := uuid.New()
+	s := &Service{nodes: stubNodes{node: &models.FleetNode{ID: id}}, settings: stubSettings{}}
+	if got := s.JoinVersion(context.Background(), id); got != "" {
+		t.Fatalf("unknown backend must not choose image %q", got)
+	}
+}
+
+func TestMainBuildJoinsItsPublishedSHAImage(t *testing.T) {
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	t.Setenv("WARMBLY_VERSION", "dev-"+sha)
+	id := uuid.New()
+	s := &Service{nodes: stubNodes{node: &models.FleetNode{ID: id}}, settings: stubSettings{}, variant: "-kafka"}
+	if got := s.JoinVersion(context.Background(), id); got != sha+"-kafka" {
+		t.Fatalf("main build must use published SHA tag, got %q", got)
+	}
+	for _, pin := range []string{"dev-" + sha, "dev-" + sha + "-kafka", sha + "-kafka"} {
+		s.nodes = stubNodes{node: &models.FleetNode{ID: id, PinnedVersion: pin}}
+		if got := s.desiredVersion(context.Background(), id); got != sha+"-kafka" {
+			t.Fatalf("pin %q must use published SHA tag, got %q", pin, got)
+		}
+	}
+}
+
 // List and Get feed the admin panel's "is this machine behind" column. A node
 // reports the WARMBLY_VERSION the join script wrote, which already carries the
 // suffix, so the target it is compared against has to carry it too or every
 // Kafka node reads as permanently out of date.
 func TestListAndGetAttachTheVariant(t *testing.T) {
+	t.Setenv("WARMBLY_VERSION", "v1.2.3")
 	id := uuid.New()
 	s := &Service{
 		nodes:    stubNodes{node: &models.FleetNode{ID: id}},
@@ -211,6 +257,7 @@ func TestListAndGetAttachTheVariant(t *testing.T) {
 
 // An update-only beat must write nothing: stubNodes panics on any write.
 func TestUpdateOnlyTellsTheVersionAndRecordsNothing(t *testing.T) {
+	t.Setenv("WARMBLY_VERSION", "v1.2.3")
 	id := uuid.New()
 	s := &Service{
 		nodes:    stubNodes{node: &models.FleetNode{ID: id, Role: models.NodeRoleWorker}},

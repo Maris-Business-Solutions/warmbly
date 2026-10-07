@@ -20,6 +20,7 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 	"github.com/warmbly/warmbly/internal/pkg/crypt"
 	"github.com/warmbly/warmbly/internal/repository"
+	buildversion "github.com/warmbly/warmbly/internal/version"
 )
 
 var (
@@ -84,10 +85,17 @@ func imageVariant() string {
 // version stays empty: "no opinion" must never become a bare "-kafka", which
 // the node would dutifully try to pull.
 func (s *Service) withVariant(version string) string {
-	if version == "" || s.variant == "" || strings.HasSuffix(version, s.variant) {
-		return version
+	if version == "" || s.CheckTarget(version) != nil {
+		return ""
 	}
-	return version + s.variant
+	return buildversion.FleetImageTag(strings.TrimSuffix(version, s.variant)) + s.variant
+}
+
+func (s *Service) CheckTarget(target string) error {
+	if s.variant != "" {
+		target = strings.TrimSuffix(target, s.variant)
+	}
+	return buildversion.CheckFleetTarget(buildversion.String(), target)
 }
 
 const (
@@ -227,24 +235,12 @@ func (s *Service) desiredVersion(ctx context.Context, nodeID uuid.UUID) string {
 	return s.withVariant(state.DesiredVersion())
 }
 
-// DefaultJoinTag is what a machine joining an instance with no resolved
-// release is told to run. It has to be a tag this project actually publishes:
-// `latest` is not one, and a node sent there fails on the image pull before it
-// ever heartbeats. The floating release tag is `prod`.
-const DefaultJoinTag = "prod"
-
-// JoinVersion is what a machine joining right now should start on.
-//
-// It differs from the heartbeat's answer in exactly one way. To a node that is
-// already running something, an unresolved release means "no opinion" and must
-// stay empty, because the alternative is a control-plane hiccup rolling the
-// fleet. A joining node has nothing to keep running, so it has to be told a
-// tag, and the fallback is the published floating one.
+// JoinVersion falls back to the backend's exact release, never a floating tag.
 func (s *Service) JoinVersion(ctx context.Context, nodeID uuid.UUID) string {
 	if v := s.desiredVersion(ctx, nodeID); v != "" {
 		return v
 	}
-	return s.withVariant(DefaultJoinTag)
+	return s.withVariant(buildversion.FleetImageTag(buildversion.String()))
 }
 
 // List returns the fleet, with each node's resolved target attached so a

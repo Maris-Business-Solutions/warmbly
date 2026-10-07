@@ -1,12 +1,72 @@
 package handler
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/warmbly/warmbly/internal/app/fleetnode"
 	"github.com/warmbly/warmbly/internal/models"
+	"github.com/warmbly/warmbly/internal/pkg/crypt"
+	"github.com/warmbly/warmbly/internal/repository"
 )
+
+type joinNodes struct {
+	repository.FleetNodeRepository
+	upserts int
+}
+
+func (n *joinNodes) Get(context.Context, uuid.UUID) (*models.FleetNode, error) {
+	return nil, nil
+}
+
+func (n *joinNodes) UpsertOnHeartbeat(context.Context, models.NodeHeartbeat) error {
+	n.upserts++
+	return nil
+}
+
+type joinSettings struct {
+	repository.FleetSettingsRepository
+}
+
+func (joinSettings) GetJoinToken(context.Context) (string, *time.Time, error) {
+	expiresAt := time.Now().Add(time.Hour)
+	return crypt.SHA256("join-test-token"), &expiresAt, nil
+}
+
+func (joinSettings) GetRelease(context.Context) (*models.FleetReleaseState, error) {
+	return &models.FleetReleaseState{}, nil
+}
+
+func TestFleetJoinResolvesImageBeforeRegisteringNode(t *testing.T) {
+	for _, version := range []string{"dev", "v0.6.33"} {
+		t.Run(version, func(t *testing.T) {
+			t.Setenv("WARMBLY_VERSION", version)
+			t.Setenv("FLEET_IMAGE_VARIANT", "")
+			nodes := &joinNodes{}
+			h := &Handler{FleetNodes: fleetnode.New(nodes, nil, joinSettings{})}
+			for i := range 2 {
+				response := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(response)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/fleet/join", strings.NewReader(`{"token":"join-test-token","role":"consumer"}`))
+				c.Request.Header.Set("Content-Type", "application/json")
+				h.FleetJoin(c)
+				if version == "dev" {
+					if response.Code != http.StatusInternalServerError || nodes.upserts != 0 {
+						t.Fatalf("failed join registered a node: status=%d, upserts=%d", response.Code, nodes.upserts)
+					}
+				} else if response.Code != http.StatusOK || nodes.upserts != i+1 {
+					t.Fatalf("successful join was not registered: status=%d, upserts=%d", response.Code, nodes.upserts)
+				}
+			}
+		})
+	}
+}
 
 func TestHeartbeatAddressRequiresNodePublicIPv4(t *testing.T) {
 	tests := []struct {

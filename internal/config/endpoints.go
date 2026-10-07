@@ -111,7 +111,11 @@ func inferredAppBaseURL() string {
 // it: a CLI or a developer client cannot otherwise find the socket on a
 // self-hosted instance, where the host layout is whatever the operator chose.
 func WebsocketURL() string {
-	v := strings.TrimRight(strings.TrimSpace(os.Getenv("WEBSOCKET_URL")), "/")
+	return NormalizeWebsocketURL(os.Getenv("WEBSOCKET_URL"))
+}
+
+func NormalizeWebsocketURL(value string) string {
+	v := strings.TrimRight(strings.TrimSpace(value), "/")
 	if v == "" {
 		return ""
 	}

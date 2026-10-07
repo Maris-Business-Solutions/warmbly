@@ -2,6 +2,22 @@ package config
 
 import "testing"
 
+func TestNormalizeWebsocketURLPreservesLegacyConfiguration(t *testing.T) {
+	for _, input := range []string{"", " wss://realtime.test/ ", "wss://realtime.test/socket", "wss://realtime.test/socket/websocket/"} {
+		want := "wss://realtime.test/socket/websocket"
+		if input == "" {
+			want = ""
+		}
+		t.Setenv("WEBSOCKET_URL", input)
+		if got := NormalizeWebsocketURL(input); got != want {
+			t.Errorf("resolved websocket %q became %q, want %q", input, got, want)
+		}
+		if got := WebsocketURL(); got != want {
+			t.Errorf("environment websocket %q became %q, want %q", input, got, want)
+		}
+	}
+}
+
 // The hosted form URL has to be reachable on every install shape: the shared
 // host keeps its port (a share link that drops it points at nothing), and the
 // scheme follows the host rather than the port, because an install can

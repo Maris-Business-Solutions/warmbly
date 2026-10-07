@@ -51,15 +51,17 @@ func WaitForSchema(ctx context.Context, reader schemaReader) error {
 
 func waitForSchema(ctx context.Context, reader schemaReader, required int, interval time.Duration) error {
 	state := "migrations have not completed"
-	for {
+	var queryErr error
+	for ctx.Err() == nil {
 		var version int
 		var dirty bool
 		err := reader.QueryRow(ctx, `SELECT version, dirty FROM schema_migrations`).Scan(&version, &dirty)
 		var pgErr *pgconn.PgError
 		switch {
 		case err == nil:
+			queryErr = nil
 			state = fmt.Sprintf("database version %d (dirty=%t), require clean version >= %d", version, dirty, required)
-			if !dirty && version >= required {
+			if !dirty && version >= required && ctx.Err() == nil {
 				var visible bool
 				if err := reader.QueryRow(ctx, `SELECT to_regclass('warmup_pending_filings') IS NOT NULL AND to_regclass('warmup_recovery_identifiers') IS NOT NULL`).Scan(&visible); err != nil {
 					return fmt.Errorf("consumer schema visibility check failed: %w", err)
@@ -67,10 +69,14 @@ func waitForSchema(ctx context.Context, reader schemaReader, required int, inter
 				if !visible {
 					return errors.New("consumer schema version is current but required warmup relations are not visible; check database and search_path")
 				}
-				return nil
+				if ctx.Err() == nil {
+					return nil
+				}
 			}
 		case errors.Is(err, pgx.ErrNoRows), errors.As(err, &pgErr) && pgErr.Code == "42P01":
+			queryErr = err
 			state = "schema_migrations is not initialized"
+		case ctx.Err() != nil && errors.Is(err, ctx.Err()):
 		default:
 			return fmt.Errorf("consumer schema readiness query failed: %w", err)
 		}
@@ -78,8 +84,8 @@ func waitForSchema(ctx context.Context, reader schemaReader, required int, inter
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return fmt.Errorf("consumer waiting for backend migrations: %s: %w", state, ctx.Err())
 		case <-timer.C:
 		}
 	}
+	return fmt.Errorf("consumer waiting for backend migrations: %s; upgrade the backend and check its migration logs: %w", state, errors.Join(ctx.Err(), queryErr))
 }

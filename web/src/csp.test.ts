@@ -1,7 +1,9 @@
 // @vitest-environment node
 
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { createServer as createHttpServer } from "node:http";
+import { promisify } from "node:util";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -114,7 +116,7 @@ describe("dashboard CSP", () => {
             writeFileSync(path.join(temporary, "csp-template.txt"), dashboardCsp({ scripts, styles, connections: ["__API_SOURCES__", "__SENTRY_SOURCE__", "__CONNECT_SOURCES__"], analytics: ["__ANALYTICS_SOURCES__"], images: ["__API_IMAGE_SOURCE__"] }));
             writeFileSync(path.join(temporary, "csp-origins.txt"), "https://built-api.test\nhttps://built-sentry.test\nhttps://eu.i.posthog.com\nwss://built-realtime.test\n");
             writeFileSync(path.join(temporary, "_headers"), readFileSync(path.join(directory, "public/_headers")));
-            const env = { PATH: process.env.PATH, WARMBLY_CONFIG_OUT: path.join(temporary, "config.js"), WARMBLY_API_URL: "https://deployed-api.test", WARMBLY_CSP_CONNECT_ORIGINS: "wss://deployed-realtime.test" };
+            const env = { PATH: process.env.PATH, WARMBLY_CONFIG_OUT: path.join(temporary, "config.js"), WARMBLY_API_URL: "https://deployed-api.test", WARMBLY_CSP_CONNECT_ORIGINS: "wss://deployed-realtime.test", WEBSOCKET_URL: "wss://deployed-realtime.test" };
             execFileSync("sh", [path.join(directory, "docker-entrypoint.sh")], { env });
             const policy = readFileSync(path.join(temporary, "csp-policy.txt"), "utf8").trim();
             expect(policy).toContain("https://deployed-api.test wss://deployed-api.test");
@@ -135,4 +137,69 @@ describe("dashboard CSP", () => {
             rmSync(temporary, { recursive: true, force: true });
         }
     });
+
+    it("discovers legacy realtime configuration before rendering static CSP and retries backend readiness", async () => {
+        const temporary = mkdtempSync(path.join(tmpdir(), "warmbly-csp-discovery-"));
+        let requests = 0;
+        let payload = JSON.stringify({ websocket_url: "wss://ws.selfhost.test/socket/websocket?token=never-in-csp" });
+        let status = 200;
+        const server = createHttpServer((request, response) => {
+            expect(request.url).toBe("/v1/auth/config");
+            expect(request.headers.authorization).toBeUndefined();
+            requests++;
+            response.writeHead(requests === 1 ? 503 : status, { "Content-Type": "application/json" });
+            response.end(payload);
+        });
+        try {
+            await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+            const address = server.address();
+            if (!address || typeof address === "string") throw new Error("Expected local HTTP port");
+            const base = `http://127.0.0.1:${address.port}`;
+            writeFileSync(path.join(temporary, "csp-template.txt"), dashboardCsp({ connections: ["__API_SOURCES__", "__CONNECT_SOURCES__"] }));
+            writeFileSync(path.join(temporary, "_headers"), readFileSync(path.join(directory, "public/_headers")));
+            const env = { PATH: process.env.PATH, WARMBLY_CONFIG_OUT: path.join(temporary, "config.js"), WARMBLY_API_URL: `${base}/v1/` };
+            const render = (extra = {}) => promisify(execFile)("sh", [path.join(directory, "docker-entrypoint.sh")], { env: { ...env, ...extra } });
+            const policy = () => readFileSync(path.join(temporary, "csp-policy.txt"), "utf8");
+            await render();
+            expect(requests).toBe(2);
+            expect(policy()).toContain("wss://ws.selfhost.test");
+            expect(policy()).not.toContain("token");
+            expect(readFileSync(path.join(temporary, "_headers"), "utf8")).toContain(`Content-Security-Policy: ${policy().trim()}`);
+            payload = JSON.stringify({ websocket_url: "wss://changed.selfhost.test/socket" });
+            await render({ WARMBLY_API_URL: base });
+            expect(policy()).toContain("wss://changed.selfhost.test");
+            expect(policy()).not.toContain("wss://ws.selfhost.test");
+            for (const invalid of ["wss://host.test;script-src *", "javascript:alert(1)", 42]) {
+                payload = JSON.stringify({ websocket_url: invalid });
+                const result = await render({ WARMBLY_CSP_CONNECT_ORIGINS: "wss://explicit.test" });
+                expect(result.stderr).toMatch(/CSP|realtime|websocket_url/i);
+                expect(policy()).toContain("wss://explicit.test");
+                expect(policy()).not.toMatch(/script-src \*|javascript:|host\.test/);
+            }
+            payload = "not JSON";
+            await render();
+            expect(policy()).not.toContain("changed.selfhost.test");
+            payload = "{}";
+            expect((await render()).stderr).toBe("");
+            status = 404;
+            const fallback = await render({ WARMBLY_CSP_CONNECT_ORIGINS: "wss://offline.test" });
+            expect(fallback.stderr).toContain("Realtime CSP discovery unavailable");
+            expect(policy()).toContain("wss://offline.test");
+            const before = requests;
+            await render({ WEBSOCKET_URL: "wss://direct.test/socket/websocket" });
+            expect(requests).toBe(before);
+            expect(policy()).toContain("wss://direct.test");
+            expect(policy()).not.toContain("*");
+            await render({ WEBSOCKET_URL: "wss://direct.test/socket", WARMBLY_CSP_CONNECT_ORIGINS: "wss://direct.test" });
+            expect(policy().match(/wss:\/\/direct\.test/g)).toHaveLength(1);
+            status = 200;
+            payload = JSON.stringify({ websocket_url: "wss://built-config.test/socket" });
+            writeFileSync(path.join(temporary, "csp-origins.txt"), `${base}\n\n\n\n`);
+            await render({ WARMBLY_API_URL: "" });
+            expect(policy()).toContain("wss://built-config.test");
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            rmSync(temporary, { recursive: true, force: true });
+        }
+    }, 15000);
 });

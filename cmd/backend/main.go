@@ -1188,6 +1188,7 @@ func main() {
 		// point it at your own repo/registry.
 		releasesService = releases.New(
 			releases.Config{
+				BackendVersion:  version.String(),
 				Enabled:         getenvDefault("RELEASES_ENABLED", "false") == "true",
 				GithubRepo:      getenvDefault("RELEASES_GITHUB_REPO", "warmbly/warmbly"),
 				WorkerImageRepo: getenvDefault("RELEASES_WORKER_IMAGE_REPO", "ghcr.io/warmbly/warmbly/worker"),
