@@ -221,7 +221,7 @@ func TestMainBuildJoinsItsPublishedSHAImage(t *testing.T) {
 	}
 	for _, pin := range []string{"dev-" + sha, "dev-" + sha + "-kafka", sha + "-kafka"} {
 		s.nodes = stubNodes{node: &models.FleetNode{ID: id, PinnedVersion: pin}}
-		if got := s.DesiredVersion(context.Background(), id); got != sha+"-kafka" {
+		if got := s.desiredVersion(context.Background(), id); got != sha+"-kafka" {
 			t.Fatalf("pin %q must use published SHA tag, got %q", pin, got)
 		}
 	}
