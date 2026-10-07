@@ -1293,6 +1293,9 @@ func main() {
 		cloudLinkRepository := repository.NewCloudLinkRepository(primaryDB.Pool, credEncrypter)
 		emailService.WireCloudLink(cloudLinkRepository)
 		cloudLinkService = cloudlink.NewService(cloudLinkRepository, emailRepostory, emailService)
+		if reports, ok := analyticsService.(analytics.CloudWarmupReportsAware); ok {
+			reports.WireCloudWarmupReports(cloudLinkService)
+		}
 		// Deleting a mailbox must also revoke its cloud-held credential.
 		emailService.WireCloudUnenroll(cloudLinkService)
 		emailService.WireCloudCredentials(cloudLinkService)

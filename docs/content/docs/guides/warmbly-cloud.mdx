@@ -27,6 +27,16 @@ Arrivals awaiting verification are stored in your instance's database and retrie
 
 Unenrolling an SMTP/IMAP mailbox, disconnecting the instance, or deleting the mailbox altogether deletes its credential on the cloud immediately. Deleting an enrolled mailbox revokes its enrollment before the record goes, so the pool cannot be left holding a password for a mailbox your instance no longer has; if the cloud cannot be reached at that moment the delete is refused, the mailbox is put back as it was, and retrying it once the cloud is reachable completes it. A mailbox that was signed in through Warmbly Cloud stays in the cloud workspace when you remove it from the instance; disconnecting the instance removes its mirrors of such mailboxes, since they cannot send without the link.
 
+## Warmup analytics on your instance
+
+Enrolled mailboxes show Cloud's daily sends, replies, received warmup mail and target volumes in **Mailboxes > Analytics**. Their warmup placement reports include daily inbox, tabs, spam and rescued counts, provider and host breakdowns, and the trailing inbox rate. Workspace reports combine Cloud-enrolled mailboxes with mailboxes warming locally. Earlier local warmup history stays visible too.
+
+Reports are fetched from Cloud when you open or refresh them, using the existing instance link. They are not copied into your instance's warmup tables and do not wait for the five-minute standing poll. Only enrolled mailboxes belonging to the selected local workspace are requested. A Cloud failure shows a load error and a retry action, not an empty chart.
+
+Existing enrollments work without reconnecting or re-enrolling. Deploy the reporting support on Cloud before upgrading self-hosted instances. Against an older Cloud deployment without these endpoints, Analytics and placement reports that include an enrolled mailbox show a load error until Cloud is upgraded. The **Warmbly Cloud** card's existing summary counts and standing synchronization use separate endpoints and continue working. No database migration or history backfill is needed.
+
+Once a mailbox is unenrolled, the instance no longer requests its Cloud history. SMTP/IMAP unenrollment deletes the Cloud mailbox and its warmup history; a Cloud-managed mailbox's history stays in its Cloud workspace. The instance's earlier local history is unchanged.
+
 ## Linking your instance
 
 The link is offered on a self-hosted instance as the last step of onboarding when you first sign in, as a banner on **Mailboxes** until you connect or dismiss it, under **Settings > Warmbly Cloud** at any time, and on **Sending domains** when a [root redirect](#root-redirects-served-by-warmbly-cloud) could be served from Cloud. Whichever you use, the steps are the same:

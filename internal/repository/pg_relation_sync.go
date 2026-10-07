@@ -8,6 +8,7 @@ import (
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/db"
 	"github.com/warmbly/warmbly/internal/utils"
+	"github.com/warmbly/warmbly/internal/utils/validate"
 )
 
 type RelationSyncInput struct {
@@ -35,6 +36,11 @@ type RelationSyncInput struct {
 // are cast to uuid explicitly. The SELECT casts the related id back to ::text
 // so it scans cleanly into a Go string.
 func SyncRelation(input RelationSyncInput) ([]string, *errx.Error) {
+	values, xerr := validate.Uuids(input.NewValues)
+	if xerr != nil {
+		return nil, xerr
+	}
+	input.NewValues = values
 	// The current set is read WITHIN the scope, not just by parent id. A link
 	// to another workspace's label (only a migration can leave one behind, but
 	// the diff must not depend on that) is invisible here, so it is never
@@ -74,6 +80,10 @@ func SyncRelation(input RelationSyncInput) ([]string, *errx.Error) {
 			return nil, errx.InternalError()
 		}
 		current = append(current, val)
+	}
+	if err := rows.Err(); err != nil {
+		db.CaptureError(err, querySelect, params, "rows")
+		return nil, errx.InternalError()
 	}
 
 	toInsert := utils.Difference(input.NewValues, current)

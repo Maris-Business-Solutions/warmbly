@@ -14,7 +14,7 @@ import (
 )
 
 // MaxWarmupPlacementDays bounds one placement report.
-const MaxWarmupPlacementDays = 366
+const MaxWarmupPlacementDays = models.WarmupReportMaxDays
 
 // WireWarmupPlacement attaches the placement history.
 func (s *analyticsService) WireWarmupPlacement(r repository.WarmupPlacementRepository) {
@@ -121,6 +121,15 @@ func (s *analyticsService) GetWarmupPlacement(ctx context.Context, orgID uuid.UU
 	windows, err := s.placementRepo.Rates(ctx, orgID, emailID, placementWindowStart(time.Now().UTC()))
 	if err != nil {
 		return nil, errx.InternalError()
+	}
+	if s.cloudReports != nil {
+		cloud, xerr := s.cloudReports.WarmupPlacementData(ctx, orgID, emailID, from, to)
+		if xerr != nil {
+			return nil, xerr
+		}
+		data := &models.WarmupPlacementData{Daily: dayRows, Hosts: hostRows, Sent: sentRows, Unconfirmed: unconfirmedRows, Windows: windows}
+		data.Add(cloud)
+		dayRows, hostRows, sentRows, unconfirmedRows, windows = data.Daily, data.Hosts, data.Sent, data.Unconfirmed, data.Windows
 	}
 	rates := headlineRates(windows)
 
@@ -336,8 +345,19 @@ func (b *placementBuilder) mailboxes(names map[uuid.UUID]string, rates map[uuid.
 // placementProviders groups the window's host rows by recipient group, in
 // display order, busiest host first.
 func placementProviders(rows []repository.WarmupPlacementHostRow) []models.WarmupPlacementProvider {
+	byHost := make(map[[2]string]repository.WarmupPlacementHostRow)
+	for _, row := range rows {
+		key := [2]string{row.Group, row.Host}
+		host := byHost[key]
+		host.Group, host.Host = row.Group, row.Host
+		host.Inbox += row.Inbox
+		host.Tabs += row.Tabs
+		host.Spam += row.Spam
+		host.Rescued += row.Rescued
+		byHost[key] = host
+	}
 	byGroup := make(map[string]*models.WarmupPlacementProvider)
-	for _, r := range rows {
+	for _, r := range byHost {
 		p, ok := byGroup[r.Group]
 		if !ok {
 			p = &models.WarmupPlacementProvider{Group: r.Group, Hosts: make([]models.WarmupPlacementHost, 0)}
@@ -355,7 +375,12 @@ func placementProviders(rows []repository.WarmupPlacementHostRow) []models.Warmu
 			continue
 		}
 		p.Finish()
-		sort.SliceStable(p.Hosts, func(i, j int) bool { return p.Hosts[i].Delivered > p.Hosts[j].Delivered })
+		sort.Slice(p.Hosts, func(i, j int) bool {
+			if p.Hosts[i].Delivered == p.Hosts[j].Delivered {
+				return p.Hosts[i].Host < p.Hosts[j].Host
+			}
+			return p.Hosts[i].Delivered > p.Hosts[j].Delivered
+		})
 		out = append(out, *p)
 	}
 	return out

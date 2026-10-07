@@ -93,6 +93,44 @@ func (h *Handler) InternalSyncFolderMessages(c *gin.Context) {
 // maxProviderFolderMessages bounds one provider-folder listing.
 const maxProviderFolderMessages = 1000
 
+func (h *Handler) InternalSyncProviderMessages(c *gin.Context) {
+	userID, err := uuid.Parse(c.Query("user_id"))
+	if err != nil {
+		errx.JSON(c, errx.ErrUuid)
+		return
+	}
+	emailID, err := uuid.Parse(c.Query("email_id"))
+	if err != nil {
+		errx.JSON(c, errx.ErrUuid)
+		return
+	}
+	var after *uuid.UUID
+	if raw := c.Query("after"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			errx.JSON(c, errx.ErrUuid)
+			return
+		}
+		after = &id
+	}
+	limit, err := strconv.Atoi(c.Query("limit"))
+	if err != nil || limit < 1 || limit > maxProviderFolderMessages {
+		errx.JSON(c, errx.New(errx.BadRequest, "invalid limit"))
+		return
+	}
+	if h.EmailSyncState == nil {
+		errx.JSON(c, errx.InternalError())
+		return
+	}
+	messages, err := h.EmailSyncState.ListProviderMessages(c.Request.Context(), userID, emailID, after, limit)
+	if err != nil {
+		errs.CaptureException(err)
+		errx.JSON(c, errx.InternalError())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
+}
+
 // InternalSyncProviderFolderMessages answers the Gmail folder reconciliation:
 // which rows does the platform still believe the provider has in these
 // folders? The worker checks each against Gmail's labels and reports the ones

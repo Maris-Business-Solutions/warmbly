@@ -164,6 +164,19 @@ func TestLiveWarmupPlacementRollup(t *testing.T) {
 	if err != nil || len(sent) != 1 || sent[0].Count != 4 {
 		t.Fatalf("sent = %+v, %v; want 4 today", sent, err)
 	}
+	data, err := repo.ForAccounts(ctx, orgID, []uuid.UUID{sender, stranger}, today.AddDate(0, 0, -3), today)
+	if err != nil || len(data.Daily) != 2 || len(data.Hosts) != 2 || len(data.Sent) != 1 || len(data.Unconfirmed) != 1 || data.Windows[sender].All.Inbox != 2 {
+		t.Fatalf("scoped report = %+v, %v", data, err)
+	}
+	for _, tc := range []struct {
+		org uuid.UUID
+		ids []uuid.UUID
+	}{{orgID, []uuid.UUID{}}, {otherOrg, []uuid.UUID{sender}}, {orgID, []uuid.UUID{recipient}}} {
+		data, err := repo.ForAccounts(ctx, tc.org, tc.ids, today.AddDate(0, 0, -3), today)
+		if err != nil || len(data.Daily)+len(data.Hosts)+len(data.Sent)+len(data.Unconfirmed)+len(data.Windows) != 0 {
+			t.Fatalf("unselected placement report = %+v, %v", data, err)
+		}
+	}
 }
 
 // Receipts no live arrival counted (history, or a consumer mid-upgrade) are

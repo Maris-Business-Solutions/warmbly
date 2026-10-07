@@ -653,6 +653,10 @@ func (fakeSyncContext) ListProviderFolderMessages(context.Context, uuid.UUID, uu
 	return nil, nil
 }
 
+func (fakeSyncContext) ListProviderMessages(context.Context, uuid.UUID, uuid.UUID, *uuid.UUID, int) ([]repository.ProviderFolderMessage, error) {
+	return nil, nil
+}
+
 func removeIDs(events []captured) []uuid.UUID {
 	var out []uuid.UUID
 	for _, e := range events {

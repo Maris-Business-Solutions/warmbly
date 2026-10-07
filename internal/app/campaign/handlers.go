@@ -125,6 +125,15 @@ func (s *campaignService) Overview(ctx context.Context, orgID string) (*models.C
 }
 
 func (s *campaignService) Update(ctx context.Context, orgID, query string, data *models.UpdateCampaign) (*models.Campaign, *errx.Error) {
+	tags, xerr := validate.Uuids(data.EmailTags)
+	if xerr != nil {
+		return nil, xerr
+	}
+	folders, xerr := validate.Uuids(data.Folders)
+	if xerr != nil {
+		return nil, xerr
+	}
+	data.EmailTags, data.Folders = tags, folders
 	resp, err := s.campaignRepository.Update(ctx, orgID, query, data)
 	if err != nil {
 		return nil, err

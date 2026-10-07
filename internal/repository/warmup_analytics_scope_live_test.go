@@ -60,6 +60,51 @@ func TestLiveWarmupAnalyticsAreOrganizationScoped(t *testing.T) {
 	})
 
 	repo := &analyticsRepository{DB: handle}
+	instanceID, otherInstanceID, remoteID, otherRemoteID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	exec(`INSERT INTO pool_link_instances (id, organization_id, name, token_hash) VALUES ($1, $3, 'Reports', $4), ($2, $3, 'Other', $5)`,
+		instanceID, otherInstanceID, orgID, uuid.NewString(), uuid.NewString())
+	exec(`INSERT INTO pool_link_mailboxes (instance_id, remote_id, email_account_id) VALUES ($1, $3, $5), ($2, $4, $6)`,
+		instanceID, otherInstanceID, remoteID, otherRemoteID, accountID, secondAccountID)
+	exec(`INSERT INTO cloud_link_mailboxes (email_account_id, remote_id, managed) VALUES ($1, $3, true), ($2, $4, false)`,
+		accountID, secondAccountID, remoteID, otherRemoteID)
+	t.Cleanup(func() {
+		if _, err := pool.Exec(context.Background(), `DELETE FROM pool_link_instances WHERE id = ANY($1::uuid[])`, []uuid.UUID{instanceID, otherInstanceID}); err != nil {
+			t.Errorf("instance cleanup: %v", err)
+		}
+	})
+	poolRepo := NewPoolLinkRepository(pool)
+	linked, err := poolRepo.ListReportMailboxes(ctx, instanceID, []uuid.UUID{remoteID, otherRemoteID})
+	if err != nil || len(linked) != 1 || linked[0].EmailAccountID != accountID {
+		t.Fatalf("instance-scoped reports = %+v, %v", linked, err)
+	}
+	cloudRepo := &cloudLinkRepository{db: pool}
+	local, err := cloudRepo.ListForOrg(ctx, orgID, nil)
+	if err != nil || len(local) != 2 {
+		t.Fatalf("existing enrollments = %+v, %v", local, err)
+	}
+	local, err = cloudRepo.ListForOrg(ctx, orgID, &secondAccountID)
+	if err != nil || len(local) != 1 || local[0].EmailAccountID != secondAccountID {
+		t.Fatalf("selected enrollment = %+v, %v", local, err)
+	}
+	local, err = cloudRepo.ListForOrg(ctx, uuid.New(), &accountID)
+	if err != nil || len(local) != 0 {
+		t.Fatalf("foreign enrollment = %+v, %v", local, err)
+	}
+	selected, xerr := repo.GetWarmupStatsForAccounts(ctx, orgID, []uuid.UUID{secondAccountID, secondAccountID}, day, day)
+	if xerr != nil || len(selected) != 1 || selected[0].EmailsSent != 5 || selected[0].EmailsReceived != 0 {
+		t.Fatalf("selected accounts = %+v, %v", selected, xerr)
+	}
+	for _, tc := range []struct {
+		org uuid.UUID
+		ids []uuid.UUID
+	}{
+		{orgID, []uuid.UUID{}}, {uuid.New(), []uuid.UUID{accountID}}, {orgID, []uuid.UUID{uuid.New()}},
+	} {
+		selected, xerr := repo.GetWarmupStatsForAccounts(ctx, tc.org, tc.ids, day, day)
+		if xerr != nil || len(selected) != 0 {
+			t.Fatalf("unselected accounts = %+v, %v", selected, xerr)
+		}
+	}
 	stats, xerr := repo.GetWarmupStats(ctx, orgID, &accountID, day, day)
 	if xerr != nil {
 		t.Fatalf("GetWarmupStats: %v", xerr)

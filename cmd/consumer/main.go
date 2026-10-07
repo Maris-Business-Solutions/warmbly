@@ -102,10 +102,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("Waiting for backend database migrations...")
-	migrationCtx, migrationCancel := context.WithTimeout(ctx, 2*time.Minute)
-	err = db.WaitForMigrations(migrationCtx, primaryDB.Pool)
-	migrationCancel()
-	if err != nil {
+	if err := db.WaitForSchema(ctx, primaryDB); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("Database schema ready")

@@ -4,67 +4,88 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-type migrationQuerier interface {
+type schemaReader interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-func requiredMigrationVersion() (int64, error) {
-	entries, err := migrationsFS.ReadDir("migrations")
+func requiredMigrationVersion() (int, error) {
+	paths, err := fs.Glob(migrationsFS, "migrations/*.up.sql")
 	if err != nil {
 		return 0, err
 	}
-	var required int64
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".up.sql") {
-			continue
-		}
-		v, err := strconv.ParseInt(strings.SplitN(entry.Name(), "_", 2)[0], 10, 64)
+	version := 0
+	for _, path := range paths {
+		base := strings.TrimPrefix(path, "migrations/")
+		prefix, _, _ := strings.Cut(base, "_")
+		n, err := strconv.Atoi(prefix)
 		if err != nil {
-			return 0, fmt.Errorf("invalid embedded migration filename: %w", err)
+			return 0, fmt.Errorf("invalid embedded migration version: %w", err)
 		}
-		required = max(required, v)
+		version = max(version, n)
 	}
-	return required, nil
+	if version == 0 {
+		return 0, errors.New("no embedded migrations")
+	}
+	return version, nil
 }
 
-// WaitForMigrations keeps consumers idle until the backend finishes its migrations.
-func WaitForMigrations(ctx context.Context, pool migrationQuerier) error {
+// WaitForSchema keeps consumers from starting jobs ahead of the backend's migrations.
+func WaitForSchema(ctx context.Context, reader schemaReader) error {
 	required, err := requiredMigrationVersion()
 	if err != nil {
 		return err
 	}
-	return waitForMigrations(ctx, pool, required, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	return waitForSchema(ctx, reader, required, time.Second)
 }
 
-func waitForMigrations(ctx context.Context, pool migrationQuerier, required int64, interval time.Duration) error {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	state := "migration state unavailable"
+func waitForSchema(ctx context.Context, reader schemaReader, required int, interval time.Duration) error {
+	state := "migrations have not completed"
 	var queryErr error
 	for ctx.Err() == nil {
-		var version int64
+		var version int
 		var dirty bool
-		if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err == nil {
+		err := reader.QueryRow(ctx, `SELECT version, dirty FROM schema_migrations`).Scan(&version, &dirty)
+		var pgErr *pgconn.PgError
+		switch {
+		case err == nil:
 			queryErr = nil
-			if version >= required && !dirty && ctx.Err() == nil {
-				return nil
+			state = fmt.Sprintf("database version %d (dirty=%t), require clean version >= %d", version, dirty, required)
+			if !dirty && version >= required && ctx.Err() == nil {
+				var visible bool
+				if err := reader.QueryRow(ctx, `SELECT to_regclass('warmup_pending_filings') IS NOT NULL AND to_regclass('warmup_recovery_identifiers') IS NOT NULL`).Scan(&visible); err != nil {
+					return fmt.Errorf("consumer schema visibility check failed: %w", err)
+				}
+				if !visible {
+					return errors.New("consumer schema version is current but required warmup relations are not visible; check database and search_path")
+				}
+				if ctx.Err() == nil {
+					return nil
+				}
 			}
-			state = fmt.Sprintf("database migration %d (dirty=%t)", version, dirty)
-		} else {
+		case errors.Is(err, pgx.ErrNoRows), errors.As(err, &pgErr) && pgErr.Code == "42P01":
 			queryErr = err
-			state = "migration state unavailable"
+			state = "schema_migrations is not initialized"
+		case ctx.Err() != nil && errors.Is(err, ctx.Err()):
+		default:
+			return fmt.Errorf("consumer schema readiness query failed: %w", err)
 		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-		case <-ticker.C:
+			timer.Stop()
+		case <-timer.C:
 		}
 	}
-	return fmt.Errorf("%s; consumer requires migration %d or newer and a clean schema: upgrade the backend and check its migration logs: %w", state, required, errors.Join(ctx.Err(), queryErr))
+	return fmt.Errorf("consumer waiting for backend migrations: %s; upgrade the backend and check its migration logs: %w", state, errors.Join(ctx.Err(), queryErr))
 }
