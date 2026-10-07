@@ -97,7 +97,11 @@ func (b *KafkaBus) Publish(ctx context.Context, topic, key string, payload []byt
 	if err := b.ensureTopics(ctx, topic); err != nil {
 		return err
 	}
-	return b.producer.Produce(topic, []byte(key), payload)
+	err := b.producer.Produce(topic, []byte(key), payload)
+	if errors.Is(err, kafka.ErrClientClosed) {
+		return ErrBusClosed
+	}
+	return err
 }
 
 // Subscribe creates a fresh consumer in the given group, subscribes to all
@@ -150,7 +154,7 @@ func (b *KafkaBus) Subscribe(ctx context.Context, topics []string, group string,
 	b.consumers = append(b.consumers, cons)
 	b.mu.Unlock()
 
-	return cons.Consume(ctx, func(msg *ckf.Message) error {
+	err = cons.Consume(ctx, func(msg *ckf.Message) error {
 		topic := ""
 		if msg.TopicPartition.Topic != nil {
 			topic = *msg.TopicPartition.Topic
@@ -169,6 +173,10 @@ func (b *KafkaBus) Subscribe(ctx context.Context, topics []string, group string,
 		}
 		return nil
 	})
+	if errors.Is(err, kafka.ErrClientClosed) {
+		return ErrBusClosed
+	}
+	return err
 }
 
 // Close flushes the producer and closes every consumer that was opened via
