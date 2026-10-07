@@ -45,6 +45,8 @@ Anything flagged on [Instance health](/development/instance-health/) links back 
 | `WARMBLY_VERSION` | Version string reported to Warmbly Cloud on link requests | `dev` | no |
 | `WARMBLY_ALLOW_UNSAFE_WEBHOOK_URLS` | `true` lets customer webhooks point at `http://` and private addresses. Development only: it lets any workspace member make the backend reach into your internal network | `false` | yes |
 
+In Gin release mode, access logs omit successful health probes and internal GET lookups, including an expected missing email-message mapping. Authentication failures, server errors, other missing resources and all mutations remain logged. Gin debug mode keeps every access log. Query strings and credential path parameters remain redacted in both modes; organization audit events are unaffected.
+
 <Callout type="warn" title="prod does not mean cloud">
 `APP_ENV=prod` needs no cloud account. Error reporting and GeoIP lookups are used when configured and skipped with a logged note when they are not.
 </Callout>

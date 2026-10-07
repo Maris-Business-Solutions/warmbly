@@ -176,9 +176,8 @@ jobs:
         run: |
           go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
-      # The Avro codec's registry handling only compiles with the kafka tag.
-      - name: Test the Avro codec
-        run: go test -tags kafka ./internal/infrastructure/codec/
+      - name: Test the Kafka codec and client lifecycle
+        run: go test -race -tags kafka ./internal/infrastructure/codec/ ./internal/infrastructure/kafka/ ./internal/infrastructure/eventbus/
 
       # fail_ci_if_error does not cover the uploader crashing before it runs
       # (a TLS handshake failure to Codecov failed jobs whose tests passed).

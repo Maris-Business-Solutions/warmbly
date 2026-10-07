@@ -4,16 +4,29 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	ckf "github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/rs/zerolog/log"
 )
 
+var ErrClientClosed = errors.New("kafka: client closed")
+
+type consumerClient interface {
+	ReadMessage(time.Duration) (*ckf.Message, error)
+	StoreMessage(*ckf.Message) ([]ckf.TopicPartition, error)
+	SubscribeTopics([]string, ckf.RebalanceCb) error
+	Close() error
+}
+
 type Consumer struct {
-	c      *ckf.Consumer
+	c      consumerClient
 	Avrov2 *Avrov2
+	mu     sync.Mutex
+	closed bool
 }
 
 type ConsumerConfig struct {
@@ -60,11 +73,45 @@ func (cons *Consumer) WithAvrov2(avrov2 *Avrov2) {
 }
 
 func (cons *Consumer) Close() {
-	cons.c.Close()
+	cons.mu.Lock()
+	if cons.closed {
+		cons.mu.Unlock()
+		return
+	}
+	cons.closed = true
+	cons.mu.Unlock()
+	if err := cons.c.Close(); err != nil {
+		log.Warn().Err(err).Msg("kafka: closing consumer failed")
+	}
 }
 
 func (cons *Consumer) SubscribeTopics(topics []string) error {
+	cons.mu.Lock()
+	defer cons.mu.Unlock()
+	if cons.closed {
+		return ErrClientClosed
+	}
 	return cons.c.SubscribeTopics(topics, nil)
+}
+
+// Polling and offset storage must finish before the native client is destroyed.
+func (cons *Consumer) readMessage() (*ckf.Message, error) {
+	cons.mu.Lock()
+	defer cons.mu.Unlock()
+	if cons.closed {
+		return nil, ErrClientClosed
+	}
+	return cons.c.ReadMessage(100 * time.Millisecond)
+}
+
+func (cons *Consumer) storeMessage(msg *ckf.Message) error {
+	cons.mu.Lock()
+	defer cons.mu.Unlock()
+	if cons.closed {
+		return ErrClientClosed
+	}
+	_, err := cons.c.StoreMessage(msg)
+	return err
 }
 
 func (cons *Consumer) Consume(ctx context.Context, handler func(msg *ckf.Message) error) error {
@@ -73,7 +120,7 @@ func (cons *Consumer) Consume(ctx context.Context, handler func(msg *ckf.Message
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			msg, err := cons.c.ReadMessage(100 * time.Millisecond)
+			msg, err := cons.readMessage()
 			if err != nil {
 				if kafkaErr, ok := err.(ckf.Error); ok {
 					if kafkaErr.Code() == ckf.ErrTimedOut {
@@ -92,7 +139,10 @@ func (cons *Consumer) Consume(ctx context.Context, handler func(msg *ckf.Message
 			}
 
 			// Needs enable.auto.offset.store=false; the background commit sends it.
-			if _, err := cons.c.StoreMessage(msg); err != nil {
+			if err := cons.storeMessage(msg); err != nil {
+				if errors.Is(err, ErrClientClosed) {
+					return err
+				}
 				log.Warn().Err(err).Msg("kafka: storing a handled offset failed")
 			}
 		}

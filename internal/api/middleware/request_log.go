@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -25,6 +26,9 @@ func RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
+		if gin.Mode() == gin.ReleaseMode && routineInternalLookup(c) {
+			return
+		}
 		end := time.Now()
 		fmt.Fprintf(gin.DefaultWriter, "[GIN] %v | %3d | %13v | %15s | %-7s %#v\n",
 			end.Format("2006/01/02 - 15:04:05"),
@@ -35,6 +39,17 @@ func RequestLogger() gin.HandlerFunc {
 			loggedPath(c),
 		)
 	}
+}
+
+func routineInternalLookup(c *gin.Context) bool {
+	if c.Request.Method != http.MethodGet || len(c.Errors) != 0 {
+		return false
+	}
+	path, status := c.FullPath(), c.Writer.Status()
+	if path == "/api/v1/internal/email-message-map" && status == http.StatusNotFound {
+		return true
+	}
+	return status < http.StatusBadRequest && (path == "/health" || strings.HasPrefix(path, "/api/v1/internal/"))
 }
 
 // credentialParams are the route parameter names whose value is a credential.
