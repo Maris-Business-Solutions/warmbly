@@ -3,21 +3,21 @@
 # and only the app knows the route. nginx does the same thing with try_files.
 #
 # 200, not 301: the URL has to stay what the user asked for, or the router
-# lands on the wrong route.
-/  /index.html  200
-/auth  /index.html  200
-/auth/*  /index.html  200
-/app  /index.html  200
-/app/*  /index.html  200
-/onboarding  /index.html  200
-/onboarding/*  /index.html  200
-/oauth  /index.html  200
-/oauth/*  /index.html  200
-/select-org  /index.html  200
-/invite  /index.html  200
-/connect  /index.html  200
-/cli  /index.html  200
-/cloud-oauth/done  /index.html  200
-/oauth-return  /index.html  200
-/slack/link  /index.html  200
-/setup  /index.html  200
+# lands on the wrong route. Pages only serves index.html through "/"; with a
+# 404.html present a rewrite to /index.html is not followed and every route 404s.
+/auth  /  200
+/auth/*  /  200
+/app  /  200
+/app/*  /  200
+/onboarding  /  200
+/onboarding/*  /  200
+/oauth  /  200
+/oauth/*  /  200
+/select-org  /  200
+/invite  /  200
+/connect  /  200
+/cli  /  200
+/cloud-oauth/done  /  200
+/oauth-return  /  200
+/slack/link  /  200
+/setup  /  200
