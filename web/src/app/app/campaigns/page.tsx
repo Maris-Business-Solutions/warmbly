@@ -531,19 +531,21 @@ export default function CampaignsPage() {
                                     <span className="shrink-0 w-3.5 flex items-center justify-center">
                                         <CampaignStatusMark status={cstatus} idle={isIdleCampaign(c)} />
                                     </span>
-                                    <span className="text-[12.5px] text-slate-900 font-medium truncate max-w-[40%]">
-                                        {c.name}
-                                    </span>
-                                    <span className="font-mono text-[10.5px] text-slate-400 tabular-nums shrink-0 hidden sm:inline">
-                                        {c.id.slice(0, 8)}
-                                    </span>
-                                    <AdvisorRowFlag findings={advisor.get(c.id)} subject={c.name} />
-                                    <CampaignFolderChips campaign={c} folders={folders} />
-                                    {c.description && (
-                                        <span className="text-[11.5px] text-slate-400 truncate hidden md:inline">
-                                            {c.description}
+                                    <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
+                                        <span className="min-w-0 text-[12.5px] text-slate-900 font-medium truncate" title={c.name}>
+                                            {c.name}
                                         </span>
-                                    )}
+                                        <span className="font-mono text-[10.5px] text-slate-400 tabular-nums shrink-0 hidden sm:inline">
+                                            {c.id.slice(0, 8)}
+                                        </span>
+                                        <AdvisorRowFlag findings={advisor.get(c.id)} subject={c.name} />
+                                        <CampaignFolderChips campaign={c} folders={folders} />
+                                        {c.description && (
+                                            <span className="min-w-0 flex-1 text-[11.5px] text-slate-400 truncate hidden md:inline">
+                                                {c.description}
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className={cn("ml-auto text-[10px] uppercase tracking-[0.1em] font-medium shrink-0", campaignDisplayTone(c))}>
                                         {stateLabel}
                                     </span>
