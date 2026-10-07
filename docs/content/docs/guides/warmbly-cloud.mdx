@@ -33,7 +33,7 @@ Enrolled mailboxes show Cloud's daily sends, replies, received warmup mail and t
 
 Reports are fetched from Cloud when you open or refresh them, using the existing instance link. They are not copied into your instance's warmup tables and do not wait for the five-minute standing poll. Only enrolled mailboxes belonging to the selected local workspace are requested. A Cloud failure shows a load error and a retry action, not an empty chart.
 
-Existing enrollments work without reconnecting or re-enrolling. Deploy the reporting support on Cloud before upgrading self-hosted instances. An older Cloud deployment without these endpoints cannot supply detailed reports; summary cards and standing synchronization continue working. No database migration or history backfill is needed.
+Existing enrollments work without reconnecting or re-enrolling. Deploy the reporting support on Cloud before upgrading self-hosted instances. Against an older Cloud deployment without these endpoints, Analytics and placement reports that include an enrolled mailbox show a load error until Cloud is upgraded. The **Warmbly Cloud** card's existing summary counts and standing synchronization use separate endpoints and continue working. No database migration or history backfill is needed.
 
 Once a mailbox is unenrolled, the instance no longer requests its Cloud history. SMTP/IMAP unenrollment deletes the Cloud mailbox and its warmup history; a Cloud-managed mailbox's history stays in its Cloud workspace. The instance's earlier local history is unchanged.
 
