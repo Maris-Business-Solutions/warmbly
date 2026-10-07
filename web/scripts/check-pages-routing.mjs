@@ -28,9 +28,11 @@ const visit = (node) => {
 };
 visit(routes);
 assert.ok(roots.length > 10, 'root route discovery did not find the route table');
-for (const path of [...roots, '/auth/login/confirm', '/auth/reset-password/confirm', '/app/campaigns/a/preferences', '/app/unibox/inbox/thread', '/app/settings/security']) {
+// Pages serves index.html only through "/": with a 404.html present, a rewrite to /index.html 404s every route.
+assert.ok(rules.every(({ target }) => target === '/'), 'every Pages rewrite must target "/", not /index.html');
+for (const path of [...roots.filter((root) => root !== '/'), '/auth/login/confirm', '/auth/reset-password/confirm', '/app/campaigns/a/preferences', '/app/unibox/inbox/thread', '/app/settings/security']) {
   const rule = match(path);
-  assert.equal(rule?.target, '/index.html', `Pages does not serve SPA route ${path}`);
+  assert.equal(rule?.target, '/', `Pages does not serve SPA route ${path}`);
   assert.equal(rule?.code, '200');
 }
 for (const path of ['/assets/missing.js', '/assets/layout-aTnJVElG.js', '/config.js', '/favicon.ico', '/mail-preview.html', '/missing-resource']) {
