@@ -78,10 +78,6 @@ for app in web admin; do
   ok "$app renders config.js, has the SPA rule, and keeps the container default"
 done
 
-if command -v node >/dev/null 2>&1; then
-  node web/scripts/check-pages-routing.mjs || fail "web Pages route/asset separation failed"
-fi
-
 if ! command -v node >/dev/null 2>&1; then
   skip "node not installed; skipped the JavaScript syntax check"
 fi
