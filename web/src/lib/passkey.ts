@@ -56,6 +56,20 @@ export class PasskeyCancelled extends Error {
     }
 }
 
+export class PasskeyAutofillUnavailable extends Error {
+    constructor(cause: unknown) {
+        super("Passkey autofill is unavailable on this device", { cause });
+        this.name = "PasskeyAutofillUnavailable";
+    }
+}
+
+function autofillUnavailable(e: unknown): boolean {
+    if (!(e instanceof Error) && !(e instanceof DOMException)) return false;
+    return e.name === "NotSupportedError"
+        || e.message === "Resident credentials or empty allowCredentials lists are not supported at this time."
+        || (e instanceof WebAuthnError && e.cause !== e && autofillUnavailable(e.cause));
+}
+
 function mapError(e: unknown): Error {
     if (e instanceof PasskeyCancelled) return e;
     if (e instanceof WebAuthnError) {
@@ -64,14 +78,14 @@ function mapError(e: unknown): Error {
             case "ERROR_CEREMONY_ABORTED":
                 return new PasskeyCancelled("aborted");
             case "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY":
-                return new PasskeyCancelled("not-allowed");
+                return e.cause && e.cause !== e ? mapError(e.cause) : e;
             case "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED":
                 return new Error("This device already has a passkey for your account.");
             case "ERROR_AUTHENTICATOR_MISSING_DISCOVERABLE_CREDENTIAL_SUPPORT":
             case "ERROR_AUTHENTICATOR_MISSING_USER_VERIFICATION_SUPPORT":
                 return new Error("This device can't create a passkey that meets our requirements.");
             default:
-                return new Error("Your device couldn't complete the passkey request.");
+                return e;
         }
     }
     if (e instanceof DOMException) {
@@ -84,7 +98,7 @@ function mapError(e: unknown): Error {
             case "InvalidStateError":
                 return new PasskeyCancelled("aborted");
             default:
-                return new Error(e.message || "Your device couldn't complete the passkey request.");
+                return e;
         }
     }
     // SimpleWebAuthn's words for a ceremony the browser ended with no credential.
@@ -238,6 +252,7 @@ export async function finishPasskeyLogin(
 
         return await passkeyLoginFinish({ session: challenge.session, credential });
     } catch (e) {
+        if (opts?.conditional && autofillUnavailable(e)) throw new PasskeyAutofillUnavailable(e);
         throw mapError(e);
     } finally {
         if (timeout) clearTimeout(timeout);

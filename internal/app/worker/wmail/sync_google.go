@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,19 +29,40 @@ func (w *WMail) SyncGoogle(ctx context.Context) *errx.MailError {
 	stats := &tickStats{}
 	w.googleTick = stats
 	w.googleFolders = nil
+	defer w.endTick(stats)
 	if !w.retryUnmap(ctx) {
+		return nil
+	}
+	if w.tracker.state.BackfillCursor.GoogleRecovery != nil {
+		if err := w.googleRecoverHistory(ctx, stats); err != nil {
+			return w.googleReconcileError(err)
+		}
 		return nil
 	}
 
 	newHistoryID, err := w.GoogleData.Client.FetchHistory(ctx, w.GoogleData.LastHistoryID)
+	if errors.Is(err, goog.ErrHistoryExpired) {
+		baseline, berr := w.GoogleData.Client.HistoryBaseline(ctx)
+		if berr != nil {
+			return w.googleReconcileError(berr)
+		}
+		w.tracker.state.BackfillCursor.GoogleRecovery = &models.GoogleHistoryRecovery{
+			HistoryID: baseline,
+			Since:     time.Now().Add(-time.Duration(w.gov.Policy().BackfillDays) * 24 * time.Hour),
+		}
+		w.tracker.mark()
+		if err := w.googleRecoverHistory(ctx, stats); err != nil {
+			return w.googleReconcileError(err)
+		}
+		return nil
+	}
 	if newHistoryID != 0 && newHistoryID != w.GoogleData.LastHistoryID {
-		// Advance the in-memory cursor before persisting. The next tick reads
-		// this field, so leaving it stale re-walks the window just processed,
-		// and leaving it at zero re-bootstraps past everything that arrived.
-		w.GoogleData.LastHistoryID = newHistoryID
+		// Keep the old cursor until publication succeeds, so a failed relay is retried.
 		if perr := w.NewHistoryID(newHistoryID); perr != nil {
 			w.CaptureError(perr)
+			return nil
 		}
+		w.GoogleData.LastHistoryID = newHistoryID
 	}
 	if err != nil {
 		var errMail *errx.MailError
@@ -62,7 +85,135 @@ func (w *WMail) SyncGoogle(ctx context.Context) *errx.MailError {
 			return merr
 		}
 	}
-	w.endTick(stats)
+	return nil
+}
+
+func (w *WMail) googleRecoverHistory(ctx context.Context, stats *tickStats) error {
+	r := w.tracker.state.BackfillCursor.GoogleRecovery
+	q := fmt.Sprintf("after:%d -in:chats", r.Since.Unix())
+	for page := 0; !r.MessagesDone && page < 10; page++ {
+		ids, next, err := w.GoogleData.Client.ListRecoveryMessages(ctx, q, r.PageToken, googleBackfillPage)
+		if errors.Is(err, goog.ErrRecoveryPageExpired) {
+			r.PageToken = ""
+			w.tracker.mark()
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			added, err := w.googleRecoverMessage(ctx, id, stats)
+			if err != nil {
+				return err
+			}
+			if !added {
+				return nil
+			}
+		}
+		r.PageToken, r.MessagesDone = next, next == ""
+		w.tracker.mark()
+	}
+	if !r.MessagesDone {
+		return nil
+	}
+	if w.SyncContext == nil {
+		return errors.New("gmail history recovery requires sync context repository")
+	}
+	var after *uuid.UUID
+	if r.StoredAfter != "" {
+		id, err := uuid.Parse(r.StoredAfter)
+		if err != nil {
+			return err
+		}
+		after = &id
+	}
+	stored, err := w.SyncContext.ListProviderMessages(ctx, w.UserID, w.ID, after, googleBackfillPage)
+	if err != nil {
+		return err
+	}
+	for _, m := range stored {
+		labels, found, err := w.GoogleData.Client.MessageLabels(ctx, m.ProviderID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			err = w.onEvent(models.JobEventTypeRemoveEmail, &models.JobEventRemoveEmail{UserID: w.UserID, EmailID: w.ID, ID: m.ID})
+		} else {
+			err = w.emitFolder(m.ID, goog.Folder(labels))
+			if err == nil {
+				err = w.googleRecoverFlags(m.ID, labels, m.Flags)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		r.StoredAfter = m.ID.String()
+		w.tracker.mark()
+	}
+	if len(stored) == googleBackfillPage {
+		return nil
+	}
+	// Publish the baseline before clearing recovery, so a reload cannot skip unfinished work.
+	if err := w.NewHistoryID(r.HistoryID); err != nil {
+		return err
+	}
+	w.GoogleData.LastHistoryID = r.HistoryID
+	w.tracker.state.BackfillCursor.GoogleRecovery = nil
+	w.tracker.mark()
+	return nil
+}
+
+func (w *WMail) googleRecoverMessage(ctx context.Context, id string, stats *tickStats) (bool, error) {
+	known, err := w.EmailMessageMapRepository.Get(ctx, w.UserID, w.ID, id)
+	if err != nil {
+		return false, err
+	}
+	if known != nil {
+		return true, nil
+	}
+	// Recovered history is paced as backfill, not counted as a fresh inbound flood.
+	if !w.admit(ctx, LaneBackfill, stats) {
+		return false, nil
+	}
+	msg, err := w.GoogleData.Client.GetMessage(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if msg == nil {
+		return true, nil
+	}
+	if err := w.googleStore(ctx, msg); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (w *WMail) googleRecoverFlags(id uuid.UUID, labels, stored []string) error {
+	add, remove := translateGmailLabels(labels, true)
+	for _, label := range []string{"UNREAD", "STARRED", "IMPORTANT", "DRAFT"} {
+		if !slices.Contains(labels, label) {
+			a, r := translateGmailLabels([]string{label}, false)
+			add, remove = append(add, a...), append(remove, r...)
+		}
+	}
+	for _, flag := range stored {
+		if (strings.HasPrefix(flag, "Label_") || strings.HasPrefix(flag, "CATEGORY_") || slices.Contains([]string{goog.Inbox, goog.Sent, goog.Spam, goog.Trash}, flag)) && !slices.Contains(add, flag) {
+			remove = append(remove, flag)
+		}
+	}
+	for _, flags := range []struct {
+		kind  models.JobEventType
+		flags []string
+	}{
+		{models.JobEventTypeFlagsAdd, add}, {models.JobEventTypeFlagsRemove, remove},
+	} {
+		if len(flags.flags) == 0 {
+			continue
+		}
+		if err := w.onEvent(flags.kind, &models.JobEventFlags{UserID: w.UserID, EmailID: w.ID, ID: id, Flags: flags.flags}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

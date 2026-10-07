@@ -13,10 +13,9 @@
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
 
-# Hashed build output never changes under a name, so a repeat visit loads every
-# page chunk from cache. Same rule as the nginx image.
+# Pages applies path headers to missing assets too; revalidate instead of caching a 404 immutably.
 /assets/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=0, must-revalidate
 
 /mail-preview.html
   ! Content-Security-Policy

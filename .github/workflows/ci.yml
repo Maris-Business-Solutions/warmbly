@@ -205,6 +205,9 @@ jobs:
         with:
           working-directory: web
 
+      - name: Pages route and asset separation
+        run: node scripts/check-pages-routing.mjs
+
       - name: Lint
         run: pnpm lint
 
@@ -282,6 +285,9 @@ jobs:
         with:
           working-directory: site
           node-version: "22"
+
+      - name: Exception filtering regressions
+        run: pnpm test
 
       - name: Build
         # Astro project; build catches type errors, broken imports,

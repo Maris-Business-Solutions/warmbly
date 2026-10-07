@@ -204,6 +204,7 @@ func Run(
 		// Gmail folder reconciliation: the rows the platform believes Gmail
 		// has in a folder, so the worker can report the ones that moved.
 		node.GET("/sync/provider-folder-messages", h.InternalSyncProviderFolderMessages)
+		node.GET("/sync/provider-messages", h.InternalSyncProviderMessages)
 
 		// Worker runtime config.
 		node.GET("/worker/config", h.InternalWorkerConfig)
@@ -525,7 +526,7 @@ func Run(
 		protected.Use(m.CombinedAuthMiddleware(), m.APIKeyUsageMiddleware(), m.IdempotencyMiddleware(), h.ForgetUniboxOverviewOnWrite)
 		{
 			emails := protected.Group("/emails")
-			emails.Use(m.RateLimitMiddleware(models.RateLimitWrite))
+			emails.Use(m.RateLimitMiddleware(models.RateLimitWrite), middleware.UUIDParams("id"))
 			{
 				emails.GET("", m.RequireAccess(models.PermViewCampaigns, models.APIPermReadEmails), h.EmailsSearch)
 				emails.GET("/:id", m.RequireAccess(models.PermViewCampaigns, models.APIPermReadEmails), middleware.RequireAPIKeyEmailAccountParam("id"), h.GetEmail)
@@ -704,7 +705,7 @@ func Run(
 			protected.POST("/campaigns-estimate", m.RateLimitMiddleware(models.RateLimitRead), m.RequireOrganization(), m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), h.EstimateCampaign)
 
 			campaigns := protected.Group("/campaigns")
-			campaigns.Use(m.RateLimitMiddleware(models.RateLimitWrite))
+			campaigns.Use(m.RateLimitMiddleware(models.RateLimitWrite), middleware.UUIDParams("id"))
 			{
 				campaigns.GET("", m.RequireAccess(models.PermViewCampaigns, models.APIPermReadCampaigns), h.SearchCampaigns)
 				campaigns.POST("", m.RequireAccess(models.PermManageCampaigns, models.APIPermWriteCampaigns), h.CreateCampaign)
@@ -846,7 +847,7 @@ func Run(
 			}
 
 			contacts := protected.Group("/contacts")
-			contacts.Use(m.RateLimitMiddleware(models.RateLimitWrite))
+			contacts.Use(m.RateLimitMiddleware(models.RateLimitWrite), middleware.UUIDParams("id"))
 			{
 				contacts.POST("/search", m.RequireAccess(models.PermViewContacts, models.APIPermReadContacts), h.SearchContacts)
 				contacts.POST("", m.RequireAccess(models.PermManageContacts, models.APIPermWriteContacts), h.AddContacts)

@@ -14,6 +14,7 @@ import { useLocation, useRouter } from "@tanstack/react-router";
 import { AlertTriangleIcon, RefreshCcwIcon } from "lucide-react";
 import { captureException } from "@/lib/observability";
 import { SENTRY_RELEASE } from "@/lib/information";
+import { isModuleLoadError } from "@/lib/moduleLoadError";
 
 interface State {
     error: Error | null;
@@ -65,6 +66,7 @@ export class ErrorBoundary extends React.Component<BoundaryProps, State> {
 
 export function BoundaryFallback({ error, info, reset }: { error: Error; info: Pick<React.ErrorInfo, "componentStack"> | null; reset: () => void }) {
     const router = useRouter();
+    const reload = isModuleLoadError(error);
     return (
         <div className="flex flex-col min-h-full bg-white">
             <div className="min-h-12 md:h-12 px-5 py-1.5 md:py-0 border-b border-slate-200 flex flex-wrap md:flex-nowrap items-center gap-3 gap-y-1.5 shrink-0 bg-white">
@@ -83,11 +85,11 @@ export function BoundaryFallback({ error, info, reset }: { error: Error; info: P
                         Back
                     </button>
                     <button
-                        onClick={reset}
+                        onClick={() => reload ? window.location.reload() : reset()}
                         className="h-7 px-2.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors"
                     >
                         <RefreshCcwIcon className="w-3 h-3" />
-                        Retry
+                        {reload ? "Reload" : "Retry"}
                     </button>
                 </div>
             </div>

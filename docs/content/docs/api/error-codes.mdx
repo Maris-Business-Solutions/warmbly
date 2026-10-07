@@ -82,6 +82,8 @@ Fields are named by their JSON key, with nested fields as a dotted path (`inner.
 
 Versioned API routes check every query parameter name and value before the endpoint runs, including endpoints that read filters directly. The legacy `/invitations/lookup` alias applies the same validation. NUL characters, invalid UTF-8 and malformed query encoding return `400` rather than sending unsupported text to the database. For example, `?q=%00` returns `Query parameter "q[0]" contains a NUL character, which is not supported.` Valid Unicode text and properly encoded punctuation remain unchanged.
 
+Resource IDs on email, campaign and contact routes must be UUIDs. Email `tags` and campaign `email_tags` and `folders` arrays also require UUID values. Malformed values return `400` with `code: "bad_request"` and a `request_id` before a database write. Valid UUIDs are normalized and repeated relation IDs are deduplicated; workspace ownership checks still apply.
+
 **How to fix:**
 - Check that your JSON is valid
 - Verify all required fields are present

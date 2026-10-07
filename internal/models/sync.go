@@ -73,7 +73,17 @@ type SyncCursor struct {
 	// PageToken is Gmail's messages.list continuation.
 	PageToken string `json:"page_token,omitempty" avro:"page_token"`
 	// Folders is the per-folder position for IMAP and Graph.
-	Folders map[string]SyncFolderCursor `json:"folders,omitempty" avro:"folders"`
+	Folders        map[string]SyncFolderCursor `json:"folders,omitempty" avro:"folders"`
+	GoogleRecovery *GoogleHistoryRecovery      `json:"google_recovery,omitempty" avro:"google_recovery"`
+}
+
+// GoogleHistoryRecovery holds a baseline until additions and stored-message state are reconciled.
+type GoogleHistoryRecovery struct {
+	HistoryID    uint64    `json:"history_id" avro:"history_id"`
+	Since        time.Time `json:"since" avro:"since"`
+	PageToken    string    `json:"page_token,omitempty" avro:"page_token"`
+	MessagesDone bool      `json:"messages_done" avro:"messages_done"`
+	StoredAfter  string    `json:"stored_after,omitempty" avro:"stored_after"`
 }
 
 // SyncState is what the platform knows about a mailbox's sync: backfill
