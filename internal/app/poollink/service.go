@@ -74,6 +74,8 @@ type Service interface {
 
 	Enroll(ctx context.Context, inst *models.PoolLinkInstance, req models.PoolLinkEnrollRequest) (*models.PoolLinkMailboxState, *errx.Error)
 	ListMailboxes(ctx context.Context, inst *models.PoolLinkInstance) ([]models.PoolLinkMailboxState, *errx.Error)
+	WarmupStats(ctx context.Context, inst *models.PoolLinkInstance, req models.PoolLinkWarmupReportRequest) ([]models.WarmupDailyStats, *errx.Error)
+	WarmupPlacementData(ctx context.Context, inst *models.PoolLinkInstance, req models.PoolLinkWarmupReportRequest) (*models.WarmupPlacementData, *errx.Error)
 	// ListStanding is the warmup standing of every enrolled mailbox, which the
 	// instance polls so its own send gates hold the cloud's verdict.
 	ListStanding(ctx context.Context, inst *models.PoolLinkInstance) ([]models.PoolLinkMailboxStanding, *errx.Error)

@@ -19,6 +19,8 @@ type AnalyticsService interface {
 	GetWarmupAnalytics(ctx context.Context, orgID uuid.UUID, emailAccountID *uuid.UUID, from, to time.Time) (*models.WarmupAnalytics, *errx.Error)
 	// GetWarmupPlacement is where warmup mail landed, for one mailbox or the workspace.
 	GetWarmupPlacement(ctx context.Context, orgID uuid.UUID, emailAccountID *uuid.UUID, from, to time.Time) (*models.WarmupPlacementReport, *errx.Error)
+	GetWarmupStatsForAccounts(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, from, to time.Time) ([]models.WarmupDailyStats, *errx.Error)
+	GetWarmupPlacementDataForAccounts(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, from, to time.Time) (*models.WarmupPlacementData, *errx.Error)
 
 	// Campaign analytics
 	// GetCampaignAnalytics reads the performance of the sends inside period,
@@ -60,6 +62,7 @@ type analyticsService struct {
 	lifecycleRepo repository.SendLifecycleRepository
 	// placementRepo reads warmup placement history. Optional/nil-safe.
 	placementRepo repository.WarmupPlacementRepository
+	cloudReports  CloudWarmupReports
 }
 
 func NewService(
@@ -83,6 +86,19 @@ func (s *analyticsService) GetWarmupAnalytics(ctx context.Context, orgID uuid.UU
 	dailyStats, xerr := s.analyticsRepo.GetWarmupStats(ctx, orgID, emailAccountID, from, to)
 	if xerr != nil {
 		return nil, xerr
+	}
+
+	if s.cloudReports != nil {
+		if emailAccountID != nil {
+			if _, xerr := s.emailRepo.Get(ctx, orgID.String(), emailAccountID.String()); xerr != nil {
+				return nil, xerr
+			}
+		}
+		cloud, xerr := s.cloudReports.WarmupStats(ctx, orgID, emailAccountID, from, to)
+		if xerr != nil {
+			return nil, xerr
+		}
+		dailyStats = models.MergeWarmupStats(dailyStats, cloud)
 	}
 
 	// Calculate summary
