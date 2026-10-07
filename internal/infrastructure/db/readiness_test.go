@@ -28,11 +28,15 @@ func (s migrationState) Scan(dest ...any) error {
 type migrationStates struct {
 	states []migrationState
 	calls  int
+	cancel context.CancelFunc
 }
 
 func (s *migrationStates) QueryRow(context.Context, string, ...any) pgx.Row {
 	state := s.states[min(s.calls, len(s.states)-1)]
 	s.calls++
+	if s.cancel != nil {
+		s.cancel()
+	}
 	return state
 }
 
@@ -62,13 +66,38 @@ func TestWaitForMigrations(t *testing.T) {
 }
 
 func TestWaitForMigrationsTimeout(t *testing.T) {
-	for _, state := range []migrationState{{version: 264}, {version: 265, dirty: true}, {err: pgx.ErrNoRows}} {
+	for _, state := range []migrationState{{version: 264}, {version: 265, dirty: true}, {err: pgx.ErrNoRows}, {version: 265}} {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		err := waitForMigrations(ctx, &migrationStates{states: []migrationState{state}}, 265, time.Millisecond)
+		pool := &migrationStates{states: []migrationState{state}}
+		err := waitForMigrations(ctx, pool, 265, time.Millisecond)
 		if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "upgrade the backend") {
 			t.Fatalf("expected actionable cancellation, got %v", err)
 		}
+		if pool.calls != 0 {
+			t.Fatalf("canceled readiness check queried the database %d times", pool.calls)
+		}
+	}
+}
+
+func TestWaitForMigrationsPreservesDatabaseError(t *testing.T) {
+	schemaErr := errors.New("relation schema_migrations does not exist")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pool := &migrationStates{states: []migrationState{{err: schemaErr}}, cancel: cancel}
+	err := waitForMigrations(ctx, pool, 265, time.Millisecond)
+	if !errors.Is(err, schemaErr) || !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), schemaErr.Error()) {
+		t.Fatalf("original database error was lost: %v", err)
+	}
+}
+
+func TestWaitForMigrationsTimeoutPreservesObservedSchemaState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pool := &migrationStates{states: []migrationState{{version: 265, dirty: true}}, cancel: cancel}
+	err := waitForMigrations(ctx, pool, 265, time.Millisecond)
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "migration 265 (dirty=true)") {
+		t.Fatalf("observed migration state was lost: %v", err)
 	}
 }
 

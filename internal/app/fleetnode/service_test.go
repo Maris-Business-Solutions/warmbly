@@ -219,6 +219,12 @@ func TestMainBuildJoinsItsPublishedSHAImage(t *testing.T) {
 	if got := s.JoinVersion(context.Background(), id); got != sha+"-kafka" {
 		t.Fatalf("main build must use published SHA tag, got %q", got)
 	}
+	for _, pin := range []string{"dev-" + sha, "dev-" + sha + "-kafka", sha + "-kafka"} {
+		s.nodes = stubNodes{node: &models.FleetNode{ID: id, PinnedVersion: pin}}
+		if got := s.DesiredVersion(context.Background(), id); got != sha+"-kafka" {
+			t.Fatalf("pin %q must use published SHA tag, got %q", pin, got)
+		}
+	}
 }
 
 // List and Get feed the admin panel's "is this machine behind" column. A node

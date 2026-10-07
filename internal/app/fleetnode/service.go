@@ -85,14 +85,10 @@ func imageVariant() string {
 // version stays empty: "no opinion" must never become a bare "-kafka", which
 // the node would dutifully try to pull.
 func (s *Service) withVariant(version string) string {
-	version = buildversion.FleetImageTag(version)
-	if version != "" && s.CheckTarget(version) != nil {
+	if version == "" || s.CheckTarget(version) != nil {
 		return ""
 	}
-	if version == "" || s.variant == "" || strings.HasSuffix(version, s.variant) {
-		return version
-	}
-	return version + s.variant
+	return buildversion.FleetImageTag(strings.TrimSuffix(version, s.variant)) + s.variant
 }
 
 func (s *Service) CheckTarget(target string) error {

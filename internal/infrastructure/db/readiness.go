@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -46,21 +47,24 @@ func waitForMigrations(ctx context.Context, pool migrationQuerier, required int6
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	state := "migration state unavailable"
-	for {
+	var queryErr error
+	for ctx.Err() == nil {
 		var version int64
 		var dirty bool
 		if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err == nil {
-			if version >= required && !dirty {
+			queryErr = nil
+			if version >= required && !dirty && ctx.Err() == nil {
 				return nil
 			}
 			state = fmt.Sprintf("database migration %d (dirty=%t)", version, dirty)
 		} else {
+			queryErr = err
 			state = "migration state unavailable"
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("%s; consumer requires migration %d or newer and a clean schema: upgrade the backend and check its migration logs: %w", state, required, ctx.Err())
 		case <-ticker.C:
 		}
 	}
+	return fmt.Errorf("%s; consumer requires migration %d or newer and a clean schema: upgrade the backend and check its migration logs: %w", state, required, errors.Join(ctx.Err(), queryErr))
 }
