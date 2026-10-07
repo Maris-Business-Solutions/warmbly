@@ -233,7 +233,7 @@ export default function AnalyticsPage() {
                                         className="group h-11 px-5 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                                     >
                                         <span className={`size-1.5 rounded-full shrink-0 ${dot}`} />
-                                        <span className="text-[12.5px] font-medium text-slate-900 truncate max-w-[40%]">{c.name}</span>
+                                        <span className="min-w-0 flex-1 text-[12.5px] font-medium text-slate-900 truncate" title={c.name}>{c.name}</span>
                                         <span className="ml-auto flex items-center gap-2 md:gap-4 font-mono text-[11px] text-slate-500 tabular-nums shrink-0">
                                             <span title="Emails sent">{num(c.emails_sent)} sent</span>
                                             <span title="Open rate" className="hidden md:inline text-emerald-600">{pct(c.open_rate)} open</span>
