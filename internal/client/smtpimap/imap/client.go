@@ -602,7 +602,14 @@ func (c *Client) uidSearch(criteria *imap.SearchCriteria) ([]imap.UID, *errx.Mai
 	if err := c.resumeSyncLocked(); err != nil {
 		return nil, c.handleError(err)
 	}
-	data, err := c.client.UIDSearch(criteria, nil).Wait()
+	// Zoho answers a MODSEQ search that matches nothing with
+	// "* SEARCH  (MODSEQ n)", which go-imap cannot parse, so the session drops
+	// on every quiet pass. Its ESEARCH answer to the same query is well formed.
+	var opts *imap.SearchOptions
+	if criteria.ModSeq != nil && c.client.Caps().Has(imap.CapESearch) {
+		opts = &imap.SearchOptions{ReturnAll: true}
+	}
+	data, err := c.client.UIDSearch(criteria, opts).Wait()
 	if err != nil {
 		return nil, c.handleError(err)
 	}
