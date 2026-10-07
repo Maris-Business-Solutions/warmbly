@@ -111,6 +111,11 @@ func (h *Handler) FleetJoin(c *gin.Context) {
 	}
 
 	address := heartbeatAddress(req.Address)
+	joinVersion := h.FleetNodes.JoinVersion(ctx, nodeID)
+	if joinVersion == "" {
+		errx.JSON(c, errx.New(errx.Internal, "cannot resolve a backend-compatible node image; configure WARMBLY_VERSION for unstamped builds"))
+		return
+	}
 
 	// Registering here rather than waiting for the first beat means the node
 	// shows up in the dashboard the moment it joins, even if it then fails to
@@ -134,11 +139,6 @@ func (h *Handler) FleetJoin(c *gin.Context) {
 		return
 	}
 
-	joinVersion := h.FleetNodes.JoinVersion(ctx, nodeID)
-	if joinVersion == "" {
-		errx.JSON(c, errx.New(errx.Internal, "cannot resolve a backend-compatible node image; configure WARMBLY_VERSION for unstamped builds"))
-		return
-	}
 	c.JSON(http.StatusOK, fleetJoinResponse{
 		NodeID: nodeID,
 		Role:   string(role),
